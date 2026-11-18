@@ -110,18 +110,26 @@ etiketler:
   metin: Kıyaslama raporları
   tur: kanit
   asama:
-  - belirsiz
-  od: []
-  gerekce: Kıyaslama izleme (4) de planlama girdisi (2) de olabilir.
-  durum: oneri
+  - kontrol_et
+  od:
+  - 4
+  gerekce: Kıyaslama, birimin kendini dışa göre izlediği araç (kontrol et, OD4).
+  durum: onayli
+  icerige_bagli: false
+  karar: Oğuzhan, 2026-11-18
 - yuva: A.1.3/6
   metin: Yenilik yönetim sistemi
   tur: kanit
   asama:
-  - belirsiz
-  od: []
-  gerekce: Sistemin varlığı tanım (2) mı işleyiş (3) mü, belirsiz.
-  durum: oneri
+  - planla
+  - uygula
+  od:
+  - 2
+  - 3
+  gerekce: 'İçeriğe bağlı: sistem yalnız tanımlıysa OD2, işliyorsa OD3.'
+  durum: onayli
+  icerige_bagli: true
+  karar: Oğuzhan, 2026-11-18
 - yuva: A.1.3/7
   metin: Değişim ekipleri belgeleri
   tur: kanit
@@ -184,10 +192,13 @@ etiketler:
   metin: Geri bildirim yöntemleri
   tur: kanit
   asama:
-  - belirsiz
-  od: []
-  gerekce: Yöntem tanımı (2) ya da işleyişi (3/4) olabilir.
-  durum: oneri
+  - planla
+  od:
+  - 2
+  gerekce: Geri bildirim yönteminin tanımı (planla, OD2); toplanan geri bildirimler ayrı yuvalarda.
+  durum: onayli
+  icerige_bagli: false
+  karar: Oğuzhan, 2026-11-18
 - yuva: A.1.4/6
   metin: Paydaş katılımına ilişkin belgeler
   tur: kanit
@@ -425,10 +436,13 @@ etiketler:
   metin: Performans programı raporu
   tur: kanit
   asama:
-  - belirsiz
-  od: []
-  gerekce: Performans programı plan belgesidir; 'raporu' gerçekleşme izlemesi de olabilir.
-  durum: oneri
+  - kontrol_et
+  od:
+  - 4
+  gerekce: Rapor, performans programının gerçekleşmesini izler (kontrol et, OD4).
+  durum: onayli
+  icerige_bagli: false
+  karar: Oğuzhan, 2026-11-18
 - yuva: A.2.3/5
   metin: Performans yönetimi mekanizmalarının izlendiğine ve iyileştirildiğine dair kanıtlar
   tur: kanit
@@ -1774,10 +1788,13 @@ etiketler:
   metin: Tesis ve altyapının kurumsal büyüme ile ilişkili olarak gelişim durumu (Örneğin, birim sayısındaki artış ile fiziksel alanlardaki artış arasındaki ilişki gibi)
   tur: kanit
   asama:
-  - belirsiz
-  od: []
-  gerekce: Gelişim durumu planlama (2) ya da izleme (4) olabilir.
-  durum: oneri
+  - kontrol_et
+  od:
+  - 4
+  gerekce: Büyümeyle karşılaştırmalı gelişim izlemesi (kontrol et, OD4).
+  durum: onayli
+  icerige_bagli: false
+  karar: Oğuzhan, 2026-11-18
 - yuva: B.3.3/4
   metin: Birimde/Kurumda uzaktan eğitim programları ve uygulamaları varsa; bunlara yönelik alt yapı, tesis, donanım ve yazılım durumları
   tur: kanit
@@ -1879,10 +1896,15 @@ etiketler:
   metin: Faaliyetlerin çeşitliliği ve paydaş geribildirimlerinin göze alındığını gösteren kanıtlar
   tur: kanit
   asama:
-  - belirsiz
-  od: []
-  gerekce: Çeşitlilik (3) ve talebe göre çeşitlendirme (4) birlikte.
-  durum: oneri
+  - uygula
+  - onlem_al
+  od:
+  - 3
+  - 4
+  gerekce: 'İçeriğe bağlı: yalnız çeşitlilik OD3; geri bildirime göre değişiklik OD4.'
+  durum: onayli
+  icerige_bagli: true
+  karar: Oğuzhan, 2026-11-18
 - yuva: B.3.5/5
   metin: Sosyal, kültürel ve sportif faaliyetlerin izlenmesine ilişkin araçlar, izleme raporları, iyileştirme ve çeşitlendirme kanıtları
   tur: kanit
