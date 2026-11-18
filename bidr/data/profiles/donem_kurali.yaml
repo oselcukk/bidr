@@ -1,0 +1,116 @@
+# Dönem kuralı: belge türüne göre (komisyon kararı, 2026-11-18). Uygulayan: bidr/audit
+# (model yok); kısa metni kanıt ilkelerinde (`donem_kurali`) ince karar istemine de girer.
+# Gerekçe ve örnekler: docs/AUDIT.md "Dönem kuralı".
+#
+# BİDR kapsamı rapor yılının bir önceki takvim yılıdır (kılavuz "Kapsam"); `documents.jsonl`
+# `donem` bu yılı, `donem_ici` belgenin tarihinin (yoksa akademik döneminin) o yıla düşüp
+# düşmediğini taşır. Bu dosya o bilginin NASIL kullanılacağını tür tür söyler:
+#
+# - yapi: düzenleme ve tanım belgeleri. Önemli olan rapor yılında YÜRÜRLÜKTE olmasıdır,
+#   oluşturulma tarihi değil. Dönem içi tarihli → tam sayılır. Tarihi başka yıl ya da
+#   bilinmiyor → yürürlük bilinmiyor: sayılır, "güncellik doğrulanmalı" işaretlenir.
+#   Yürürlükten kalktığı biliniyorsa kanıt değildir (kanıt ilkesi `yururlukten_kalkmis`;
+#   model `kanit_degil` der, satır audit'e hiç gelmez).
+# - olay: bir kez gerçekleşen işin kaydı. Rapor yılında gerçekleşmiş olmalı. Önceki yıl:
+#   o yılın U/K/Ö halkası SAYILMAZ, "geçmiş kanıt (süreklilik)" olarak ayrı listelenir;
+#   önceki yıl olayının planla eşleşmesi (usul tanımlayan karar) yapı gibi sayılır +
+#   güncellik işareti. Sonraki yıl ya da tarihi bilinmiyor: hiçbir aşama sayılmaz, satır
+#   görünür kalır ("dönem sonrası" / "tarih doğrulanmalı").
+# - karma: tür tek başına belirlemez (web sayfası hem misyon metni hem haber olabilir; form
+#   boşken tanım, doluyken kayıttır). Eşleşmenin aşaması belirler: planla → yapı,
+#   uygula/kontrol_et/onlem_al/ozgun → olay. Katalogda olmayan tür (`bilinmiyor`) da karma.
+#
+# Kurumlar bu dosyayı kendi profil klasörlerinde (BIDR_PROFILES_DIR) değiştirebilir. Tür
+# adları bidr/data/doc_types.yaml kataloğundandır; testler her katalog türünün tam bir
+# sınıfta olduğunu denetler.
+surum: 1
+
+yapi:
+  - stratejik_plan
+  - yonetmelik
+  - yonerge                 # yönerge / usul ve esaslar
+  - is_akisi
+  - ders_bilgi_formu
+  - akts_bilgi_paketi       # ders kataloğu, program çıktıları, diploma eki
+  - mufredat                # öğretim planı
+  - gorev_dagilimi          # komisyon yapısı / görev dağılımı
+  - altyapi_listesi         # envanter: rapor yılındaki mevcut durum
+
+olay:
+  # karar ve toplantı
+  - senato_karari
+  - fakulte_kurulu_karari
+  - yonetim_kurulu_karari
+  - bolum_kurulu_karari
+  - anabilim_dali_kurulu_karari
+  - danisma_kurulu_tutanagi
+  - komisyon_tutanagi
+  - toplanti_tutanagi
+  - katilim_listesi
+  # yazışma ve kayıt
+  - resmi_yazi
+  - e_posta
+  - dilekce_basvuru
+  - talep_kaydi
+  - evrak_kayit_cizelgesi
+  # dönemlik ders kayıtları: o yarıyılda yürürlükteydi, yarıyıl bitince geçmiş olur
+  - ders_programi
+  - acilan_dersler
+  - ders_izlencesi
+  - sinav_kagidi
+  - staj_belgesi
+  - ogrenim_anlasmasi
+  # ölçme, rapor, etkinlik
+  - anket_sonucu
+  - faaliyet_raporu
+  - degerlendirme_raporu
+  - oz_degerlendirme_raporu
+  - stratejik_plan_izleme
+  - etkinlik_duyurusu
+  - sertifika
+  - yayin_listesi
+  - proje_listesi
+  - istatistik_tablosu
+  - mali_belge
+  # öz-referans türler (haric_turler.yaml; audit'e gelmez, bütünlük için)
+  - bidr_sablonu
+  - bidr_raporu
+  - olcut_aciklama_taslagi
+  - kanit_listesi
+
+karma:
+  - web_sayfasi
+  - ekran_goruntusu
+  - form_belgesi
+  - anket_formu             # boş form planla (yapı); sonuçlarıyla uygula (olay)
+
+# Yıllık olmayan döngüler (komisyon kararı, 3. madde). Ölçütte bölümün tanımlı bir gözden
+# geçirme döngüsü varsa döngünün son halkası olan önceki yıl olayı o ölçütte geçerli halka
+# sayılır. Döngü YALNIZ o ölçütte sayılan bir eşleşmenin kodla doğrulanmış alıntısından
+# tanınır (model gerekçesinden değil): aşağıdaki desenlerden biri alıntıda geçmeli.
+# Geçerli pencere: rapor yılı dahil son N yıl (yıl > dönem − N). N alıntıdaki sayıdan;
+# sayı yoksa `varsayilan_yil`; en çok `en_cok_yil`.
+dongu:
+  varsayilan_yil: 4
+  en_cok_yil: 6
+  # Katlanmış metin (küçük harf, Türkçe harfler sadeleşmiş: ı→i, ö→o, ü→u, ş→s, ğ→g, ç→c).
+  # (?P<n>...) yakalarsa döngü yılı odur (rakam ya da "iki".."alti"); 1 yıl yıllıktır, döngü
+  # sayılmaz.
+  desenler:
+    - '\bher\s+(?P<n>\d{1,2}|iki|uc|dort|bes|alti)\s+yil'
+    - '\b(?P<n>\d{1,2}|iki|uc|dort|bes|alti)\s+yilda\s+bir'
+    - 'akreditasyon\s+(donemi|dongusu|surecinde|suresi)'
+    - 'program\s+suresi(nin)?\s+(sonunda|temelli|boyunca)'
+    - 'mufredat\s+gozden\s+gecirme\s+(dongusu|takvimi|periyodu)'
+  # Bu ölçütlerde döngü tanımlı değilse gaps.md öneri yazar (bir kez alınan karar her yıl
+  # kanıt üretir). B.1.5: "yıllık ve program süresi temelli izlemeler" (B.1.5/5);
+  # A.1.4: "takvim yılı temelinde tasarlanmayan diğer kalite döngüleri".
+  olcutler:
+    B.1.5: >-
+      Müfredat gözden geçirme döngüsünü tanımlayan bir bölüm kurulu kararı önerilir (ör. her
+      4 yılda ya da akreditasyon döngüsünde); bir kez alınınca her yıl kanıt üretir ve
+      döngünün önceki yıldaki halkası bu ölçütte sayılır.
+    A.1.4: >-
+      Takvim yılı temelinde olmayan kalite döngülerini (ör. müfredat gözden geçirme,
+      akreditasyon) ve sürelerini tanımlayan bir bölüm kurulu kararı önerilir; bir kez
+      alınınca her yıl kanıt üretir.

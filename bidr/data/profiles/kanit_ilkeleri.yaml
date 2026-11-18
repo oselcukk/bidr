@@ -35,3 +35,13 @@ ilkeler:
       Dış akreditasyon için hazırlanmış öz değerlendirme raporları (FEDEK, MÜDEK vb.) programın
       izlenmesinin kanıtıdır; "kanit_degil" sayılmaz. Kanıt sayılmayan yalnız BİDR raporunun
       kendisi ve taslaklarıdır.
+  - kimlik: donem_kurali
+    metin: >-
+      Dönem kuralını kod belge türüne göre uygular; belgenin tarihi rapor yılı dışında diye
+      eşleşmeyi reddetme ya da aşamayı düşürme, aşamayı içeriğe göre seç. Yapı belgesi
+      (müfredat, ders kataloğu, ders bilgi formu, yönerge, komisyon yapısı, iş akışı, stratejik
+      plan) rapor yılında yürürlükteyse kanıttır; yürürlükten kalktığı biliniyorsa yukarıdaki
+      ilke gereği "kanit_degil". Olay belgesi (karar, tutanak, anket sonucu, etkinlik, rapor,
+      yazışma) önceki yıla aitse kod onu "geçmiş kanıt" olarak ayırır. Belge bir gözden geçirme
+      döngüsü tanımlıyorsa (ör. "her 4 yılda bir", "akreditasyon döngüsünde") o cümleyi
+      alıntıla: kod döngüyü alıntıdan tanır.

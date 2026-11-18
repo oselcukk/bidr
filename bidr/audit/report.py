@@ -32,6 +32,49 @@ def gap_line(c: dict) -> str:
             f"boş yuva {c['yuva_toplam'] - c['yuva_dolu']}/{c['yuva_toplam']}")
 
 
+def _donem_sections(a) -> list[str]:
+    """Dönem kuralı bölümleri: döngü önerileri, geçmiş kanıtlar, doğrulanacak tarihler."""
+    L: list[str] = []
+    yil = f" (rapor yılı {a.donem})" if a.donem else ""
+    dongu = [c for c in a.criteria if c.get("dongu")]
+    oneri = [c for c in a.criteria if c.get("dongu_onerisi")]
+    if dongu or oneri:
+        L += ["", "## Gözden geçirme döngüleri", "",
+              "Takvim yılı temelinde olmayan döngülerde (müfredat gözden geçirme, akreditasyon) döngünün "
+              "son halkası olan önceki yıl olayı, bölümün döngüyü tanımlayan kararı varsa o ölçütte sayılır.", ""]
+        for c in dongu:
+            d = c["dongu"]
+            L.append(f"- {c['olcut']} {c['baslik']}: döngü tanımlı (son {d['yil']} yıl) — `{d['belge']}`: "
+                     f"\"{d['alinti'][:160]}\"" + (f"; sayılan önceki yıl halkası {len(d['acilan'])}" if d["acilan"] else ""))
+        for c in oneri:
+            L.append(f"- **{c['olcut']} {c['baslik']}: öneri.** {c['dongu_onerisi']}")
+    gk = [(c, g) for c in a.criteria for g in c.get("gecmis_kanit") or []]
+    if gk:
+        L += ["", f"## Geçmiş kanıtlar (süreklilik){yil}", "",
+              "Önceki yıllarda gerçekleşmiş olaylar: bu yılın uygulama/izleme/önlem halkası sayılmadı. "
+              "Sürecin yıllar içinde sistematik işlediğinin (OD5) ve \"bir önceki yıla göre ne değişti\" "
+              "sorusunun kanıtıdır; açıklama metninde karşılaştırma için kullanın.", ""]
+        for c, g in gk:
+            L.append(f"- {c['olcut']} `{g['yuva']}` {KISA.get(g['asama'], '?')} {g['yil'] or '?'}: `{g['belge']}`")
+    td = [r for r in a.rows if "tarih_dogrulanmali" in r["flags"] and r["karar"] not in ("ret", "duzelt")]
+    if td:
+        L += ["", "## Tarihi doğrulanacak olay belgeleri", "",
+              "Belgede rapor yılını gösteren tarih bulunamadı; olay belgesi olduğu için hiçbir aşaması sayılmadı "
+              "(satır tabloda gri). Tarih rapor yılındaysa tabloda `duzelt` + aşama ile sayın.", ""]
+        by: dict[str, list] = {}
+        for r in td:
+            by.setdefault(r["belge"], []).append(f"{r['yuva']} {KISA.get(r['etkin_asama'], '?')}")
+        for b, ys in by.items():
+            L.append(f"- `{b}`: " + ", ".join(ys))
+    gd = sorted({r["belge"] for r in a.rows if "guncellik_dogrulanmali" in r["flags"] and r["sayilir"]})
+    if gd:
+        L += ["", "## Güncelliği doğrulanacak belgeler", "",
+              "Yapı belgesi (ya da usul tanımlayan eski karar) sayıldı, ama tarihi rapor yılında değil ya da yok: "
+              "rapor yılında yürürlükte olduğu doğrulanmalı. Yürürlükten kalkmışsa satırı `ret` edin.", ""]
+        L += [f"- `{b}`" for b in gd]
+    return L
+
+
 def gaps_md(a) -> str:
     from .run import od_distribution
     L = [f"# Eksik kanıt raporu", "",
@@ -54,6 +97,7 @@ def gaps_md(a) -> str:
         for c in kg:
             docs = sorted({r["belge"] for r in a.rows if r["olcut"] == c["olcut"] and "kurum_geneli" in r["flags"]})
             L.append(f"- {c['olcut']} {c['baslik']}: " + "; ".join(f"`{d}`" for d in docs[:4]))
+    L += _donem_sections(a)
     L += ["", "## Ölçüt ölçüt", ""]
     for c in a.criteria:
         z = " ".join(f"{KISA[x]}:{c['zincir'][x]['durum']}" for x in LINKS)

@@ -18,6 +18,7 @@ from bidr.criteria.model import CriteriaSet, id_key
 from bidr.criteria.profiles import load_profile
 from bidr.criteria.slots import STAGE_OD, SlotTag, load_tags
 
+from . import donem as D
 from .rules import GEREKEN, KISA, KURUM_GENELI_TURLER, LINKS, criterion_od, effective_stage
 
 SURUM = 1
@@ -48,6 +49,7 @@ class Audit:
     criteria: list[dict]
     decisions_sha: str
     uyarilar: list[str] = field(default_factory=list)
+    donem: int | None = None                # rapor yılı (documents.jsonl `donem`)
 
     @property
     def by_key(self) -> dict[str, dict]:
@@ -62,7 +64,7 @@ def _tag_text(t: SlotTag | None) -> str:
     return ", ".join(t.stages) + " → OD" + "/".join(str(x) for x in t.od)
 
 
-def _row(cs, tags, docs, rec, m, dec) -> dict:
+def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None) -> dict:
     did = rec["doc_id"]
     doc = docs.get(did) or {}
     key = f"{did}|{m['yuva']}"
@@ -91,9 +93,11 @@ def _row(cs, tags, docs, rec, m, dec) -> dict:
             if etkin and etkin != "planla":
                 etkin = "planla"
                 flags.append("uygulama_kaniti_eksik")
-        if donem_ici is False and etkin and etkin != "planla":
-            sayilir = False
-            flags.append("donem_disi")
+    # Dönem kuralı (yapı/olay/karma). İnsan kararında (ret/duzelt) yalnız gösterilir.
+    dz_ = D.apply_row(rule, doc, dtype, etkin) if rule is not None and etkin else None
+    if dz_ and karar not in ("ret", "duzelt"):
+        sayilir = dz_["sayilir"]
+        flags.extend(dz_["flags"])
     od = STAGE_OD.get(etkin) if etkin else None
     if od is None:
         sayilir = False
@@ -111,9 +115,11 @@ def _row(cs, tags, docs, rec, m, dec) -> dict:
         ymetin = cs.get_slot(yuva).text
     except KeyError:
         ymetin = ""
-    return {
+    row = {
         "satir": key, "doc_id": did, "belge": doc.get("calisma_adi") or did, "belge_turu": dtype,
         "donem_ici": {True: "evet", False: "hayır"}.get(donem_ici, "?"),
+        "donem_sinif": dz_["sinif"] if dz_ else "", "donem_zaman": dz_["zaman"] if dz_ else "",
+        "donem_yil": dz_["yil"] if dz_ else None,
         "olcut": olcut, "yuva": yuva, "yuva_metni": ymetin,
         "olcut_model": m["olcut"], "yuva_model": m["yuva"],
         "asama": asama, "od_model": m.get("od_onerisi"), "od_kabul": m.get("od_kabul"),
@@ -124,6 +130,8 @@ def _row(cs, tags, docs, rec, m, dec) -> dict:
         "alinti": m.get("alinti") or "", "gerekce": m.get("gerekce") or "",
         **_decision_cells(dec),
     }
+    row["donem_kurali"] = D.describe(row)
+    return row
 
 
 def _decision_cells(dec: dict | None) -> dict:
@@ -147,12 +155,49 @@ def _slot_links(cs, tags, cid) -> tuple[list, set[str]]:
     return slots, has
 
 
-def _criterion(cs, tags, cid, rows, allowed) -> dict:
+def _human(r: dict) -> bool:
+    return r["karar"] in ("ret", "duzelt")
+
+
+def _cycle(rule: D.Rule | None, rows: list[dict], period: int | None) -> dict | None:
+    """Ölçütte tanımlı gözden geçirme döngüsü (komisyon kararı 3. madde) ve önceki yıl
+    halkalarının açılması. Döngü yalnız sayılan, düşük güvenli olmayan bir eşleşmenin
+    alıntısından tanınır; birden çoksa en kısa (temkinli) pencere."""
+    if rule is None or period is None:
+        return None
+    found = []
+    for r in rows:
+        if r["sayilir"] and not r["zayif"]:
+            n = rule.cycle_years(r["alinti"])
+            if n:
+                found.append((n, r))
+    if not found:
+        return None
+    n, src = min(found, key=lambda x: (x[0], x[1]["satir"]))
+    acilan = []
+    for r in rows:
+        if "gecmis_kanit" in r["flags"] and not _human(r) and r["donem_yil"] and r["donem_yil"] > period - n:
+            r["sayilir"] = True
+            r["flags"] = ["dongu_halkasi" if f == "gecmis_kanit" else f for f in r["flags"]]
+            r["isaretler"] = ", ".join(r["flags"])
+            r["donem_kurali"] = D.describe(r)
+            if r["od"] and r["od"] >= 4 and "yükselten" not in r["vurgu"]:
+                r["vurgu"] = "; ".join(x for x in (f"OD{r['od']}'e yükselten", r["vurgu"]) if x)
+            acilan.append(r["satir"])
+    return {"yil": n, "satir": src["satir"], "belge": src["belge"], "alinti": src["alinti"],
+            "acilan": acilan}
+
+
+def _criterion(cs, tags, cid, rows, allowed, rule: D.Rule | None = None,
+               cycle: dict | None = None) -> dict:
     slots, has = _slot_links(cs, tags, cid)
     counted = [r for r in rows if r["sayilir"]]
     strong = {r["etkin_asama"] for r in counted if not r["zayif"]}
     every = {r["etkin_asama"] for r in counted}
     rs, ra = criterion_od(strong, has), criterion_od(every, has)
+    tarihsiz = [r for r in rows if "tarih_dogrulanmali" in r["flags"] and not _human(r)]
+    rt = criterion_od(strong | {r["etkin_asama"] for r in tarihsiz if not r["zayif"]}, has)
+    gecmis = [r for r in rows if "gecmis_kanit" in r["flags"] and not _human(r)]
     filled = {r["yuva"] for r in counted}
     empty = [s for s in slots if s.id not in filled]
     halka = {}
@@ -185,9 +230,23 @@ def _criterion(cs, tags, cid, rows, allowed) -> dict:
         notlar.append("yalnız kurum geneli düzenlemeyle eşleşti: bölümün uygulama kanıtı eksik")
     if ra.od > rs.od:
         notlar.append(f"düşük güvenli eşleşmeler doğrulanırsa OD{ra.od}")
-    dd = sum("donem_disi" in r["flags"] for r in rows)
-    if dd:
-        notlar.append(f"{dd} eşleşme dönem dışı belgeden (plan dışı aşama sayılmadı)")
+    if gecmis:
+        yillar = sorted({r["donem_yil"] for r in gecmis if r["donem_yil"]})
+        notlar.append(f"{len(gecmis)} geçmiş kanıt (süreklilik"
+                      + (f"; {', '.join(map(str, yillar))}" if yillar else "")
+                      + "): önceki yıl olayı, bu yılın halkası sayılmadı")
+    if cycle:
+        notlar.append(f"gözden geçirme döngüsü tanımlı (son {cycle['yil']} yıl; `{cycle['belge']}`)"
+                      + (f": {len(cycle['acilan'])} önceki yıl halkası sayıldı" if cycle["acilan"] else ""))
+    if tarihsiz:
+        notlar.append(f"{len(tarihsiz)} eşleşme tarihi bilinmeyen olay belgesinden: sayılmadı (tarih doğrulanmalı)"
+                      + (f"; doğrulanırsa OD{rt.od}" if rt.od > rs.od else ""))
+    gd = {r["doc_id"] for r in counted if "guncellik_dogrulanmali" in r["flags"]}
+    if gd:
+        notlar.append(f"{len(gd)} belgenin rapor yılında yürürlükte olduğu doğrulanmalı (güncellik; tarih dönem dışı ya da yok)")
+    dongu_onerisi = (rule.cycle_criteria.get(cid) if rule is not None and not cycle else None)
+    if dongu_onerisi:
+        notlar.append("döngü önerisi: " + dongu_onerisi)
     if cid not in allowed:
         notlar.append("profil dışı ölçüt")
     sub = cs.get(cid)
@@ -203,6 +262,9 @@ def _criterion(cs, tags, cid, rows, allowed) -> dict:
         "bos_yuvalar": [{"yuva": s.id, "metin": s.text,
                          "etiket": _tag_text(tags.get(s.id))} for s in empty],
         "kurum_geneli_yalniz": kg_only, "notlar": notlar, "oncelik_grubu": grup,
+        "od_tarih_dogrulanirsa": rt.od, "dongu": cycle, "dongu_onerisi": dongu_onerisi,
+        "gecmis_kanit": [{"satir": r["satir"], "belge": r["belge"], "yuva": r["yuva"],
+                          "asama": r["etkin_asama"], "yil": r["donem_yil"]} for r in gecmis],
         "rubrik": {str(k): v for k, v in sub.rubric.items()},
     }
 
@@ -227,6 +289,14 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
     docs = {r["doc_id"]: r for r in read_jsonl(ws.documents)} if ws.documents.exists() else {}
     review = load_review_decisions(out) if review is None else review
     rows, uy = [], []
+    rule, period = None, None
+    if any("donem_ici" in d for d in docs.values()):
+        rule = D.load_rule()
+        from collections import Counter
+        ps = Counter(d["donem"] for d in docs.values() if d.get("donem") is not None)
+        period = ps.most_common(1)[0][0] if ps else None
+    else:
+        uy.append("documents.jsonl'de dönem bilgisi yok (`bidr identify --period`): dönem kuralı uygulanmadı")
     n_ince = 0
     for rec in read_jsonl(dpath):
         if rec.get("durum") != "ok" or rec.get("asama") != "ince":
@@ -234,7 +304,7 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
         n_ince += 1
         for m in rec.get("eslesmeler") or []:
             if m.get("kabul"):
-                rows.append(_row(cs, tags, docs, rec, m, review.get(f"{rec['doc_id']}|{m['yuva']}")))
+                rows.append(_row(cs, tags, docs, rec, m, review.get(f"{rec['doc_id']}|{m['yuva']}"), rule))
     if not n_ince:
         uy.append("decisions.jsonl'de ince karar yok: tablo boş")
     rows.sort(key=lambda r: (id_key(r["olcut"]), r["yuva"], r["belge"]))
@@ -242,8 +312,9 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
     for r in rows:
         by_c.setdefault(r["olcut"], []).append(r)
     ids = sorted(allowed | set(by_c), key=id_key)
-    crits = [_criterion(cs, tags, c, by_c.get(c, []), allowed) for c in ids]
-    return Audit(ws, out, profile, cs, tags, rows, crits, file_sha(dpath), uy)
+    cyc = {c: _cycle(rule, by_c.get(c, []), period) for c in ids}
+    crits = [_criterion(cs, tags, c, by_c.get(c, []), allowed, rule, cyc[c]) for c in ids]
+    return Audit(ws, out, profile, cs, tags, rows, crits, file_sha(dpath), uy, period)
 
 
 def od_distribution(a: Audit) -> dict[int, int]:
@@ -259,7 +330,7 @@ def write_outputs(a: Audit, *, xlsx: bool = True) -> dict[str, Path]:
     paths = {"gaps": a.out / FILES["gaps"], "json": a.out / FILES["json"]}
     paths["gaps"].write_text(report.gaps_md(a), encoding="utf-8")
     js = {"surum": SURUM, "calisma_alani": str(a.ws.root), "profil": a.profile,
-          "kararlar_sha": a.decisions_sha, "od_dagilimi": od_distribution(a),
+          "kararlar_sha": a.decisions_sha, "donem": a.donem, "od_dagilimi": od_distribution(a),
           "olcutler": a.criteria}
     paths["json"].write_text(json.dumps(js, ensure_ascii=False, indent=1), encoding="utf-8")
     if xlsx:
