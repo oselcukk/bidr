@@ -64,7 +64,7 @@ def _tag_text(t: SlotTag | None) -> str:
     return ", ".join(t.stages) + " → OD" + "/".join(str(x) for x in t.od)
 
 
-def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None) -> dict:
+def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | None = None) -> dict:
     did = rec["doc_id"]
     doc = docs.get(did) or {}
     key = f"{did}|{m['yuva']}"
@@ -117,6 +117,8 @@ def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None) -> dict:
         ymetin = ""
     row = {
         "satir": key, "doc_id": did, "belge": doc.get("calisma_adi") or did, "belge_turu": dtype,
+        "kanit_adi": (name or ("", ""))[0], "kanit_adi_oneri": (name or ("", ""))[0],
+        "kanit_adi_kaynagi": (name or ("", ""))[1],
         "donem_ici": {True: "evet", False: "hayır"}.get(donem_ici, "?"),
         "donem_sinif": dz_["sinif"] if dz_ else "", "donem_zaman": dz_["zaman"] if dz_ else "",
         "donem_yil": dz_["yil"] if dz_ else None,
@@ -269,6 +271,22 @@ def _criterion(cs, tags, cid, rows, allowed, rule: D.Rule | None = None,
     }
 
 
+def _names(ws_root: Path, out: Path, docs: dict, recs: list[dict]):
+    """doc_id → (kanıt adı, kaynak: insan|model|kural); bidr/name/resolve.py ile file'la aynı."""
+    from bidr.file.run import _type_labels
+    from bidr.name.resolve import Resolver
+    res = Resolver.load(ws_root, out, docs=docs, decisions={r["doc_id"]: r for r in recs},
+                        labels=_type_labels())
+    cache: dict[str, tuple[str, str]] = {}
+
+    def get(did: str) -> tuple[str, str]:
+        if did not in cache:
+            ad, src, _ = res.resolve(did)
+            cache[did] = (ad, src)
+        return cache[did]
+    return get
+
+
 def priority_key(c: dict) -> tuple:
     return (c["oncelik_grubu"], -(c["yuva_toplam"] - c["yuva_dolu"]), id_key(c["olcut"]))
 
@@ -298,13 +316,16 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
     else:
         uy.append("documents.jsonl'de dönem bilgisi yok (`bidr identify --period`): dönem kuralı uygulanmadı")
     n_ince = 0
-    for rec in read_jsonl(dpath):
+    recs = [r for r in read_jsonl(dpath) if r.get("doc_id")]
+    names = _names(ws.root, out, docs, recs)
+    for rec in recs:
         if rec.get("durum") != "ok" or rec.get("asama") != "ince":
             continue
         n_ince += 1
         for m in rec.get("eslesmeler") or []:
             if m.get("kabul"):
-                rows.append(_row(cs, tags, docs, rec, m, review.get(f"{rec['doc_id']}|{m['yuva']}"), rule))
+                rows.append(_row(cs, tags, docs, rec, m, review.get(f"{rec['doc_id']}|{m['yuva']}"), rule,
+                                 names(rec["doc_id"])))
     if not n_ince:
         uy.append("decisions.jsonl'de ince karar yok: tablo boş")
     rows.sort(key=lambda r: (id_key(r["olcut"]), r["yuva"], r["belge"]))
@@ -347,6 +368,7 @@ def audit(ws_root: Path, *, out: Path | None = None, profile: str | None = None)
     outp = Path(out).expanduser().resolve() if out else ws.root
     applied = load_review_decisions(outp)
     carry: dict[str, dict] = {}
+    carry_names: dict[str, str] = {}
     old = outp / FILES["xlsx"]
     uy = []
     if old.exists():
@@ -359,11 +381,21 @@ def audit(ws_root: Path, *, out: Path | None = None, profile: str | None = None)
             dec, err = parse_decision(xr, cs)
             if dec and applied.get(dec["satir"]) != dec:
                 carry[dec["satir"]] = dec
+        carry_names = {sid: v for sid, v, _ in _name_edits(xrows)}
         if carry:
             uy.append(f"{len(carry)} karar tabloda vardı ama uygulanmamıştı: yeni tabloya taşındı "
                       f"(OD'ye yansıması için `bidr audit apply`)")
         old.replace(outp / "review.onceki.xlsx")
     a = build(ws_root, out=outp, profile=profile, review=applied)
+    if carry_names:
+        n = 0
+        for r in a.rows:     # uygulanmamış kanıt adı düzeltmesi: tabloda kalır
+            v = carry_names.get(r["satir"])
+            if v and v != r["kanit_adi_oneri"]:
+                r["kanit_adi"] = v
+                n += 1
+        if n:
+            uy.append(f"{n} satırda kanıt adı düzeltmesi uygulanmamıştı: yeni tabloya taşındı")
     a.uyarilar.extend(uy)
     if carry:   # tabloda göster, OD hesabına katma (uygulanmadı)
         for r in a.rows:
@@ -488,13 +520,59 @@ def apply(ws_root: Path, *, out: Path | None = None, profile: str | None = None)
     for sid in hatalar:            # geçersiz satırın eski kararı da geçersizdir
         merged.pop(sid, None)
     write_jsonl(outp / FILES["decisions"], [merged[k] for k in sorted(merged)])
+    adlar, ad_hata = parse_names(xrows)
+    if adlar:
+        from bidr.name.resolve import NAMES, upsert
+        upsert(outp / NAMES, adlar)
     oneri = write_tag_proposals(outp, merged, cs)
     a = build(ws.root, out=outp, profile=profile, review=merged)
     write_outputs(a, xlsx=False)
     from collections import Counter
     return {"satir": len(xrows), "kararli": len(yeni), "bos": bos, "gecersiz": hatalar,
             "karar": dict(Counter(d["karar"] for d in yeni.values())),
-            "etiket_onerisi": oneri, "od_dagilimi": od_distribution(a)}
+            "etiket_onerisi": oneri, "od_dagilimi": od_distribution(a),
+            "kanit_adi": len(adlar), "kanit_adi_gecersiz": ad_hata}
+
+
+def _name_edits(xrows: list[dict]) -> list[tuple[str, str, str]]:
+    """(satır, düzeltilmiş ad, öneri): "kanıt adı" hücresi doldurulmuş ve öneriden farklı."""
+    from bidr.name.check import clean
+    out = []
+    for xr in xrows:
+        sid = str(xr.get("satir") or "")
+        v, o = clean(xr.get("kanit_adi") or ""), clean(xr.get("kanit_adi_oneri") or "")
+        if sid and "|" in sid and v and v != o:
+            out.append((sid, v, o))
+    return out
+
+
+def parse_names(xrows: list[dict]) -> tuple[list[dict], dict[str, str]]:
+    """Tablodaki kanıt adı düzeltmeleri → `kanit-adlari.jsonl` kayıtları (`kaynak: insan`).
+    Ad belgeye aittir: aynı belgenin satırlarında farklı düzeltme ya da kişi adı/unvan/
+    e-posta içeren ad geçersizdir (hata anahtarı `kanit_adi:<doc_id>`)."""
+    import time
+
+    from bidr.name.check import check_name
+    by: dict[str, dict[str, list[str]]] = {}
+    prev: dict[str, str] = {}
+    for sid, v, o in _name_edits(xrows):
+        did = sid.split("|", 1)[0]
+        by.setdefault(did, {}).setdefault(v, []).append(sid)
+        prev[did] = o
+    recs, errs = [], {}
+    for did in sorted(by):
+        vs = by[did]
+        if len(vs) > 1:
+            errs[f"kanit_adi:{did}"] = "aynı belgenin satırlarında farklı kanıt adları: " + " | ".join(vs)
+            continue
+        (v, sids), = vs.items()
+        ad, e = check_name(v)
+        if e:
+            errs[f"kanit_adi:{did}"] = f"kanıt adı '{v}' geçersiz ({', '.join(e)}): kişi adı/unvan/e-posta yok, 2-10 sözcük"
+            continue
+        recs.append({"doc_id": did, "ad": ad, "kaynak": "insan", "onceki": prev[did], "satirlar": sorted(sids),
+                     "zaman": time.strftime("%Y-%m-%dT%H:%M:%S")})
+    return recs, errs
 
 
 def write_tag_proposals(out: Path, decisions: dict[str, dict], cs: CriteriaSet) -> int:

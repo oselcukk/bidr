@@ -89,6 +89,9 @@ def _decide(args) -> int:
               + (f" devralan={st['devralindi']}" if st["devralindi"] else ""))
         for did, errs in st["gecersiz"].items():
             print(f"  geçersiz {did}: {'; '.join(errs)}")
+        for did, ka in st.get("kanit_adi_red", {}).items():
+            print(f"  kanıt adı reddedildi {did} ({', '.join(ka['red'])}): {ka['oneri']} → ad kuraldan; "
+                  f"`bidr name prepare --only {did}`")
         if st["ayrildi"]:
             print(f"  {len(st['ayrildi'])} mükerrer belge temsilcinin kararını devralamadı (alıntı kendi "
                   f"metninde tutmuyor): yeniden prepare ile kendisi paketlenir")

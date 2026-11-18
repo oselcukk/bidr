@@ -17,6 +17,7 @@ SHEET_ROWS, SHEET_SUM, SHEET_META, SHEET_HELP = "Eşleşmeler", "Ölçüt özeti
 COLS = [
     ("satir", "satır kimliği", 24, False),
     ("belge", "belge (çalışma adı)", 42, False),
+    ("kanit_adi", "kanıt adı (düzeltilebilir)", 36, True),
     ("belge_turu", "belge türü", 18, False),
     ("donem_ici", "dönem içi", 9, False),
     ("donem_kurali", "dönem kuralı", 26, False),
@@ -41,6 +42,8 @@ COLS = [
     ("etiket_yeni", "yuva etiketi: yeni aşama(lar)", 22, True),
     ("not", "NOT", 40, True),
     ("olcut_model", "ölçüt (model)", 8, False),
+    ("kanit_adi_oneri", "kanıt adı (öneri)", 30, False),
+    ("kanit_adi_kaynagi", "kanıt adı kaynağı", 10, False),
 ]
 HEAD = {h: k for k, h, _, _ in COLS}
 
@@ -73,6 +76,10 @@ HELP = [
     "döngü içindeki önceki yıl olayı 'döngü halkası' olarak sayılır.",
     "Önerilen OD kuralı: P→OD2, +U→OD3, +K ve Ö (ikisi)→OD4, +Z→OD5; zincir eksikse düşük düzey. "
     "Kurum geneli yönetmelik/yönerge yalnız P sayılır. Ayrıntı: docs/AUDIT.md.",
+    "Kanıt adı: kanıt dosyasının adı (öncelik: insan > model > kural; 'kanıt adı kaynağı' sütunu). "
+    "Düzeltmek için 'kanıt adı' hücresini değiştirin; ad belgeye aittir, belgenin bir satırında "
+    "değiştirmek yeter (satırlarda farklı adlar geçersiz). Kişi adı, unvan, e-posta yazmayın. "
+    "`bidr audit apply` düzeltmeyi kanit-adlari.jsonl'e (kaynak: insan) yazar.",
     "Tabloyu doldurduktan sonra: bidr audit apply -w <çalışma alanı>",
 ]
 
@@ -113,7 +120,7 @@ def write_review(a, path: Path) -> None:
         if r["zayif"]:
             ws.cell(row=n, column=idx["guven"]).fill = F_LOW
             ws.cell(row=n, column=idx["vurgu"]).fill = F_LOW
-        for k in ("karar", "duzelt_olcut", "duzelt_yuva", "duzelt_asama", "etiket_karari", "etiket_yeni", "not"):
+        for k in ("kanit_adi", "karar", "duzelt_olcut", "duzelt_yuva", "duzelt_asama", "etiket_karari", "etiket_yeni", "not"):
             ws.cell(row=n, column=idx[k]).fill = F_USER
     last = max(ws.max_row, 2)
     for key, opts in (("karar", "kabul,ret,duzelt"), ("etiket_karari", "onayla,duzelt"),

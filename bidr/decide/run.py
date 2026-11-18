@@ -360,7 +360,7 @@ def apply_fine(ctx: Context, did: str, rec: dict, out: dict, meta: dict, model_i
     rec.update(asama="ince", adaylar=meta["adaylar"], belirleyici_ilk_k=meta["belirleyici_ilk_k"],
                adaylar_kesilen=meta["adaylar_kesilen"])
     rec["ince"] = {"karar": out.get("karar"), "gerekce": out.get("gerekce", ""), "kurum_geneli": kg,
-                   "model": model_id,
+                   "kanit_adi": evidence_name_of(out), "model": model_id,
                    "metin": meta["metin"], "istem_token_tahmini": meta["istem_token_tahmini"],
                    **(extra or {})}
     rec["eslesmeler"] = matches
@@ -373,6 +373,16 @@ def apply_fine(ctx: Context, did: str, rec: dict, out: dict, meta: dict, model_i
         rec["karar"] = "olcut_yok"
     rec["reddedilen_eslesme"] = sum(not m["kabul"] for m in matches)
     return rec
+
+
+def evidence_name_of(out: dict) -> dict | None:
+    """Belge düzeyi `kanit_adi` (v7). Kişi adı/unvan/e-posta ya da biçimsiz öneri reddedilir
+    (`durum: red`, `red`: nedenler); ad o zaman kuraldan gelir (bidr/name/resolve.py)."""
+    if "kanit_adi" not in out:
+        return None
+    from bidr.name.check import check_name
+    ad, errs = check_name(out.get("kanit_adi"))
+    return {"oneri": out.get("kanit_adi"), "ad": ad, "durum": "red" if errs else "kabul", "red": errs}
 
 
 def stats_of(recs: dict[str, dict]) -> dict:
@@ -508,6 +518,9 @@ def rep_output(rep: dict) -> dict:
     kg = rep["ince"].get("kurum_geneli")
     if isinstance(kg, dict) and isinstance(kg.get("model"), bool):
         out["kurum_geneli"] = kg["model"]
+    ka = rep["ince"].get("kanit_adi")
+    if isinstance(ka, dict) and isinstance(ka.get("oneri"), str):
+        out["kanit_adi"] = ka["oneri"]
     return out
 
 
@@ -795,7 +808,7 @@ def apply(ws_root: Path, stage: str, *, model: str = "ajan:belirtilmemis",
     recs = load_decisions(ctx.ws)
     d = work_dir(ctx.ws, stage)
     st = {"islenen": 0, "degismedi": 0, "bekleyen": [], "gecersiz": {}, "alinti_tutmayan": {},
-          "eski_surum": []}
+          "eski_surum": [], "kanit_adi_red": {}}
     for p in _pkg_paths(d):
         pkg = json.loads(p.read_text(encoding="utf-8"))
         did = pkg["doc_id"]
@@ -833,6 +846,9 @@ def apply(ws_root: Path, stage: str, *, model: str = "ajan:belirtilmemis",
                    for m in rec["eslesmeler"] if not m["kabul"]]
             if bad:
                 st["alinti_tutmayan"][did] = bad
+            ka = rec["ince"].get("kanit_adi")
+            if ka and ka["durum"] == "red":
+                st["kanit_adi_red"][did] = ka
         st["islenen"] += 1
     inh = inherit(ctx, recs, stage, backend.verify_quote)
     st["devralindi"], st["ayrildi"] = inh["devralindi"], inh["ayrildi"]

@@ -1,4 +1,4 @@
-version: 6
+version: 7
 description: >-
   İnce karar. Belge metni + aday alt ölçütlerin rubriği (1-5, birebir) ve kanıt
   yuvaları (PUKÖ aşaması / OD etiketiyle) → her uyan ölçüt için
@@ -8,6 +8,8 @@ description: >-
   OD2 ile sınırlanır (bidr/data/profiles/kurum_geneli.yaml).
   v6: kanıt ilkesi `donem_kurali` (yapı/olay belgesi; tarih yüzünden eşleşme reddedilmez,
   döngü tanımı alıntılanır; kod uygular: bidr/data/profiles/donem_kurali.yaml).
+  v7: belge düzeyinde `kanit_adi` (3-7 sözcük kanıt dosyası adı; kişi adı/unvan yok). Kod
+  kişi/unvan/e-posta içereni reddeder ve işaretler (bidr/name/check.py); ad kurala düşer.
 inputs:
   adaylar: "aday alt ölçütler: başlık, rubrik 1-5, yuvalar `[aşama → OD]` etiketiyle"
   belge_bilgisi: "documents.jsonl içerik alanları (tür tahmini, tarih, sayfa); yol/ad yok"
