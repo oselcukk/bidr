@@ -21,6 +21,7 @@ SUBCOMMAND_MODULES = [
     "bidr.pipeline.cli",
     "bidr.audit.cli",
     "bidr.file.cli",
+    "bidr.render.cli",
 ]
 
 
