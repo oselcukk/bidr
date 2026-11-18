@@ -180,7 +180,7 @@ def test_decide_records_and_skips(ws):
     a = recs[ids["aynı"]]
     assert a["karar"] == "olcut_var" and a["olcutler"][0]["olcut"] == "B.1.1"
     assert a["kaba"]["liste_disi"] == ["A.3.1"]
-    assert a["kaba"]["model"] == "fake:test" and a["gorev"] == {"classify_coarse": "1", "classify_fine": "4"}
+    assert a["kaba"]["model"] == "fake:test" and a["gorev"] == {"classify_coarse": "2", "classify_fine": "4"}
     assert a["asama"] == "ince" and a["ince"]["model"] == "fake:test" and a["kaba"]["kip"] == "saglayici"
     # profil dışı aday (A.3.1) birleşime girmez
     assert "A.3.1" not in a["adaylar"] and a["adaylar"][:2] == ["B.1.1", "B.2.1"]
@@ -410,7 +410,7 @@ def test_agent_mode_packages_and_apply(ws):
     wd = root / "work" / "coarse"
     assert (wd / "README.md").exists() and "out.json" in (wd / "README.md").read_text(encoding="utf-8")
     pkg = json.loads((wd / f"{ids['aynı']}.json").read_text(encoding="utf-8"))
-    assert pkg["gorev"] == "classify_coarse" and pkg["surum"] == "1" and pkg["sema"]["title"] == "classify_coarse"
+    assert pkg["gorev"] == "classify_coarse" and pkg["surum"] == "2" and pkg["sema"]["title"] == "classify_coarse"
     assert "[AYNI]" in pkg["istem"] and "{{" not in pkg["istem"]
     # paket dosyalarında yol/ad/iz yok
     for p in wd.iterdir():
