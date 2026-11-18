@@ -1,0 +1,23 @@
+# Kanıt ilkeleri: komisyonun verdiği, her belgeye uygulanan genel kararlar.
+# İnce karar istemine aynen girer; kurumlar kendi ilkelerini bu dosyayla değiştirebilir.
+# Kaynak: bir akademik bölüm kalite komisyonu üyesinin 2026-11-18 kararları.
+ilkeler:
+  - kimlik: kurum_geneli_duzenleme
+    metin: >-
+      Kurum (üniversite) geneli yönerge ve yönetmelikler bölüm için kanıttır, ama tek
+      başına yalnız kural ve süreç tanımıdır: aşama "planla" (OD2). Bölümün o düzenlemeyi
+      uyguladığını gösteren ayrı bir belge (kurul kararı, öğrenci listesi, ilan vb.) yoksa
+      "uygula" seçme.
+  - kimlik: bilgisiz_ekran
+    metin: >-
+      Bölüm hakkında bilgi içermeyen ekranlar (ör. bilgi sistemi giriş ekranı, yalnız
+      bağlantı listesi) kanıt değildir: "kanit_degil".
+  - kimlik: bos_form_zinciri
+    metin: >-
+      Boş anket/form şablonu geri bildirim mekanizmasının kanıtıdır (planla, OD2). Aynı
+      belgede ya da metinde anketin sonuçları varsa "uygula" (OD3); sonuçlara dayanan karar
+      veya değişiklik de varsa "onlem_al" (OD4).
+  - kimlik: yururlukten_kalkmis
+    metin: >-
+      Yürürlükten kalktığı metinden anlaşılan ya da açıkça daha yeni bir düzenlemeyle
+      değiştirilmiş eski düzenleme kanıt değildir: "kanit_degil"; gerekçede belirt.

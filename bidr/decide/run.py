@@ -294,7 +294,8 @@ def fine_inputs(ctx: Context, did: str, rec: dict) -> tuple[dict, dict] | None:
         return None, meta
     body, ex = P.excerpt(ctx.text(did), P.FINE_CHARS, P.criteria_terms(ctx.cs, cands))
     inputs = {"adaylar": P.fine_list(ctx.cs, cands, ctx.tags),
-              "belge_bilgisi": P.render_info(rec.get("belge_bilgisi") or {}), "belge_metni": body}
+              "belge_bilgisi": P.render_info(rec.get("belge_bilgisi") or {}), "belge_metni": body,
+              "kanit_ilkeleri": P.evidence_principles()}
     meta.update(metin=ex, istem_token_tahmini=P.approx_tokens("".join(inputs.values())))
     return inputs, meta
 

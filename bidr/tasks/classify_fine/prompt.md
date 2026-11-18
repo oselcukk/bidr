@@ -8,6 +8,8 @@ Kurallar:
 5. "od_onerisi" aşamanın düzeyidir: planla 2, uygula 3, kontrol_et 4, onlem_al 4, ozgun 5. Kararsız kalırsan düşük olanı seç.
 6. "guven": yuksek | orta | dusuk. "gerekce": en çok 1 cümle, alıntının yuvayı neden karşıladığı.
 7. Hiçbir aday uymuyorsa karar "olcut_yok"; belge kanıt niteliği taşımıyorsa (boş şablon, öz değerlendirme raporu ya da taslağı, ilgisiz metin) "kanit_degil". İkisinde de "eslesmeler" boş liste. Bu cevaplar geçerlidir; zorlama eşleşme yapma.
+8. Komisyonun kanıt ilkeleri (aynen uygula):
+{{kanit_ilkeleri}}
 
 ADAY ALT ÖLÇÜTLER
 {{adaylar}}

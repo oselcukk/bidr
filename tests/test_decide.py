@@ -180,7 +180,7 @@ def test_decide_records_and_skips(ws):
     a = recs[ids["aynı"]]
     assert a["karar"] == "olcut_var" and a["olcutler"][0]["olcut"] == "B.1.1"
     assert a["kaba"]["liste_disi"] == ["A.3.1"]
-    assert a["kaba"]["model"] == "fake:test" and a["gorev"] == {"classify_coarse": "1", "classify_fine": "2"}
+    assert a["kaba"]["model"] == "fake:test" and a["gorev"] == {"classify_coarse": "1", "classify_fine": "3"}
     assert a["asama"] == "ince" and a["ince"]["model"] == "fake:test" and a["kaba"]["kip"] == "saglayici"
     # profil dışı aday (A.3.1) birleşime girmez
     assert "A.3.1" not in a["adaylar"] and a["adaylar"][:2] == ["B.1.1", "B.2.1"]
@@ -244,7 +244,7 @@ def test_no_path_name_or_trace_reaches_model(ws):
         assert word not in blob
     # belge bilgisi yalnız izinli içerik alanlarından
     for _, i in fake.calls:
-        assert set(i) <= {"olcutler", "adaylar", "belge_bilgisi", "belge_metni"}
+        assert set(i) <= {"olcutler", "adaylar", "belge_bilgisi", "belge_metni", "kanit_ilkeleri"}
         assert i["belge_bilgisi"] == "tür tahmini: Kurul Kararı; içerik tarihi: 2025-03-01; sayfa: 1"
 
 
@@ -540,3 +540,8 @@ def test_onayli_icerige_bagli_kural_istemde():
     assert tags[sid].state == "onayli" and len(tags[sid].od) > 1
     metin = P.fine_list(CS, [sid.split("/")[0]], tags)
     assert "OD kuralı:" in metin and tags[sid].reason in metin
+
+
+def test_kanit_ilkeleri_istemde():
+    metin = P.evidence_principles()
+    assert "yönerge" in metin and "kanit_degil" in metin and "OD2" in metin

@@ -203,3 +203,14 @@ def criteria_terms(cs: CriteriaSet, cands: list[str]) -> set[str]:
     for sid in cands:
         out.update(x for x in bags.get(sid, ()) if df[x] <= lim)
     return out
+
+
+def evidence_principles(path=None) -> str:
+    """Komisyonun kanıt ilkeleri (bidr/data/profiles/kanit_ilkeleri.yaml) → istem metni."""
+    import yaml
+    from pathlib import Path
+    p = Path(path) if path else Path(__file__).resolve().parents[1] / "data" / "profiles" / "kanit_ilkeleri.yaml"
+    if not p.exists():
+        return "(tanımlı ilke yok)"
+    data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+    return "\n".join(f"   - {i['metin']}" for i in data.get("ilkeler") or []) or "(tanımlı ilke yok)"
