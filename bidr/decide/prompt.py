@@ -175,7 +175,11 @@ def fine_list(cs: CriteriaSet, cands: list[str], tags: dict[str, SlotTag]) -> st
         for sl in s.slots:
             if sl.footnote:
                 continue
-            lines.append(f"  - {sl.id} [{slot_tag_label(tags.get(sl.id))}] {sl.text}")
+            tag = tags.get(sl.id)
+            lines.append(f"  - {sl.id} [{slot_tag_label(tag)}] {sl.text}")
+            if tag is not None and tag.state == "onayli" and len(tag.od) > 1:
+                # Kullanıcının onayladığı içeriğe bağlı OD kuralı: aşama alıntının içeriğine göre seçilir.
+                lines.append(f"      OD kuralı: {tag.reason}")
         blocks.append("\n".join(lines))
     return "\n\n".join(blocks)
 

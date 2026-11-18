@@ -526,3 +526,13 @@ def test_provider_mode_with_real_run_task(ws):
     assert seen and not any(SECRET in p for p in seen)
     recs = {r["doc_id"]: r for r in read_jsonl(out)}
     assert recs[ids["aynı"]]["kaba"]["kip"] == "saglayici"
+
+
+def test_onayli_icerige_bagli_kural_istemde():
+    """Kullanıcının onayladığı içeriğe bağlı OD kuralı ince karar istemine girer."""
+    from bidr.criteria.slots import load_tags
+    tags = load_tags(CS)
+    sid = "C.2.2/4"  # Paydaş geri bildirimleri (onaylı, OD 3/4)
+    assert tags[sid].state == "onayli" and len(tags[sid].od) > 1
+    metin = P.fine_list(CS, [sid.split("/")[0]], tags)
+    assert "OD kuralı:" in metin and tags[sid].reason in metin
