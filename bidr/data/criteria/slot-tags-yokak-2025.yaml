@@ -675,11 +675,15 @@ etiketler:
   metin: Paydaş görüşlerinin alınması sürecinde kullanılan veri toplama araçları ve yöntemi (Anketler, odak grup toplantıları, çalıştaylar, bilgi yönetim sistemi vb.)
   tur: kanit
   asama:
+  - planla
   - uygula
   od:
+  - 2
   - 3
-  gerekce: Veri toplama araçları = mekanizmalar (rubrik 3).
-  durum: oneri
+  gerekce: 'İçeriğe bağlı: yalnız tanım/boş form/kurum geneli sayfa ise OD2; bölümün gerçekleşmiş uygulaması ise OD3 (iki bağımsız hakemin uzlaşısı).'
+  durum: onayli
+  icerige_bagli: true
+  karar: Oğuzhan, 2026-11-18, inceleme tablosu hakemi
 - yuva: A.4.1/3
   metin: Karar alma süreçlerinde paydaş katılımının sağlandığını gösteren belgeler
   tur: kanit
@@ -721,11 +725,15 @@ etiketler:
   metin: Tanımlı öğrenci geri bildirim mekanizmalarının tür, yöntem ve çeşitliliğini gösteren kanıtlar (Uzaktan/karma eğitim dahil)
   tur: kanit
   asama:
+  - planla
   - uygula
   od:
+  - 2
   - 3
-  gerekce: Geri bildirimin alındığı mekanizmalar (rubrik 3).
-  durum: oneri
+  gerekce: 'İçeriğe bağlı: yalnız tanım/boş form/kurum geneli sayfa ise OD2; bölümün gerçekleşmiş uygulaması ise OD3 (iki bağımsız hakemin uzlaşısı).'
+  durum: onayli
+  icerige_bagli: true
+  karar: Oğuzhan, 2026-11-18, inceleme tablosu hakemi
 - yuva: A.4.2/3
   metin: Öğrenci geri bildirimleri kapsamında gerçekleştirilen iyileştirmelere ilişkin uygulamalar
   tur: kanit
@@ -970,11 +978,15 @@ etiketler:
   metin: Program amaç ve çıktılarının TYÇ ile uyumunu gösteren kanıtlar (ders program örnekleri, güncel ders izlence örnekleri vb.)
   tur: kanit
   asama:
+  - planla
   - uygula
   od:
+  - 2
   - 3
-  gerekce: Ders programı/izlence örnekleri = programlar yürütülüyor (rubrik 3).
-  durum: oneri
+  gerekce: 'İçeriğe bağlı: yalnız tanım/boş form/kurum geneli sayfa ise OD2; bölümün gerçekleşmiş uygulaması ise OD3 (iki bağımsız hakemin uzlaşısı).'
+  durum: onayli
+  icerige_bagli: true
+  karar: Oğuzhan, 2026-11-18, inceleme tablosu hakemi
 - yuva: B.1.1/4
   metin: Uzaktan-karma program tasarımında bölüm/alan bazlı uygulama çeşitliliğine ilişkin kanıtlar (bölümlerin farklı uzaktan eğitim taleplerinin dikkate alındığına ilişkin kanıtlar vb.)
   tur: kanit
@@ -1159,11 +1171,15 @@ etiketler:
   metin: Diploma Eki
   tur: kanit
   asama:
+  - planla
   - uygula
   od:
+  - 2
   - 3
-  gerekce: Diploma eki uygulama çıktısıdır (rubrik 3).
-  durum: oneri
+  gerekce: 'İçeriğe bağlı: yalnız tanım/boş form/kurum geneli sayfa ise OD2; bölümün gerçekleşmiş uygulaması ise OD3 (iki bağımsız hakemin uzlaşısı).'
+  durum: onayli
+  icerige_bagli: true
+  karar: Oğuzhan, 2026-11-18, inceleme tablosu hakemi
 - yuva: B.1.4/6
   metin: Derslerin AKTS kredileri ve AKTS hesaplama tablolarının takibini gösteren kanıtlar
   tur: kanit
