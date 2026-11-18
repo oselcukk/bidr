@@ -19,11 +19,18 @@ def written(tmp_path, out=None, **kw):
     return ws
 
 
-def verdicts(ws, karar: dict | None = None, default="destekleniyor"):
+SORU_IDS = [k for k, _ in V.SORULAR]
+
+
+def verdicts(ws, karar: dict | None = None, default="destekleniyor", sorular: dict | None = None):
+    """Sahte doğrulayıcı cevabı; `sorular`: {soru: (durum, [yer])}, verilmeyen soru cevapsız."""
     pkg = json.loads((ws / "work/verify/B.1.1.json").read_text(encoding="utf-8"))
-    karar = karar or {}
+    karar, sorular = karar or {}, sorular or {}
     return {"cumleler": [{"yer": c["yer"], "karar": karar.get(c["yer"], default), "gerekce": "g"}
-                         for c in pkg["meta"]["cumleler"]], "genel": ""}
+                         for c in pkg["meta"]["cumleler"]],
+            "sorular": [{"soru": k, "durum": sorular.get(k, ("cevapsiz", []))[0],
+                         "yerler": sorular.get(k, ("cevapsiz", []))[1], "gerekce": "sg"} for k in SORU_IDS],
+            "genel": ""}
 
 
 def text(ws):
@@ -129,3 +136,112 @@ def test_cli(tmp_path, capsys):
     answer(ws, "B.1.1", verdicts(ws, {"p1.1": "desteklenmiyor"}), stage="verify")
     assert main(["verify", "apply", "-w", str(ws), "--model", "x"]) == 1
     assert "reddedildi B.1.1" in capsys.readouterr().out
+
+
+# -- beş zorunlu soru (K29) -----------------------------------------------------------------------
+
+def coverage(ws):
+    return json.loads((ws / V.SUMMARY).read_text(encoding="utf-8"))
+
+
+def test_questions_match_guide_and_prompt(tmp_path):
+    assert [f"- {q}" for _, q in V.SORULAR] == W.writing_questions().splitlines()
+    ws = written(tmp_path)
+    V.prepare(ws)
+    pkg = json.loads((ws / "work/verify/B.1.1.json").read_text(encoding="utf-8"))
+    assert pkg["surum"] == "2" and all(f"- {k}: " in pkg["istem"] for k in SORU_IDS)
+    assert pkg["sema"]["properties"]["sorular"]["minItems"] == 5
+
+
+def test_unanswered_question_does_not_reject(tmp_path):
+    ws = written(tmp_path)
+    V.prepare(ws)
+    answer(ws, "B.1.1", verdicts(ws, sorular={"surec": ("kanitla_cevaplandi", ["p1.1"]),
+                                              "kanitlar": ("kanitla_cevaplandi", ["p1.1", "p2.1"])}),
+           stage="verify")
+    assert V.apply(ws)["dogrulandi"] == ["B.1.1"]
+    t = text(ws)
+    k = {q["soru"]: q for q in t["soru_kapsami"]["sorular"]}
+    assert t["soru_kapsami"]["durum"] == "denetlendi" and k["surec"]["yerler"] == ["p1.1"]
+    assert k["izleme"]["durum"] == "cevapsiz"
+    rec = V.load_log(V.Workspace(ws))["B.1.1"]
+    assert rec["soru_kapsami"] == t["soru_kapsami"]
+    s = coverage(ws)
+    assert s["olcutler"]["B.1.1"]["kanitla_cevaplanmayan"] == ["izleme", "iyilestirme", "onceki_yil"]
+    assert [(x["olcut"], x["soru"], x["durum"]) for x in s["kanitla_cevaplanmayan"]] == [
+        ("B.1.1", "izleme", "cevapsiz"), ("B.1.1", "iyilestirme", "cevapsiz"), ("B.1.1", "onceki_yil", "cevapsiz")]
+    assert s["denetlenmedi"] == [] and s["kanitla_cevaplanmayan"][0]["baslik"].startswith("İzleme")
+
+
+def test_fabricated_answer_rejects_even_if_sentences_supported(tmp_path):
+    ws = written(tmp_path)
+    V.prepare(ws)
+    answer(ws, "B.1.1", verdicts(ws, sorular={"izleme": ("uydurma_suphesi", ["p2.2"])}), stage="verify")
+    st = V.apply(ws)
+    assert list(st["reddedildi"]) == ["B.1.1"]
+    assert any(w.startswith("soru izleme (uydurma_suphesi; p2.2)") for w in st["reddedildi"]["B.1.1"])
+    assert text(ws)["durum"] == "reddedildi"
+    x = [x for x in coverage(ws)["kanitla_cevaplanmayan"] if x["soru"] == "izleme"]
+    assert x[0]["durum"] == "uydurma_suphesi" and x[0]["yerler"] == ["p2.2"]
+    assert "B.1.1" in V.rejected(V.Workspace(ws))           # yeniden yazım döngüsüne girer
+
+
+def test_invalid_question_answers(tmp_path):
+    ws = written(tmp_path)
+    V.prepare(ws)
+    out = verdicts(ws, sorular={"surec": ("kanitla_cevaplandi", []), "izleme": ("cevapsiz", ["p1.1"]),
+                                "iyilestirme": ("uydurma_suphesi", ["p7.1"])})
+    out["sorular"][3]["soru"] = "surec"                       # kanitlar eksik, surec iki kez
+    answer(ws, "B.1.1", out, stage="verify")
+    errs = V.apply(ws)["gecersiz"]["B.1.1"]
+    joined = " | ".join(errs)
+    for frag in ("surec: birden çok karar", "izleme: cevapsiz ama cümle yeri", "p7.1",
+                 "kararı olmayan soru: kanitlar", "kanitla_cevaplandi için cümle yeri"):
+        assert frag in joined, frag
+    assert text(ws)["durum"] == "taslak"
+
+
+def test_question_answered_only_by_commission_is_invalid():
+    meta = {"cumleler": [{"yer": "p1.1", "metin": "Plan vardır [komisyon].", "atiflar": []}]}
+    out = {"sorular": [{"soru": k, "durum": "kanitla_cevaplandi" if k == "iyilestirme" else "cevapsiz",
+                        "yerler": ["p1.1"] if k == "iyilestirme" else [], "gerekce": "g"} for k in SORU_IDS]}
+    k, errs = V.judge_questions(meta, out)
+    assert k is None and "kanıta atıf yapmıyor" in errs[0]
+
+
+def test_missing_sorular_field_is_invalid_for_v2(tmp_path):
+    ws = written(tmp_path)
+    V.prepare(ws)
+    out = verdicts(ws)
+    del out["sorular"]
+    answer(ws, "B.1.1", out, stage="verify")
+    assert "B.1.1" in V.apply(ws)["gecersiz"]
+
+
+def test_old_v1_verification_stays_valid_unchecked(tmp_path):
+    """Görev v1 ile doğrulanmış (soru alanı olmayan) kayıt geçerli kalır; kapsam "denetlenmedi"."""
+    ws = written(tmp_path)
+    t = text(ws)
+    t["durum"] = "dogrulandi"
+    (ws / "texts/B.1.1.json").write_text(json.dumps(t, ensure_ascii=False), encoding="utf-8")
+    rec = {"olcut": "B.1.1", "durum": "dogrulandi", "metin_sha": W.text_sha(t), "asama": "model",
+           "cumleler": [], "gorev_surumu": "1", "gerekce": [], "model": "eski"}
+    (ws / "verify.jsonl").write_text(json.dumps(rec, ensure_ascii=False) + "\n", encoding="utf-8")
+    st = V.prepare(ws)
+    assert st["zaten_tamam"] == 1 and st["paket"] == 0
+    s = coverage(ws)
+    assert s["olcutler"]["B.1.1"]["durum"] == "denetlenmedi" and s["denetlenmedi"] == ["B.1.1"]
+    assert s["kanitla_cevaplanmayan"] == [] and text(ws)["durum"] == "dogrulandi"
+    assert V.coverage_of(rec, t) == {"durum": "denetlenmedi", "sorular": []}
+
+
+def test_code_reject_and_stale_text_are_unchecked(tmp_path):
+    ws = written(tmp_path)
+    V.prepare(ws)
+    answer(ws, "B.1.1", verdicts(ws, sorular={"surec": ("kanitla_cevaplandi", ["p1.1"])}), stage="verify")
+    V.apply(ws)
+    assert coverage(ws)["olcutler"]["B.1.1"]["durum"] == "denetlendi"
+    make_report_ws(tmp_path, od=2)                     # OD düştü → kod reddi
+    V.prepare(ws, redo=True)
+    assert text(ws)["soru_kapsami"]["durum"] == "denetlenmedi"
+    assert coverage(ws)["denetlenmedi"] == ["B.1.1"]

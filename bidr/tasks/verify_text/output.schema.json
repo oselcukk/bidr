@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "verify_text",
   "type": "object",
-  "required": ["cumleler", "genel"],
+  "required": ["cumleler", "sorular", "genel"],
   "additionalProperties": false,
   "properties": {
     "cumleler": {
@@ -15,6 +15,25 @@
         "properties": {
           "yer": {"type": "string", "pattern": "^(p[0-9]+|o)\\.[0-9]+$"},
           "karar": {"enum": ["destekleniyor", "kismen", "desteklenmiyor"]},
+          "gerekce": {"type": "string", "minLength": 1, "maxLength": 600}
+        }
+      }
+    },
+    "sorular": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "required": ["soru", "durum", "yerler", "gerekce"],
+        "additionalProperties": false,
+        "properties": {
+          "soru": {"enum": ["surec", "izleme", "iyilestirme", "kanitlar", "onceki_yil"]},
+          "durum": {"enum": ["kanitla_cevaplandi", "cevapsiz", "uydurma_suphesi"]},
+          "yerler": {
+            "type": "array",
+            "items": {"type": "string", "pattern": "^(p[0-9]+|o)\\.[0-9]+$"}
+          },
           "gerekce": {"type": "string", "minLength": 1, "maxLength": 600}
         }
       }
