@@ -14,12 +14,14 @@ Sahibi: şef. Aşamalar `bidr/data/pipeline.yaml`'da; tamamlanma denetimleri
 ### Eksik kanıt notu (`audit-olcutler.json` `olcutler[].eksik_kanit_notu`)
 Audit üretir (docs/AUDIT.md "Eksik kanıt notu"); render okur. `null` ya da
 `{"durum": "kanitsiz" | "neredeyse_kanitsiz", "nedenler": [...], "metin": "Eksik kanıt notu: …"}`.
-Render sözleşmesi: alan doluysa ölçütün Açıklamalar hücresine `metin` (italik) yazılır,
+Render sözleşmesi (uygulandı: `render.run.audit_note`): alan doluysa ölçütün Açıklamalar hücresine
+`metin` (italik, metnin paragraflarından sonra) yazılır,
 **ölçütün metni olsa da** (`neredeyse_kanitsiz`: yalnız kurum geneli, yalnız dönem dışı, yalnız
 tarihi/birimi doğrulanmamış ya da yalnız düşük güvenli kanıtı olan ölçüt metinle de doldurulmuş
 olabilir; not bölümün bu döneme ait doğrudan kanıtı olmadığını söyler). `kanitsiz` metni
 bugünkü `eksik_text` çıktısıyla aynıdır; alan yoksa (eski audit çıktısı) render bugünkü
-davranışı sürdürür. `--eksik-notu-yok` ikisini de kapatır.
+davranışı sürdürür. `--eksik-notu-yok` ikisini de kapatır. Kapsam dışı (`baska_birim`) ölçütte
+yazılmaz. Metni olup not alan ölçütler `.bidr-render.json` `eksik_notlu_metin`.
 
 ## Kanıt adı (`ad`, `ad_kaynagi`) — öncelik insan > model > kural
 - `insan`: review.xlsx "kanıt adı" düzeltmesi (`bidr audit apply` → `kanit-adlari.jsonl`,
@@ -128,6 +130,14 @@ bağlantılar ve `rapor:` bağlantı ayarları); biri değişince `file_tamam` y
  "kaynak": {"model": "…", "gorev_surumu": "…", "istem_sha": "…", "temel_istem_sha": "…"},
  "insan_karari": "cikar"}
 ```
+Yazım paketinin girdileri ayrıca `faaliyetler` (görev `write_criterion` v2): ölçütün kanıtlarının
+bağlı olduğu faaliyet kayıtları (`faaliyetler.json`: ad, tarih, aşama → bu ölçütün kanıt no'su,
+"YALNIZ DUYURU" işareti, eksik aşamalar; `meta.faaliyetler`). İstem kuralı 7: "düzenlenmiştir/
+gerçekleştirilmiştir" yalnız gerçekleşmesi kanıtlı faaliyet için ve gerçekleşme kanıtına atıfla;
+yalnız duyurulu faaliyet için "duyurulmuştur/planlanmıştır". `verify_text` istemi (kural 6) aynı
+kuralı denetler: yalnız duyuruya dayanan "düzenlendi" iddiası `kismen`. **v1 → v2:** görevin eski
+sürümüyle yazılmış metin, `girdi_sha`'sı güncelse geçerli kalır (`write prepare` yeniden paketlemez,
+`eski_surum` listeler; `write_tamam` uyarı verir); yeni kuralla yazmak `--only`/`--redo` ile.
 Her cümle en az bir atıf taşır; atıflar `evidence-index.csv`'de olmalı. Metin OD'yi
 `audit-olcutler.json`'daki önerilen düzeyin üstünde iddia etmez. `[komisyon]` işareti
 cümlenin kanıta değil komisyon bilgisine (`rapor-notlari.yaml`) dayandığını gösterir; rapora
@@ -140,8 +150,10 @@ gerçekten destekleniyor mu; metni yazmamış, taze bir ajan). Geçemeyen metin 
 gerekçeyle (cümle bazlı: yer, karar, gerekçe).
 
 Yeniden yazım döngüsü: `bidr write prepare --reddedilenler` reddedilen her ölçüt için yeni
-paket yazar; istemin sonuna doğrulayıcının cümle bazlı gerekçesi ve reddedilen metin eklenir
-(doğrulayıcının paketi verilmez). Ajan yeniden yazar → `write apply` (metnin `tur`u bir artar)
+paket yazar; istemin sonuna doğrulayıcının bütün gerekçeleri — desteklenmeyen cümleler, beş soru
+denetiminin `uydurma_suphesi` soruları (soru, yerler, gerekçe), kod denetimi sorunları ve
+`gerekce` listesinde bunlarla gösterilmeyen her satır — ve reddedilen metin eklenir (doğrulayıcının
+paketi verilmez). Ajan yeniden yazar → `write apply` (metnin `tur`u bir artar)
 → `verify prepare/apply` yeniden. Yeniden yazımı ve doğrulamayı ayrı, taze ajanlar yapar.
 `rapor.yeniden_yazim_siniri` (vars. 2) turdan sonra hâlâ reddedilen ölçüt "insan gerekli"dir:
 kullanıcı `bidr verify karar -w WS <ölçüt> cikar|tekrar` ile karar verir (`verify-insan.jsonl`;
@@ -285,9 +297,12 @@ varsayılanı (`--kanit-bicimi mat`) listeyi `1_OD3: ad` yazar (geçen yılın M
 denetçi bunu `kanit_gosterimi_karar` uyarısıyla raporlar, iki gösterim karışıksa
 `kanit_gosterimi_karisik`. Kurum kılavuz gösterimini isterse render `--kanit-bicimi kilavuz`.
 
-Hatta bağlama (öneri; bu değişiklikte yapılmadı): `pipeline.yaml`'a render'dan sonra `denetle`
-aşaması (katman D) ve `checks.py`'de `denetle_tamam` (denetim.json `docx` sha'sı güncel ve
-`yayima_hazir`); kritik bulgu yayımı durdurur, uyarılar insan onayına bırakılır.
+**Hat aşaması `denetle`** (D; önkoşul `render`; son aşama). `denetim.json` `docx_sha` denetlenen
+dosyanın sha256'sıdır. `checks.denetle_tamam`: denetim.json yok, başka bir docx'e ait ya da sha'sı
+güncel report.docx'inkiyle aynı değil (rapor yeniden üretildi ya da elle değişti) → `bidr denetle`;
+kritik bulgu varsa bekliyor, KULLANICI gerekli, neden "yayıma hazır değil: N kritik bulgu (kodlar)"
+(düzeltme kaynakta, sonra render + denetle); kritik yoksa bitti ("yayıma hazır"), uyarılar engel
+değil.
 
 ## config.yaml `rapor:` bölümü (hepsi isteğe bağlı; kullanıcı yazar, `bidr init` korur)
 | anahtar | anlamı |

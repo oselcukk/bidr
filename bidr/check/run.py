@@ -64,6 +64,7 @@ class Sonuc:
     kurallar: dict
     bulgular: list[Bulgu] = field(default_factory=list)
     bilgi: dict = field(default_factory=dict)
+    docx_sha: str | None = None     # denetlenen dosyanın içerik özeti (hat: denetle_tamam güncellik)
 
     def ekle(self, seviye, kod, yer, mesaj):
         self.bulgular.append(Bulgu(seviye, kod, yer, mesaj))
@@ -81,7 +82,7 @@ class Sonuc:
         for b in self.bulgular:
             k = kodlar.setdefault(b.kod, {"seviye": b.seviye, "sayi": 0})
             k["sayi"] += 1
-        return {"surum": 1, "docx": self.docx, "sablon": self.sablon,
+        return {"surum": 1, "docx": self.docx, "docx_sha": self.docx_sha, "sablon": self.sablon,
                 "kanit_klasoru": self.kanit_klasoru, "kurallar": self.kurallar,
                 "ozet": {"kritik": self.kritik, "uyari": self.uyari,
                          "yayima_hazir": self.kritik == 0, "kodlar": kodlar},
@@ -274,6 +275,12 @@ def _komsu(p, yon: int):
     return None
 
 
+def file_sha(p: Path) -> str:
+    """Dosyanın sha256'sı (denetim.json `docx_sha`; `bidr status` raporun değişip değişmediğine bakar)."""
+    import hashlib
+    return hashlib.sha256(Path(p).read_bytes()).hexdigest()
+
+
 def denetle(docx_path: Path, *, rules: Rules | None = None, sablon: Path | None = None,
             kanit_klasoru: Path | None = None, index_path: Path | None = None,
             beklenen: tuple[list[str], list[str]] | None = None) -> Sonuc:
@@ -285,6 +292,7 @@ def denetle(docx_path: Path, *, rules: Rules | None = None, sablon: Path | None 
     doc = docx.Document(str(docx_path))
     s = Sonuc(str(docx_path), str(sablon) if sablon else None,
               str(kanit_klasoru) if kanit_klasoru else None, rules.to_dict())
+    s.docx_sha = file_sha(docx_path)
     d = Denetci(doc, rules, s)
 
     _kapak(doc, s)

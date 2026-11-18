@@ -89,6 +89,7 @@ class Result:
     yonler: dict[str, str] = field(default_factory=dict)        # "A Güçlü Yönler" → dolu | bos | yonerge
     hazirlayan: int = 0
     taslak_nedenleri: list[str] = field(default_factory=list)
+    eksik_notlu: list[str] = field(default_factory=list)       # metni olup eksik kanıt notu da alan ölçütler
 
     def ozet(self) -> dict:
         return {"cikti": str(self.out), "dolu": len(self.dolu), "bos": len(self.bos),
@@ -96,6 +97,7 @@ class Result:
                 "od_isaretli": len(self.od), "taslak": self.taslak, "taslak_nedenleri": self.taslak_nedenleri,
                 "kapak": self.kapak, "hazirlayan": self.hazirlayan,
                 "kapsam_disi": self.kapsam_disi, "karar_gerekli": self.karar_gerekli, "yonler": self.yonler,
+                "eksik_notlu_metin": self.eksik_notlu,
                 "uyari": len(self.uyarilar), "baglantili_kanit": self.baglantili,
                 "baglantisiz_kanit": len(self.baglantisiz),
                 "degisen_parcalar": self.degisen_parcalar}
@@ -158,12 +160,28 @@ def load_links(index: Path | None) -> dict[tuple[str, str], str]:
 
 
 def eksik_text(a: dict | None) -> str | None:
+    """Ölçütün metni olmadığında yazılan eksik kanıt notu (bugünkü davranış): audit'in
+    `eksik_kanit_notu.metin`'i varsa o, yoksa eksik halkaların gereken metinleri."""
     if not a:
         return None
+    note = audit_note(a)
+    if note:
+        return note
     items = [e.get("gereken") for e in a.get("eksik") or [] if e.get("gereken")]
     if not items:
         return None
     return "Eksik kanıt notu: " + "; ".join(items) + "."
+
+
+def audit_note(a: dict | None) -> str | None:
+    """audit-olcutler.json `eksik_kanit_notu.metin` (docs/REPORT_LAYER.md "Eksik kanıt notu"):
+    `kanitsiz` ya da `neredeyse_kanitsiz` ölçütte dolu; ölçütün metni olsa da yazılır. Alan yoksa
+    (eski audit çıktısı) ya da `null` ise None."""
+    n = (a or {}).get("eksik_kanit_notu")
+    if not isinstance(n, dict) or n.get("durum") not in ("kanitsiz", "neredeyse_kanitsiz"):
+        return None
+    m = " ".join(str(n.get("metin") or "").split())
+    return m or None
 
 
 def _usable(t: dict | None) -> bool:
@@ -379,6 +397,11 @@ def render(template: Path, out: Path, *, texts_dir: Path, audit_path: Path | Non
                         res.uyarilar.append(f"{cid}: metindeki [{no}] kanıt listesinde yok")
             if clean_text(t.get("onceki_yila_gore") or ""):
                 aciklama.append(ops.make_paragraph(clean_text(t["onceki_yila_gore"])))
+            # metin olsa da: bölümün bu döneme ait doğrudan kanıtı yoksa (audit) not düşülür
+            note = audit_note(a) if opts.eksik_notu else None
+            if note:
+                aciklama.append(ops.make_paragraph([(note, {"italic": True})]))
+                res.eksik_notlu.append(cid)
             kanit = []
             for k in t.get("kanitlar") or []:
                 pre, ad = kanit_parts(k, opts.kanit_bicimi)

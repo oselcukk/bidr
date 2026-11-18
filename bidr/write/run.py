@@ -4,6 +4,9 @@ prepare: kanıtı olan her ölçüt için `work/write/<ölçüt>.json` paketi. G
   - `evidence-index.csv` (kanıt no, ad, alıntılar; alıntının belge metnindeki bağlamı),
   - `audit-olcutler.json` (önerilen OD, PUKÖ zinciri, eksik halkalar, notlar),
   - ölçüt tanımı/rubrik (paket verisi), kılavuzun yazım soruları,
+  - ölçütün kanıtlarının faaliyet özeti (`faaliyetler.json`, `bidr faaliyet`: faaliyet adı,
+    aşamalar ve hangi kanıtın hangi aşama olduğu, "yalnız duyuru" işareti); istem kuralı:
+    "düzenlenmiştir/gerçekleştirilmiştir" yalnız gerçekleşmesi kanıtlı faaliyet için,
   - isteğe bağlı: geçen yılın aynı ölçüt metni (`--onceki` ya da config.yaml
     `rapor.onceki_rapor`: FR-0833 docx'i ya da `<ölçüt>.txt` klasörü) ve komisyon bilgisi
     (`rapor-notlari.yaml`).
@@ -13,7 +16,8 @@ yasak ifade, uydurma gelecek vaadi). Geçemeyen cevap yazılmaz (GECERSIZ.md); g
 
 Yeniden yazım döngüsü (`prepare --reddedilenler`): `bidr verify`'ın reddettiği her metin için
 yeni paket; istemin sonuna doğrulayıcının cümle bazlı gerekçesi ve reddedilen metin eklenir
-(doğrulayıcının paketi yazara verilmez, yalnız kararı ve gerekçesi). Tur sayısı metinde
+(doğrulayıcının paketi yazara verilmez, yalnız kararı ve gerekçesi: cümle bazlı, soru bazlı
+— beş soru denetiminin `uydurma_suphesi` — ve kod denetimi gerekçelerinin hepsi). Tur sayısı metinde
 (`tur`) tutulur; `rapor.yeniden_yazim_siniri` (vars. 2) turdan sonra reddedilen ölçüt "insan
 gerekli" olur (`bidr verify karar … cikar|tekrar`, bkz. bidr/verify/run.py).
 """
@@ -99,6 +103,7 @@ class Sources:
         self.docs = ({r["doc_id"]: r for r in read_jsonl(self.ws.documents) if r.get("doc_id")}
                      if self.ws.documents.exists() else {})
         self._texts: dict[str, str | None] = {}
+        self.faaliyetler = load_activities(self.ws.root)
 
     def doc_text(self, did: str) -> str | None:
         if did not in self._texts:
@@ -147,6 +152,23 @@ class Sources:
         if p.get("kanitlar"):
             s += "\n\nKanıtlar:\n" + p["kanitlar"]
         return s
+
+    def activities(self, olcut: str) -> list[dict]:
+        """Ölçütün kanıtlarının bağlı olduğu faaliyet kayıtları (`faaliyetler.json`); her birinde
+        aşama → bu ölçütün kanıt numaraları (kanıtı bu ölçütte olmayan aşama belgesi `None`)."""
+        if not self.faaliyetler:
+            return []
+        no_of = {r.get("doc_id"): r["kanit_no"] for r in self.index.get(olcut, []) if r.get("doc_id")}
+        out = []
+        for f in self.faaliyetler:
+            ids = {b.get("doc_id") for b in f.get("belgeler") or []}
+            if not ids & set(no_of):
+                continue
+            asm = {a: [no_of.get(d) for d in ds] for a, ds in (f.get("asamalar") or {}).items()}
+            out.append({"id": f.get("id"), "ad": f.get("ad") or "", "tarih": f.get("tarih"),
+                        "durum": f.get("durum"), "yalniz_duyuru": bool(f.get("yalniz_duyuru")),
+                        "asamalar": asm, "eksik": list(f.get("eksik") or [])})
+        return out
 
     def notes_text(self, olcut: str) -> str:
         n = self.notes.get(olcut) or []
@@ -201,6 +223,46 @@ def render_evidence(ev: list[dict], cs) -> str:
     return "\n\n".join(blocks)
 
 
+FAALIYETLER = "faaliyetler.json"
+GERCEKLESME = ("gerceklesme", "katilim", "degerlendirme", "iyilestirme")
+
+
+def load_activities(ws_root: Path) -> list[dict]:
+    """`faaliyetler.json` kayıtları (yoksa ya da okunamazsa boş)."""
+    p = Path(ws_root) / FAALIYETLER
+    try:
+        return list(json.loads(p.read_text(encoding="utf-8")).get("faaliyetler") or []) if p.exists() else []
+    except (OSError, ValueError, AttributeError):
+        return []
+
+
+def render_activities(acts: list[dict]) -> str:
+    """Yazım istemindeki FAALİYETLER bölümü."""
+    if not acts:
+        return "yok (bu ölçütün kanıtları bir faaliyet kaydına bağlı değil)"
+    blocks = []
+    for f in acts:
+        kanitli = not f["yalniz_duyuru"] and f["durum"] != "gerceklesme_kanitsiz"
+        head = f"{f['ad']}" + (f" ({f['tarih']})" if f.get("tarih") else "")
+        lines = [head,
+                 "  durum: " + ("gerçekleşmesi kanıtlı" if kanitli else
+                                "YALNIZ DUYURU — gerçekleşmesi kanıtlı değil; 'düzenlenmiştir/gerçekleştirilmiştir' "
+                                "denemez, yalnız 'duyurulmuştur/planlanmıştır'")]
+        parts = []
+        for a, nos in f["asamalar"].items():
+            have = [f"[{n}]" for n in nos if n]
+            other = sum(1 for n in nos if not n)
+            parts.append(f"{a}: " + ", ".join(have + ([f"{other} belge bu ölçütün kanıtı değil"] if other else [])))
+        lines.append("  aşamalar: " + "; ".join(parts))
+        if kanitli and not any(n for a in GERCEKLESME for n in f["asamalar"].get(a) or []):
+            lines.append("  not: gerçekleşme belgesi bu ölçütün KANITLAR listesinde yok; gerçekleşme iddiası "
+                         "atıf yapılabilecek bir kanıta dayanmaz")
+        if f.get("eksik"):
+            lines.append("  eksik: " + ", ".join(f["eksik"]))
+        blocks.append("\n".join(lines))
+    return "\n".join(blocks)
+
+
 def writing_questions() -> str:
     g = yaml.safe_load(GUIDE.read_text(encoding="utf-8"))
     for sec in g.get("sections") or []:
@@ -219,13 +281,15 @@ def write_inputs(src: Sources, olcut: str, hitap: str) -> tuple[dict, dict]:
     a = src.audit.get(olcut) or {"od": 1}
     gaps = src.gaps(olcut)
     ev = src.evidence(olcut)
+    acts = src.activities(olcut)
     inputs = {"hitap": hitap, "olcut": render_criterion(src.cs, olcut),
               "od_bilgisi": render_od(a, gaps), "kanitlar": render_evidence(ev, src.cs),
               "onceki_metin": src.previous_text(olcut), "komisyon_bilgisi": src.notes_text(olcut),
-              "yazim_sorulari": writing_questions()}
+              "yazim_sorulari": writing_questions(), "faaliyetler": render_activities(acts)}
     meta = {"olcut": olcut, "od_onerisi": src.od(olcut), "eksikler": gaps,
             "kanitlar": [{"no": e["no"], "ad": e["ad"], "dosya": e["dosya"], "doc_id": e["doc_id"]} for e in ev],
-            "komisyon": bool(src.notes.get(olcut)), "onceki": src.previous_name if olcut in src.previous else None}
+            "komisyon": bool(src.notes.get(olcut)), "onceki": src.previous_name if olcut in src.previous else None,
+            "faaliyetler": [{"id": f["id"], "ad": f["ad"], "yalniz_duyuru": f["yalniz_duyuru"]} for f in acts]}
     return inputs, meta
 
 
@@ -290,27 +354,50 @@ def rewrite_limit(ws_root: Path) -> int:
 
 
 def rejection_section(t: dict, rec: dict | None, tur: int, limit: int) -> str:
-    """Yeniden yazım paketinin istemine eklenen bölüm: doğrulayıcının cümle bazlı gerekçesi."""
+    """Yeniden yazım paketinin istemine eklenen bölüm: doğrulayıcının bütün gerekçeleri — cümle
+    bazlı, soru bazlı (beş soru denetiminin `uydurma_suphesi`) ve kod denetimi; kayıttaki ya da
+    metnin `dogrulama.gerekce` listesinde olup bunlarla gösterilmeyen satırlar da eklenir."""
     rec = rec or {}
     L = [f"DOĞRULAMADA REDDEDİLDİ — YENİDEN YAZIM (tur {tur}/{limit})",
          "Bu ölçüt için daha önce yazılan metin bağımsız doğrulamada reddedildi. Metni yukarıdaki "
          "kurallarla ve yalnız KANITLAR listesine dayanarak yeniden yaz:",
          "- reddedilen cümleyi kanıtın gerçekten gösterdiği kadarına indir ya da çıkar; kanıtı olmayan "
          "iddiayı başka sözcüklerle yeniden kurma;",
+         "- uydurma şüphesi taşıyan soruyu (izleme, iyileştirme vb.) kanıtsız genel ifadeyle doldurma: "
+         "kanıt o soruyu somut olarak cevaplamıyorsa o soruya ilişkin cümleyi çıkar (cevapsız kalması doğrudur);",
          "- desteklendiği söylenen cümleleri koruyabilirsin; yeni iddia ekleme;",
          "- doğrulayıcıyı ikna etmeye çalışan açıklama yazma; cevap biçimi aynı.", ""]
+    shown: set[str] = set()
     rows = [r for r in rec.get("cumleler") or [] if r.get("karar") != "destekleniyor"]
     if rows:
         L.append("Doğrulayıcının desteklemediği cümleler (yer, karar, gerekçe):")
         for r in rows:
             L.append(f"- {r['yer']} ({r['karar']}): «{r.get('metin', '')}» — {r.get('gerekce', '')}")
+            shown.add(f"{r['yer']} ({r['karar']}): {r.get('gerekce', '')} — «{r.get('metin', '')}»")
+    qs = [q for q in ((rec.get("soru_kapsami") or t.get("soru_kapsami") or {}).get("sorular") or [])
+          if q.get("durum") == "uydurma_suphesi"]
+    if qs:
+        L.append("Beş soru denetimi — kanıtsız genel ifadeyle doldurulan sorular (soru, yerler, gerekçe):")
+        for q in qs:
+            yer = ", ".join(q.get("yerler") or [])
+            L.append(f"- soru {q['soru']} «{q.get('baslik', '')}» (uydurma_suphesi; {yer}): {q.get('gerekce', '')}")
+            shown.add(f"soru {q['soru']} (uydurma_suphesi; {yer}): {q.get('gerekce', '')}")
     kod = rec.get("kod_denetimi") or []
     if kod:
         L.append("Kod denetiminin bulduğu sorunlar:")
         for i in kod:
             L.append(f"- {i.get('yer', '-')} {i.get('kod', '')}: {i.get('ayrinti', '')}")
-    if not rows and not kod:
-        L += [f"- {g}" for g in (t.get("dogrulama") or {}).get("gerekce") or []] or ["- (gerekçe kaydı yok)"]
+            shown.add(f"{i.get('yer', '-')} {i.get('kod', '')}: {i.get('ayrinti', '')}")
+    rest: list[str] = []
+    for g in [*(rec.get("gerekce") or []), *((t.get("dogrulama") or {}).get("gerekce") or [])]:
+        g = str(g)
+        if g not in shown and g not in rest:
+            rest.append(g)
+    if rest:
+        L.append("Doğrulama gerekçeleri" + (" (yukarıdakilere ek)" if shown else "") + ":")
+        L += [f"- {g}" for g in rest]
+    if not shown and not rest:
+        L.append("- (gerekçe kaydı yok)")
     if rec.get("genel"):
         L.append(f"Doğrulayıcının genel notu: {rec['genel']}")
     L += ["", "REDDEDİLEN METİN (yalnız düzeltme için; kanıt değildir)", "<<<"]
@@ -377,7 +464,7 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
     d.mkdir(parents=True, exist_ok=True)
     yes, no = _criteria(src, only)
     st = {"paket": 0, "yeni": 0, "zaten_tamam": 0, "kanitsiz": no, "onceki": src.previous_name,
-          "onceki_olcut": sum(c in src.previous for c in yes)}
+          "onceki_olcut": sum(c in src.previous for c in yes), "eski_surum": []}
     for c in yes:
         inputs, meta = write_inputs(src, c, h)
         r = backend.render_task(TASK, inputs)
@@ -387,6 +474,9 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
                 and str(kay.get("gorev_surumu")) == str(r["version"])):
             st["zaten_tamam"] += 1
             continue
+        if t and not redo and not only and old_version_valid(t, str(r["version"]), inputs_sha(src, c)):
+            st["eski_surum"].append(c)          # görevin eski sürümüyle yazılmış, girdileri güncel: geçerli
+            continue
         meta.update({"tur": int((t or {}).get("tur") or 0), "temel_istem_sha": K.sha(r["prompt"]),
                      "girdi_sha": inputs_sha(src, c)})
         st["paket"] += 1
@@ -394,6 +484,16 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
     st["bekleyen"] = K.write_readme(d, task=TASK, version=task_version(), cmd="write", rule=RULE)
     st["klasor"] = str(d)
     return st
+
+
+def old_version_valid(t: dict, version: str, cur_inputs_sha: str) -> bool:
+    """Görevin eski sürümüyle yazılmış metin geçerli kalır (yeniden paketlenmez) — kanıt listesi ve
+    OD değişmediyse (`girdi_sha`; alanı olmayan eski metin de write_tamam'daki gibi güncel sayılır).
+    Yeni sürümün kuralıyla yeniden yazmak isteğe bağlı: `write prepare --redo` ya da `--only`."""
+    kay = t.get("kaynak") or {}
+    if not kay.get("gorev_surumu") or str(kay["gorev_surumu"]) == version:
+        return False
+    return not t.get("girdi_sha") or t["girdi_sha"] == cur_inputs_sha
 
 
 def _cited(paragraphs: list[str], onceki: str) -> list[str]:

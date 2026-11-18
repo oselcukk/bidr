@@ -71,7 +71,7 @@ def _agent_answers(ws: Path, stage: str, broken: set[str] = frozenset()) -> int:
 def test_spec_is_consistent():
     spec = load_spec()
     ids = [s["id"] for s in spec["asamalar"]]
-    assert ids[:2] == ["kurulum", "ingest"] and ids[-1] == "render"
+    assert ids[:2] == ["kurulum", "ingest"] and ids[-1] == "denetle"
     for s in spec["asamalar"]:
         if s["uygulandi"]:
             assert s["komut"] and s["skill"], s["id"]
@@ -79,11 +79,15 @@ def test_spec_is_consistent():
             assert s["sart"]["denetim"] == "yok"
     assert not [s["id"] for s in spec["asamalar"] if not s["uygulandi"]]
     by = {s["id"]: s for s in spec["asamalar"]}
-    assert by["file"]["onkosul"] == ["audit"] and by["write"]["onkosul"] == ["file"]
+    assert by["file"]["onkosul"] == ["audit", "ikinci_arama"] and by["write"]["onkosul"] == ["file"]
     assert by["verify"]["onkosul"] == ["write"] and by["yonler"]["onkosul"] == ["verify"]
-    assert by["render"]["onkosul"] == ["yonler"]
+    assert by["render"]["onkosul"] == ["yonler"] and by["denetle"]["onkosul"] == ["render"]
     assert "name" in by["audit"]["onkosul"] and by["name"]["istege_bagli"]
-    for sid in ("file", "write", "verify", "render", "name"):
+    assert by["faaliyet"]["onkosul"] == ["karar_ince"] and "faaliyet" in by["audit"]["onkosul"]
+    assert by["ikinci_arama"]["onkosul"] == ["audit"] and by["ikinci_arama"]["istege_bagli"]
+    assert ids.index("karar_ince") < ids.index("faaliyet") < ids.index("audit") < ids.index("ikinci_arama") \
+        < ids.index("file") and ids.index("render") < ids.index("denetle")
+    for sid in ("file", "write", "verify", "render", "name", "faaliyet", "ikinci_arama", "denetle"):
         assert by[sid]["sart"]["denetim"] == f"{sid}_tamam"
 
 
@@ -195,6 +199,12 @@ def test_full_pipeline_transitions_and_gates(kurulum, capsys):
     assert main(["compare-labels", "-w", str(ws), "--apply"]) == 0
     rep = evaluate(ws)
     assert rep.get("hakem").durum == "bitti"
+    # faaliyet kayıtları (karar_ince'den sonra, audit'ten önce): kapı + güncellik
+    assert rep.sonraki.id == "faaliyet" and rep.sonraki.kim == "komut" and rep.get("audit").durum == "engelli"
+    assert main(["audit", "-w", str(ws)]) == GATE_EXIT
+    assert main(["faaliyet", "-w", str(ws)]) == 0
+    rep = evaluate(ws)
+    assert rep.get("faaliyet").durum == "bitti" and (ws / "faaliyetler.json").exists()
     assert rep.sonraki.id == "audit" and rep.sonraki.durum == "bekliyor" and rep.sonraki.kim == "komut"
     # 7. audit: tablo → insan kararı → apply (ayrıntı: tests/test_audit.py)
     assert main(["audit", "-w", str(ws)]) == 0
@@ -211,12 +221,28 @@ def test_full_pipeline_transitions_and_gates(kurulum, capsys):
     assert main(["audit", "apply", "-w", str(ws)]) == 0
     rep = evaluate(ws)
     assert rep.get("audit").durum == "bitti" and rep.get("name").durum == "bitti"   # ince karar adları
+    # ikinci arama (isteğe bağlı): yapılmadıysa bekler; file kapısı kapalı
+    ia = rep.get("ikinci_arama")
+    assert rep.sonraki.id == "ikinci_arama" and ia.kim == "komut" and "arama prepare" in ia.komutlar[0]
+    assert "ikinci_arama: false" in ia.neden
+    assert main(["file", "-w", str(ws)]) == GATE_EXIT
+    _ikinci_arama(ws)
+    rep = evaluate(ws)
     assert rep.sonraki.id == "file" and rep.sonraki.kim == "komut"
     _report_layer(ws, capsys)
 
-    # kararlar yenilenirse (ör. yeni apply) hakem kuyruğu eskir
+    # kararlar yenilenirse (ör. yeni apply) hakem kuyruğu eskir; yalnız dosyanın yeniden yazılması
+    # (içerik aynı, ör. ikinci arama apply'ı) eskitmez
     import os
     t = (ws / "label-review.jsonl").stat().st_mtime_ns
+    os.utime(ws / "decisions.jsonl", ns=(t + 10**9, t + 10**9))
+    assert evaluate(ws).get("hakem").durum == "bitti"
+    recs = list(read_jsonl(ws / "decisions.jsonl"))
+    for r in recs:
+        for m in r.get("eslesmeler") or []:
+            m["kabul"] = False
+    (ws / "decisions.jsonl").write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in recs),
+                                        encoding="utf-8")
     os.utime(ws / "decisions.jsonl", ns=(t + 10**9, t + 10**9))
     assert evaluate(ws).get("hakem").durum == "bekliyor"
 
@@ -291,6 +317,39 @@ def _verify_yonler_answers(ws: Path, reject: set[str] = frozenset()) -> list[str
         (d / f"{p.stem}.out.json").write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
         done.append(p.stem)
     return done
+
+
+def _ikinci_arama(ws: Path) -> None:
+    """prepare → ajan (uymuyor) → apply; decisions.jsonl değişirse audit yeniden; sonra bitti.
+    Atlama kullanıcının kararıdır: config.yaml rapor.ikinci_arama: false → atlandi (status'ta görünür)."""
+    ev = lambda sid: evaluate(ws).get(sid)          # noqa: E731
+    _rapor_config(ws, ikinci_arama=False)
+    ia = ev("ikinci_arama")
+    assert ia.durum == "atlandi" and "rapor.ikinci_arama: false" in ia.neden
+    data = yaml.safe_load((ws / "config.yaml").read_text(encoding="utf-8"))
+    del data["rapor"]["ikinci_arama"]
+    (ws / "config.yaml").write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    assert main(["arama", "prepare", "-w", str(ws), "--profile", "akademik_bolum", "--olcut", "A.1.1,B.2.1"]) == 0
+    d = ws / "work" / "ikinci_arama"
+    pkgs = sorted(p for p in d.glob("*.json") if not p.name.endswith(".out.json"))
+    assert pkgs
+    ia = ev("ikinci_arama")
+    assert ia.kim == "ajan" and ia.ilerleme["cevapsiz"] == len(pkgs) and "arama apply" in ia.komutlar[1]
+    for p in pkgs:
+        (d / f"{p.stem}.out.json").write_text(json.dumps(
+            {"karar": "olcut_yok", "gerekce": "uymuyor", "birim_iliskisi": "kendi", "eslesmeler": [],
+             "kanit_adi": "Sınama Belgesi"}, ensure_ascii=False), encoding="utf-8")
+    assert ev("ikinci_arama").kim == "komut"
+    assert main(["arama", "apply", "-w", str(ws), "--model", "test-ajan"]) == 0
+    # decisions.jsonl değişti (ikinci arama kaydı): audit tablosu eskir, ikinci arama engellenir
+    assert ev("audit").durum == "bekliyor" and ev("ikinci_arama").durum == "engelli"
+    assert main(["audit", "-w", str(ws)]) == 0
+    a = ev("audit")
+    if a.kim == "komut":
+        assert main(["audit", "apply", "-w", str(ws)]) == 0
+    assert ev("audit").durum == "bitti"
+    ia = ev("ikinci_arama")
+    assert ia.durum == "bitti" and ia.ilerleme["paket"] == len(pkgs)
 
 
 def _report_layer(ws: Path, capsys) -> None:
@@ -432,9 +491,21 @@ def _report_layer(ws: Path, capsys) -> None:
     assert "https://abl.ornek.edu.tr/kararlar/2025-1" not in rels        # B.1.1 çıkarıldı
     assert "https://kanit.ornek.edu.tr/2025/B/B.2/B.2.3/" in rels and "<w:hyperlink" in body
     assert "[komisyon]" not in body
+    # denetle: biçim denetimi (sentetik şablonda 2 blok: kritik bulgu → yayıma hazır değil)
+    dn = ev("denetle")
+    assert dn.kim == "komut" and "denetle" in dn.komutlar[0] and "denetim.json yok" in dn.neden
+    assert main(["denetle", "-w", str(ws)]) == 1
+    js = json.loads((ws / "denetim.json").read_text(encoding="utf-8"))
+    assert js["docx_sha"] and js["ozet"]["kritik"] > 0
+    dn = ev("denetle")
+    assert dn.durum == "bekliyor" and dn.kim == "insan" and "yayıma hazır değil" in dn.neden
     capsys.readouterr()
     main(["next", "-w", str(ws)])
-    assert "Bütün aşamalar bitti" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "denetle" in out and "yayıma hazır değil" in out and "KULLANICI gerekli" in out
+    # rapor yeniden üretilince denetim eskir
+    assert main(["render", "-w", str(ws)]) == 0
+    assert ev("denetle").kim == "komut" and "güncel" in ev("denetle").neden
     # metin değişirse rapor eskir
     t = json.loads((ws / "texts/B.2.3.json").read_text(encoding="utf-8"))
     t["eksikler"] = ["değişti"]

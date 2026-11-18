@@ -1,6 +1,6 @@
 ---
 name: bidr-rapor
-description: Kurulu bir bidr çalışma alanında BİDR rapor hattını yürütür - `bidr next`'in söylediği adımı yapar, model aşamalarında iş paketlerini ajan olarak cevaplar (karar, kanıt adı, metin yazımı, doğrulama), yeniden yazım döngüsünü yürütür, kapılara ve insan onayına uyar. Tetik - "raporu hazırla", "BİDR raporu", "devam et", "nerede kaldık", "sıradaki adım", "kanıtları eşle", "decide paketleri", "metinleri yaz", "raporu üret". Kullanma - kurulum veya config değişikliği (bidr-kur), hakem sorularını kullanıcıya sormak (bidr-hakem).
+description: Kurulu bir bidr çalışma alanında BİDR rapor hattını yürütür - `bidr next`'in söylediği adımı yapar, model aşamalarında iş paketlerini ajan olarak cevaplar (karar, ikinci arama, kanıt adı, metin yazımı, doğrulama), yeniden yazım döngüsünü ve biçim denetimini yürütür, kapılara ve insan onayına uyar. Tetik - "raporu hazırla", "BİDR raporu", "devam et", "nerede kaldık", "sıradaki adım", "kanıtları eşle", "decide paketleri", "metinleri yaz", "raporu üret". Kullanma - kurulum veya config değişikliği (bidr-kur), hakem sorularını kullanıcıya sormak (bidr-hakem).
 ---
 
 # bidr-rapor
@@ -17,7 +17,8 @@ yerine AGENTS.md'deki tam yolu kullan. WS = çalışma alanının yolu.
    - `(KULLANICI gerekli)` ya da `İnsan onayı: GEREKLİ` → DUR. Kullanıcıya hangi aşamada
      olduğunu, neyi beklediğini (`next`'in "Durum" satırı) ve sonra ne olacağını söyle.
      Hakem aşamasında kullanıcı isterse skill `bidr-hakem`.
-   - "Bütün aşamalar bitti" → rapor hazır; bitirirken özetle. Kanıt klasörü, rapor metni,
+   - "Bütün aşamalar bitti" → rapor biçim denetiminden kritik bulgusuz geçti (yayıma hazır);
+     bitirirken özetle. Kanıt klasörü, rapor metni,
      docx, tablo gibi çıktıları hiçbir zaman elle üretme ya da düzenleme: her birinin komutu var.
 3. Her komuttan sonra 1'e dön. Aynı adım iki kez üst üste ilerlemiyorsa (ilerleme sayıları
    değişmiyor) dur ve kullanıcıya çıktıyı göster.
@@ -94,6 +95,14 @@ Betimleme belgenin metni olur ve başında "GÖRSEL BETİMLEME" işareti taşır
 paketlerinde alıntı bu betimlemeden gelir; kanıtı abartma (bir fotoğraf tesisin varlığını
 gösterir, kullanım sıklığını ya da iyileştirmeyi göstermez).
 
+## Faaliyet kayıtları (faaliyet)
+
+`bidr faaliyet -w WS` (belirleyici, model yok) ince kararların faaliyet alanlarından aynı
+toplantı/etkinliğin belgelerini bağlar → `faaliyetler.json`. Audit'ten önce çalışır; kararlar
+değişince (yeniden karar, ikinci arama) `bidr next` yeniden ister. "Yalnız duyuru" uyarısı engel
+değildir ama metinde o faaliyet için "düzenlenmiştir" yazılamaz (yazım paketine özeti girer);
+kullanıcıya gerçekleşme belgesinin (tutanak, katılım listesi, rapor) eksik olduğunu söyle.
+
 ## Denetim (audit): OD, eksikler, inceleme tablosu
 
 1. `bidr audit -w WS --profile <profil>` (`next` tam komutu verir). Çıktı: `review.xlsx`,
@@ -128,6 +137,18 @@ gösterir, kullanım sıklığını ya da iyileştirmeyi göstermez).
    yükseltmek için eşleşme uydurma. Eksik kanıt `gaps.md`'de: kullanıcıya hangi belgenin
    gerektiğini oradan söyle.
 
+## İkinci arama (ikinci_arama, isteğe bağlı)
+
+Audit'ten sonra kanıtsız/zayıf ölçütler için arşivde ters arama (`docs/MODEL_LAYER.md` "İkinci
+arama"). `bidr arama prepare -w WS --profile <profil>` → `work/ikinci_arama/README.md`; her
+`<doc_id>.json` bir ince karar paketidir, kuralları "İş paketi döngüsü"yle aynı (birebir alıntı;
+uymuyorsa `olcut_yok`/`kanit_degil` dürüst ve beklenen cevaptır, zorlama) → `bidr arama apply -w
+WS --model <ajan adı>`. Kabul edilen eşleşme decisions.jsonl'i değiştirir: `bidr next` önce
+faaliyet ve audit'i yeniden ister; yeni satırlar (işaret `ikinci_arama`) review.xlsx'te
+**kullanıcının** kararını bekler (yetki devri kuralları aynı). Atlamak kullanıcının kararıdır:
+kullanıcı açıkça isterse `config.yaml`'a `rapor: {ikinci_arama: false}` yazılır; status'ta
+"atlandi" görünür. Kendiliğinden atlama.
+
 ## Kanıt adları (name, isteğe bağlı)
 
 `bidr name prepare -w WS` → `work/name/README.md`; her `<doc_id>.json` için kısa, resmî bir
@@ -150,8 +171,12 @@ göster; adres uydurma, yükleme yapma, config'i kendin doldurma (kök adresi ku
 `bidr write prepare -w WS` → `work/write/README.md`. Her `<ölçüt>.json` paketinin `istem`i
 görevin tamamıdır: yalnız KANITLAR listesindekine dayan, her cümle `[n_ODk]` atfı, önerilen
 OD'nin üstünde olgunluk dili yok, gelecek vaadi yok (`[komisyon]` işareti yalnız komisyon
-bilgisi verilmişse; rapora girmez). Cevap `work/write/<ölçüt>.out.json` → `bidr write apply
--w WS --model <ajan adı>`; geçersizler `work/write/GECERSIZ.md`'de.
+bilgisi verilmişse; rapora girmez). FAALİYETLER bölümü kanıtların bağlı olduğu toplantı/etkinlikleri
+verir: "düzenlenmiştir/gerçekleştirilmiştir" yalnız gerçekleşmesi kanıtlı faaliyet için ve
+gerçekleşme kanıtına atıfla; "YALNIZ DUYURU" faaliyet için "duyurulmuştur/planlanmıştır". Cevap
+`work/write/<ölçüt>.out.json` → `bidr write apply -w WS --model <ajan adı>`; geçersizler
+`work/write/GECERSIZ.md`'de. Görevin eski sürümüyle yazılmış metinler geçerli kalır (uyarı);
+yeniden yazmak isteğe bağlıdır.
 
 ## Doğrulama (verify) ve yeniden yazım döngüsü
 
@@ -166,8 +191,8 @@ Alt ajan açamıyorsan dur ve kullanıcıya söyle; aynı bağlamda doğrulama y
    destekleniyor/kismen/desteklenmiyor + gerekçe yazar; yalnız atıf yapılan kanıtın alıntısına
    ve bağlamına bakar, iyi niyetle tamamlamaz. → `bidr verify apply -w WS --model <ajan adı>`.
 3. Reddedilen ölçüt varsa `bidr next` şunu söyler: `bidr write prepare -w WS --reddedilenler`.
-   Bu, istemin sonuna doğrulayıcının cümle bazlı gerekçesini ve reddedilen metni ekleyen yeni
-   paket yazar. Taze bir yazar ajan yeniden yazar (desteklenmeyen cümleyi kanıtın gösterdiği
+   Bu, istemin sonuna doğrulayıcının bütün gerekçelerini (cümle bazlı, beş soru denetiminin
+   "uydurma şüphesi", kod denetimi) ve reddedilen metni ekleyen yeni paket yazar. Taze bir yazar ajan yeniden yazar (desteklenmeyen cümleyi kanıtın gösterdiği
    kadarına indirir ya da çıkarır; yeni iddia eklemez) → `bidr write apply` → 1'e dön.
 4. Tur sayısı metinde tutulur. `rapor.yeniden_yazim_siniri` (vars. 2) turdan sonra hâlâ
    reddedilen ölçüt için `bidr next` "KULLANICI gerekli" der. DUR: reddedilen cümleleri ve
@@ -204,6 +229,16 @@ kapsam ifadesi yazılır, kanıt yokluğu yazılmaz; `karar_gerekli` ölçüt ga
 gereken ölçütler"de sorulur. Bu KULLANICININ kararıdır: soruyu göster, cevabını
 `config.yaml` `rapor: {kapsam: {<ölçüt>: bolum|ortak|baska_birim}}` olarak yalnız kullanıcı
 söyleyince yaz, sonra `bidr render`.
+
+## Biçim denetimi (denetle)
+
+Render'dan sonra `bidr denetle -w WS`: report.docx'i kılavuz biçim kurallarına göre salt okur →
+`denetim.json`. Kritik bulgu varsa (çıkış 1) `bidr next` "yayıma hazır değil" ve "KULLANICI
+gerekli" der: DUR, kritik bulguları (kod, yer, mesaj) kullanıcıya göster. Düzeltme kaynakta
+yapılır (doğrulanmamış metin, kapsam kararı, hazırlayanlar, şablon, kanıt klasörü) ve `bidr
+render` → `bidr denetle` yeniden; report.docx'i elle düzeltme. Rapor yeniden üretilince ya da
+elle değişince denetim eskir. Uyarılar engel değildir; kullanıcıya özetle (ör. paragraf sonrası
+aralık kurumdan sorulacak).
 
 ## Bitirirken
 

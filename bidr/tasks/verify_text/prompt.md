@@ -11,7 +11,8 @@ Kurallar:
 3. Olgunluk dili: "izlenmekte", "iyileştirilmiştir", "sistematik", "önlem alınmış" gibi ifadeler, izleme/iyileştirme sonucunu gösteren kanıt yoksa desteklenmez.
 4. "o." ile başlayan cümleler önceki yılla karşılaştırmadır: "önceki yıl yoktu" kısmını ÖNCEKİ YIL METNİ'ne, bu yıla ait kısmını kanıta karşı denetle.
 5. `[komisyon]` işaretli cümleyi KOMİSYON BİLGİSİ'ne karşı denetle; bilginin ötesine geçiyorsa "kismen" ya da "desteklenmiyor".
-6. Gerekçe en çok 2 cümle; "kismen" ve "desteklenmiyor"da kanıtta olmayan öğeyi adıyla belirt. Listedeki her cümleye tam bir karar ver; cümle ekleme, birleştirme.
+6. Faaliyet gerçekleşmesi: "düzenlenmiştir / gerçekleştirilmiştir / yapılmıştır" diyen cümle yalnız duyuru, davet ya da afiş kanıtına dayanıyorsa (atıf yapılan kanıtlarda gerçekleşmeyi gösteren tutanak, katılım listesi ya da faaliyet raporu yoksa) "kismen"dir: duyuru faaliyetin yapıldığını göstermez; gerekçede bunu yaz.
+7. Gerekçe en çok 2 cümle; "kismen" ve "desteklenmiyor"da kanıtta olmayan öğeyi adıyla belirt. Listedeki her cümleye tam bir karar ver; cümle ekleme, birleştirme.
 
 Beş zorunlu soru (kılavuz her açıklamada bunları sorar). Her soru için, kimliğiyle, bir kapsam kararı ve o kararı dayandıran cümle yerlerini ver:
 - "kanitla_cevaplandi": soruyu cevaplayan en az bir cümle var ve bu cümle somut bir uygulamayı (ne, kim/hangi kurul, hangi belge, ne zaman) atıf yaptığı kanıtla gösteriyor. Yerler: o cümleler.

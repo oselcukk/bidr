@@ -92,8 +92,11 @@ ok, score, span = verify_quote(quote, text)   # Türkçe katlama, boşluk, OCR t
   ±3 gün; öteki aşamalar olay gününe göre aşamaya özgü pencerede: duyuru 45 gün önce–3 gün
   sonra, değerlendirme 90 gün, iyileştirme 365 gün sonrasına kadar; en yakın faaliyet).
   Tarihsiz belge adı benzer tek faaliyete bağlanır, birden çok aday varsa ayrı kalır ve
-  işaretlenir. `baska_birim` belgeler alınmaz. Hat aşaması değildir (pipeline.yaml'a
-  girmedi); audit kullanımı tasarımı docs/AUDIT.md "Faaliyet kayıtları".
+  işaretlenir. `baska_birim` belgeler alınmaz. **Hat aşaması `faaliyet`** (D; karar_ince'den
+  sonra, audit'ten önce; `checks.faaliyet_tamam`: `faaliyetler.json` bugünkü decisions.jsonl'den
+  yeniden hesaplananla aynı değilse bekliyor — ikinci arama ya da yeniden karar eskitir; yalnız
+  duyurulu faaliyet uyarıdır). Write paketine ölçütün kanıtlarının faaliyet özeti girer
+  (docs/REPORT_LAYER.md "write"); audit kullanımı tasarımı docs/AUDIT.md "Faaliyet kayıtları".
 - `bidr decide -w WS [--profile P] [--only-labeled] [--limit N]` →
   `decisions.jsonl`.
 - `bidr compare-labels -w WS` → geçmiş etiketle karşılaştırma: aynı / ekliyor /
@@ -209,7 +212,14 @@ işlenmiş arşivin bütün belgeleri derlem. Kod: `bidr/candidates/ikinci.py` (
   kod kabul/red (nedenleriyle), insan kabul/ret/incelenmedi (`review-decisions.jsonl`, satır
   `<doc_id>|<yuva>`) ve isabet. İnsanın kabul ettiği = ilk geçişin kaçırdığı kanıt; reddettiği
   = ikinci aramanın eklediği yanlış.
-- **Hatta bağlama** (öneri; aşama bu sürümde eklenmedi): `audit` sonrası isteğe bağlı M aşaması
-  `ikinci_arama` (önkoşul `audit`; komutlar `arama prepare` / ajan / `arama apply`; tamamlanma:
-  `work/ikinci_arama`'da cevapsız paket yok). Eklenen kabul varsa `decisions.jsonl` değişir ve
-  audit tablosu eskir (`kararlar_sha`): hat audit'i yeniden ister, insan yeni satırları inceler.
+- **Hat aşaması `ikinci_arama`** (isteğe bağlı M; önkoşul `audit`, `file`'ın önkoşulu; komutlar
+  `arama prepare` / ajan / `arama apply`). `checks.ikinci_arama_tamam`: config.yaml
+  `rapor.ikinci_arama: false` → `atlandi` (kullanıcının kararı; status'ta görünür); `arama prepare`
+  hiç çalışmadıysa (README yok) bekliyor; paket eski (görev sürümü ya da ilk geçişin parmak izi
+  değişti) → prepare; cevapsız/geçersiz → ajan; cevabı kayda işlenmemiş (ölçüt başına
+  `istem_sha`/`cevap_sha`) → apply; hepsi işlendiyse bitti. Apply decisions.jsonl'i değiştirir:
+  audit tablosu eskir (`kararlar_sha`), `audit_tamam` nedeni ikinci aramanın eklediği kabul
+  sayısını söyler; audit yeniden çalışır, insan yeni satırları inceler, sonra ikinci arama bitti
+  olur (faaliyet kaydı da içerikle yeniden denetlenir). Hakem kuyruğu decisions.jsonl yalnız
+  yeniden yazıldıysa (karşılaştırma ve sorular aynı) eskimez; ikinci arama etiketli bir belgeye
+  kabul eklediyse eskir.

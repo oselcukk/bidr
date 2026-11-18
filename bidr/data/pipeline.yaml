@@ -219,11 +219,28 @@ asamalar:
     onay: yok
     skill: bidr-rapor
 
+  - id: faaliyet
+    ad: Faaliyet kayıtları (aynı toplantı/etkinliğin belgeleri; belirleyici)
+    uygulandi: true
+    katman: D
+    onkosul: [karar_ince]
+    girdi: [decisions.jsonl (ince kararların faaliyet alanı)]
+    cikti: [faaliyetler.json]
+    komut: ["bidr faaliyet -w {ws}"]
+    sart:
+      denetim: faaliyet_tamam
+      metin: >-
+        faaliyetler.json güncel decisions.jsonl'den üretilmiş (içerik kodla yeniden hesaplanıp karşılaştırılır;
+        ikinci arama ya da yeniden karar kararları değiştirirse eskir). Yalnız duyurusu olan faaliyet uyarıdır:
+        metinde "düzenlenmiştir" denemez. Yazım paketine ölçütün kanıtlarının faaliyet özeti buradan girer.
+    onay: yok
+    skill: bidr-rapor
+
   - id: audit
     ad: Ölçüt OD'si, eksik kanıt raporu ve inceleme tablosu
     uygulandi: true
     katman: D
-    onkosul: [karar_ince, hakem, name]
+    onkosul: [karar_ince, hakem, name, faaliyet]
     girdi: [decisions.jsonl, documents.jsonl, kanit-adlari.jsonl]
     cikti: [review.xlsx, gaps.md, audit-olcutler.json, review-decisions.jsonl, slot-tags-oneri.yaml,
             kanit-adlari.jsonl (kaynak: insan), kanit-baglantilari.jsonl (kaynak: insan)]
@@ -239,14 +256,38 @@ asamalar:
         review-decisions.jsonl'e işlenmiş (kanıt adı/bağlantı düzeltmeleri de). Önerilen OD ve gaps.md bu
         kararlarla hesaplanır; düşük güvenli eşleşme kabul/duzelt kararıyla OD'ye katılır;
         yuva etiketi düzeltmeleri yalnız slot-tags-oneri.yaml önerisi olur (etiket dosyası değişmez).
+        İkinci arama eşleşme eklerse decisions.jsonl değişir: tablo eskir, audit yeniden çalışır ve yeni
+        satırlar insan kararı bekler.
     onay: insan
+    skill: bidr-rapor
+
+  - id: ikinci_arama
+    ad: İkinci arama (kanıtsız/zayıf ölçütler için arşivde ters arama; isteğe bağlı, model işi ajanda)
+    uygulandi: true
+    istege_bagli: true
+    katman: M
+    onkosul: [audit]
+    girdi: [audit-olcutler.json (zayıf ölçütler), decisions.jsonl, text/]
+    cikti: [work/ikinci_arama/<doc_id>.json, work/ikinci_arama/<doc_id>.out.json, decisions.jsonl (işaretli eşleşmeler)]
+    komut:
+      - "bidr arama prepare -w {ws} --profile {profil}"
+      - "(ajan) work/ikinci_arama/README.md'ye göre her paket için <doc_id>.out.json yaz"
+      - "bidr arama apply -w {ws} --model {ajan}"
+    sart:
+      denetim: ikinci_arama_tamam
+      metin: >-
+        config.yaml rapor.ikinci_arama: false ise atlanır (status'ta atlandi görünür). Değilse `arama prepare`
+        çalışmış, her paket cevaplanmış ve apply ile işlenmiş; geçersiz, eski sürüm ya da eski paket (ilk geçiş
+        yeniden karara bağlandı) yok. Kabul edilen eşleşme decisions.jsonl'i değiştirir: audit yeniden çalışır,
+        yeni satırları kullanıcı inceler; sonra bu aşama bitti olur.
+    onay: yok
     skill: bidr-rapor
 
   - id: file
     ad: Kanıt dosyalama (evidence/A/A.1/…, evidence-index.csv, bağlantılar)
     uygulandi: true
     katman: D
-    onkosul: [audit]
+    onkosul: [audit, ikinci_arama]
     girdi: [decisions.jsonl, review-decisions.jsonl, kanit-adlari.jsonl, kanit-baglantilari.jsonl, inventory.csv,
             text/, kaynak klasör (salt okunur), config.yaml rapor.kanit_kok_baglanti]
     cikti: [evidence/, evidence-index.csv (baglanti, baglanti_kaynagi), gaps.md (bağlantı yok bölümü)]
@@ -338,5 +379,22 @@ asamalar:
         kapsam) üretilmiş. Belge şu durumlarda TASLAK damgalıdır (uyarı): doğrulanmamış metin, boş ya da şablon
         yönergesi kalan güçlü/gelişmeye açık yön hücresi, boş `rapor.hazirlayanlar` (kapak yer tutucuları kalır),
         kapsam kararı gereken ölçüt (gaps.md'de soru). Şablon yolu bilinmiyorsa kullanıcıdan alınır.
+    onay: yok
+    skill: bidr-rapor
+
+  - id: denetle
+    ad: Biçim denetimi (report.docx kılavuz kurallarına göre; yayıma hazır mı)
+    uygulandi: true
+    katman: D
+    onkosul: [render]
+    girdi: [report.docx, config.yaml rapor.sablon ve rapor.denetim, evidence/, evidence-index.csv]
+    cikti: [denetim.json]
+    komut: ["bidr denetle -w {ws}"]
+    sart:
+      denetim: denetle_tamam
+      metin: >-
+        denetim.json güncel report.docx'e ait (docx_sha) ve kritik bulgu yok. Kritik bulgu varsa rapor
+        "yayıma hazır değil": bulgular gösterilir, kaynağı (metin, kapsam, hazırlayanlar, şablon) düzeltilip
+        render ve denetle yeniden çalışır; report.docx elle düzenlenirse denetim yeniden ister. Uyarılar engel değildir.
     onay: yok
     skill: bidr-rapor
