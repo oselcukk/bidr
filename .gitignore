@@ -7,5 +7,5 @@ build/
 *.egg-info/
 _tmp/
 # gerçek veri repoya girmez
-workspace/
+/workspace/
 *.workspace/
