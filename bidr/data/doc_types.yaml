@@ -55,6 +55,7 @@ turler:
     imzalar:
       - {id: baslik_bidr, bolge: ust, desen: 'birim ic degerlendirme raporu', agirlik: 5}
       - {id: hazirlayanlar, bolge: bas, desen: 'raporu hazirlayanlar', agirlik: 2}
+      - {id: sablon_degil, bolge: bas, desen: '\[birim adi\]', agirlik: -10}
       - {id: kanit_atiflari, bolge: tum, desen: '\[[a-e]\.\d\.\d-\s?\d+-od\d\]', en_az: 10, agirlik: 2}
 
   - ad: olcut_aciklama_taslagi
@@ -77,7 +78,7 @@ turler:
     etiket: Öz Değerlendirme / Akreditasyon Raporu
     aciklama: Program akreditasyonu (FEDEK, MÜDEK vb.) ya da kurum düzeyi öz değerlendirme raporu.
     imzalar:
-      - {id: baslik_ozd, bolge: bas, desen: '(oz ?degerlendirme|ic degerlendirme|self[- ]?assessment|self[- ]?study) raporu?', agirlik: 4}
+      - {id: baslik_ozd, bolge: ust, desen: '(oz ?degerlendirme|self[- ]?assessment|self[- ]?study) raporu?', agirlik: 4}
       - {id: akreditasyon_kurulu, bolge: bas, desen: '\b(fedek|mudek|stardef|epdad|tepdad|ilad|akreditasyon)\b', agirlik: 2}
       - {id: programa_iliskin, bolge: bas, desen: 'programa iliskin genel bilgiler', agirlik: 2}
 
@@ -86,7 +87,7 @@ turler:
     etiket: Stratejik Plan
     aciklama: Kurumun çok yıllı stratejik planı veya plan hazırlık belgesi.
     imzalar:
-      - {id: baslik_sp, bolge: bas, desen: '20\d\d ?[-–—] ?20\d\d (yili )?stratejik plani?', agirlik: 5}
+      - {id: baslik_sp, bolge: bas, desen: '20\d\d ?- ?20\d\d (yili )?stratejik plani?', agirlik: 5}
       - {id: stratejik_amac, bolge: tum, desen: 'stratejik (amac|hedef)', agirlik: 1}
       - {id: izleme_degil, bolge: ust, desen: 'izleme', agirlik: -3}
 
@@ -115,7 +116,7 @@ turler:
     tarih_etiketleri: ['toplanti tarihi', 'oturum tarihi']
     imzalar:
       - {id: baslik_fk, bolge: bas, desen: 'fakulte kurulu karar', agirlik: 6}
-      - {id: karar_no, bolge: tum, desen: 'karar ?[-–] ?\d\d/\d\d', agirlik: 1}
+      - {id: karar_no, bolge: tum, desen: 'karar ?- ?\d\d/\d\d', agirlik: 1}
 
   - ad: yonetim_kurulu_karari
     etiket: Yönetim Kurulu Kararı
@@ -123,14 +124,14 @@ turler:
     tarih_etiketleri: ['toplanti tarihi', 'oturum tarihi']
     imzalar:
       - {id: baslik_yk, bolge: bas, desen: 'yonetim ?kurulu kararlari?', agirlik: 6}
-      - {id: karar_no, bolge: tum, desen: 'karar ?[-–] ?\d\d/\d\d', agirlik: 1}
+      - {id: karar_no, bolge: tum, desen: 'karar ?- ?\d\d/\d\d', agirlik: 1}
 
   - ad: bolum_kurulu_karari
     etiket: Bölüm Kurulu Kararı
     aciklama: Bölüm kurulu toplantısında alınan kararlar.
     tarih_etiketleri: ['toplanti tarihi', 'oturum tarihi']
     imzalar:
-      - {id: baslik_bk, bolge: bas, desen: 'bol\S{0,3}m kurulu karar', agirlik: 6}
+      - {id: baslik_bk, bolge: bas, desen: 'bol.{0,4}m kurulu karar', agirlik: 6}
       - {id: toplantida_bulunanlar, bolge: bas, desen: 'toplanti(da|ya) (bulunanlar|katilanlar)', agirlik: 1}
 
   - ad: anabilim_dali_kurulu_karari
@@ -153,17 +154,18 @@ turler:
     aciklama: Bir komisyonun (anket, müfredat, ders içeriği, ÇAP/yandal vb.) toplantı tutanağı veya karar yazısı.
     tarih_etiketleri: ['toplanti tarihi']
     imzalar:
-      - {id: baslik_komisyon_tutanak, bolge: bas, desen: 'komisyonu? (toplanti )?tutanagi', agirlik: 6}
+      - {id: baslik_komisyon_tutanak, bolge: bas, desen: 'komisyonu? (toplanti )?tutana\S{0,2}\b', agirlik: 6}
       - {id: komisyon_kararlari, bolge: bas, desen: 'komisyonu? (toplantisinda alinan )?karar', agirlik: 5}
       - {id: komisyon_toplantisi, bolge: bas, desen: 'komisyonu? toplantisi', agirlik: 2}
       - {id: komisyon_baslik, bolge: ust, desen: 'komisyonu?\b', agirlik: 1}
+      - {id: komisyon_koordinatoru, bolge: bas, desen: 'komisyon koordinatoru', agirlik: 4}
 
   - ad: toplanti_tutanagi
     etiket: Toplantı Tutanağı
     aciklama: Genel toplantı tutanağı formu (yer, tarih, katılımcı onayı, alınan kararlar).
     tarih_etiketleri: ['toplanti tarihi']
     imzalar:
-      - {id: baslik_tutanak, bolge: bas, desen: 'toplanti tutanagi', agirlik: 5}
+      - {id: baslik_tutanak, bolge: bas, desen: 'toplanti tutana\S{0,2}\b', agirlik: 5}
       - {id: katilim_orani, bolge: bas, desen: 'katilim orani', agirlik: 2}
       - {id: toplanti_turu, bolge: bas, desen: 'toplanti turu', agirlik: 1}
       - {id: alinan_kararlar, bolge: tum, desen: 'toplantida alinan kararlar', agirlik: 1}
@@ -195,6 +197,8 @@ turler:
     imzalar:
       - {id: kimden_kime, bolge: bas, desen: 'kimden\b.{0,300}\bkime\b', agirlik: 4}
       - {id: gonderen_gonderildi, bolge: bas, desen: 'gonderen ?:.{0,200}gonderildi ?:', agirlik: 4}
+      - {id: kimden_tarih, bolge: bas, desen: 'kimden\b.{0,200}\btarih\b', agirlik: 3}
+      - {id: kime_satiri, bolge: bas, desen: '\bkime ?:', agirlik: 2}
       - {id: outlook, bolge: bas, desen: '\boutlook\b', agirlik: 1}
       - {id: eposta_adresi, bolge: bas, desen: '[a-z0-9._-]+ ?@ ?[a-z0-9-]+\.[a-z.]+', agirlik: 1}
       - {id: yanitla, bolge: tum, desen: '(yanitla|tumunu yanitla|disclaimer: this email)', agirlik: 1}
@@ -228,6 +232,7 @@ turler:
   # ------------------------------------------------------------ mevzuat / süreç
   - ad: yonetmelik
     etiket: Yönetmelik
+    tarih_etiketleri: ['revizyon tarihi', 'yayin tarihi']
     aciklama: Kurum veya ulusal yönetmelik metni (maddeler halinde).
     imzalar:
       - {id: baslik_yonetmelik, bolge: bas, desen: 'yonetmeligi\b', agirlik: 4}
@@ -236,6 +241,7 @@ turler:
 
   - ad: yonerge
     etiket: Yönerge / Usul ve Esaslar
+    tarih_etiketleri: ['revizyon tarihi', 'yayin tarihi']
     aciklama: Kurum yönergesi veya usul-esaslar metni (maddeler halinde).
     imzalar:
       - {id: baslik_yonerge, bolge: bas, desen: '(yonergesi|yonerge\b|usul ve esaslar)', agirlik: 4}
@@ -244,6 +250,7 @@ turler:
 
   - ad: is_akisi
     etiket: İş Akışı
+    tarih_etiketleri: ['deg\. tarihi', 'yayin tarihi']
     aciklama: Bir sürecin adım adım iş akışı şeması.
     imzalar:
       - {id: is_akis_no, bolge: bas, desen: 'is akis (no|adi)', agirlik: 6}
@@ -266,10 +273,10 @@ turler:
     aciklama: Program düzeyi bilgi paketi sayfası (ders kataloğu, program çıktıları, ders-çıktı matrisi, diploma eki).
     imzalar:
       - {id: bilgi_paketi, bolge: bas, desen: 'akts-? ?tyyc bilgi paketi', agirlik: 3}
-      - {id: ders_katalogu, bolge: bas, desen: 'ders katalogu', agirlik: 2}
-      - {id: ciktilar_matrisi, bolge: bas, desen: 'program ciktilari matrisi', agirlik: 2}
-      - {id: program_ciktilari, bolge: bas, desen: 'program ogrenme ciktilari', agirlik: 2}
-      - {id: diploma_eki, bolge: bas, desen: '(diploma eki|diploma supplement)', agirlik: 2}
+      - {id: ders_katalogu, bolge: bas, desen: 'ders katalogu', agirlik: 1}
+      - {id: ciktilar_matrisi, bolge: bas, desen: 'program ciktilari matrisi', agirlik: 1}
+      - {id: program_ciktilari, bolge: bas, desen: 'program ogrenme ciktilari', agirlik: 1}
+      - {id: diploma_eki, bolge: bas, desen: '(diploma eki|diploma supplement)', agirlik: 1}
 
   - ad: mufredat
     etiket: Müfredat / Öğretim Planı
@@ -284,9 +291,9 @@ turler:
     etiket: Haftalık Ders Programı
     aciklama: Gün ve saatlere göre ders/sınıf çizelgesi.
     imzalar:
-      - {id: baslik_dp, bolge: bas, desen: '(haftalik ders programi|course schedule|ders programi)', agirlik: 4}
+      - {id: baslik_dp, bolge: ust, desen: '(haftalik ders programi|course schedule|ders programi)', agirlik: 4}
       - {id: gunler, bolge: bas, desen: '(pazartesi ?sali ?carsamba|monday ?tuesday ?wednesday)', agirlik: 2}
-      - {id: saat_dilimleri, bolge: tum, desen: '\d\d[:.]\d\d ?[-–] ?\d\d[:.]\d\d', en_az: 6, agirlik: 2}
+      - {id: saat_dilimleri, bolge: tum, desen: '\d\d[:.]\d\d ?- ?\d\d[:.]\d\d', en_az: 6, agirlik: 2}
 
   - ad: acilan_dersler
     etiket: Açılan / Okutulacak Dersler Listesi
@@ -294,8 +301,9 @@ turler:
     imzalar:
       - {id: baslik_acilan, bolge: bas, desen: '(acilacak|okutulacak|acilan) (lisans |secmeli |teknik secmeli )?dersler', agirlik: 5}
       - {id: kontenjan, bolge: bas, desen: 'kontenjan', agirlik: 1}
+      - {id: hoca_kontenjan, bolge: bas, desen: 'ogretim elemani.{0,20}kontenjan', agirlik: 2}
       - {id: ogretim_elemani, bolge: bas, desen: 'ogretim elemani', agirlik: 1}
-      - {id: donem_basligi, bolge: ust, desen: '20\d\d ?[-–] ?20\d\d .{0,40}(guz|bahar|yaz)', agirlik: 1}
+      - {id: donem_basligi, bolge: ust, desen: '20\d\d ?- ?20\d\d .{0,40}(guz|bahar|yaz)', agirlik: 1}
 
   - ad: ders_izlencesi
     etiket: Ders İzlencesi (Syllabus)
@@ -305,6 +313,7 @@ turler:
       - {id: office_hours, bolge: bas, desen: '(office hours|gorusme saatleri)', agirlik: 1}
       - {id: grading, bolge: tum, desen: '(grading|degerlendirme olcutleri)', agirlik: 1}
       - {id: textbook, bolge: tum, desen: '(textbook|ders kitabi)', agirlik: 1}
+      - {id: anket_degil, bolge: bas, desen: '(strongly disagree|kesinlikle katilmiyorum|\byanit)', agirlik: -4}
 
   - ad: sinav_kagidi
     etiket: Sınav Kâğıdı / Soru Seti
@@ -344,9 +353,10 @@ turler:
       - {id: yanit_ozeti, bolge: bas, desen: '(yanitlara genel bakis|\d+ yanit\b|grafigi kopyala|responses?\b.{0,20}\d)', agirlik: 3}
       - {id: form_sonucu, bolge: ust, desen: 'degerlendirme form(u)? sonucu', agirlik: 5}
       - {id: sonuc_basligi, bolge: bas, desen: 'anket(i)? (degerlendirme )?sonuc', agirlik: 4}
-      - {id: ham_doku, bolge: ust, desen: '(baslangic saati.{0,40}tamamlama saati|\bid\b.{0,10}(asagidaki|baslangic))', agirlik: 3}
+      - {id: ham_doku, bolge: ust, desen: '(baslangic saati.{0,40}tamamlama saati|\bid\b.{0,10}(asagidaki|baslangic))', agirlik: 4}
       - {id: yuzdeler, bolge: tum, desen: '(\(%\d|%\s?\d|\d %)', en_az: 5, agirlik: 1}
       - {id: ortalama, bolge: tum, desen: '(ortalama|average|mean)', agirlik: 1}
+      - {id: anket_bulgusu, bolge: ust, desen: '(anket(ine|i|in) gore|saglanma duzeyi|katilim orani)', agirlik: 3}
 
   - ad: anket_formu
     etiket: Anket Formu
@@ -382,9 +392,10 @@ turler:
     imzalar:
       - {id: etkinlik_detay, bolge: bas, desen: 'etkinlik detay', agirlik: 4}
       - {id: etkinlik_tipi, bolge: bas, desen: 'etkinlik (tipi|adi)', agirlik: 2}
-      - {id: seminer, bolge: bas, desen: '(seminer|konferans|kongre|symposium|panel|bulusmasi|soylesi)', agirlik: 1}
-      - {id: davet, bolge: bas, desen: '(davetlidir|katiliminizi|katiliminizdan memnuniyet|konuklarimiz|konusmaci)', agirlik: 2}
+      - {id: seminer, bolge: bas, desen: '(seminer|konferans|kongre|symposium|panel|bulusmasi|soylesi|bilgilendirme toplantisi)', agirlik: 1}
+      - {id: davet, bolge: bas, desen: '(davetlidir|katiliminizi|katiliminizdan memnuniyet|konuklarimiz|konusmaci)', agirlik: 3}
       - {id: eposta_degil, bolge: bas, desen: 'kimden\b.{0,300}\bkime\b', agirlik: -3}
+      - {id: rapor_degil, bolge: bas, desen: '(giris ve etkinlik detaylari|faaliyet raporu)', agirlik: -4}
 
   - ad: sertifika
     etiket: Sertifika / Katılım Belgesi
@@ -397,8 +408,8 @@ turler:
     etiket: Web Sayfası Çıktısı
     aciklama: Kurum web sitesinden alınmış sayfa (duyuru, haber, hakkında, misyon-vizyon vb.).
     imzalar:
-      - {id: cerez, bolge: tum, desen: '(cerez politikamiza|kabul ediyorum)', agirlik: 2}
-      - {id: site_menusu, bolge: bas, desen: '(mygtu|s\.s\.s\.|hakkinda akademik egitim arastirma)', agirlik: 2}
+      - {id: cerez, bolge: tum, desen: '(cerez politikamiza|kabul ediyorum)', agirlik: 3}
+      - {id: site_menusu, bolge: bas, desen: '(mygtu|s\.s\.s\.|hakkinda akademik egitim arastirma)', agirlik: 3}
       - {id: sayfa_adresi, bolge: tum, desen: 'https?://\S+/(kategori|icerik)/\S+display\.aspx', agirlik: 2}
       - {id: detay_sayfasi, bolge: bas, desen: '(duyuru detay|haber detay|duyurular\b)', agirlik: 2}
 
@@ -408,7 +419,7 @@ turler:
     imzalar:
       - {id: ekran_goruntusu, bolge: bas, desen: 'ekran (goruntusu|alintisi)', agirlik: 4}
       - {id: teams_arayuzu, bolge: bas, desen: '(tum ekipler|ekipler\b.{0,80}(odevler|gonderiler|dosyalar)|aramanizi iletiler)', agirlik: 4}
-      - {id: giris_ekrani, bolge: bas, desen: '(ogrenci girisi|akademisyen girisi)', agirlik: 3}
+      - {id: giris_ekrani, bolge: bas, desen: '(ogrenci girisi|akademisyen girisi)', agirlik: 4}
 
   # ------------------------------------------------------------ liste / tablo
   - ad: yayin_listesi
@@ -423,8 +434,8 @@ turler:
     etiket: Proje Listesi
     aciklama: Araştırma projeleri (no, yürütücü, tarih, bütçe) listesi.
     imzalar:
-      - {id: proje_sutunlari, bolge: bas, desen: 'proje (no|yurutucusu|adi)', agirlik: 4}
-      - {id: baslik_projeler, bolge: bas, desen: '(projeleri|projeler)\b', agirlik: 2}
+      - {id: proje_sutunlari, bolge: bas, desen: 'proje (no|yurutucusu|adi).{0,80}(baslangic|bitis|baslama|tarihi)', agirlik: 4}
+      - {id: baslik_projeler, bolge: ust, desen: '(projeleri|projeler)\b', agirlik: 4}
       - {id: proje_tekrari, bolge: tum, desen: '\bproje', en_az: 4, agirlik: 1}
 
   - ad: gorev_dagilimi
@@ -440,7 +451,7 @@ turler:
     imzalar:
       - {id: malzeme_sutunlari, bolge: bas, desen: '(malzemenin cinsi|markasi ve modeli|\boda no\b)', agirlik: 4}
       - {id: alt_yapi, bolge: ust, desen: '(alt ?yapi|donanim)', agirlik: 2}
-      - {id: mekan_adlari, bolge: tum, desen: '(laboratuvari|dersligi|anfisi|amfi)', en_az: 3, agirlik: 2}
+      - {id: mekan_adlari, bolge: tum, desen: '(laboratuvari|dersligi|anfisi|amfi|kantini|tuvaleti|dinlenme alani|sosyal alan)', en_az: 4, agirlik: 4}
 
   - ad: istatistik_tablosu
     etiket: Öğrenci / Mezun İstatistiği

@@ -23,7 +23,7 @@ NUMERIC = re.compile(r"(?<![\d/.])(\d{1,2}) ?[./-] ?(\d{1,2}) ?[./-] ?((?:19|20)
 ISO = re.compile(r"(?<!\d)((?:19|20)\d\d)-(\d{2})-(\d{2})(?!\d)")
 TEXTUAL = re.compile(rf"(?<!\d)(\d{{1,2}}) ({_MON}),? ((?:19|20)\d\d)(?!\d)")
 TEXTUAL_EN = re.compile(rf"\b({_MON}) (\d{{1,2}}),? ((?:19|20)\d\d)(?!\d)")
-ACADEMIC = re.compile(r"\b(20\d\d) ?[-/–] ?(20\d\d)\b(?:.{0,25}?\b(guz|bahar|yaz|fall|spring|summer)\b)?")
+ACADEMIC = re.compile(r"\b(20\d\d) ?[-/] ?(20\d\d)\b(?:.{0,25}?\b(guz|bahar|yaz|fall|spring|summer)\b)?")
 PRINT_STAMP = re.compile(r"^\W{0,3}\d{1,2}[./]\d{1,2}[./]\d{4},? \d{1,2}:\d{2}")
 
 MIN_YEAR, MAX_YEAR = 1990, 2035
@@ -93,18 +93,21 @@ class DateFinder:
                 head: int = 1500) -> tuple[date | None, str | None, int | None]:
         """Birincil içerik tarihi: önce türün etiketleri, sonra genel etiketler,
         sonra baş bölgede en sık geçen, sonra ilk tarih. (tarih, kaynak, konum)"""
-        if not found:
-            return None, None, None
-        labels = [(l, re.compile(fold_pattern(l) + r"\W{0,6}")) for l in type_labels]
-        labels += [(p.pattern, p) for p in self.generic]
-        for name, rx in labels:
+        # Türün kendi etiketleri künye tarihlerini de okuyabilir (ör. yönergede
+        # revizyon tarihi asıl tarihtir); genel etiketler yalnız içerik tarihlerini.
+        every = find_dates(folded)
+        labels = [(l, re.compile(fold_pattern(l) + r"\W{0,6}"), every) for l in type_labels]
+        labels += [(p.pattern, p, found) for p in self.generic]
+        for name, rx, pool in labels:
             for m in rx.finditer(folded):
                 # etiketten sonraki 60 karakter içinde ilk tarih
-                for f in found:
+                for f in pool:
                     if m.end() - 1 <= f.start <= m.end() + 60:
                         return f.d, "etiket:" + _plain(name), f.start
                     if f.start > m.end() + 60:
                         break
+        if not found:
+            return None, None, None
         in_head = [f for f in found if f.start < head]
         if in_head:
             counts: dict[date, int] = {}
