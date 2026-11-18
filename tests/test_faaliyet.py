@@ -41,7 +41,7 @@ def test_prompt_and_version():
     sch = json.loads((R.TASKS_DIR / R.FINE / "output.schema.json").read_text(encoding="utf-8"))
     assert "faaliyet" not in sch["required"]
     assert set(sch["properties"]["faaliyet"]["properties"]["asama"]["enum"]) == set(G.ASAMALAR)
-    assert R.task_version(R.FINE) == "9"
+    assert R.task_version(R.FINE) == "10"
 
 
 def test_activity_of_and_inherit():
@@ -69,7 +69,7 @@ def test_apply_records_activity_end_to_end(ws, tmp_path):
     recs = {r["doc_id"]: r for r in map(json.loads, (root / "decisions.jsonl").read_text().splitlines())}
     x = ids["ekle"]
     assert recs[x]["ince"]["faaliyet"]["asama"] == "gerceklesme"
-    assert recs[x]["gorev"][R.FINE] == "9"
+    assert recs[x]["gorev"][R.FINE] == "10"
     others = [r for d, r in recs.items() if d != x and r.get("asama") == "ince"]
     assert others and all("faaliyet" not in r["ince"] for r in others)     # alan yoksa kayda girmez
     dest, data = F.run(root)

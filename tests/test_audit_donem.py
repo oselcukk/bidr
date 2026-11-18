@@ -17,7 +17,8 @@ YIL = 2025
 
 def _m(olcut, yuva, asama, od, alinti="x" * 30, guven="orta"):
     return {"olcut": olcut, "yuva": yuva, "asama": asama, "od_onerisi": od, "alinti": alinti,
-            "gerekce": "g", "guven": guven, "denetim": {"red": [], "isaret": []}, "od_kabul": od,
+            "gerekce": "izleme sonucuna dayanan değişiklik" if asama == "onlem_al" else "g", "guven": guven,
+            "denetim": {"red": [], "isaret": []}, "od_kabul": od,
             "kabul": True}
 
 

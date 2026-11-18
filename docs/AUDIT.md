@@ -13,6 +13,7 @@ yalnız okur; çıktılar `--out` klasörüne (varsayılan çalışma alanı):
 | `gaps.md` | OD dağılımı, öncelikli eksikler, kurum geneli uyarıları, ölçüt ölçüt zincir ve boş yuvalar |
 | `audit-olcutler.json` | Ölçüt özetlerinin makine okunur hali (render aşaması için) |
 | `review-decisions.jsonl` | `apply`: kullanıcı kararları (satır başına bir kayıt) |
+| `olcut-od-kararlari.jsonl` | `apply`: komisyonun onayladığı nihai OD ("Ölçüt özeti" ONAYLANAN OD; kod önerisinden ayrı) |
 | `slot-tags-oneri.yaml` | `apply`: yuva etiketi onay/düzeltme ÖNERİLERİ; etiket dosyasını değiştirmez |
 | `birim-kararlari.jsonl` | `apply`: insan birim ilişkisi kararları (belge başına; `bidr decide` çalışma alanındakini okur) |
 
@@ -58,7 +59,14 @@ Tek yumuşatma (komisyon kararı, 2026-11-18): plan halkası eksik ama U/K/Ö va
    `fakulte_geneli`); ölçütte bu belgeler dışında uygulama kanıtı yoksa gaps.md'de ayrı
    listelenir. İstisna: `birim_iliskisi: ust_birim_bu_birim_hakkinda` olan karar türü
    (`rules.KARAR_TURLERI`: senato kararı) sınırlanmaz: üst birimin bu birimi konu alan kararı
-   birimin kanıtıdır (yönetmelik/yönerge türü yine planla).
+   birimin kanıtıdır (yönetmelik/yönerge türü yine planla). Bölümün kendi usul ve esası
+   (`yonerge` türünde, başlığında birimin adı, `kendi`) kurum geneli değildir (aşağıda "Kod
+   tarafı savunmalar").
+2b. **Kod tarafı savunmalar ve faaliyet kaydı** (aşağıda ayrı bölümler): hariç tür, bilgisiz
+   ekran, yürürlükten kaldırılmış düzenleme ve başka birimin maddesi sayılmaz; boş form,
+   duyuru/gelecek zaman ve gerçekleşmesi kanıtlanmamış faaliyet planla'ya; katılım kaydı
+   izleme, öneri/bilgilendirme/sürüm notu ve izlemeye dayanmayan değişiklik önlem sayılmaz;
+   özgün halka bağımsız ve sürekli kanıt ister.
 2a. **Birim aitliği** (`birim_iliskisi`, docs/MODEL_LAYER.md): `baska_birim` belgenin
    eşleşmeleri decide'da reddedilir, "Eşleşmeler" sayfasına gelmez; review.xlsx "Başka birime
    ait sayılanlar" sayfasında ve gaps.md "Başka birime ait sayılan belgeler" bölümünde
@@ -184,6 +192,9 @@ kanıt yuvaları; dipnotlar hariç). Öncelik sırası:
 4. OD4: özgün eksik.
 
 Grup içinde boş yuva sayısı çok olan önce.
+
+Savunma bölümleri (varsa): gerçekleşmesi kanıtlanmamış faaliyetler (`faaliyetler.json`) ve kodun
+düşürdüğü ya da saymadığı eşleşmeler (işarete göre gruplu).
 
 Birim bölümleri (varsa): birim aitliği doğrulanmalı (`belirsiz`), başka birime ait sayılan
 belgeler (`baska_birim`, kanıt sayılmadı; tablodaki birim sayfasına yönlendirir; insanın
@@ -320,17 +331,17 @@ bağlantı düzeltmeleri ve birim sayfası kararları da işlenmiş (`uygulanmam
 birim kararları tablodan sonra değiştiyse tablo yeniden üretilmiş. Aşama
 `onay: insan`: kararı ajan vermez.
 
-## Faaliyet kayıtları (tasarım; henüz uygulanmadı)
+## Faaliyet kayıtları (faaliyet → audit)
 
-Girdi: `faaliyetler.json` (`bidr faaliyet`, docs/MODEL_LAYER.md "Faaliyet kaydı"). Bugün audit
-bu dosyayı okumaz; eşleşmeler belge belge sayılır. Önerilen entegrasyon (audit şeridinin işi):
+Girdi: çalışma alanındaki `faaliyetler.json` (`bidr faaliyet`, docs/MODEL_LAYER.md "Faaliyet
+kaydı"). Dosya yoksa davranış faaliyetsiz haliyle aynıdır (eşleşmeler belge belge sayılır;
+aşağıdaki "Kod tarafı savunmalar" yine uygulanır). Bağ doc_id üzerindendir
+(`faaliyetler[].belgeler[].doc_id`); uygulayan `bidr/audit/savunma.py`.
 
-1. **Zincir faaliyet üzerinden.** Bir ölçütün eşleşmeleri faaliyet kaydına bağlıysa (belge
-   `faaliyetler[].belgeler[].doc_id`), halka faaliyetin kanıtlı aşamalarından sayılır:
-   duyuru/plan/duzenleme → planla, gerceklesme/katilim → uygula, degerlendirme → kontrol_et,
-   iyilestirme → onlem_al (`bidr.faaliyet.group.PUKO`, kayıtta `halkalar`). Eşleşmenin model
-   aşaması bu eşlemeyle çelişirse düşük olan sayılır ve satır `faaliyet_asamasi_uyusmuyor`
-   işareti alır. Faaliyetsiz belgede kural bugünkü gibidir.
+1. **Zincir faaliyet aşamasına göre.** Belgenin faaliyetteki aşaması PUKÖ halkasına eşlenir
+   (`bidr.faaliyet.group.PUKO`: duyuru/plan/duzenleme → planla, gerceklesme/katilim → uygula,
+   degerlendirme → kontrol_et, iyilestirme → onlem_al). Eşleşmenin aşaması bundan yüksekse
+   düşük olan sayılır, satır `faaliyet_asamasi_uyusmuyor` alır (`diger` sınır koymaz).
 2. **Yalnız duyurusu olan faaliyet uygula halkasını sağlamaz.** `yalniz_duyuru: true` ya da
    `durum: gerceklesme_kanitsiz` kaydın belgelerinden gelen "uygula" (ve üstü) eşleşmesi
    planla'ya iner, `gerceklesme_kaniti_yok` işaretlenir; gaps.md "Gerçekleşmesi kanıtlanmamış
@@ -347,3 +358,88 @@ bu dosyayı okumaz; eşleşmeler belge belge sayılır. Önerilen entegrasyon (a
 5. **Kimlik ve güncellik.** `F001…` kimlikleri bir çalıştırma içinde kararlıdır (tarih, ad
    sırası); audit kayıtla bağı doc_id üzerinden kurar, `_meta`'ya `faaliyetler.json` özeti
    (sha) girer: dosya değişirse tablo güncel sayılmaz.
+   `durum: gerceklesme_kanitsiz` kaydın belgelerinden gelen uygula (ve üstü) eşleşmesi planla'ya
+   iner, `gerceklesme_kaniti_yok` işaretlenir; gaps.md "Gerçekleşmesi kanıtlanmamış faaliyetler"
+   (kimlik, ad, tarih, eksik aşamalar). `gerceklesme_dolayli` uygula sayılır, vurgu
+   "gerçekleşme belgesi önerilir".
+3. **Kapalı döngü.** Önlem (Ö) satırı, izleme (K) ile aynı belgeden ya da değerlendirme aşaması
+   olan aynı faaliyetten geliyorsa ölçüt notu "kapalı döngü"; farklı belgelerden geliyorsa
+   (aşağıda K→Ö bağı) "iyileştirme izlemeden ayrı belgede: … doğrulanmalı".
+4. **Write girdisi.** `audit-olcutler.json` ölçüt alanı `faaliyetler`: ölçüte bağlı her faaliyet
+   için `{id, ad, tarih, durum, yalniz_duyuru, asamalar, eksik}`. Yazım kuralı (write/verify
+   şeridinin işi): yalnız `gerceklesme_kanitli` / `gerceklesme_dolayli` faaliyet için
+   "düzenlenmiştir/gerçekleştirilmiştir", yalnız duyurulu olan için "planlanmıştır/duyurulmuştur".
+5. **Güncellik.** `F001…` kimlikleri bir çalıştırma içinde kararlıdır. review.xlsx `_meta`
+   `faaliyet_sha` taşır; `faaliyetler.json` değişirse (ya da sonradan oluşursa) tablo güncel
+   sayılmaz (`review_state.guncel`), `bidr audit` yeniden çalıştırılmalı.
+
+## Kod tarafı savunmalar (K27 OD rubriği)
+
+Modelin bilinen yanlışlarını (evalsets/ `naif` kayıtları) belge türü, alıntıdaki ifade, belge
+metni (`text/`), birim adı (`config.yaml` `bidr.birim`) ve faaliyet kaydıyla yakalayan
+belirleyici denetimler (`bidr/audit/savunma.py`; desenler katlanmış metinde). Her düşürme
+satırda işaretlenir, gaps.md "Kodun düşürdüğü ya da saymadığı eşleşmeler" bölümünde listelenir.
+Satırın KARAR'ı `kabul` ya da `duzelt` ise metin sezgileri uygulanmaz (insan kararı aşar; düşük
+güven kuralı gibi). Hariç tür ve yürürlükten kaldırma `kabul`de de geçerlidir.
+
+| İşaret | Koşul | Sonuç |
+|---|---|---|
+| `haric_tur` | tür `haric_turler.yaml`'da (BİDR raporu/taslağı; geçen yılınki dahil) | sayılmaz |
+| `bilgisiz_ekran` | web/ekran/form türünde giriş ekranı (kullanıcı adı/parola + giriş) ya da yalnız kısa bağlantı maddelerinden oluşan sayfa | sayılmaz |
+| `yururlukten_kalkmis` | başka bir belgenin "… tarihli … yürürlükten kalkar/kaldırılmıştır" cümlesindeki tarih bu belgenin tarihine eşit (kaldıran belge rapor yılı ya da öncesi) | sayılmaz, dönem dışı listesine girer |
+| `madde_baska_birim` | birim adı biliniyor; alıntının bulunduğu madde/gündem başka birimi anıyor, bu birimi anmıyor (madde ilkesi) | sayılmaz |
+| `bos_form` | tür `anket_formu`/`form_belgesi`, metinde sonuç (yanıt sayısı, ortalama, %, ondalık puan) yok, aşama U+ | planla |
+| `gerceklesme_kaniti_yok` | tür `etkinlik_duyurusu`, ya da alıntıda gelecek zaman ("-acaktır/-ecektir"), ya da faaliyet yalnız duyurulu | planla |
+| `uygulama_kaniti_eksik` + `kurum_geneli` | alıntıda bütün birimleri kapsayan ifade ("Fakültemizin bütün bölümlerinde") | planla |
+| `katilim_izleme_degil` | kontrol_et alıntısı yalnız katılım/yapılma kaydı (izleme/ölçme sözcüğü yok) | uygula |
+| `niyet_onlem_degil` | onlem_al alıntısı öneri/niyet ("önerilmiştir", "önümüzdeki", gelecek zaman) | kontrol_et |
+| `bilgilendirme_onlem_degil` | onlem_al alıntısı "bilgisine sunulmuştur / bilgi verilmiştir" | uygula |
+| `surum_notu_onlem_degil` | onlem_al alıntısı sürüm notu ("revize edilmiş halidir"), izleme sözcüğü yok | uygula |
+| `birim_iliskisi_kod` | birim adı biliniyor, model `kendi`/`ust_birim…` dedi, metinde birimin adı hiç yok: başka birim adı varsa `belirsiz` (insan onaylayana dek sayılmaz), bütün birimleri kapsayan belge ise (rektörlük, senato, "fakültemizin") `kurum_geneli`/`fakulte_geneli` (OD2 tavanı). Birim sayfasında modelin ilişkisi `birim_iliskisi_model` olarak görünür; insan birim kararı kodu aşar | ilişki değişir |
+
+**Tür tavanı ve bölümün kendi usul belgesi.** `yonerge`/`yonetmelik` türü kurum geneli
+sayılır; ama model `kendi` dediyse ve başlıkta (ilk 300 karakter) birimin adı geçiyor, metin
+bütün birimleri kapsamıyorsa bölümün kendi usul ve esasıdır: tavan ve `kurum_geneli` işareti
+uygulanmaz (`bidr file`'ın kurum geneli sınırına da takılmaz). `senato_karari` her zaman tür
+tavanındadır (üst birim istisnası değişmedi). Birim adı yoksa bugünkü tür kuralı.
+
+## Halka bağları ve OD3/OD5 koşulları
+
+Ölçüt düzeyinde, dönem kuralı ve döngüden sonra (`Savunma.criterion`):
+
+- **K→Ö bağı.** Önlem (onlem_al) yalnız bir izleme sonucuna dayanıyorsa sayılır: (a) aynı
+  belgede ya da aynı faaliyette izleme var (kapalı döngü), ya da (b) ölçütte tarihi önlemden
+  sonra olmayan bir izleme kanıtı var (sayılan, geçmiş kanıt ya da döngü halkası) **ve**
+  alıntı, model gerekçesi ya da belge metni bir izleme sonucuna bağ kuruyor ("sonuç", "bulgu",
+  "anket", "değerlendirme", "rapor", "yetersiz", "hedefin altında" …). Ölçütte izleme yuvası
+  yoksa yalnız (b)'deki bağ aranır. Aksi `onlem_izlemeye_dayanmiyor`: uygula sayılır.
+  İstem modelden önlemin gerekçesinde dayandığı sonucu yazmasını ister.
+- **Tek seferlik anket** kontrol_et olabilir; OD4 yine K **ve** ona dayanan Ö ister.
+  "Kurula bilgi verildi", öneri/niyet ve sürüm notu iyileştirme değildir (yukarıdaki tablo).
+- **OD3: bölüm geneline yayılmış uygulama.** Sayılan uygulama tek belgeden geliyorsa ve o
+  belge bölüm düzeyi türde değilse (bölüm/anabilim dalı kurulu kararı, müfredat, ders kataloğu,
+  ders programı, açılan dersler, görev dağılımı, istatistik tablosu) ölçüt `uygulama_yayilimi:
+  "kismi"` ve "OD3 kısmi: tek uygulama örneği" notu alır; OD düşmez. Bölüm kurulu kararı bölüm
+  uygulamasıdır (`yaygin`).
+- **Fotoğraf** destekleyicidir: ölçütün sayılan uygulamasının tamamı fotoğraf türündense bu
+  satırlar sayılmaz (`fotograf_destekleyici`), OD3 belge ister.
+- **OD5: sürdürülebilir ve örnek gösterilebilir.** Özgün (Z) satırı ancak (1) bağımsızsa —
+  üst birimin bu birimi konu alan belgesi ya da öz beyan türü olmayan (web sayfası, faaliyet/öz
+  değerlendirme raporu, duyuru, BİDR dışında) bir belgede dış tanınma ifadesi ("iyi uygulama",
+  ödül, akreditasyon, "seçilmiştir", "yaygınlaştırılmasına") — ve (2) sürekliyse — ölçütte
+  geçmiş kanıt/döngü halkası var ya da metin birden çok dönemi anıyor ("2021 yılından bu yana",
+  "her yıl", "kesintisiz") — sayılır. Aksi `ozgun_kanitsiz` (sayılmaz). Tek öz-övgü cümlesi ya
+  da yalnız web metni OD5 üretmez.
+- **Kod önerisi ve nihai düzey ayrı.** `audit-olcutler.json` ölçüt alanları: `od` ve
+  `od_kod_onerisi` (kodun önerisi; render bugün `od`'yi okur), `od_onayli` (komisyonun onayladığı
+  nihai düzey; yoksa `null`), `od_onay` (`{od, not, kod_onerisi, zaman}`). Onay review.xlsx
+  "Ölçüt özeti" sayfasındaki **ONAYLANAN OD (insan)** (1-5) ve **OD notu** sütunlarından `bidr
+  audit apply` ile `olcut-od-kararlari.jsonl`'e (`kaynak: insan`) yazılır; boş hücre onayı
+  kaldırır, geçersiz değer `od_gecersiz` (çıkış 1 değil, öteki kararlar işlenir; önceki onay
+  korunur). Uygulanmamış onay `uygulanmamis_duzeltme`'ye sayılır ve yeniden üretilen tabloya
+  taşınır. Kod OD5 önerdiyse ve onay yoksa not: "OD5 kod önerisidir: insan onayı bekliyor";
+  onay kod önerisinden farklıysa not: "komisyonun onayladığı düzey ODx".
+
+Bilinen sınırlar: desenler sözcük düzeyindedir (eşanlamlı ifade kaçabilir); birim adı
+`config.yaml`'da yoksa birim/madde/usul denetimleri çalışmaz; madde bloğu "Madde N",
+"Gündem N", "Karar N" ya da numaralı satırla bölünür.

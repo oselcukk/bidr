@@ -102,6 +102,54 @@ def _donem_sections(a) -> list[str]:
     return L
 
 
+# Kod tarafı savunmaların işaretleri (bidr/audit/savunma.py) → gaps.md açıklaması
+SAVUNMA = {
+    "haric_tur": "öz-referans tür (BİDR'nin kendisi ya da taslağı): kanıt değil, sayılmadı",
+    "bilgisiz_ekran": "bilgi içermeyen ekran/bağlantı sayfası: kanıt değil, sayılmadı",
+    "yururlukten_kalkmis": "başka bir belgeyle yürürlükten kaldırılmış düzenleme: sayılmadı",
+    "madde_baska_birim": "alıntı başka birimi konu alan maddeden (madde ilkesi): sayılmadı",
+    "bos_form": "boş form/şablon: uygulama değil → planla",
+    "gerceklesme_kaniti_yok": "duyuru/gelecek zamanlı ifade ya da gerçekleşmesi kanıtlanmamış faaliyet → planla",
+    "faaliyet_asamasi_uyusmuyor": "faaliyet kaydındaki aşama daha düşük → o aşama",
+    "katilim_izleme_degil": "katılım/yapılma kaydı izleme değil → uygula",
+    "niyet_onlem_degil": "öneri/niyet iyileştirme değil → kontrol_et",
+    "bilgilendirme_onlem_degil": "kurula bilgi verilmesi iyileştirme değil → uygula",
+    "surum_notu_onlem_degil": "sürüm notu (revize) iyileştirme değil → uygula",
+    "onlem_izlemeye_dayanmiyor": "iyileştirme bir izleme sonucuna dayanmıyor → uygula",
+    "ozgun_kanitsiz": "özgünlük kanıtı yetersiz (bağımsız kanıt ve birden çok dönem gerekir): sayılmadı",
+    "fotograf_destekleyici": "fotoğraf tek başına uygulama sayılmaz (destekleyici): sayılmadı",
+    "birim_iliskisi_kod": "kod birim ilişkisini değiştirdi (metinde birimin adı yok): belirsiz ya da kurum/fakülte geneli",
+}
+
+
+def _savunma_sections(a) -> list[str]:
+    """Kod tarafı savunmalar (modelin bilinen yanlışları) ve gerçekleşmesi kanıtlanmamış faaliyetler."""
+    L: list[str] = []
+    fs = getattr(a, "faaliyetler", None) or []
+    if fs:
+        L += ["", "## Gerçekleşmesi kanıtlanmamış faaliyetler", "",
+              "Faaliyet kaydında (faaliyetler.json) yalnız duyuru/plan belgesi var: gerçekleştiğine dair tutanak, "
+              "katılım listesi ya da rapor yok. Bu belgelerden gelen uygulama (ve üstü) eşleşmeleri planla'ya "
+              "indirildi; metinde \"düzenlenmiştir/gerçekleştirilmiştir\" yazılmaz.", ""]
+        for k in fs:
+            L.append(f"- {k.get('id')} {k.get('ad')} ({k.get('tarih') or 'tarih yok'}): "
+                     + ", ".join(k.get("eksik") or []) or "-")
+    by: dict[str, list[str]] = {}
+    for r in a.rows:
+        for fl in r["flags"]:
+            if fl in SAVUNMA and not _hum(r):
+                by.setdefault(fl, []).append(f"{r['olcut']} `{r['belge']}`")
+    if by:
+        L += ["", "## Kodun düşürdüğü ya da saymadığı eşleşmeler", "",
+              "Belge türü, alıntıdaki ifade, belge metni ve faaliyet kaydıyla yapılan belirleyici denetimler "
+              "(docs/AUDIT.md \"Kod tarafı savunmalar\"). Yanlışsa satırı `kabul` (modelin aşaması) ya da `duzelt` "
+              "edin: insan kararı bu denetimleri aşar.", ""]
+        for fl, xs in by.items():
+            xs = list(dict.fromkeys(xs))
+            L.append(f"- **{SAVUNMA[fl]}** ({len(xs)}): " + "; ".join(xs[:8]) + (" …" if len(xs) > 8 else ""))
+    return L
+
+
 def _hum(r: dict) -> bool:
     return r["karar"] in ("ret", "duzelt")
 
@@ -173,6 +221,7 @@ def gaps_md(a) -> str:
         for c in en:
             L.append(f"- {c['olcut']} {c['baslik']}: {c['eksik_kanit_notu']['metin']}")
     L += _birim_sections(a)
+    L += _savunma_sections(a)
     L += _donem_sections(a)
     L += ["", "## Ölçüt ölçüt", ""]
     for c in a.criteria:

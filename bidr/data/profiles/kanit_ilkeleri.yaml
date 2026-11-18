@@ -9,16 +9,17 @@ ilkeler:
       uyguladığını gösteren ayrı bir belge (kurul kararı, öğrenci listesi, ilan vb.) yoksa
       "uygula" seçme. Böyle bir belgede "birim_iliskisi": "kurum_geneli" (fakülte geneli
       düzenleme ya da faaliyette "fakulte_geneli") yaz; kod bu belgenin her eşleşmesini OD2 ile
-      sınırlar ve "uygulama_kaniti_eksik" diye işaretler.
+      sınırlar ve "uygulama_kaniti_eksik" diye işaretler. Bölümün kendi usul ve esası/yönergesi
+      "kendi"dir, kurum geneli değildir.
   - kimlik: bilgisiz_ekran
     metin: >-
       Bölüm hakkında bilgi içermeyen ekranlar (ör. bilgi sistemi giriş ekranı, yalnız
       bağlantı listesi) kanıt değildir: "kanit_degil".
   - kimlik: bos_form_zinciri
     metin: >-
-      Boş anket/form şablonu geri bildirim mekanizmasının kanıtıdır (planla, OD2). Aynı
-      belgede ya da metinde anketin sonuçları varsa "uygula" (OD3); sonuçlara dayanan karar
-      veya değişiklik de varsa "onlem_al" (OD4).
+      Boş anket/form şablonu geri bildirim mekanizmasının kanıtıdır (planla, OD2), "uygula"
+      değildir. Anketin sonuçları varsa "uygula" (OD3); sonuçların ölçülüp yorumlanması
+      "kontrol_et"; sonuçlara dayanan karar veya değişiklik "onlem_al" (OD4).
   - kimlik: yururlukten_kalkmis
     metin: >-
       Yürürlükten kalktığı metinden anlaşılan ya da açıkça daha yeni bir düzenlemeyle
@@ -36,8 +37,8 @@ ilkeler:
   - kimlik: dis_akreditasyon_raporu
     metin: >-
       Dış akreditasyon için hazırlanmış öz değerlendirme raporları (FEDEK, MÜDEK vb.) programın
-      izlenmesinin kanıtıdır; "kanit_degil" sayılmaz. Kanıt sayılmayan yalnız BİDR raporunun
-      kendisi ve taslaklarıdır.
+      izlenmesinin kanıtıdır; "kanit_degil" sayılmaz. Kanıt sayılmayan BİDR raporlarıdır (bu yılın
+      ya da geçen yılların BİDR'si ve taslakları).
   - kimlik: donem_kurali
     metin: >-
       Dönem kuralını kod belge türüne göre uygular; belgenin tarihi rapor yılı dışında diye
@@ -48,3 +49,14 @@ ilkeler:
       yazışma) önceki yıla aitse kod onu "geçmiş kanıt" olarak ayırır. Belge bir gözden geçirme
       döngüsü tanımlıyorsa (ör. "her 4 yılda bir", "akreditasyon döngüsünde") o cümleyi
       alıntıla: kod döngüyü alıntıdan tanır.
+  - kimlik: iyilestirme_kaniti
+    metin: >-
+      "onlem_al" yalnız bir izleme/değerlendirme sonucuna dayanan ve yapılmış (karara bağlanmış)
+      değişikliktir; gerekçede dayandığı sonucu yaz. Öneri, niyet, kurula bilgi verilmesi ve
+      sürüm notu ("revize edildi") iyileştirme değildir. Katılım sayısı izleme değildir; tek
+      seferlik anket sonucu "kontrol_et" olabilir, OD4 sonuca dayanan iyileştirmeyle tamamlanır.
+  - kimlik: ozgunluk_kaniti
+    metin: >-
+      "ozgun" (OD5) birden çok dönemde sürdürülen ve bağımsızca (üst birim, dış kurum, ödül)
+      örnek gösterilen uygulamadır. Bölümün kendi övgü cümlesi ya da tanıtım/web metni ozgun
+      değildir. Bölüm kurulu kararı bölüm uygulamasıdır; fotoğraf yalnız destekleyicidir.
