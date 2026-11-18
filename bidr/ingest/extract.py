@@ -660,6 +660,130 @@ def extract_xlsx(path: Path, use_ocr: bool = True) -> Extraction:
     return Extraction(pages, "openpyxl", len(pages))
 
 
+def extract_xls(path: Path, use_ocr: bool = True) -> Extraction:
+    """Eski Excel (BIFF, .xls) — xlrd. Uzantısı .xls olup içi xlsx ya da HTML olan dosyalar
+    (web'den indirilen "Excel" çıktıları) uygun çıkarıcıya yönlendirilir."""
+    head = path.read_bytes()[:512]
+    if head.startswith(b"PK"):
+        with tempfile.TemporaryDirectory(prefix="bidr-xls-") as td:
+            tmp = Path(td) / "kopya.xlsx"  # openpyxl uzantıya bakıyor
+            tmp.write_bytes(path.read_bytes())
+            res = extract_xlsx(tmp)
+        res.method = "openpyxl(xls)"
+        return res
+    if head.lstrip().lower().startswith((b"<", b"\xef\xbb\xbf<")):
+        res = extract_html(path)
+        res.method = "html(xls)"
+        return res
+    import xlrd
+
+    book = xlrd.open_workbook(str(path), on_demand=True)
+    pages = []
+    try:
+        for sh in book.sheets():
+            lines = [f"[sayfa: {sh.name}]"]
+            for r in range(sh.nrows):
+                cells = []
+                for c in sh.row(r):
+                    v = c.value
+                    if c.ctype == xlrd.XL_CELL_DATE:
+                        try:
+                            v = xlrd.xldate_as_datetime(v, book.datemode)
+                        except Exception:
+                            pass
+                    elif c.ctype in (xlrd.XL_CELL_EMPTY, xlrd.XL_CELL_BLANK, xlrd.XL_CELL_ERROR):
+                        v = None
+                    elif c.ctype == xlrd.XL_CELL_BOOLEAN:
+                        v = bool(v)
+                    cells.append(_cell_str(v))
+                while cells and not cells[-1]:
+                    cells.pop()
+                if any(cells):
+                    lines.append("\t".join(cells))
+            pages.append("\n".join(lines))
+    finally:
+        book.release_resources()
+    return Extraction(pages, "xlrd", len(pages))
+
+
+# -------------------------------------------------------------------------- E-posta
+
+def _eml_body(msg) -> str:
+    """Gövde metni: ek olmayan text/plain parçaları; yoksa text/html'den metin."""
+    plain: list[str] = []
+    html: list[str] = []
+
+    def walk(m) -> None:
+        ct = m.get_content_type()
+        if ct == "message/rfc822":
+            return  # iletilen ileti ayrı ek satırıdır
+        if m.is_multipart():
+            for p in m.get_payload():
+                walk(p)
+            return
+        if m.get_content_disposition() == "attachment" or (m.get_filename() and
+                                                            m.get_content_disposition() != "inline"):
+            return
+        if ct not in ("text/plain", "text/html"):
+            return
+        try:
+            t = m.get_content()
+        except Exception:
+            raw = m.get_payload(decode=True) or b""
+            t = _decode(raw)
+        (plain if ct == "text/plain" else html).append(t if isinstance(t, str) else _decode(t))
+
+    walk(msg)
+    if plain:
+        return "\n\n".join(plain)
+    out = []
+    for h in html:
+        p = _HTMLText()
+        p.feed(h)
+        out.append(re.sub(r"[ \t\u00a0]+", " ", "".join(p.parts)))
+    return "\n\n".join(out)
+
+
+def _mail_text(headers: list[tuple[str, str]], body: str, attachments: list[str]) -> str:
+    lines = [f"{k}: {v}" for k, v in headers if v]
+    parts = ["\n".join(lines), body]
+    if attachments:
+        parts.append("[ekler]\n" + "\n".join(attachments))
+    return _clean("\n\n".join(p for p in parts if p and p.strip()))
+
+
+def extract_eml(path: Path, use_ocr: bool = True) -> Extraction:
+    """E-posta (.eml): başlıklar + gövde metni; ekler ayrı envanter satırıdır (`ileti.eml!/ek.pdf`),
+    burada yalnız adları listelenir."""
+    from . import containers as C
+
+    msg = C.parse_eml(path.read_bytes())
+    heads = [(k, str(msg.get(h, "") or "")) for k, h in
+             (("Konu", "subject"), ("Kimden", "from"), ("Kime", "to"), ("Bilgi", "cc"), ("Tarih", "date"))]
+    names = [n for n, _ in C.eml_attachments(msg)]
+    return Extraction([_mail_text(heads, _clean(_eml_body(msg)), names)], "email", None)
+
+
+def extract_msg(path: Path, use_ocr: bool = True) -> Extraction:
+    """Outlook .msg — yalnız `extract-msg` kuruluysa; yoksa desteklenmeyen biçim."""
+    from . import containers as C
+
+    m = C._load_msg(path)
+    if m is None:
+        raise Unsupported(".msg (extract-msg kitaplığı kurulu değil)")
+    try:
+        heads = [("Konu", m.subject or ""), ("Kimden", m.sender or ""), ("Kime", m.to or ""),
+                 ("Bilgi", m.cc or ""), ("Tarih", str(m.date or ""))]
+        body = m.body or ""
+        names = [n for n, _ in C.msg_attachments(m)]
+    finally:
+        try:
+            m.close()
+        except Exception:
+            pass
+    return Extraction([_mail_text(heads, _clean(body), names)], "msg", None)
+
+
 # -------------------------------------------------------------------------- PPTX
 
 def extract_pptx(path: Path, use_ocr: bool = True) -> Extraction:
@@ -840,7 +964,8 @@ EXTRACTORS = {
     ".pdf": extract_pdf,
     ".docx": extract_docx, ".docm": extract_docx, ".dotx": extract_docx,
     ".doc": extract_textutil, ".rtf": extract_textutil, ".odt": extract_textutil,
-    ".xlsx": extract_xlsx, ".xlsm": extract_xlsx,
+    ".xlsx": extract_xlsx, ".xlsm": extract_xlsx, ".xls": extract_xls,
+    ".eml": extract_eml, ".msg": extract_msg,
     ".pptx": extract_pptx,
     ".txt": extract_text, ".csv": extract_text, ".tsv": extract_text, ".md": extract_text,
     ".html": extract_html, ".htm": extract_html,
