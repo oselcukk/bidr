@@ -6,6 +6,10 @@ from pathlib import Path
 
 
 def _cmd(args) -> int:
+    from bidr.pipeline.gate import check_gate
+
+    if (rc := check_gate(args.workspace, "identify")) is not None:
+        return rc
     from .catalog import load_catalog
     from .pipeline import run
 

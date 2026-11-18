@@ -5,6 +5,10 @@ from pathlib import Path
 
 
 def _run(args) -> int:
+    from bidr.pipeline.gate import check_gate
+
+    if (rc := check_gate(args.workspace, "candidates")) is not None:
+        return rc
     from bidr.common import Workspace
 
     from .model import DEFAULT_COMBO, SIGNALS

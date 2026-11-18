@@ -14,6 +14,11 @@ def _stats(st: dict) -> str:
 
 
 def _decide(args) -> int:
+    from bidr.pipeline.gate import check_gate
+
+    stage = "karar_ince" if getattr(args, "stage", None) == "fine" else "karar_kaba"
+    if (rc := check_gate(args.workspace, stage)) is not None:
+        return rc
     from bidr.common import Workspace
 
     from . import run as R
@@ -44,6 +49,10 @@ def _decide(args) -> int:
 
 
 def _compare(args) -> int:
+    from bidr.pipeline.gate import check_gate
+
+    if (rc := check_gate(args.workspace, "hakem")) is not None:
+        return rc
     from bidr.common import Workspace
 
     from .compare import FILES, consensus, run

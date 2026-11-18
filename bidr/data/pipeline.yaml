@@ -1,0 +1,210 @@
+# BİDR hattının aşama sözleşmeleri (veri). Okuyan: `bidr.pipeline` (`bidr status`,
+# `bidr next`, kapılar). Ajan talimatları (AGENTS.md, skill'ler) bu dosyaya ve
+# `bidr next` çıktısına dayanır; tamamlanma şartını model değil kod denetler.
+#
+# Alanlar:
+#   id         aşama kimliği (kapılar ve CLI bunu kullanır)
+#   ad         okunur ad
+#   uygulandi  false: aşama henüz yazılmadı; `bidr next` hattın orada bittiğini söyler
+#   katman     D (belirleyici kod) | M (model işi: ajan yapar) | I (insan)
+#   onkosul    bitmiş (ya da atlanmış) olması gereken aşamalar
+#   girdi/cikti  çalışma alanındaki dosyalar (bilgi amaçlı)
+#   komut      sıradaki komut(lar); {ws} {kaynak} {profil} {donem} {kurum} {etiket_birim}
+#              {egitim} {ajan} yer tutucuları config.yaml'ın `bidr:` bölümünden doldurulur
+#   sart.denetim  bidr/pipeline/checks.py'deki denetim işlevinin adı
+#   sart.metin    tamamlanma şartının insan/ajan için açıklaması
+#   onay       yok | insan  (insan: aşama kullanıcının kararı olmadan bitemez)
+#   skill      bu aşamada okunacak skill
+surum: 1
+asamalar:
+  - id: kurulum
+    ad: Çalışma alanı kurulumu
+    uygulandi: true
+    katman: I
+    onkosul: []
+    girdi: [answers.yaml (kullanıcının cevapları)]
+    cikti: [config.yaml (bidr bölümü), AGENTS.md, CLAUDE.md]
+    komut: ["bidr init -w {ws} --answers <answers.yaml>"]
+    sart:
+      denetim: config_gecerli
+      metin: >-
+        config.yaml'da geçerli bir `bidr:` bölümü var: kaynak klasör var ve okunabilir,
+        çalışma alanı kaynağın ve bidr reposunun dışında, profil/kurum tanınıyor, dönem bir yıl.
+    onay: insan
+    skill: bidr-kur
+
+  - id: ingest
+    ad: Belge tarama ve metin çıkarma
+    uygulandi: true
+    katman: D
+    onkosul: [kurulum]
+    girdi: [kaynak klasör (salt okunur)]
+    cikti: [inventory.csv, text/<doc_id>.txt]
+    komut: ["bidr ingest {kaynak} -w {ws}"]
+    sart:
+      denetim: ingest_tamam
+      metin: >-
+        Kaynaktaki her dosya inventory.csv'de bir satır; iCloud'da indirilmemiş dosya yok;
+        metni çıkarılan (ok/ocr) her belgenin text/<doc_id>.txt dosyası var.
+    onay: yok
+    skill: bidr-rapor
+
+  - id: etiketler
+    ad: Geçmiş etiketler (isteğe bağlı)
+    uygulandi: true
+    katman: D
+    onkosul: [kurulum]
+    girdi: [kaynak klasör (geçmiş yılın BİDR raporu ve kanıt klasör adları)]
+    cikti: [labels.jsonl, labels-report.md]
+    komut: ["bidr labels build {kaynak} -w {ws} --unit {etiket_birim}"]
+    sart:
+      denetim: etiket_tamam
+      metin: >-
+        config'de gecmis_etiket: false ise atlanır. Değilse labels.jsonl var ve boş değil.
+        Etiketler yalnız karşılaştırma/hakem içindir; sınıflandırıcıya gösterilmez.
+    onay: yok
+    skill: bidr-rapor
+
+  - id: identify
+    ad: Belge türü, tarih, sürüm
+    uygulandi: true
+    katman: D
+    onkosul: [ingest]
+    girdi: [text/]
+    cikti: [documents.jsonl, identify-report.md]
+    komut: ["bidr identify -w {ws} --period {donem}{kurum_arg}"]
+    sart:
+      denetim: identify_tamam
+      metin: "text/ altındaki her belgenin documents.jsonl'de kaydı var."
+    onay: yok
+    skill: bidr-rapor
+
+  - id: candidates
+    ad: Aday ölçütler (belirleyici)
+    uygulandi: true
+    katman: D
+    onkosul: [identify]
+    girdi: [text/, documents.jsonl]
+    cikti: [candidates.jsonl]
+    komut: ["bidr candidates -w {ws} --profile {profil}{egitim_arg}"]
+    sart:
+      denetim: candidates_tamam
+      metin: "documents.jsonl'deki her belgenin candidates.jsonl'de satırı var."
+    onay: yok
+    skill: bidr-rapor
+
+  - id: karar_kaba
+    ad: Kaba karar (46 başlıktan seçim; model işi ajanda)
+    uygulandi: true
+    katman: M
+    onkosul: [candidates]
+    girdi: [text/, documents.jsonl, candidates.jsonl]
+    cikti: [work/coarse/<doc_id>.json, work/coarse/<doc_id>.out.json, decisions.jsonl]
+    komut:
+      - "bidr decide prepare -w {ws} --stage coarse --profile {profil}"
+      - "(ajan) work/coarse/README.md'ye göre her paket için <doc_id>.out.json yaz"
+      - "bidr decide apply -w {ws} --stage coarse --model {ajan}"
+    sart:
+      denetim: karar_tamam
+      asama: coarse
+      metin: >-
+        text/ altındaki her belgenin decisions.jsonl'de kaba kaydı var (ya da kodca
+        atlandı: öz-referans türü, boş metin); bekleyen ya da geçersiz cevap yok.
+    onay: yok
+    skill: bidr-rapor
+
+  - id: karar_ince
+    ad: İnce karar (rubrik, yuva, OD, birebir alıntı; model işi ajanda)
+    uygulandi: true
+    katman: M
+    onkosul: [karar_kaba]
+    girdi: [decisions.jsonl (kaba), text/]
+    cikti: [work/fine/<doc_id>.json, work/fine/<doc_id>.out.json, decisions.jsonl]
+    komut:
+      - "bidr decide prepare -w {ws} --stage fine --profile {profil}"
+      - "(ajan) work/fine/README.md'ye göre her paket için <doc_id>.out.json yaz"
+      - "bidr decide apply -w {ws} --stage fine --model {ajan}"
+    sart:
+      denetim: karar_tamam
+      asama: fine
+      metin: >-
+        Kaba kaydı olan her belge ince aşamada (asama: ince); bekleyen ya da geçersiz
+        cevap yok. Alıntısı belgede birebir tutmayan eşleşme kodca reddedilir ve
+        kullanılmaz (uyarı olarak gösterilir, bir kez yeniden denenir).
+    onay: yok
+    skill: bidr-rapor
+
+  - id: hakem
+    ad: Geçmiş etiketle karşılaştırma ve hakem kararları
+    uygulandi: true
+    katman: I
+    onkosul: [karar_ince, etiketler]
+    girdi: [decisions.jsonl, labels.jsonl]
+    cikti: [label-compare.md, label-review.md, label-review.jsonl, label-answers.jsonl, consensus-labels.jsonl]
+    komut:
+      - "bidr compare-labels -w {ws}"
+      - "(insan) hakem sorularını cevapla (skill: bidr-hakem) → label-answers.jsonl"
+      - "bidr compare-labels -w {ws} --apply"
+    sart:
+      denetim: hakem_tamam
+      metin: >-
+        Geçmiş etiket yoksa atlanır. Değilse hakem kuyruğu güncel kararlardan üretilmiş,
+        her soruya kullanıcıdan geçerli bir cevap alınmış (belirsiz de cevaptır) ve
+        consensus-labels.jsonl cevaplardan sonra yazılmış.
+    onay: insan
+    skill: bidr-hakem
+
+  - id: audit
+    ad: İnceleme tablosu (review.xlsx)
+    uygulandi: false
+    katman: D
+    onkosul: [karar_ince, hakem]
+    girdi: [decisions.jsonl]
+    cikti: [review.xlsx]
+    komut: []
+    sart: {denetim: yok, metin: "Henüz uygulanmadı (v0.2 planı)."}
+    onay: insan
+
+  - id: file
+    ad: Kanıt dosyalama (evidence/A/A.1/…)
+    uygulandi: false
+    katman: D
+    onkosul: [audit]
+    girdi: [onaylı kararlar]
+    cikti: [evidence/, evidence-index.csv]
+    komut: []
+    sart: {denetim: yok, metin: "Henüz uygulanmadı."}
+    onay: yok
+
+  - id: write
+    ad: Ölçüt açıklamalarının yazımı
+    uygulandi: false
+    katman: M
+    onkosul: [file]
+    girdi: [onaylı kanıtlar]
+    cikti: [texts/<ölçüt>.md]
+    komut: []
+    sart: {denetim: yok, metin: "Henüz uygulanmadı."}
+    onay: yok
+
+  - id: verify
+    ad: Metin doğrulama
+    uygulandi: false
+    katman: D
+    onkosul: [write]
+    girdi: [texts/]
+    cikti: [verify.jsonl]
+    komut: []
+    sart: {denetim: yok, metin: "Henüz uygulanmadı."}
+    onay: insan
+
+  - id: render
+    ad: Rapor üretimi (report.docx, gaps.md)
+    uygulandi: false
+    katman: D
+    onkosul: [verify]
+    girdi: [texts/, evidence-index.csv]
+    cikti: [report.docx, gaps.md]
+    komut: []
+    sart: {denetim: yok, metin: "Henüz uygulanmadı."}
+    onay: yok

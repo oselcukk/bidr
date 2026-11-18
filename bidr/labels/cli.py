@@ -7,6 +7,10 @@ from bidr.common import Workspace, read_jsonl, write_jsonl
 
 
 def _build(args) -> int:
+    from bidr.pipeline.gate import check_gate
+
+    if (rc := check_gate(args.workspace, "etiketler", kaynak=args.source)) is not None:
+        return rc
     from .build import build
     from .stats import metin, rapor_md
 

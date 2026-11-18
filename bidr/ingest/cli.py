@@ -6,7 +6,11 @@ from pathlib import Path
 
 
 def _cmd(args) -> int:
+    from bidr.pipeline.gate import check_gate
     from .pipeline import run
+
+    if (rc := check_gate(args.workspace, "ingest", kaynak=args.source)) is not None:
+        return rc
 
     rows = run(Path(args.source), Path(args.workspace), force=args.force,
                use_ocr=not args.no_ocr, workers=args.workers)
