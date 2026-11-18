@@ -97,6 +97,7 @@ _YASAK = [(re.compile(p), t) for p, t in YASAK]
 
 GELECEK = re.compile(r"\b\w+(acaktır|ecektir|acağız|eceğiz)\b|\bplanlanmaktadır\b|"
                      r"\bhedeflenmektedir\b|\böngörülmektedir\b|\bdüşünülmektedir\b")
+DUZENLEME = re.compile(r"yönerge|yönetmeli|iş akış|usul|esaslar|mevzuat|kanun|karar(ı|ında|da)\b|form\b")
 # Önerilen OD'nin üstündeki düzeyin rubrik dili (olumlu kullanımda OD aşımı).
 UST_DUZEY = {
     4: re.compile(r"sistematik (olarak|biçimde|şekilde) (izlen|değerlendiril|iyileştiril)|"
@@ -134,6 +135,10 @@ def check_sentence(s: str, *, index_nos: set[str], od: int, komisyon: bool) -> l
         if m:
             issues.append({"kod": "yasak_ifade", "ayrinti": f"{kind}: “{m.group(0)}”"})
     g = GELECEK.search(low)
+    # Mevzuat dili: "yönergede … öngörülmektedir" gelecek vaadi değil, "hükme bağlanmıştır"
+    # anlamındadır; atıflı ve bir düzenleme belgesini anlatan cümlede kabul edilir.
+    if g and g.group(0).strip() == "öngörülmektedir" and cites and DUZENLEME.search(low):
+        g = None
     if g and not kom:
         issues.append({"kod": "gelecek_vaat", "ayrinti": f"“{g.group(0).strip()}”: gelecek/plan ifadesi "
                                                          f"yalnız komisyon bilgisine dayanabilir"})

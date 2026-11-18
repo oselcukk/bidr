@@ -257,3 +257,11 @@ def test_cli(tmp_path, capsys):
     answer(ws, "B.1.1", GOOD)
     assert main(["write", "apply", "-w", str(ws), "--model", "x"]) == 0
     assert main(["write", "prepare", "-w", str(ws), "--only", "Z.9.9"]) == 2
+
+
+def test_ongorulmektedir_mevzuat_dili_kabul():
+    from bidr.write.text import check_sentence
+    s = "Yönergede taleplerin Muafiyet ve İntibak Komisyonunca incelenmesi öngörülmektedir [1_OD2]."
+    assert not [i for i in check_sentence(s, index_nos={"1_OD2"}, od=2, komisyon=False) if i["kod"] == "gelecek_vaat"]
+    s2 = "Bölümde yeni bir anket uygulanması öngörülmektedir [1_OD2]."
+    assert [i for i in check_sentence(s2, index_nos={"1_OD2"}, od=2, komisyon=False) if i["kod"] == "gelecek_vaat"]
