@@ -17,6 +17,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+# kişisel veri maskeleme: PDF'te gerçek kaldırma (redaction); yoksa pypdf ile en iyi çaba
+maske = ["pymupdf>=1.23"]
 
 [project.scripts]
 bidr = "bidr.cli:main"
