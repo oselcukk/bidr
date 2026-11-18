@@ -77,7 +77,7 @@ def test_spec_is_consistent():
             assert s["komut"] and s["skill"], s["id"]
         else:
             assert s["sart"]["denetim"] == "yok"
-    assert {s["id"] for s in spec["asamalar"] if not s["uygulandi"]} == {"transcribe", "file", "write", "verify", "render"}
+    assert {s["id"] for s in spec["asamalar"] if not s["uygulandi"]} == {"file", "write", "verify", "render"}
 
 
 def test_full_pipeline_transitions_and_gates(kurulum, capsys):
@@ -85,7 +85,7 @@ def test_full_pipeline_transitions_and_gates(kurulum, capsys):
     # 0. kurulmamış: yalnız kurulum bekler, gerisi engelli; kapı yok (yönetilmeyen WS)
     d = _durum(ws)
     assert d["kurulum"] == "bekliyor" and d["ingest"] == "engelli" and d["audit"] == "engelli"
-    assert d["transcribe"] == "atlandi" and d["file"] == "yok"
+    assert d["transcribe"] == "engelli" and d["file"] == "yok"
     assert _kim(ws, "kurulum") == "insan"
     assert not ws.exists()  # status hiçbir şey yazmaz
 
@@ -110,6 +110,7 @@ def test_full_pipeline_transitions_and_gates(kurulum, capsys):
     assert main(["ingest", str(src), "-w", str(ws), "--no-ocr", "--workers", "1"]) == 0
     d = _durum(ws)
     assert d["ingest"] == "bitti" and d["identify"] == "bekliyor" and d["etiketler"] == "bekliyor"
+    assert d["transcribe"] == "atlandi"        # düşük kaliteli görsel/PDF yok
     # kaynağa yeni dosya → ingest yeniden bekler, identify engellenir
     extra = src / "Diğer" / "yeni.txt"
     extra.write_text("yeni belge " * 20, encoding="utf-8")

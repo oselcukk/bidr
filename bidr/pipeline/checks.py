@@ -293,6 +293,11 @@ def audit_tamam(c: Ctx) -> Check:
     return Check(bitti=True, ilerleme=prog, neden=f"{st['satir']} satır kararlı ve işlendi")
 
 
+def _transcribe_tamam(c: Ctx) -> Check:
+    from bidr.transcribe.check import transcribe_tamam
+    return transcribe_tamam(c)
+
+
 def yok(c: Ctx) -> Check:
     return Check(neden="henüz uygulanmadı")
 
@@ -306,5 +311,6 @@ CHECKS: dict[str, Callable[[Ctx], Check]] = {
     "karar_tamam": karar_tamam,
     "hakem_tamam": hakem_tamam,
     "audit_tamam": audit_tamam,
+    "transcribe_tamam": _transcribe_tamam,
     "yok": yok,
 }
