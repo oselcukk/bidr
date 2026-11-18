@@ -45,7 +45,7 @@ def test_dipnot_yuvalari():
 def test_etiket_dosyasi_gecerli_ve_tam():
     tags = load_tags(CS)
     assert set(tags) == {s.id for s in CS.slots()}
-    assert all(t.state == "oneri" for t in tags.values())
+    assert all(t.state in ("oneri", "onayli") for t in tags.values())
     for t in tags.values():
         assert list(t.od) == sorted({STAGE_OD[s] for s in t.stages if s in STAGE_OD})
         assert t.text == CS.get_slot(t.slot).text

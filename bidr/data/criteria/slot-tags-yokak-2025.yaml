@@ -1,7 +1,8 @@
 # Üretildi ve elle gözden geçirildi; öneri niteliğinde (durum: oneri).
 surum: 1
 olcut_surumu: bfafe690bbe78d1e437f7fd23a298c268e09ef2b3bb2a33860daf92f2287f04b
-aciklama: 'Kanıt yuvası PUKÖ aşaması ve olgunluk düzeyi (OD) ÖNERİLERİ. Rubrik (1-5) metinlerine dayanır. Her kayıt durum: oneri — insan onayı bekliyor. belirsiz = aşama içeriğe bağlı. Eşleme: planla→2, uygula→3, kontrol_et→4, onlem_al→4, ozgun→5. metin şablondan birebirdir.'
+aciklama: 'Kanıt yuvası PUKÖ aşaması ve olgunluk düzeyi (OD) ÖNERİLERİ. Rubrik (1-5) metinlerine dayanır. Her kayıt durum: oneri — insan onayı bekliyor. belirsiz = aşama içeriğe bağlı. Eşleme: planla→2,
+  uygula→3, kontrol_et→4, onlem_al→4, ozgun→5. metin şablondan birebirdir.'
 etiketler:
 - yuva: A.1.1/1
   metin: Yönetişim modeli ve organizasyon şeması
@@ -160,11 +161,16 @@ etiketler:
 - yuva: A.1.4/3
   metin: Bilgi Yönetim Sistemi
   tur: kanit
-  asama:
-  - belirsiz
-  od: []
-  gerekce: BYS hangi aşamayı gösterdiği içeriğe bağlı.
-  durum: oneri
+  asama: &id002
+  - uygula
+  - kontrol_et
+  od:
+  - 3
+  - 4
+  gerekce: Sistemin kullanıldığını gösteren ekran/kayıt OD3; sistem izleme raporu üretiyorsa OD4.
+  durum: onayli
+  icerige_bagli: true
+  karar: Oğuzhan, 2026-11-18
 - yuva: A.1.4/4
   metin: Kurumsal Risk Yönetim Planı
   tur: kanit
@@ -185,11 +191,18 @@ etiketler:
 - yuva: A.1.4/6
   metin: Paydaş katılımına ilişkin belgeler
   tur: kanit
-  asama:
-  - belirsiz
-  od: []
-  gerekce: Paydaş katılımı her PUKÖ katmanında olabilir.
-  durum: oneri
+  asama: &id001
+  - planla
+  - uygula
+  - onlem_al
+  od:
+  - 2
+  - 3
+  - 4
+  gerekce: 'İçeriğe bağlı: katılım mekanizması yalnız tanımlıysa OD2; katılım gerçekleşmişse (tutanak, katılımcı) OD3; katılımın sonucu değişikliğe yansımışsa OD4.'
+  durum: onayli
+  icerige_bagli: true
+  karar: Oğuzhan, 2026-11-18
 - yuva: A.1.4/7
   metin: Yıllık izleme ve iyileştirme raporları
   tur: kanit
@@ -607,11 +620,15 @@ etiketler:
 - yuva: A.3.4/4
   metin: Paydaş katılımına ilişkin kanıtlar
   tur: kanit
-  asama:
-  - belirsiz
-  od: []
-  gerekce: Paydaş katılımı tanım (2) ya da değerlendirme (4) olabilir.
-  durum: oneri
+  asama: *id001
+  od:
+  - 2
+  - 3
+  - 4
+  gerekce: 'İçeriğe bağlı: katılım mekanizması yalnız tanımlıysa OD2; katılım gerçekleşmişse (tutanak, katılımcı) OD3; katılımın sonucu değişikliğe yansımışsa OD4.'
+  durum: onayli
+  icerige_bagli: true
+  karar: Oğuzhan, 2026-11-18
 - yuva: A.3.4/5
   metin: Süreç yönetim mekanizmalarının izlenmesi ve iyileştirilmesine ilişkin kanıtlar
   tur: kanit
@@ -707,11 +724,15 @@ etiketler:
 - yuva: A.4.2/4
   metin: Öğrencilerin karar alma mekanizmalarına katılımı örnekleri
   tur: kanit
-  asama:
-  - belirsiz
-  od: []
-  gerekce: Karar mekanizmasına katılım işleyiş (3) ya da sonuçların karara yansıması (4).
-  durum: oneri
+  asama: *id001
+  od:
+  - 2
+  - 3
+  - 4
+  gerekce: 'İçeriğe bağlı: katılım mekanizması yalnız tanımlıysa OD2; katılım gerçekleşmişse (tutanak, katılımcı) OD3; katılımın sonucu değişikliğe yansımışsa OD4.'
+  durum: onayli
+  icerige_bagli: true
+  karar: Oğuzhan, 2026-11-18
 - yuva: A.4.2/5
   metin: Öğrenci geri bildirim mekanizmasının izlenmesi ve iyileştirilmesine yönelik kanıtlar
   tur: kanit
@@ -771,11 +792,16 @@ etiketler:
 - yuva: A.4.3/4
   metin: Mezun geri bildirimleri
   tur: kanit
-  asama:
-  - belirsiz
-  od: []
-  gerekce: Mezun geri bildirimi alınması (3) ya da izleme (4).
-  durum: oneri
+  asama: &id003
+  - uygula
+  - kontrol_et
+  od:
+  - 3
+  - 4
+  gerekce: 'İçeriğe bağlı: geri bildirim yalnız toplanmışsa OD3; sonuçları değerlendirilip karara/değişikliğe bağlanmışsa OD4.'
+  durum: onayli
+  icerige_bagli: true
+  karar: Oğuzhan, 2026-11-18
 - yuva: A.4.3/5
   metin: Standart uygulamalar ve mevzuatın yanı sıra; birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
   tur: kanit
@@ -834,7 +860,8 @@ etiketler:
   gerekce: Kaynak planlaması (rubrik 2).
   durum: oneri
 - yuva: A.5.2/2
-  metin: Uluslararası çalışmalar için ayrılan kaynaklarının yönetimine ilişkin belgeler (Erasmus vb. bütçelerin kulanım oranı, AB proje bütçelerinin yönetimi ve ikili protokoller kapsamında gerçekleşen kaynakların yönetimine ilişkin belgeler gibi)
+  metin: Uluslararası çalışmalar için ayrılan kaynaklarının yönetimine ilişkin belgeler (Erasmus vb. bütçelerin kulanım oranı, AB proje bütçelerinin yönetimi ve ikili protokoller kapsamında gerçekleşen
+    kaynakların yönetimine ilişkin belgeler gibi)
   tur: kanit
   asama:
   - uygula
@@ -946,11 +973,15 @@ etiketler:
 - yuva: B.1.1/5
   metin: Program tasarım süreçlerine paydaş katılımını gösteren kanıtlar
   tur: kanit
-  asama:
-  - belirsiz
-  od: []
-  gerekce: Paydaş katılımı tanımlı süreçte (2) ya da değerlendirmede (4).
-  durum: oneri
+  asama: *id001
+  od:
+  - 2
+  - 3
+  - 4
+  gerekce: 'İçeriğe bağlı: katılım mekanizması yalnız tanımlıysa OD2; katılım gerçekleşmişse (tutanak, katılımcı) OD3; katılımın sonucu değişikliğe yansımışsa OD4.'
+  durum: onayli
+  icerige_bagli: true
+  karar: Oğuzhan, 2026-11-18
 - yuva: B.1.1/6
   metin: Programların tasarım ve onay sürecinin izlendiği ve buna göre yapılan iyileştirilmelere ilişkin kanıtlar
   tur: kanit
@@ -994,10 +1025,17 @@ etiketler:
   metin: Eğitim komisyonu kararı, senato kararları vb.
   tur: kanit
   asama:
-  - belirsiz
-  od: []
-  gerekce: Kurul kararı her aşamada olabilir.
-  durum: oneri
+  - planla
+  - uygula
+  - onlem_al
+  od:
+  - 2
+  - 3
+  - 4
+  gerekce: 'İçeriğe bağlı: karar yeni düzenleme/yapı kurduysa OD2; uygulamayı başlattıysa OD3; değerlendirmeye dayanıp değişiklik yaptıysa OD4.'
+  durum: onayli
+  icerige_bagli: true
+  karar: Oğuzhan, 2026-11-18
 - yuva: B.1.2/4
   metin: Ders dağılım dengesinin izlenmesine ve iyileştirilmesine ilişkin kanıtlar
   tur: kanit
@@ -1018,7 +1056,8 @@ etiketler:
   gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
   durum: oneri
 - yuva: B.1.3/1
-  metin: Birimde, ders kazanımlarını değerlendirilmesi ve müfredat öğrenim hedeflerine ulaşılması ve bunların program çıktıları ile uyumunun nasıl ölçtüğüne dair etkili süreçleri nasıl gerçekleşeceğini gösteren yönerge ve planlama kanıtları
+  metin: Birimde, ders kazanımlarını değerlendirilmesi ve müfredat öğrenim hedeflerine ulaşılması ve bunların program çıktıları ile uyumunun nasıl ölçtüğüne dair etkili süreçleri nasıl gerçekleşeceğini
+    gösteren yönerge ve planlama kanıtları
   tur: kanit
   asama:
   - planla
@@ -1093,11 +1132,15 @@ etiketler:
 - yuva: B.1.4/4
   metin: Programlarda öğrenci İş yükünün belirlenmesinde öğrenci katılımının sağlandığına ilişkin belgeler ve mekanizmalar
   tur: kanit
-  asama:
-  - belirsiz
-  od: []
-  gerekce: Öğrenci katılımı iş yükü belirleme (2/3) ya da izleme (4).
-  durum: oneri
+  asama: *id001
+  od:
+  - 2
+  - 3
+  - 4
+  gerekce: 'İçeriğe bağlı: katılım mekanizması yalnız tanımlıysa OD2; katılım gerçekleşmişse (tutanak, katılımcı) OD3; katılımın sonucu değişikliğe yansımışsa OD4.'
+  durum: onayli
+  icerige_bagli: true
+  karar: Oğuzhan, 2026-11-18
 - yuva: B.1.4/5
   metin: Diploma Eki
   tur: kanit
@@ -1204,10 +1247,13 @@ etiketler:
   metin: Yapılan iyileştirmeler ve değişiklikler konusunda paydaşların bilgilendirildiği uygulamalar
   tur: kanit
   asama:
-  - belirsiz
-  od: []
-  gerekce: İyileştirmelerin duyurulması önlem aşamasına ait gibi ama rubrikte açık değil.
-  durum: oneri
+  - onlem_al
+  od:
+  - 4
+  gerekce: İyileştirmenin paydaşlara duyurulması PUKÖ döngüsünü kapatır (önlem al, OD4).
+  durum: onayli
+  icerige_bagli: false
+  karar: Oğuzhan, 2026-11-18
 - yuva: B.1.5/7
   metin: Programın amaçlarına ulaşıp ulaşmadığına ilişkin geri bildirimler
   tur: kanit
@@ -1256,11 +1302,14 @@ etiketler:
 - yuva: B.1.6/3
   metin: Bilgi Yönetim Sistemi
   tur: kanit
-  asama:
-  - belirsiz
-  od: []
-  gerekce: BYS hangi aşamayı gösterdiği içeriğe bağlı.
-  durum: oneri
+  asama: *id002
+  od:
+  - 3
+  - 4
+  gerekce: Sistemin kullanıldığını gösteren ekran/kayıt OD3; sistem izleme raporu üretiyorsa OD4.
+  durum: onayli
+  icerige_bagli: true
+  karar: Oğuzhan, 2026-11-18
 - yuva: B.1.6/4
   metin: Eğitim ve öğretim süreçlerinin yönetimine ilişkin izleme ve iyileştirme kanıtları
   tur: kanit
@@ -1272,7 +1321,8 @@ etiketler:
   gerekce: '''İzleme ve iyileştirme'' → rubrik 4 (izlenmekte ve iyileştirilmektedir).'
   durum: oneri
 - yuva: B.1.6/5
-  metin: İzleme çalışmalarına dair değerlendirme raporları, geri bildirimlerin analiz edildiği raporlar ya da analiz içeren dokümanlar ve bu dokümanlara dayanarak yapılan iyileştirmelere ilişkin yapılan düzenlemeler
+  metin: İzleme çalışmalarına dair değerlendirme raporları, geri bildirimlerin analiz edildiği raporlar ya da analiz içeren dokümanlar ve bu dokümanlara dayanarak yapılan iyileştirmelere ilişkin yapılan
+    düzenlemeler
   tur: kanit
   asama:
   - kontrol_et
@@ -1463,10 +1513,13 @@ etiketler:
   metin: Paydaşların bilgilendirildiği mekanizmalar
   tur: kanit
   asama:
-  - belirsiz
-  od: []
-  gerekce: Bilgilendirme genel (3) ya da güncellemelerin ilanı (4).
-  durum: oneri
+  - uygula
+  od:
+  - 3
+  gerekce: Bilgilendirme mekanizmasının işletilmesi (uygula, OD3).
+  durum: onayli
+  icerige_bagli: false
+  karar: Oğuzhan, 2026-11-18
 - yuva: B.2.3/5
   metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
   tur: kanit
@@ -1580,11 +1633,14 @@ etiketler:
 - yuva: B.3.1/6
   metin: Öğrencilere sunulan öğrenme kaynakları ile ilgili öğrenci geri bildirim araçları (Anketler vb.)
   tur: kanit
-  asama:
-  - belirsiz
-  od: []
-  gerekce: Geri bildirim aracı tanımı (2/3) ya da izleme (4).
-  durum: oneri
+  asama: *id003
+  od:
+  - 3
+  - 4
+  gerekce: 'İçeriğe bağlı: geri bildirim yalnız toplanmışsa OD3; sonuçları değerlendirilip karara/değişikliğe bağlanmışsa OD4.'
+  durum: onayli
+  icerige_bagli: true
+  karar: Oğuzhan, 2026-11-18
 - yuva: B.3.1/7
   metin: Öğrenme kaynaklarının düzenli izlendiğine ve iyileştirildiğine ilişkin kanıtlar
   tur: kanit
@@ -2192,11 +2248,14 @@ etiketler:
 - yuva: C.2.1/2
   metin: Öğretim elemanlarının geri bildirimleri
   tur: kanit
-  asama:
-  - belirsiz
-  od: []
-  gerekce: Geri bildirim alınması (3) ya da birlikte değerlendirme (4).
-  durum: oneri
+  asama: *id003
+  od:
+  - 3
+  - 4
+  gerekce: 'İçeriğe bağlı: geri bildirim yalnız toplanmışsa OD3; sonuçları değerlendirilip karara/değişikliğe bağlanmışsa OD4.'
+  durum: onayli
+  icerige_bagli: true
+  karar: Oğuzhan, 2026-11-18
 - yuva: C.2.1/3
   metin: Öğretim elemanlarının araştırma yetkinliğinin izlenmesi ve iyileştirilmesine ilişkin kanıtlar
   tur: kanit
@@ -2246,11 +2305,14 @@ etiketler:
 - yuva: C.2.2/4
   metin: Paydaş geri bildirimleri
   tur: kanit
-  asama:
-  - belirsiz
-  od: []
-  gerekce: Paydaş geri bildirimi (3/4).
-  durum: oneri
+  asama: *id003
+  od:
+  - 3
+  - 4
+  gerekce: 'İçeriğe bağlı: geri bildirim yalnız toplanmışsa OD3; sonuçları değerlendirilip karara/değişikliğe bağlanmışsa OD4.'
+  durum: onayli
+  icerige_bagli: true
+  karar: Oğuzhan, 2026-11-18
 - yuva: C.2.2/5
   metin: Ortak programlar ve ortak araştırma faaliyetlerinin izlenmesine ve iyileştirilmesine yönelik kanıtlar
   tur: kanit
@@ -2291,11 +2353,14 @@ etiketler:
 - yuva: C.3.1/3
   metin: Paydaş geri bildirimleri
   tur: kanit
-  asama:
-  - belirsiz
-  od: []
-  gerekce: Paydaş geri bildirimi (3/4).
-  durum: oneri
+  asama: *id003
+  od:
+  - 3
+  - 4
+  gerekce: 'İçeriğe bağlı: geri bildirim yalnız toplanmışsa OD3; sonuçları değerlendirilip karara/değişikliğe bağlanmışsa OD4.'
+  durum: onayli
+  icerige_bagli: true
+  karar: Oğuzhan, 2026-11-18
 - yuva: C.3.1/4
   metin: Araştırma performansının izlenmesine ve iyileştirilmesine ilişkin kanıtlar
   tur: kanit
@@ -2316,7 +2381,8 @@ etiketler:
   gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
   durum: oneri
 - yuva: C.3.2/1
-  metin: Akademik personelin araştırma-geliştirme performansını izlemek üzere geçerli olan tanımlı süreçler (Yönetmelik, yönerge, süreç tanımı, ölçme araçları, rehber, kılavuz, takdir-tanıma sistemi, teşvik mekanizmaları vb.)
+  metin: Akademik personelin araştırma-geliştirme performansını izlemek üzere geçerli olan tanımlı süreçler (Yönetmelik, yönerge, süreç tanımı, ölçme araçları, rehber, kılavuz, takdir-tanıma sistemi, teşvik
+    mekanizmaları vb.)
   tur: kanit
   asama:
   - planla
@@ -2338,11 +2404,14 @@ etiketler:
 - yuva: C.3.2/3
   metin: Öğretim elemanlarının geri bildirimleri
   tur: kanit
-  asama:
-  - belirsiz
-  od: []
-  gerekce: Geri bildirim (3/4).
-  durum: oneri
+  asama: *id003
+  od:
+  - 3
+  - 4
+  gerekce: 'İçeriğe bağlı: geri bildirim yalnız toplanmışsa OD3; sonuçları değerlendirilip karara/değişikliğe bağlanmışsa OD4.'
+  durum: onayli
+  icerige_bagli: true
+  karar: Oğuzhan, 2026-11-18
 - yuva: C.3.2/4
   metin: Araştırma geliştirme performansına ilişkin izleme ve iyileştirme kanıtları
   tur: kanit
@@ -2517,11 +2586,14 @@ etiketler:
 - yuva: D.2.1/7
   metin: Paydaş geri bildirimleri
   tur: kanit
-  asama:
-  - belirsiz
-  od: []
-  gerekce: Paydaş geri bildirimi (3/4).
-  durum: oneri
+  asama: *id003
+  od:
+  - 3
+  - 4
+  gerekce: 'İçeriğe bağlı: geri bildirim yalnız toplanmışsa OD3; sonuçları değerlendirilip karara/değişikliğe bağlanmışsa OD4.'
+  durum: onayli
+  icerige_bagli: true
+  karar: Oğuzhan, 2026-11-18
 - yuva: D.2.1/8
   metin: Toplumsal katkı performansının izlenmesine ve iyileştirilmesine ilişkin kanıtlar
   tur: kanit
