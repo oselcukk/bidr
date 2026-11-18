@@ -49,7 +49,20 @@ def repo_root() -> Path | None:
 
 def available_profiles() -> list[str]:
     from bidr.criteria.profiles import EXCLUDED_TYPES_FILE, profiles_dir
-    return sorted(p.stem for p in profiles_dir().glob("*.yaml") if p.name != EXCLUDED_TYPES_FILE)
+    # Birim profili = "dahil" anahtarı olan dosya; politika dosyaları (kanıt ilkeleri,
+    # kurum geneli, dönem kuralı, hariç türler) aynı klasörde ama profil değildir.
+    import yaml as _yaml
+    out = []
+    for p in profiles_dir().glob("*.yaml"):
+        if p.name == EXCLUDED_TYPES_FILE:
+            continue
+        try:
+            data = _yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+        except Exception:
+            continue
+        if isinstance(data, dict) and "dahil" in data:
+            out.append(p.stem)
+    return sorted(out)
 
 
 def available_institutions() -> list[str]:
