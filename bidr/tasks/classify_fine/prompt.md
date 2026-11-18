@@ -10,6 +10,7 @@ Kurallar:
 7. Hiçbir aday uymuyorsa karar "olcut_yok"; belge kanıt niteliği taşımıyorsa (boş şablon, bu BİDR raporunun kendisi ya da taslağı, ilgisiz metin; dış akreditasyon öz değerlendirme raporları kanıttır) "kanit_degil". İkisinde de "eslesmeler" boş liste. Bu cevaplar geçerlidir; zorlama eşleşme yapma.
 8. Komisyonun kanıt ilkeleri (aynen uygula):
 {{kanit_ilkeleri}}
+9. "kurum_geneli": belge kurum (üniversite) geneli bir düzenleme ya da politika metniyse (yönetmelik, yönerge, usul ve esaslar, kurum politikası, kurum stratejik planı; bölüme özgü bir uygulama kaydı değil) true, değilse false. Kurum geneli belgenin her eşleşmesi kodca OD2 ile sınırlanır; bölümün uyguladığını ayrı bir belge gösterir.
 
 ADAY ALT ÖLÇÜTLER
 {{adaylar}}
@@ -23,4 +24,4 @@ BELGE METNİ
 >>>
 
 Yalnız şu biçimde tek bir JSON nesnesi döndür:
-{"karar": "olcut_var" | "olcut_yok" | "kanit_degil", "eslesmeler": [{"olcut": "B.1.1", "yuva": "B.1.1/2", "asama": "uygula", "od_onerisi": 3, "alinti": "...", "gerekce": "...", "guven": "orta"}], "gerekce": "genel kısa gerekçe"}
+{"karar": "olcut_var" | "olcut_yok" | "kanit_degil", "kurum_geneli": false, "eslesmeler": [{"olcut": "B.1.1", "yuva": "B.1.1/2", "asama": "uygula", "od_onerisi": 3, "alinti": "...", "gerekce": "...", "guven": "orta"}], "gerekce": "genel kısa gerekçe"}

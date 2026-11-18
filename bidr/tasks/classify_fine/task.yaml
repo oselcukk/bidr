@@ -1,9 +1,11 @@
-version: 4
+version: 5
 description: >-
   İnce karar. Belge metni + aday alt ölçütlerin rubriği (1-5, birebir) ve kanıt
   yuvaları (PUKÖ aşaması / OD etiketiyle) → her uyan ölçüt için
   {olcut, yuva, asama, od_onerisi, alinti, gerekce, guven}. Alıntı belgeden
   birebir olmalı; kod verify_quote ile denetler, tutmayan eşleşme reddedilir.
+  v5: `kurum_geneli` (bool) alanı; kurum geneli düzenlemenin eşleşmeleri kodca
+  OD2 ile sınırlanır (bidr/data/profiles/kurum_geneli.yaml).
 inputs:
   adaylar: "aday alt ölçütler: başlık, rubrik 1-5, yuvalar `[aşama → OD]` etiketiyle"
   belge_bilgisi: "documents.jsonl içerik alanları (tür tahmini, tarih, sayfa); yol/ad yok"

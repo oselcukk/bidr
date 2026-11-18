@@ -163,7 +163,7 @@ def _gecersiz_ids(gfile: Path) -> set[str]:
 
 
 def karar_tamam(c: Ctx) -> Check:
-    from bidr.decide.run import COARSE, FINE, load_decisions, task_version
+    from bidr.decide.run import COARSE, FINE, load_decisions, stage_done, stale_summary, task_version
     stage = c.stage["sart"]["asama"]
     task = COARSE if stage == "coarse" else FINE
     ws = c.ws
@@ -171,40 +171,52 @@ def karar_tamam(c: Ctx) -> Check:
     t = text_ids(ws)
     if stage == "coarse":
         need = t
-        done = {d for d in t if (r := recs.get(d)) and
-                (r.get("durum") == "atlandi" or (r.get("durum") == "ok" and "kaba" in r))}
+        done = {d for d in t if (r := recs.get(d)) and (r.get("durum") == "atlandi" or stage_done(r, stage))}
     else:
         need = {d for d in t if (r := recs.get(d)) and r.get("durum") == "ok" and "kaba" in r}
-        done = {d for d in need if recs[d].get("asama") == "ince"}
+        done = {d for d in need if stage_done(recs[d], stage)}
     missing = need - done
     d = ws.root / "work" / stage
     prog = {"belge": len(need), "tamam": len(done)}
     uy = []
+    prep, apply_, = c.fmt(c.stage["komut"][0]), c.fmt(c.stage["komut"][2])
     if stage == "fine":
         red = sorted(x for x in done if recs[x].get("reddedilen_eslesme"))
         if red:
             uy.append(f"{len(red)} belgede alıntısı tutmayan/kurala uymayan eşleşme kodca reddedildi "
                       f"(kullanılmaz). work/fine/GECERSIZ.md'deki paketleri bir kez yeniden yazıp apply "
                       f"çalıştırmak isteğe bağlıdır.")
+    eski = stale_summary(ws, stage, recs)
+    if eski:
+        prog["yeniden_islenecek"] = len(eski)
+        uy.append(f"yeniden işlenecek {len(eski)} belge (görev sürümü ya da istem değişti; eski kararlar "
+                  f"kullanılıyor). Pahalı: önce `{prep}` maliyet özetini verir, kullanıcı onaylarsa "
+                  f"`{prep} --yes`.")
     if not missing:
-        return Check(bitti=True, ilerleme=prog, uyarilar=uy, neden=f"{len(done)} belge {stage} tamam")
+        return Check(bitti=True, ilerleme=prog, uyarilar=uy,
+                     neden=f"{len(done)} belge {stage} tamam"
+                           + (f"; yeniden işlenecek {len(eski)} belge (onay bekliyor)" if eski else ""))
+    # temsilcinin kararını bekleyen mükerrer metinler: kendi paketleri yok, olması da gerekmez
+    wait = {x for x in missing if ((recs.get(x) or {}).get("mukerrer") or {}).get("durum") == "bekliyor"
+            and recs[x]["mukerrer"].get("asama") == stage}
+    if wait:
+        prog["mukerrer_bekleyen"] = len(wait)
     pkgs = {}
-    for did in missing:
+    for did in missing - wait:
         p = d / f"{did}.json"
         if p.exists():
             try:
                 pkgs[did] = json.loads(p.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 pass
-    prep, apply_, = c.fmt(c.stage["komut"][0]), c.fmt(c.stage["komut"][2])
-    unpack = missing - set(pkgs)
+    unpack = missing - wait - set(pkgs)
     if unpack:
-        return Check(kim=KOMUT, ilerleme=prog, komutlar=[prep],
+        return Check(kim=KOMUT, ilerleme=prog, uyarilar=uy, komutlar=[prep],
                      neden=f"{len(unpack)} belgenin iş paketi yok: önce prepare")
     old = [x for x, p in pkgs.items() if str(p.get("surum")) != task_version(task)]
     if old:
-        return Check(kim=KOMUT, ilerleme=prog, komutlar=[prep + " --redo"],
-                     neden=f"{len(old)} paket görevin eski sürümüyle hazırlanmış")
+        return Check(kim=KOMUT, ilerleme=prog, uyarilar=uy, komutlar=[prep],
+                     neden=f"{len(old)} paket görevin eski sürümüyle hazırlanmış: prepare yeniler")
     no_out = sorted(x for x in pkgs if not (d / f"{x}.out.json").exists())
     bad = _gecersiz_ids(d / "GECERSIZ.md") & set(pkgs)
     prog.update(paket=len(pkgs), cevapsiz=len(no_out), gecersiz=len(bad))
@@ -215,13 +227,14 @@ def karar_tamam(c: Ctx) -> Check:
         if bad:
             parts.append(f"{len(bad)} cevap geçersiz (work/{stage}/GECERSIZ.md)")
         rel = f"work/{stage}"
-        return Check(kim=AJAN, ilerleme=prog,
+        return Check(kim=AJAN, ilerleme=prog, uyarilar=uy,
                      komutlar=[f"(ajan) {rel}/README.md'yi oku; cevapsız/geçersiz her <doc_id>.json için "
                                f"{rel}/<doc_id>.out.json yaz (yalnız JSON, şemaya uygun, alıntılar birebir)",
                                apply_],
                      neden=", ".join(parts) + f": model işi ajanda ({rel}/)")
-    return Check(kim=KOMUT, ilerleme=prog, komutlar=[apply_],
-                 neden=f"{len(missing)} cevap yazılmış ama işlenmemiş: apply")
+    return Check(kim=KOMUT, ilerleme=prog, uyarilar=uy, komutlar=[apply_],
+                 neden=f"{len(missing)} cevap yazılmış ama işlenmemiş: apply"
+                       + (f" ({len(wait)} mükerrer belge temsilcinin kararını devralacak)" if wait else ""))
 
 
 # -- hakem -----------------------------------------------------------------------------------
