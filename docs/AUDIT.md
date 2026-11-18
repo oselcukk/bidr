@@ -327,7 +327,8 @@ bu dosyayı okumaz; eşleşmeler belge belge sayılır. Önerilen entegrasyon (a
 3. **OD4 için aynı faaliyet tercih edilir.** K ve Ö halkaları aynı faaliyetten geliyorsa
    (değerlendirme → iyileştirme) gaps.md "kapalı döngü" der; farklı faaliyetlerden geliyorsa
    OD yine sayılır, not düşülür (iyileştirmenin hangi sonuca dayandığı doğrulanmalı).
-4. **Write paketine faaliyet özeti.** Ölçüte bağlı her faaliyet için `{ad, tarih, durum,
+4. **Write paketine faaliyet özeti** (uygulandı: `bidr/write/run.py`, görev `write_criterion` v2;
+   docs/REPORT_LAYER.md "write"). Ölçüte bağlı her faaliyet için `{ad, tarih, durum,
    asamalar, eksik}` write girdisine girer; yazım kuralı: yalnız `gerceklesme_kanitli` ya da
    `gerceklesme_dolayli` faaliyet için "düzenlenmiştir/gerçekleştirilmiştir" yazılır,
    yalnız duyurulu olan için "planlanmıştır/duyurulmuştur". verify bu kuralı denetler.

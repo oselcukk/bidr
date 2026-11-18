@@ -37,12 +37,15 @@ hepsini gösterir; önkoşulu bitmemiş aşamanın komutu çıkış kodu 3 ile d
 | 7 | karar_kaba / karar_ince | M | candidates | `decisions.jsonl` (ölçüt, yuva, aşama, birebir alıntı, kanıt adı) |
 | 8 | hakem | I | karar_ince, etiketler | `consensus-labels.jsonl` |
 | 9 | name (isteğe bağlı) | M | karar_ince | `kanit-adlari.jsonl` (kaynak: model) |
-| 10 | audit | D + I | karar_ince, hakem, name | `review.xlsx`, `gaps.md`, `audit-olcutler.json`; apply: `review-decisions.jsonl`, insan adları/bağlantıları |
-| 11 | file | D | audit | `evidence/A/A.1/A.1.2/…`, `evidence-index.csv` (ad, bağlantı) |
+| 9b | faaliyet | D | karar_ince | `faaliyetler.json` (aynı toplantı/etkinliğin belgeleri; güncelliği içerikle denetlenir) |
+| 10 | audit | D + I | karar_ince, hakem, name, faaliyet | `review.xlsx`, `gaps.md`, `audit-olcutler.json`; apply: `review-decisions.jsonl`, insan adları/bağlantıları |
+| 10b | ikinci_arama (isteğe bağlı) | M | audit | `work/ikinci_arama/`, `decisions.jsonl`'e işaretli eşleşmeler (kabul varsa audit yeniden; `rapor.ikinci_arama: false` → atlandi) |
+| 11 | file | D | audit, ikinci_arama | `evidence/A/A.1/A.1.2/…`, `evidence-index.csv` (ad, bağlantı) |
 | 12 | write | M | file | `texts/<ölçüt>.json` |
 | 13 | verify | D + M (+I) | write | `verify.jsonl`; reddedilen → yeniden yazım döngüsü; sınırdan sonra insan kararı |
 | 14 | yonler | M (+D) | verify | `yonler/<alan>.json` (alan düzeyi Güçlü / Gelişmeye Açık Yönler; doğrulaması verify akışında, `verify-yonler.jsonl`) |
-| 15 | render | D | yonler | `report.docx` (kanıt adları bağlantılı, kapak hazırlayanları, 8 güçlü/gelişme hücresi, ölçüt kapsamı), `gaps.md` bağlantı ve kapsam kararı bölümleri |
+| 15 | render | D | yonler | `report.docx` (kanıt adları bağlantılı, kapak hazırlayanları, 8 güçlü/gelişme hücresi, ölçüt kapsamı, eksik kanıt notu), `gaps.md` bağlantı ve kapsam kararı bölümleri |
+| 16 | denetle | D (+I) | render | `denetim.json` (güncel docx'in sha'sı; kritik bulgu → "yayıma hazır değil", kullanıcı) |
 
 Rapor katmanının arayüzü: `docs/REPORT_LAYER.md`; denetim kuralları: `docs/AUDIT.md`;
 model katmanı: `docs/MODEL_LAYER.md`.
@@ -92,7 +95,8 @@ yalnız orada durur.
 
 ## Durum (2026-11-18)
 
-Hat init'ten render'a kadar uygulanmış ve bağlı: her aşamanın kodla denetlenen tamamlanma
+Hat init'ten biçim denetimine (denetle) kadar uygulanmış ve bağlı (faaliyet kaydı, isteğe bağlı
+ikinci arama ve denetle 2026-11-19'da bağlandı): her aşamanın kodla denetlenen tamamlanma
 şartı var; sentetik uçtan uca test (`tests/test_pipeline.py`) bütün geçişleri, kapıları,
 yeniden yazım döngüsünü ve bağlantılı raporu sınar. Model işi ajan modunda (ücretli API yok).
 

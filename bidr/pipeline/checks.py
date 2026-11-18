@@ -249,6 +249,21 @@ def karar_tamam(c: Ctx) -> Check:
 
 # -- hakem -----------------------------------------------------------------------------------
 
+def _hakem_same(ws: Workspace, review: Path) -> bool:
+    """decisions.jsonl kuyruktan sonra yeniden yazıldı (ör. ikinci arama apply'ı yalnız kendi kaydını
+    ekledi): karşılaştırma ve sorular bugünkü kararlardan yeniden hesaplanınca aynıysa kuyruk güncel."""
+    from bidr.criteria.loader import load_criteria
+    from bidr.decide.compare import FILES, build, compare_md
+    try:
+        cs = load_criteria()
+        res = build(ws.root, criteria=cs)
+        cmp_ = ws.root / FILES["compare"]
+        return (json.loads(json.dumps(res["sorular"], ensure_ascii=False)) == list(read_jsonl(review))
+                and cmp_.exists() and cmp_.read_text(encoding="utf-8") == compare_md(res, cs))
+    except Exception:          # okunamayan girdi: temkinli taraf, eski say
+        return False
+
+
 def hakem_tamam(c: Ctx) -> Check:
     from bidr.decide.compare import FILES, load_answers, parse_answer, parse_review_md
     ws = c.ws
@@ -257,7 +272,7 @@ def hakem_tamam(c: Ctx) -> Check:
     review = ws.root / FILES["review_jsonl"]
     md = ws.root / FILES["review_md"]
     dec = ws.root / "decisions.jsonl"
-    if not review.exists() or _mtime(review) < _mtime(dec):
+    if not review.exists() or (_mtime(review) < _mtime(dec) and not _hakem_same(ws, review)):
         return Check(kim=KOMUT, komutlar=[c.fmt(c.stage["komut"][0])],
                      neden="hakem kuyruğu yok ya da kararlardan eski")
     qs = list(read_jsonl(review))
@@ -297,9 +312,13 @@ def audit_tamam(c: Ctx) -> Check:
     prog = {"satir": st["satir"], "kararli": st["kararli"], "gecersiz": st["gecersiz"],
             "uygulanmamis": st["uygulanmamis"]}
     if not st["guncel"]:
-        return Check(kim=KOMUT, komutlar=[run_cmd], ilerleme=prog,
-                     neden="review.xlsx eski kararlardan üretilmiş (decisions.jsonl değişti); yeniden üret "
-                           "(doldurulmuş kararlar yeni tabloya taşınır)")
+        why = ("review.xlsx eski kararlardan üretilmiş (decisions.jsonl değişti); yeniden üret "
+               "(doldurulmuş kararlar yeni tabloya taşınır)")
+        n_ia = _ikinci_arama_kabul(ws)
+        if n_ia:
+            why += (f". İkinci arama {n_ia} kabul edilmiş eşleşme ekledi: yeni satırlar (işaret `ikinci_arama`) "
+                    "kullanıcının kararını bekleyecek")
+        return Check(kim=KOMUT, komutlar=[run_cmd], ilerleme=prog, neden=why)
     acik = st["satir"] - st["kararli"]
     if acik:
         why = f"{acik}/{st['satir']} satır karar bekliyor"
@@ -319,6 +338,116 @@ def audit_tamam(c: Ctx) -> Check:
         return Check(kim=KOMUT, komutlar=[apply_cmd], ilerleme=prog,
                      neden=" ve ".join(why) + " tabloda var ama işlenmemiş: apply")
     return Check(bitti=True, ilerleme=prog, neden=f"{st['satir']} satır kararlı ve işlendi")
+
+
+def _ikinci_arama_kabul(ws: Workspace) -> int:
+    """decisions.jsonl'de ikinci aramanın eklediği kabul edilmiş eşleşme sayısı."""
+    p = ws.root / "decisions.jsonl"
+    if not p.exists():
+        return 0
+    return sum(1 for r in read_jsonl(p) for m in r.get("eslesmeler") or []
+               if m.get("ikinci_arama") and m.get("kabul"))
+
+
+# -- faaliyet kayıtları -------------------------------------------------------------------------
+
+def faaliyet_tamam(c: Ctx) -> Check:
+    from bidr.faaliyet import run as F
+    ws = c.ws
+    cmd = c.fmt(c.stage["komut"][0])
+    src, out = ws.root / F.DECISIONS, ws.root / F.OUT
+    if not src.exists():
+        return Check(kim=KOMUT, komutlar=[cmd], neden=f"{F.DECISIONS} yok")
+    if not out.exists():
+        return Check(kim=KOMUT, komutlar=[cmd], neden=f"{F.OUT} yok: faaliyet kayıtları üretilmedi")
+    want = json.loads(json.dumps(F.build(list(read_jsonl(src))), ensure_ascii=False))
+    try:
+        have = json.loads(out.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        have = None
+    if have != want:
+        return Check(kim=KOMUT, komutlar=[cmd],
+                     neden=f"{F.OUT} eski: decisions.jsonl değişti (yeniden karar ya da ikinci arama)")
+    st = want["ozet"]
+    prog = {"faaliyet": st["faaliyet"], "belge": st["faaliyetli"], "yalniz_duyuru": st["yalniz_duyuru"]}
+    uy = []
+    if st["yalniz_duyuru"]:
+        uy.append(f"{st['yalniz_duyuru']} faaliyetin yalnız duyuru/plan belgesi var: metinde "
+                  "'düzenlenmiştir/gerçekleştirilmiştir' denemez (gerçekleşme kanıtı gerekir)")
+    if st["alansiz_eski"]:
+        uy.append(f"{st['alansiz_eski']} ince karar classify_fine v8 ve öncesinden (faaliyet alanı yok; "
+                  "faaliyetsiz sayılır)")
+    return Check(bitti=True, ilerleme=prog, uyarilar=uy,
+                 neden=f"{st['faaliyet']} faaliyet kaydı ({st['faaliyetli']} belge) güncel")
+
+
+# -- ikinci arama (isteğe bağlı) ------------------------------------------------------------------
+
+def ikinci_arama_tamam(c: Ctx) -> Check:
+    from bidr.candidates import arama as A
+    from bidr.decide.run import FINE, _pkg_paths, load_decisions, task_version
+    from bidr.write.sources import rapor_section
+    ws = c.ws
+    if rapor_section(ws.root).get("ikinci_arama") is False:
+        return Check(atlandi=True, neden="atlandı: config.yaml rapor.ikinci_arama: false (kanıtsız/zayıf ölçütler "
+                                         "için ikinci arama yapılmadı)")
+    prep, apply_ = c.fmt(c.stage["komut"][0]), c.fmt(c.stage["komut"][2])
+    d = ws.root / "work" / A.WORK
+    if not (d / "README.md").exists():
+        return Check(kim=KOMUT, komutlar=[prep],
+                     neden="ikinci arama yapılmadı (isteğe bağlı): kanıtsız/zayıf ölçütler için arşivde ters arama. "
+                           "Atlamak kullanıcının kararıdır: config.yaml `rapor: {ikinci_arama: false}`")
+    recs = load_decisions(ws)
+    ver = task_version(FINE)
+    pkgs = []
+    for p in _pkg_paths(d):
+        try:
+            pkgs.append(json.loads(p.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            continue
+    bad = _invalid_keys(d / "GECERSIZ.md", r"^- `([^`]+)\.json`")
+    n_ia = _ikinci_arama_kabul(ws)
+    prog = {"paket": len(pkgs), "kabul_eslesme": n_ia}
+    eski, no_out, gecersiz, acik = [], [], [], []
+    for pkg in pkgs:
+        did = pkg.get("doc_id")
+        rec = recs.get(did)
+        if (str(pkg.get("surum")) != ver or not rec or rec.get("asama") != "ince"
+                or A.first_pass_print(rec) != ((pkg.get("meta") or {}).get("ikinci_arama") or {}).get("ince_parmak")):
+            eski.append(did)
+            continue
+        outp = d / pkg["cikti_dosyasi"]
+        if not outp.exists():
+            no_out.append(did)
+            continue
+        if did in bad:
+            gecersiz.append(did)
+            continue
+        cevap = A._sha(outp.read_text(encoding="utf-8"))
+        oc = (rec.get("ikinci_arama") or {}).get("olcutler") or {}
+        adaylar = pkg["meta"]["adaylar"]
+        if not (A.done_criteria(rec) >= set(adaylar) and all(
+                (oc.get(x) or {}).get("cevap_sha") == cevap and (oc.get(x) or {}).get("istem_sha") == pkg["istem_sha"]
+                for x in adaylar)):
+            acik.append(did)
+    prog.update(cevapsiz=len(no_out), gecersiz=len(gecersiz), islenmemis=len(acik), eski=len(eski))
+    if eski:
+        return Check(kim=KOMUT, komutlar=[prep], ilerleme=prog,
+                     neden=f"{len(eski)} paket eski (görev sürümü değişti ya da ilk geçiş yeniden karara bağlandı): "
+                           "prepare yeniler")
+    if no_out or gecersiz:
+        parts = [x for x in (f"{len(no_out)} paket cevapsız" if no_out else "",
+                             f"{len(gecersiz)} cevap geçersiz (work/ikinci_arama/GECERSIZ.md)" if gecersiz else "") if x]
+        return Check(kim=AJAN, ilerleme=prog,
+                     komutlar=["(ajan) work/ikinci_arama/README.md'yi oku; cevapsız/geçersiz her <doc_id>.json için "
+                               "<doc_id>.out.json yaz (ince karar kuralları; uymuyorsa olcut_yok/kanit_degil)", apply_],
+                     neden=", ".join(parts) + ": model işi ajanda (work/ikinci_arama/)")
+    if acik:
+        return Check(kim=KOMUT, komutlar=[apply_], ilerleme=prog,
+                     neden=f"{len(acik)} cevap yazılmış ama işlenmemiş: apply (kabul edilen eşleşme audit'i yeniden ister)")
+    return Check(bitti=True, ilerleme=prog,
+                 neden=(f"{len(pkgs)} paket işlendi; ikinci arama {n_ia} kabul edilmiş eşleşme ekledi (audit'te incelendi)"
+                        if pkgs else "ikinci arama çalıştı: zayıf ölçüt için aranacak belge yok"))
 
 
 # -- kanıt adı (isteğe bağlı) -------------------------------------------------------------------
@@ -446,6 +575,11 @@ def write_tamam(c: Ctx) -> Check:
     extra = sorted(p.stem for p in td.glob("*.json") if p.stem not in need) if td.exists() else []
     if extra:
         uy.append(f"{len(extra)} metnin ölçütünde artık kanıt yok ({_sample(extra)}); doğrulama bu metinleri reddeder")
+    eski_surum = sorted(k for k, t in texts.items() if (t.get("kaynak") or {}).get("gorev_surumu")
+                        and str(t["kaynak"]["gorev_surumu"]) != ver and k not in pending)
+    if eski_surum:
+        uy.append(f"{len(eski_surum)} metin yazım görevinin eski sürümüyle (faaliyet kuralı öncesi; {_sample(eski_surum)}): "
+                  f"geçerli kalır; yeni kuralla yeniden yazmak isteğe bağlı: `{prep} --only <ölçüt>`")
     if todo:
         return Check(kim=KOMUT, ilerleme=prog, uyarilar=uy, komutlar=[prep],
                      neden=f"{len(todo)} ölçütün metni yok ya da eski (kanıt listesi/OD değişti): prepare")
@@ -685,6 +819,40 @@ def render_tamam(c: Ctx) -> Check:
     return Check(bitti=True, ilerleme=prog, uyarilar=uy, neden=f"report: {m['cikti']}")
 
 
+def denetle_tamam(c: Ctx) -> Check:
+    from bidr.check.run import file_sha
+    from bidr.render.run import load_manifest
+    ws = c.ws
+    cmd = c.fmt(c.stage["komut"][0])
+    m = load_manifest(ws.root) or {}
+    docx = Path(m.get("cikti") or ws.root / "report.docx")
+    if not docx.exists():
+        return Check(kim=KOMUT, komutlar=[cmd], neden=f"{docx.name} yok: önce render")
+    p = ws.root / "denetim.json"
+    if not p.exists():
+        return Check(kim=KOMUT, komutlar=[cmd], neden="denetim.json yok: biçim denetimi yapılmadı")
+    try:
+        js = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return Check(kim=KOMUT, komutlar=[cmd], neden="denetim.json okunamadı: yeniden denetle")
+    same = js.get("docx") and Path(js["docx"]).expanduser().resolve() == docx.resolve()
+    if not same or js.get("docx_sha") != file_sha(docx):
+        return Check(kim=KOMUT, komutlar=[cmd], neden=f"denetim.json güncel {docx.name}'e ait değil (rapor yeniden "
+                                                      "üretildi ya da elle değişti): yeniden denetle")
+    oz = js.get("ozet") or {}
+    kritik, uyari = int(oz.get("kritik") or 0), int(oz.get("uyari") or 0)
+    prog = {"kritik": kritik, "uyari": uyari}
+    kod = oz.get("kodlar") or {}
+    if kritik:
+        top = ", ".join(f"{k} ({v.get('sayi')})" for k, v in sorted(kod.items()) if v.get("seviye") == "kritik")
+        return Check(kim=INSAN, ilerleme=prog, komutlar=[
+            f"(insan) {p}: kritik bulguları kullanıcıya göster; kaynağını (metin, kapsam kararı, hazırlayanlar, "
+            "şablon, kanıt klasörü) düzelt — report.docx'i elle düzeltme", c.fmt("bidr render -w {ws}"), cmd],
+            neden=f"yayıma hazır değil: {kritik} kritik bulgu ({top})")
+    uy = [f"{uyari} biçim uyarısı (denetim.json; engel değil, kullanıcı gözden geçirir)"] if uyari else []
+    return Check(bitti=True, ilerleme=prog, uyarilar=uy, neden="yayıma hazır: kritik bulgu yok")
+
+
 def _transcribe_tamam(c: Ctx) -> Check:
     from bidr.transcribe.check import transcribe_tamam
     return transcribe_tamam(c)
@@ -708,6 +876,9 @@ CHECKS: dict[str, Callable[[Ctx], Check]] = {
     "karar_tamam": karar_tamam,
     "hakem_tamam": hakem_tamam,
     "audit_tamam": audit_tamam,
+    "faaliyet_tamam": faaliyet_tamam,
+    "ikinci_arama_tamam": ikinci_arama_tamam,
+    "denetle_tamam": denetle_tamam,
     "transcribe_tamam": _transcribe_tamam,
     "describe_tamam": _describe_tamam,
     "name_tamam": name_tamam,

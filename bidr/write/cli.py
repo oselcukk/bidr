@@ -41,6 +41,9 @@ def _cmd(args) -> int:
                   + (f" ({st['onceki_olcut']} ölçütte bulundu)" if st["onceki"] else ""))
             if st["kanitsiz"]:
                 print(f"kanıtsız ölçüt (paket yok; metin yazılmaz): {', '.join(st['kanitsiz'])}")
+            if st["eski_surum"]:
+                print(f"görevin eski sürümüyle yazılmış, girdileri güncel (geçerli; yeniden paketlenmedi): "
+                      f"{', '.join(st['eski_surum'])} — yeni kuralla yeniden yazmak için --only ya da --redo")
             print(f"Ajan: {st['klasor']}/README.md")
             return 0
         st = R.apply(args.workspace, model=args.model, index=args.index, audit=args.audit)
