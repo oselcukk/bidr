@@ -267,3 +267,23 @@ def test_cli_prepare_apply_olcum(ws, capsys):
     assert main(["arama", "olcum", "-w", str(root), "--json"]) == 0
     out = capsys.readouterr().out
     assert "B.2.3" in out and '"bakilan": 1' in out
+
+
+def test_cli_prepare_gated_until_audit_done(ws, tmp_path, capsys):
+    """Yönetilen çalışma alanında `arama prepare` audit bitmeden çalışmaz (çıkış 3, `bidr next`
+    önerisi); paket yazılmaz. Ölçüm ve yönetilmeyen çalışma alanı etkilenmez."""
+    import yaml
+
+    from bidr.cli import main
+    from bidr.pipeline.gate import GATE_EXIT
+    root, _ = ws
+    src = tmp_path / "kaynak"
+    src.mkdir()
+    (root / "config.yaml").write_text(yaml.safe_dump({"bidr": {"kaynak": str(src), "birim": "Örnek Bölümü"}},
+                                                     allow_unicode=True), encoding="utf-8")
+    capsys.readouterr()
+    assert main(["arama", "prepare", "-w", str(root), "--profile", "", "--olcut", "B.2.3"]) == GATE_EXIT
+    err = capsys.readouterr().err
+    assert "audit bittikten sonra" in err and "bidr next -w" in err and "önce bitmeli" in err
+    assert not (root / "work" / A.WORK).exists()
+    assert main(["arama", "olcum", "-w", str(root), "--json"]) == 0

@@ -95,8 +95,11 @@ belgenin sürümleri listeyi şişirir. Ölçüt ölçüt iki adım:
    taşımıyor; ölçüt başına `olcut_basina_en_fazla` (sıra: OD'ye sayılan önce, sonra OD, güven,
    tarih). (d) Bu dönemin kanıtı olmayan belge (audit `donem_sonrasi`,
    `surum_yururlukten_kalkmis`, `surum_donem_sonrasi`: dönem sonrası olay/düzenleme,
-   yürürlükteki sürüm olmayan düzenleme; neden `donem_sonrasi`) ve birim aitliği insanca
-   onaylanmamış belge (audit `birim_onay_bekliyor`; neden `birim_dogrulanmali`) hiç girmez:
+   yürürlükteki sürüm olmayan düzenleme; neden `donem_sonrasi`), audit savunmasının kanıt
+   saymadığı belge (`select.KANIT_DEGIL`: `haric_tur`, `yururlukten_kalkmis`, `bilgisiz_ekran`,
+   `madde_baska_birim`; neden işaretin kendisi; insan `kabul`ü hariç tür ve yürürlükten kaldırmayı
+   aşmaz) ve birim aitliği insanca onaylanmamış belge (audit `birim_onay_bekliyor`; neden
+   `birim_dogrulanmali`) hiç girmez:
    atıf da zincir de aşmaz (insan `duzelt`i audit'te kuralı kaldırır, satır sayılır). Geçmiş
    kanıt (önceki yıl olayı, OD'ye sayılmaz) ölçüt başına en çok `gecmis_kanit_en_fazla`
    (neden `gecmis_siniri`). (c) Kurum geneli düzenleme (audit `kurum_geneli` işareti) bir ölçütte en çok
@@ -280,6 +283,14 @@ Kurallar (kılavuz "Yazım Kuralları", "Kanıt Gösterimi"; K31) ve düzeyleri:
 | atıf almayan liste kanıtı; numara 1..n sıralı değil; metin içinde `[n-ODk]` | uyarı |
 | kanıt dosya adı `[Ölçüt-sıra-ODk] Ad.uzantı`, klasör `A/A.1/A.1.1/`; listede olmayan dosya; evidence-index.csv ile fark | uyarı |
 | kanıtsız "bulunamamıştır" ifadeli ölçüt (insan kararı) | uyarı |
+| rubrikte insan onayı olmadan (kod önerisiyle) işaretlenen OD: `od_onay_bekliyor` "OD insan onayı bekliyor" | uyarı |
+
+**OD onayı.** Render rubrikte önce komisyonun onayladığı `od_onayli`'yi (audit-olcutler.json;
+review.xlsx "Ölçüt özeti" ONAYLANAN OD → `bidr audit apply`) işaretler; yoksa kodun önerisi `od`
+(metnin `od_onerisi` onu aşamaz). `.bidr-render.json` `od_onay_bekliyor` (`{ölçüt: {od, kaynak:
+kod|metin}}`) onaysız işaretlenenleri tutar. `bidr denetle` bu listeyi kayıt denetlenen docx'i
+üretmişse (çıktı özeti aynı) kayıttan, değilse audit-olcutler.json'dan (`od` var, `od_onayli` yok)
+alır (`check.run.od_onay_bekleyenler`; render kodu çağrılmaz).
 
 Kapsam birimin doldurduğu bölgelerdir; şablonun kendi kılavuz metni biçim denetimine girmez. Başlık
 biçimi bulgusu şablonda da varsa "şablon kusuru" diye işaretlenir (FR-0833 R0'da B.2 kalın değil,

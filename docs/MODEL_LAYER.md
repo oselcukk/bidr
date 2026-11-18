@@ -194,7 +194,8 @@ işlenmiş arşivin bütün belgeleri derlem. Kod: `bidr/candidates/ikinci.py` (
   kararı devralan mükerrer belge seçilmez. Ölçüt başına en iyi `--n` (vars. 5) belge; belge
   başına en çok `--max-aday` (vars. 6) ölçüt. Çoklu ölçüt korunur: bir belgeye seçilen bütün
   zayıf ölçütler aynı pakette sorulur.
-- **Paket** (`bidr arama prepare -w WS`): `work/ikinci_arama/<doc_id>.json`, `classify_fine`
+- **Paket** (`bidr arama prepare -w WS`; yönetilen çalışma alanında aşama kapısı: audit bitmeden
+  çıkış 3 ve `bidr next` önerisi, paket yazılmaz): `work/ikinci_arama/<doc_id>.json`, `classify_fine`
   görevi, `decide prepare`'inkiyle aynı biçim ve istem (`fine_inputs`; aday listesi yalnız
   ikinci aramanın ölçütleri). `meta.ikinci_arama`: ölçüt başına puan, arşivdeki sıra, zayıflık
   nedenleri ve ilk geçişin parmak izi (`ince_parmak`).

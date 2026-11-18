@@ -380,13 +380,15 @@ metni (`text/`), birim adı (`config.yaml` `bidr.birim`) ve faaliyet kaydıyla y
 belirleyici denetimler (`bidr/audit/savunma.py`; desenler katlanmış metinde). Her düşürme
 satırda işaretlenir, gaps.md "Kodun düşürdüğü ya da saymadığı eşleşmeler" bölümünde listelenir.
 Satırın KARAR'ı `kabul` ya da `duzelt` ise metin sezgileri uygulanmaz (insan kararı aşar; düşük
-güven kuralı gibi). Hariç tür ve yürürlükten kaldırma `kabul`de de geçerlidir.
+güven kuralı gibi). Hariç tür ve yürürlükten kaldırma `kabul`de de geçerlidir. `haric_tur`,
+`bilgisiz_ekran`, `yururlukten_kalkmis` ve `madde_baska_birim` ile sayılmayan belge yayımlanan
+kanıt listesine de girmez (`bidr file`, neden işaretin kendisi; gaps.md "Kanıt seçimi").
 
 | İşaret | Koşul | Sonuç |
 |---|---|---|
 | `haric_tur` | tür `haric_turler.yaml`'da (BİDR raporu/taslağı; geçen yılınki dahil) | sayılmaz |
 | `bilgisiz_ekran` | web/ekran/form türünde giriş ekranı (kullanıcı adı/parola + giriş) ya da yalnız kısa bağlantı maddelerinden oluşan sayfa | sayılmaz |
-| `yururlukten_kalkmis` | başka bir belgenin "… tarihli … yürürlükten kalkar/kaldırılmıştır" cümlesindeki tarih bu belgenin tarihine eşit (kaldıran belge rapor yılı ya da öncesi) | sayılmaz, dönem dışı listesine girer |
+| `yururlukten_kalkmis` | başka bir belgenin "… tarihli … yürürlükten kalkar/kaldırılmıştır" cümlesindeki tarih bu belgenin tarihine eşit (kaldıran belge rapor yılı ya da öncesi) | sayılmaz, dönem dışı listesine girer, yayımlanmaz |
 | `madde_baska_birim` | birim adı biliniyor; alıntının bulunduğu madde/gündem başka birimi anıyor, bu birimi anmıyor (madde ilkesi) | sayılmaz |
 | `bos_form` | tür `anket_formu`/`form_belgesi`, metinde sonuç (yanıt sayısı, ortalama, %, ondalık puan) yok, aşama U+ | planla |
 | `gerceklesme_kaniti_yok` | tür `etkinlik_duyurusu`, ya da alıntıda gelecek zaman ("-acaktır/-ecektir"), ya da faaliyet yalnız duyurulu | planla |
@@ -431,14 +433,16 @@ tavanındadır (üst birim istisnası değişmedi). Birim adı yoksa bugünkü t
   "her yıl", "kesintisiz") — sayılır. Aksi `ozgun_kanitsiz` (sayılmaz). Tek öz-övgü cümlesi ya
   da yalnız web metni OD5 üretmez.
 - **Kod önerisi ve nihai düzey ayrı.** `audit-olcutler.json` ölçüt alanları: `od` ve
-  `od_kod_onerisi` (kodun önerisi; render bugün `od`'yi okur), `od_onayli` (komisyonun onayladığı
+  `od_kod_onerisi` (kodun önerisi), `od_onayli` (komisyonun onayladığı
   nihai düzey; yoksa `null`), `od_onay` (`{od, not, kod_onerisi, zaman}`). Onay review.xlsx
   "Ölçüt özeti" sayfasındaki **ONAYLANAN OD (insan)** (1-5) ve **OD notu** sütunlarından `bidr
   audit apply` ile `olcut-od-kararlari.jsonl`'e (`kaynak: insan`) yazılır; boş hücre onayı
   kaldırır, geçersiz değer `od_gecersiz` (çıkış 1 değil, öteki kararlar işlenir; önceki onay
   korunur). Uygulanmamış onay `uygulanmamis_duzeltme`'ye sayılır ve yeniden üretilen tabloya
   taşınır. Kod OD5 önerdiyse ve onay yoksa not: "OD5 kod önerisidir: insan onayı bekliyor";
-  onay kod önerisinden farklıysa not: "komisyonun onayladığı düzey ODx".
+  onay kod önerisinden farklıysa not: "komisyonun onayladığı düzey ODx". Render rubrikte önce
+  `od_onayli`'yi, yoksa `od`'yi işaretler; onaysız işaretlenen düzey `bidr denetle`'de
+  `od_onay_bekliyor` uyarısıdır (docs/REPORT_LAYER.md "OD onayı").
 
 Bilinen sınırlar: desenler sözcük düzeyindedir (eşanlamlı ifade kaçabilir); birim adı
 `config.yaml`'da yoksa birim/madde/usul denetimleri çalışmaz; madde bloğu "Madde N",

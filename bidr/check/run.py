@@ -15,6 +15,7 @@ import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from bidr.criteria.model import id_key
 from bidr.criteria.extract_docx import RE_MAIN, RE_SUB, UNITS_PREFIX, W, _cell_lines, _ptext
 
 from .fmt import Resolver, field_signature, has_object, text_runs
@@ -283,8 +284,11 @@ def file_sha(p: Path) -> str:
 
 def denetle(docx_path: Path, *, rules: Rules | None = None, sablon: Path | None = None,
             kanit_klasoru: Path | None = None, index_path: Path | None = None,
-            beklenen: tuple[list[str], list[str]] | None = None) -> Sonuc:
-    """`beklenen`: (alt ölçütler, ölçütler); vars. paket ölçüt verisi (46 alt ölçüt)."""
+            beklenen: tuple[list[str], list[str]] | None = None,
+            od_bekleyen: dict[str, dict] | None = None) -> Sonuc:
+    """`beklenen`: (alt ölçütler, ölçütler); vars. paket ölçüt verisi (46 alt ölçüt).
+    `od_bekleyen`: {ölçüt: {od, kaynak}}: rubrikte insan onayı olmadan (kod/metin önerisiyle)
+    işaretlenen düzeyler (`od_onay_bekleyenler`); her biri `od_onay_bekliyor` uyarısı olur."""
     import docx
 
     rules = rules or Rules()
@@ -305,7 +309,53 @@ def denetle(docx_path: Path, *, rules: Rules | None = None, sablon: Path | None 
         _kanit_klasoru(Path(kanit_klasoru), listeler, s)
     if index_path is not None and Path(index_path).exists():
         _kanit_dizini(Path(index_path), listeler, s)
+    _od_onay(od_bekleyen or {}, s)
     return s
+
+
+# -- OD onayı (docs/AUDIT.md "Kod önerisi ve nihai düzey ayrı") ---------------------------------
+
+OD_KAYNAK = {"kod": "kod önerisi", "metin": "metnin önerisi"}
+
+
+def od_onay_bekleyenler(ws: Path, docx_path: Path) -> tuple[dict[str, dict], str]:
+    """({ölçüt: {od, kaynak}}, kaynak açıklaması): insan onayı olmadan işaretlenen OD düzeyleri.
+    Render kaydı (`.bidr-render.json`) bu docx'i üretmişse (çıktı özeti tutuyorsa) onun
+    `od_onay_bekliyor` listesi esastır; yoksa `audit-olcutler.json`'da `od_onayli`'si boş ve
+    `od`'si olan ölçütler (render kodu çağrılmaz; dosyalar salt okunur)."""
+    import hashlib
+    ws, docx_path = Path(ws), Path(docx_path)
+    man = ws / ".bidr-render.json"           # bidr.render.run.MANIFEST
+    try:
+        rec = json.loads(man.read_text(encoding="utf-8")) if man.exists() else None
+    except (OSError, ValueError):
+        rec = None
+    if rec and isinstance(rec.get("od_onay_bekliyor"), dict) and docx_path.exists():
+        sha = hashlib.sha256(docx_path.read_bytes()).hexdigest()[:16]
+        if rec.get("cikti_sha") == sha:
+            return {str(c): v for c, v in rec["od_onay_bekliyor"].items() if isinstance(v, dict)}, "render kaydı"
+    ap = ws / "audit-olcutler.json"
+    try:
+        js = json.loads(ap.read_text(encoding="utf-8")) if ap.exists() else None
+    except (OSError, ValueError):
+        js = None
+    out: dict[str, dict] = {}
+    for c in (js or {}).get("olcutler") or []:
+        if c.get("olcut") and c.get("od") in (1, 2, 3, 4, 5) and c.get("od_onayli") not in (1, 2, 3, 4, 5):
+            out[c["olcut"]] = {"od": c["od"], "kaynak": "kod"}
+    return out, "audit-olcutler.json" if js else ""
+
+
+def _od_onay(bek: dict[str, dict], s: Sonuc) -> None:
+    def key(x: str) -> tuple:
+        return (0, *id_key(x)) if re.fullmatch(r"[A-Z](?:\.\d+)+", x) else (1, x)
+    s.bilgi["od_onay_bekliyor"] = sorted(bek, key=key)
+    for c in s.bilgi["od_onay_bekliyor"]:
+        v = bek[c]
+        s.ekle(UYARI, "od_onay_bekliyor", c,
+               f"OD insan onayı bekliyor: rubrikte OD{v.get('od')} işaretli "
+               f"({OD_KAYNAK.get(v.get('kaynak'), v.get('kaynak') or 'kod önerisi')}); komisyon review.xlsx "
+               "\"Ölçüt özeti\" ONAYLANAN OD sütununu doldurmalı → bidr audit apply → bidr render")
 
 
 def _kapak(doc, s: Sonuc) -> None:

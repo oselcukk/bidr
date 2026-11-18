@@ -21,8 +21,9 @@ Sözleşme ve gerekçe: docs/REPORT_LAYER.md "Kanıt seçimi"; ayarlar
    ≥ `en_dusuk_guven`, sayılan eşleşmelerinden en az biri `dolayli_isaretler` taşımıyor; ölçüt
    başına `olcut_basina_en_fazla` (sıra: OD'ye sayılan önce, sonra OD, güven, tarih; dönem kuralı
    yüzünden sayılmayan aday elenmez ama sona kalır); (c) kurum geneli düzenleme bir ölçütte en çok
-   `kurum_geneli_en_fazla` (madde alıntısı olan önce). Bu dönemin kanıtı olmayan (dönem sonrası, yürürlükteki sürüm olmayan) ve birim
-   aitliği insanca onaylanmamış belge hiç girmez (atıf da aşmaz); geçmiş kanıt (süreklilik)
+   `kurum_geneli_en_fazla` (madde alıntısı olan önce). Bu dönemin kanıtı olmayan (dönem sonrası, yürürlükteki sürüm olmayan), audit
+   savunmasının kanıt saymadığı (`KANIT_DEGIL`: hariç tür, yürürlükten kaldırılmış, bilgisiz
+   ekran, başka birimin maddesi) ve birim aitliği insanca onaylanmamış belge hiç girmez (atıf da aşmaz); geçmiş kanıt (süreklilik)
    ölçüt başına en çok `gecmis_kanit_en_fazla`. İnsanın yerleştirdiği (inceleme
    `duzelt`) kanıt ve OD zincirinin bir halkasını taşıyan tek kanıt sınır yüzünden düşmez
    (yayımlanan liste audit OD'sini desteklemeye devam eder). İnceleme `kabul`ü güven ve
@@ -64,6 +65,11 @@ NEDEN = {
     "donem_sonrasi": "bu dönemin kanıtı değil (dönem sonrası ya da yürürlükteki sürüm değil)",
     "birim_dogrulanmali": "birim aitliği insanca onaylanmadı",
     "gecmis_siniri": "geçmiş kanıt (süreklilik) sınırı dolu",
+    # audit kod tarafı savunmaları (KANIT_DEGIL): kanıt değil
+    "haric_tur": "öz-referans tür (BİDR'nin kendisi ya da taslağı): kanıt değil",
+    "yururlukten_kalkmis": "başka bir belgeyle yürürlükten kaldırılmış düzenleme: bu dönemin kanıtı değil",
+    "bilgisiz_ekran": "bilgi içermeyen ekran/bağlantı sayfası: kanıt değil",
+    "madde_baska_birim": "alıntı başka birimi konu alan maddeden (madde ilkesi): kanıt değil",
 }
 SURUM_NEDEN = {
     "ayni_donem": "aynı dönem işaretleri",
@@ -328,16 +334,33 @@ def merge_versions(items: list, docs: dict, text_of, cited: set[str]) -> tuple[l
 
 # -- ilgililik --------------------------------------------------------------------------------
 
-_SONRA = ("donem_sonrasi", "surum_yururlukten_kalkmis", "surum_donem_sonrasi")   # audit donem.DONEM_DISI
+# Audit'in "kanıt değil" savunma işaretleri (bidr/audit/savunma.py; docs/AUDIT.md "Kod tarafı
+# savunmalar"): satır sayılmaz ve belge yayımlanan listeye hiç girmez (atıf ve zincir de aşmaz).
+# Sıra = gaps.md'de gösterilecek nedenin önceliği. `ozgun_kanitsiz` ve `fotograf_destekleyici`
+# burada değil: belge kanıttır, yalnız o halkayı tek başına kanıtlamaz (destekleyici kalabilir).
+KANIT_DEGIL = ("haric_tur", "yururlukten_kalkmis", "bilgisiz_ekran", "madde_baska_birim")
+
+
+def _sonra_flags() -> frozenset[str]:
+    from bidr.audit.donem import DONEM_DISI      # tek kaynak: audit'in dönem dışı listesi
+    return frozenset(DONEM_DISI) - set(KANIT_DEGIL)
 
 
 def donem_disi(rows: list[dict]) -> str:
-    """OD'ye sayılmayan kalemin dönem durumu (audit satırlarından): "sonra" = bütün satırlar bu
-    dönemin kanıtı değil (dönem sonrası / yürürlükteki sürüm değil); "gecmis" = önceki yıl olayı
-    (geçmiş kanıt, süreklilik); aksi "". İnsan `duzelt`i satırı sayar, buraya gelmez."""
+    """OD'ye sayılmayan kalemin durumu (audit satırlarından). Bütün satırlar kanıt dışıysa:
+    `KANIT_DEGIL` işaretlerinden biri (bütün satırlarda ortak olan, yoksa öncelikli olan; ör.
+    `yururlukten_kalkmis`) ya da "sonra" (dönem sonrası / yürürlükteki sürüm değil); "gecmis" =
+    önceki yıl olayı (geçmiş kanıt, süreklilik); aksi "". İnsan `duzelt`i satırı sayar, buraya
+    gelmez."""
     fl = [set(r.get("flags") or []) for r in rows]
-    if fl and all(f & set(_SONRA) for f in fl):
-        return "sonra"
+    sonra, kd = _sonra_flags(), set(KANIT_DEGIL)
+    if fl and all(f & (sonra | kd) for f in fl):
+        ortak = set.intersection(*fl) & kd
+        if ortak:
+            return next(x for x in KANIT_DEGIL if x in ortak)
+        if all(f & sonra for f in fl):
+            return "sonra"
+        return next(x for x in KANIT_DEGIL if any(x in f for f in fl))
     if any("gecmis_kanit" in f for f in fl):
         return "gecmis"
     return ""
@@ -363,6 +386,8 @@ def select(items: list, s: Settings, cited: set[str], docs: dict) -> tuple[list,
             drop[id(it)] = "birim_dogrulanmali"
         elif getattr(it, "donem_disi", "") == "sonra":
             drop[id(it)] = "donem_sonrasi"
+        elif getattr(it, "donem_disi", "") in KANIT_DEGIL:
+            drop[id(it)] = it.donem_disi
         elif it.doc_id in cited:
             keep[id(it)] = "atif"
         elif it.insan:
@@ -410,7 +435,7 @@ def select(items: list, s: Settings, cited: set[str], docs: dict) -> tuple[list,
         if any(st in it.asamalar for it in items if id(it) in keep):
             continue
         cand = [it for it in items if st in it.asamalar and id(it) not in keep
-                and drop.get(id(it)) not in ("donem_sonrasi", "birim_dogrulanmali")]
+                and drop.get(id(it)) not in ("donem_sonrasi", "birim_dogrulanmali", *KANIT_DEGIL)]
         if cand:
             best = min(cand, key=lambda it: (it.kurum_geneli, it.dolayli, not it.madde, *_rank_direct(it, docs)))
             keep[id(best)] = "zincir"

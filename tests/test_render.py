@@ -237,6 +237,47 @@ def test_od_capped_by_audit(ws, tmp_path):
     assert any("aşıyor" in u for u in res.uyarilar)
 
 
+def test_od_approved_level_wins_and_check_warns(ws, tmp_path, capsys):
+    """İşaretlenen düzey: önce komisyonun onayladığı `od_onayli`, yoksa kodun `od`'si. Onaysız
+    işaretlenen OD denetle'de `od_onay_bekliyor` uyarısı (kritik değil)."""
+    from bidr.check.run import UYARI, denetle, od_onay_bekleyenler
+    write_text(ws / "texts", "A.1.1", od_onerisi=3)
+    p = write_audit(ws, {"A.1.1": 4, "A.1.2": 3})
+    js = json.loads(p.read_text(encoding="utf-8"))
+    js["olcutler"][0].update(od_kod_onerisi=4, od_onayli=2)          # komisyon OD2 dedi
+    js["olcutler"][1].update(od_kod_onerisi=3, od_onayli=None)
+    p.write_text(json.dumps(js, ensure_ascii=False), encoding="utf-8")
+    res, _, blocks = _run(ws, tmp_path)
+    assert res.od == {"A.1.1": 2, "A.1.2": 3}
+    assert _bold_cols(blocks["A.1.1"]) == [2] and _bold_cols(blocks["A.1.2"]) == [3]
+    assert res.od_kaynagi == {"A.1.1": "onayli", "A.1.2": "kod"}
+    assert res.od_onay_bekliyor == {"A.1.2": {"od": 3, "kaynak": "kod"}}
+    assert res.ozet()["od_onay_bekliyor"] == {"A.1.2": {"od": 3, "kaynak": "kod"}}
+    assert any("komisyonun onayladığı" in u for u in res.uyarilar)  # metin OD3, onay OD2
+    # onaylı düzey metnin önerisinden yüksekse de onaylı işaretlenir (insan kararı)
+    js["olcutler"][0]["od_onayli"] = 5
+    p.write_text(json.dumps(js, ensure_ascii=False), encoding="utf-8")
+    res, _, blocks = _run(ws, tmp_path)
+    assert res.od["A.1.1"] == 5 and _bold_cols(blocks["A.1.1"]) == [5]
+    # denetle: CLI render kaydını (çıktı özeti tutuyorsa) okur, yoksa audit-olcutler.json'u
+    assert main(["render", "-w", str(ws), "--sablon", str(tmp_path / "sablon.docx")]) == 0
+    bek, kaynak = od_onay_bekleyenler(ws, ws / "report.docx")
+    assert kaynak == "render kaydı" and bek == {"A.1.2": {"od": 3, "kaynak": "kod"}}
+    s = denetle(ws / "report.docx", od_bekleyen=bek)
+    b = [x for x in s.bulgular if x.kod == "od_onay_bekliyor"]
+    assert [(x.seviye, x.yer) for x in b] == [(UYARI, "A.1.2")] and "OD insan onayı bekliyor" in b[0].mesaj
+    assert main(["render", "-w", str(ws), "--sablon", str(tmp_path / "sablon.docx"), "--puan-isareti", "yok"]) == 0
+    assert od_onay_bekleyenler(ws, ws / "report.docx")[0] == {}      # hiçbir düzey işaretlenmedi
+    (ws / ".bidr-render.json").unlink()                                # kayıt yok: audit'ten
+    bek, kaynak = od_onay_bekleyenler(ws, ws / "report.docx")
+    assert kaynak == "audit-olcutler.json" and bek == {"A.1.2": {"od": 3, "kaynak": "kod"}}
+    capsys.readouterr()
+    main(["denetle", "-w", str(ws)])
+    dj = json.loads((ws / "denetim.json").read_text(encoding="utf-8"))
+    assert dj["ozet"]["kodlar"]["od_onay_bekliyor"] == {"seviye": UYARI, "sayi": 1}
+    assert dj["bilgi"]["od_onay_bekliyor"] == ["A.1.2"]
+
+
 def test_draft_mark_and_unverified(ws, tmp_path):
     write_text(ws / "texts", "A.1.1", durum="taslak")
     write_text(ws / "texts", "A.1.2", durum="reddedildi")

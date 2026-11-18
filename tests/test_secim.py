@@ -300,3 +300,47 @@ def test_relation_unit():
     assert S.relation(v("tablo 1 2"), v("tablo 1 2 ")) == ("ayni", "ayni_veri")
     assert S.relation(v("form", stages=("planla",)), v("form", stages=("uygula",))) \
         == ("ayri", "bos_form_dolu_form")
+
+
+# -- audit savunmaları: kanıt değil (yürürlükten kalkmış, hariç tür) -----------------------------
+
+def test_defence_flags_not_published_and_listed_with_reason(tmp_path):
+    """Audit'in `yururlukten_kalkmis` / `haric_tur` işaretli belgesi yayımlanan listeye girmez
+    (atıf ve OD zinciri de aşmaz; insan `kabul`ü de), gaps.md'de nedeniyle görünür."""
+    eski = "Staj süresi 20 iş günüdür. Bölüm staj usul ve esasları."
+    yeni = ("Staj süresi 30 iş günüdür. Bu usul ve esasların yürürlüğe girmesiyle 12 Mart 2019 tarihli "
+            "staj usul ve esasları yürürlükten kalkar.")
+    docs = [
+        {"id": "eski", "text": eski, "tarih": "2019-03-12", "doc_type": "yonerge", "donem_ici": False,
+         "eslesmeler": [_m("B.1.1", "B.1.1/1", "planla", "Staj süresi 20 iş günüdür.")]},
+        {"id": "yeni", "text": yeni, "tarih": "2025-03-05", "doc_type": "bolum_kurulu_karari", "donem_ici": True,
+         "eslesmeler": [_m("B.1.1", "B.1.1/1", "planla", "Staj süresi 30 iş günüdür.")]},
+        {"id": "taslak", "text": "Bölümümüz program uygulamalarını yürütmüştür.", "tarih": "2025-01-15",
+         "doc_type": "bidr_raporu", "donem_ici": True,
+         "eslesmeler": [_m("B.1.1", "B.1.1/4", "uygula", "Bölümümüz program uygulamalarını yürütmüştür.")]},
+    ]
+    ws, src = _ws(tmp_path, docs)
+    a = build(ws)
+    assert "yururlukten_kalkmis" in a.by_key["eski|B.1.1/1"]["flags"]
+    assert "haric_tur" in a.by_key["taslak|B.1.1/4"]["flags"]
+    out = tmp_path / "out"
+    R.run(ws, out=out, source=src)
+    assert {r["doc_id"] for r in _index(out)} == {"yeni"}
+    el = {e["doc_id"]: e["neden"] for e in _secim(out)["elenen"]}
+    assert el == {"eski": "yururlukten_kalkmis", "taslak": "haric_tur"}
+    g = (out / "gaps.md").read_text(encoding="utf-8")
+    assert S.NEDEN["yururlukten_kalkmis"] in g and S.NEDEN["haric_tur"] in g
+    # insan `kabul`ü yürürlükten kaldırmayı ve hariç türü aşmaz (docs/AUDIT.md)
+    _review(ws, {"eski": "kabul"}, yuva="B.1.1/1")
+    R.run(ws, out=out, source=src)
+    assert "eski" not in {r["doc_id"] for r in _index(out)}
+
+
+def test_donem_disi_reason_unit():
+    r = lambda *f: {"flags": list(f)}        # noqa: E731
+    assert S.donem_disi([r("yururlukten_kalkmis")]) == "yururlukten_kalkmis"
+    assert S.donem_disi([r("donem_sonrasi"), r("surum_donem_sonrasi")]) == "sonra"
+    assert S.donem_disi([r("yururlukten_kalkmis", "surum_yururlukten_kalkmis")]) == "yururlukten_kalkmis"
+    assert S.donem_disi([r("madde_baska_birim"), r("donem_sonrasi")]) == "madde_baska_birim"
+    assert S.donem_disi([r("bilgisiz_ekran"), r("gecmis_kanit")]) == "gecmis"     # bir satır sayılabilir kanıt
+    assert S.donem_disi([r("ozgun_kanitsiz")]) == ""                              # destekleyici kalabilir

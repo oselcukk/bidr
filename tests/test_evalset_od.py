@@ -34,22 +34,7 @@ def _crit(a, cid):
     return next(c for c in a.criteria if c["olcut"] == cid)
 
 
-# Kod tarafı savunmalarla (bidr/audit/savunma.py, docs/AUDIT.md "Kod tarafı savunmalar") kapanan
-# açıklar. evalsets/ salt okunur: beklenen.yaml'daki `bilinen_acik` alanları ve README tablosu
-# set sahibince güncellenmeli; o zamana dek bu liste xfail'i kaldırır.
-KAPANAN = {
-    "yalniz-kurum-duzenlemesi", "tek-seferlik-anket", "kopuk-puko", "ozgunluk-kanitsiz-od5",
-    "bilgisiz-belgeler-od1", "niyet-onlem-degil",
-    "t01-kariyer-gunu-duyurusu", "t02-matematik-gunu-duyurusu", "t03-matematik-gunu-faaliyet-raporu",
-    "t04-ders-degerlendirme-anket-formu", "t09-kiyas-bolumu-kurul-karari", "t10-fakulte-yonetim-kurulu-karari",
-    "t13-staj-usul-esaslari-2019", "t17-sinav-takvimi-kesin", "t24-obs-giris-ekrani", "t25-bidr-2024-taslagi",
-    "t26-fakulte-staj-raporu", "t27-kariyer-gunu-2026-duyurusu",
-}
-
-
-def _xfail(reason: str | None, key: str = ""):
-    if key in KAPANAN:
-        return []
+def _xfail(reason: str | None):
     return [pytest.mark.xfail(strict=True, reason="bilinen açık: " + " ".join(reason.split()))] if reason else []
 
 
@@ -101,7 +86,7 @@ def test_check_set_catches_errors(tmp_path):
 def _vaka_params():
     for v in OD_SINIR.vakalar:
         yield pytest.param(v, "ideal", id=f"{v['id']}-ideal")
-        yield pytest.param(v, "naif", id=f"{v['id']}-naif", marks=_xfail(v.get("bilinen_acik"), v["id"]))
+        yield pytest.param(v, "naif", id=f"{v['id']}-naif", marks=_xfail(v.get("bilinen_acik")))
 
 
 @pytest.mark.parametrize("vaka,mod", list(_vaka_params()))
@@ -146,7 +131,7 @@ def test_tuzak_ideal_criteria(tuzak_sonuc):
 def _naif_params():
     for b in TUZAK.belgeler:
         if b.naif_farkli:
-            yield pytest.param(b.dosya, id=b.ad, marks=_xfail(b.kayit.get("bilinen_acik"), b.ad))
+            yield pytest.param(b.dosya, id=b.ad, marks=_xfail(b.kayit.get("bilinen_acik")))
 
 
 @pytest.mark.parametrize("dosya", list(_naif_params()))

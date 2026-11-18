@@ -90,11 +90,20 @@ class Result:
     hazirlayan: int = 0
     taslak_nedenleri: list[str] = field(default_factory=list)
     eksik_notlu: list[str] = field(default_factory=list)       # metni olup eksik kanıt notu da alan ölçütler
+    # işaretlenen OD'nin kaynağı: onayli (komisyon, audit `od_onayli`) | kod (audit `od`) | metin
+    # (audit kaydı yok: write'ın `od_onerisi`). Onaysız işaretlenenler denetle'de uyarı olur.
+    od_kaynagi: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def od_onay_bekliyor(self) -> dict[str, dict]:
+        """{ölçüt: {od, kaynak}}: rubrikte işaretli ama insanın onaylamadığı düzeyler."""
+        return {c: {"od": o, "kaynak": self.od_kaynagi.get(c, "kod")} for c, o in sorted(self.od.items())
+                if self.od_kaynagi.get(c) != "onayli"}
 
     def ozet(self) -> dict:
         return {"cikti": str(self.out), "dolu": len(self.dolu), "bos": len(self.bos),
                 "dogrulanmamis": self.dogrulanmamis, "reddedildi": self.reddedildi,
-                "od_isaretli": len(self.od), "taslak": self.taslak, "taslak_nedenleri": self.taslak_nedenleri,
+                "od_isaretli": len(self.od), "od_onay_bekliyor": self.od_onay_bekliyor, "taslak": self.taslak, "taslak_nedenleri": self.taslak_nedenleri,
                 "kapak": self.kapak, "hazirlayan": self.hazirlayan,
                 "kapsam_disi": self.kapsam_disi, "karar_gerekli": self.karar_gerekli, "yonler": self.yonler,
                 "eksik_notlu_metin": self.eksik_notlu,
@@ -429,19 +438,31 @@ def render(template: Path, out: Path, *, texts_dir: Path, audit_path: Path | Non
             if note:
                 aciklama.append(ops.make_paragraph([(note, {"italic": True})]))
             kanit = [ops.make_paragraph(opts.bos_kanit, jc="left")]
+        # İşaretlenecek düzey: önce komisyonun onayladığı `od_onayli` (insan kararı; metnin ve kodun
+        # önerisini aşar), yoksa kodun önerisi `od` (metnin önerisi onu aşamaz). docs/AUDIT.md
+        # "Kod önerisi ve nihai düzey ayrı".
         od_a = a.get("od") if a else None
-        if od is None:
-            od = od_a
-        elif od_a is not None and od > od_a:
-            res.uyarilar.append(f"{cid}: metnin OD önerisi ({od}) audit önerisini ({od_a}) aşıyor; "
-                                f"OD{od_a} işaretlendi")
-            od = od_a
+        od_ok = a.get("od_onayli") if a else None
+        if od_ok in (1, 2, 3, 4, 5):
+            if od is not None and od != od_ok:
+                res.uyarilar.append(f"{cid}: metnin OD önerisi ({od}) komisyonun onayladığı düzeyden ({od_ok}) "
+                                    f"farklı; OD{od_ok} işaretlendi (metin yeniden yazılmalı mı bakın)")
+            od, kaynak = od_ok, "onayli"
+        elif od is None:
+            od, kaynak = od_a, "kod"
+        else:
+            kaynak = "kod" if a else "metin"
+            if od_a is not None and od > od_a:
+                res.uyarilar.append(f"{cid}: metnin OD önerisi ({od}) audit önerisini ({od_a}) aşıyor; "
+                                    f"OD{od_a} işaretlendi")
+                od = od_a
         if b.aciklama_tc is not None:
             ops.fill_cell(b.aciklama_tc, ACIKLAMA, aciklama)
         if b.kanit_tc is not None:
             ops.fill_cell(b.kanit_tc, KANIT, kanit)
         if od is not None and _mark_od(b, int(od), opts.puan_isareti):
             res.od[cid] = int(od)
+            res.od_kaynagi[cid] = kaynak
 
     fill_yonler(doc, load_yonler(yonler_dir), res)
     res.kapak = fill_cover(doc, birim, yil)

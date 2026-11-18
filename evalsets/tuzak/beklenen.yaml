@@ -10,7 +10,8 @@
 #                  (sayılan halkanın OD'si; kanıt değilse ya da sayılmıyorsa 1)
 #   eslesmeler     doğru çalışan bir ince kararın vermesi beklenen eşleşmeler (ideal)
 #   naif           tuzağa düşen bir modelin vereceği kayıt (kod tek başına yakalıyor mu?)
-#   bilinen_acik   naif kaydı kodun (audit) yakalayamadığının gerekçesi; testte xfail
+#   bilinen_acik   naif kaydı kodun (audit) yakalayamadığının gerekçesi; testte xfail(strict)
+#   kapanan_acik   eskiden bilinen açıktı, kod tarafı savunma kapattı (bilgi; test normal çalışır)
 #   yazilmamali    bu belgeye dayanarak yazılmaması gereken iddialar; `anahtar` ifadelerden
 #                  biri, belgeye atıf yapan cümlede geçerse ihlal (atif_sart: false → hangi
 #                  atıfla olursa olsun); `haric` ifadelerden biri cümledeyse ihlal sayılmaz
@@ -62,9 +63,7 @@ belgeler:
       eslesmeler:
         - {olcut: B.3.2, yuva: B.3.2/6, asama: uygula,
            alinti: "Etkinlikte bölüm mezunları sektördeki çalışma alanlarını anlatacak, öğrencilerin soruları yanıtlanacaktır."}
-    bilinen_acik: >-
-      Duyuru (olay türü, rapor yılında) uygula denince sayılır: audit gelecek zaman kipini ya da
-      gerçekleşme kaydının yokluğunu denetlemez.
+    kapanan_acik: "duyuru türü ve gelecek zamanlı alıntı planla'ya iner (`gerceklesme_kaniti_yok`) (bidr/audit/savunma.py)"
     yazilmamali:
       - iddia: "Kariyer Günü gerçekleştirilmiştir / düzenlenmiştir."
         olcut: B.3.2
@@ -88,7 +87,7 @@ belgeler:
       eslesmeler:
         - {olcut: B.3.5, yuva: B.3.5/2, asama: uygula,
            alinti: "Örnek Bölümü öğrenci topluluğu ile birlikte 14 Mart 2025 Cuma günü Matematik Günü etkinliği düzenlenecektir."}
-    bilinen_acik: "Duyuru uygula denince sayılır (gelecek zaman kipi denetlenmez)."
+    kapanan_acik: "duyuru türü ve gelecek zamanlı alıntı planla'ya iner (`gerceklesme_kaniti_yok`) (bidr/audit/savunma.py)"
     yazilmamali:
       - iddia: "Matematik Günü gerçekleştirilmiştir (yalnız duyuruya atıfla)."
         olcut: B.3.5
@@ -111,7 +110,7 @@ belgeler:
            alinti: "Matematik Günü etkinliği 14 Mart 2025 tarihinde bölüm öğrenci topluluğu ile birlikte gerçekleştirilmiş, etkinliğe 64 öğrenci katılmıştır."}
         - {olcut: B.3.5, yuva: B.3.5/5, asama: kontrol_et,
            alinti: "Etkinlikte 11 öğrenci posteri sergilenmiştir."}
-    bilinen_acik: "Katılım sayısını izleme sayan model K halkası kurar; audit aşamayı modelden alır."
+    kapanan_acik: "katılım kaydı izleme sayılmaz, uygula'ya iner (`katilim_izleme_degil`) (bidr/audit/savunma.py)"
     yazilmamali:
       - iddia: "Etkinlik sonrası öğrenci geri bildirimi alınmış / memnuniyet ölçülmüştür."
         olcut: B.3.5
@@ -133,9 +132,7 @@ belgeler:
       eslesmeler:
         - {olcut: A.4.2, yuva: A.4.2/2, asama: uygula,
            alinti: "Bu anket, öğrencilerin aldıkları dersler hakkındaki görüşlerini almak için her yarıyıl sonunda uygulanır."}
-    bilinen_acik: >-
-      Boş form (karma tür) uygula denince olay sayılır ve OD3'e katılır: audit formun boş olup
-      olmadığını bilmez (ilke yalnız istemde; file yalnız sürüm ayrımında kullanır).
+    kapanan_acik: "sonuç içermeyen form planla'ya iner (`bos_form`) (bidr/audit/savunma.py)"
     yazilmamali:
       - iddia: "Anket uygulanmış ve sonuçları değerlendirilmiştir (yalnız forma atıfla)."
         olcut: A.4.2
@@ -237,9 +234,7 @@ belgeler:
       eslesmeler:
         - {olcut: B.1.1, yuva: B.1.1/3, asama: uygula,
            alinti: "Kıyas Bölümü lisans programında KIY 205 Uygulamalı İstatistik dersinin seçmeli dersten zorunlu derse dönüştürülmesine"}
-    bilinen_acik: >-
-      Birim aitliği yalnız modelin `birim_iliskisi` alanından gelir; model `kendi` derse audit
-      belgede başka birim adı geçtiğini denetlemez.
+    kapanan_acik: "metinde yalnız başka birimin adı var: ilişki `belirsiz`, insan onaylayana dek sayılmaz (`birim_iliskisi_kod`) (bidr/audit/savunma.py)"
     yazilmamali:
       - iddia: "Öğretim planında Uygulamalı İstatistik dersi zorunlu yapılmıştır."
         olcut: B.1.1
@@ -265,9 +260,7 @@ belgeler:
            alinti: "Örnek Bölümü lisans programında 2025-2026 güz yarıyılından başlayarak MAT 315 Kriptografiye Giriş seçmeli dersinin açılmasının uygun olduğuna oy birliğiyle karar verildi."}
         - {olcut: B.3.3, yuva: B.3.3/5, asama: onlem_al,
            alinti: "laboratuvarının yenilenmesi için hazırlanan ihtiyaç listesinin uygun olduğuna ve Dekanlığa sunulmasına oy birliğiyle karar verildi."}
-    bilinen_acik: >-
-      Madde ilkesi yalnız istemde: audit alıntının hangi maddeden (hangi birimi konu alan
-      maddeden) geldiğini denetlemez; başka bölümün maddesi OD4 halkası olarak sayılır.
+    kapanan_acik: "alıntının maddesi başka birimi anıyor: sayılmaz (`madde_baska_birim`) (bidr/audit/savunma.py)"
     yazilmamali:
       - iddia: "Bölüm bilgisayar laboratuvarı yenilenmiştir."
         atif_sart: false
@@ -320,9 +313,7 @@ belgeler:
       eslesmeler:
         - {olcut: B.1.4, yuva: B.1.4/2, asama: planla,
            alinti: "Staj süresi 20 iş günüdür."}
-    bilinen_acik: >-
-      Kod yürürlüğü bilemez: yapı belgesi dönem dışı tarihle yalnız `guncellik_dogrulanmali`
-      işareti alır ve sayılır; yürürlükten kaldıran belge (t14) ile bağ kurulmaz.
+    kapanan_acik: "t14'ün \"… tarihli … yürürlükten kalkar\" cümlesi bu belgenin tarihini anıyor: sayılmaz, yayımlanmaz (`yururlukten_kalkmis`) (bidr/audit/savunma.py)"
     yazilmamali:
       - iddia: "Staj süresi 20 iş günüdür / staj kredisi 4 AKTS'dir."
         atif_sart: false
@@ -392,9 +383,7 @@ belgeler:
            alinti: "| MAT 305 Sayısal Analiz | proje sunumu | 6 Ocak 2026 | 10.00 |"}
         - {olcut: B.2.2, yuva: B.2.2/7, asama: onlem_al,
            alinti: "Bu takvim, 15 Ekim 2025 sürümünün derslik çakışması nedeniyle revize edilmiş halidir."}
-    bilinen_acik: >-
-      Sürüm notu "revize" önlem sayılırsa audit OD4 halkası kurar; sürüm birleştirme yalnız
-      file aşamasında yayımlanan listeyi sınırlar, OD'yi değil.
+    kapanan_acik: "\"revize\" sürüm notu önlem sayılmaz (`surum_notu_onlem_degil`) (bidr/audit/savunma.py)"
     yazilmamali:
       - iddia: "Sınav takvimi izleme sonucunda revize edilerek iyileştirilmiştir / üç kez güncellenmiştir."
         olcut: B.2.2
@@ -528,7 +517,7 @@ belgeler:
       eslesmeler:
         - {olcut: B.1.6, yuva: B.1.6/3, asama: uygula,
            alinti: "ÖRNEK ÜNİVERSİTESİ ÖĞRENCİ BİLGİ SİSTEMİ"}
-    bilinen_acik: "Kanıt değil kararı yalnız modelin; audit ekranın bilgi içerip içermediğini bilmez."
+    kapanan_acik: "giriş ekranı kanıt değil: sayılmaz, yayımlanmaz (`bilgisiz_ekran`) (bidr/audit/savunma.py)"
     yazilmamali:
       - iddia: "Bölümde eğitim süreçleri bilgi yönetim sistemiyle izlenmektedir (ekrana atıfla)."
         anahtar: ["bilgi sistemi", "bilgi yönetim sistemi"]
@@ -546,9 +535,7 @@ belgeler:
       eslesmeler:
         - {olcut: A.1.4, yuva: A.1.4/8, asama: ozgun,
            alinti: "Bölümümüzde iç kalite güvencesi mekanizmaları içselleştirilmiş, sistematik, sürdürülebilir ve örnek gösterilebilir niteliktedir."}
-    bilinen_acik: >-
-      Hariç türler candidates aşamasında elenir; decisions.jsonl'e eşleşme yazılmışsa audit türü
-      yeniden denetlemez.
+    kapanan_acik: "hariç tür audit'te de denetlenir: sayılmaz, yayımlanmaz (`haric_tur`) (bidr/audit/savunma.py)"
     yazilmamali:
       - iddia: "Bölüm iç kalite güvencesinde OD5 düzeyindedir / örnek gösterilebilir."
         atif_sart: false
@@ -570,9 +557,7 @@ belgeler:
       eslesmeler:
         - {olcut: B.1.4, yuva: B.1.4/4, asama: uygula,
            alinti: "Fakültemizin bütün bölümlerinde 2025 yaz döneminde zorunlu staj yapılmıştır."}
-    bilinen_acik: >-
-      Fakülte geneli faaliyet raporu kurum geneli türlerinden değildir; model `kendi` derse OD2
-      tavanı uygulanmaz.
+    kapanan_acik: "metin bütün bölümleri kapsıyor: `fakulte_geneli`, OD2 tavanı (`birim_iliskisi_kod`) (bidr/audit/savunma.py)"
     yazilmamali:
       - iddia: "Bölüm öğrencilerinin 391'i / %95'i stajını tamamlamıştır."
         atif_sart: false
@@ -593,9 +578,7 @@ belgeler:
       eslesmeler:
         - {olcut: B.3.2, yuva: B.3.2/6, asama: uygula,
            alinti: "Etkinliğe bilişim, finans ve eğitim sektörlerinden bölüm mezunları konuşmacı olarak katılacaktır."}
-    bilinen_acik: >-
-      Dönem kuralı belgenin tarihine bakar (2025-12); duyurulan olayın tarihi (2026) ayrıca
-      denetlenmez.
+    kapanan_acik: "duyuru türü planla'ya iner; olay tarihi belgedeki en geç tarihtir (`gerceklesme_kaniti_yok`, `tarih.olay_tarihi_en_gec`) (bidr/audit/savunma.py)"
     yazilmamali:
       - iddia: "2026 Kariyer Günü gerçekleştirilmiştir."
         atif_sart: false

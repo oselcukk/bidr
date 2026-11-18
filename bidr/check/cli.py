@@ -3,7 +3,9 @@
 Üretilmiş raporu kılavuz biçim kurallarına göre denetler (salt okur; render'dan bağımsız).
 Çıkış kodu: 0 kritik bulgu yok; 1 kritik bulgu var ("yayıma hazır değil"); 2 girdi hatası.
 Şablon verilmezse config.yaml `rapor.sablon`, o da yoksa son render kaydındaki şablon
-(`.bidr-render.json`) kullanılır. Kural değerleri config.yaml `rapor.denetim`."""
+(`.bidr-render.json`) kullanılır. Kural değerleri config.yaml `rapor.denetim`. Rubrikte insan
+onayı olmadan (kod önerisiyle) işaretlenen OD'ler `od_onay_bekliyor` uyarısı olur (render kaydı ya
+da `audit-olcutler.json` `od_onayli`)."""
 from __future__ import annotations
 
 import json
@@ -28,7 +30,7 @@ def _run(args) -> int:
     from bidr.write.sources import rapor_section
 
     from .rules import load_rules
-    from .run import denetle, tablo, yaz
+    from .run import denetle, od_onay_bekleyenler, tablo, yaz
 
     ws = Path(args.workspace).expanduser().resolve()
     rapor = rapor_section(ws)
@@ -43,7 +45,7 @@ def _run(args) -> int:
     try:
         res = denetle(docx_path, rules=rules, sablon=_sablon(ws, args.sablon, rapor),
                       kanit_klasoru=kanit if (args.kanit or kanit.is_dir()) else None,
-                      index_path=index)
+                      index_path=index, od_bekleyen=od_onay_bekleyenler(ws, docx_path)[0])
     except Exception as e:  # bozuk docx vb.
         print(f"HATA denetlenemedi: {e}", file=sys.stderr)
         return 2

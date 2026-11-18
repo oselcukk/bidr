@@ -52,6 +52,7 @@ Belge kaydı (iki sette aynı; od-sinir'de vakanın `belgeler` listesinde):
     birim_iliskisi: kendi
     eslesmeler: [...]
   bilinen_acik: "..."              # naif kaydı kodun yakalayamadığının gerekçesi (testte xfail)
+  kapanan_acik: "..."              # kapanmış eski açık ve kapatan savunma (bilgi)
   yazilmamali:                     # bu belgeye dayanarak yazılmaması gereken iddialar
     - iddia: "Anket uygulanmış ve sonuçları değerlendirilmiştir."
       olcut: A.4.2                 # yoksa bütün metinlerde aranır
@@ -66,7 +67,7 @@ Belge kaydı (iki sette aynı; od-sinir'de vakanın `belgeler` listesinde):
 
 Ölçüt beklentisi: tuzak'ta `olcutler: {B.3.5: {od: 3, eksik: [kontrol_et, onlem_al],
 not_icermeli: [...]}}`; od-sinir'de vaka alanları `olcut`, `beklenen_od`, `eksik_halka`,
-`eksik_kosul`, `not_icermeli`, `bilinen_acik`. OD kuralları docs/AUDIT.md'dekilerdir (zincir,
+`eksik_kosul`, `not_icermeli`, `bilinen_acik` / `kapanan_acik`. OD kuralları docs/AUDIT.md'dekilerdir (zincir,
 örtük plan, kurum geneli tavanı, dönem kuralı). tuzak'ta ayrıca `surum_gruplari` (tek kanıt
 sayılması gereken sürümler ve temsilcisi) ve `celiskiler`.
 
@@ -142,29 +143,33 @@ cümlesi olan her metin için metin durumu ve `.bidr-render.json` `taslak` alan�
   var ama atıf başka belgeye.
 - **Yayım engeli.** `engelliyor` / `ENGELLEMİYOR` / `metin yok`.
 
-## Bilinen açıklar (kod tek başına yakalamaz; testte xfail)
+## Bilinen açıklar
 
-`naif` kayıtla audit'in fazla OD verdiği durumlar. Bunlar yalnız modelin (ince karar istemi,
-kanıt ilkeleri) ve insan incelemesinin sorumluluğundadır; tam turda bu setle ölçülmelidir.
+`naif` kayıtla audit'in fazla OD verdiği, kodun tek başına yakalayamadığı durumlar
+`bilinen_acik` alanıyla işaretlenir ve testte xfail(strict) olur. **Şu an açık yok** (2026-11-19):
+ilk turdaki 19 açığın hepsi kod tarafı savunmalarla (docs/AUDIT.md "Kod tarafı savunmalar",
+`bidr/audit/savunma.py`) kapandı; naif kayıtlar xfail'siz geçer. Kapanan açık beklenen.yaml'da
+`kapanan_acik` (kapatan işaretle) olarak kalır. Model tarafı (ince karar istemi, kanıt ilkeleri)
+yine tam turda bu setle ölçülmelidir: savunmalar sözcük düzeyindedir.
 
-| Açık | Örnek |
-|---|---|
-| Gelecek zaman / gerçekleşme kaydı yokluğu denetlenmez (duyuru = uygulama) | t01, t02, t27 |
-| Aşama modelin: tek seferlik sonuç "izleme", bilgilendirme "önlem" sayılabilir | t03, A.4.2 vakası |
-| Boş form ile dolu sonuç ayrımı OD'de yok (yalnız istemde ve file sürüm ayrımında) | t04 |
-| Birim aitliği ve "kanıt değil" yalnız modelden; audit metne bakmaz | t09, t24, A.1.3 vakası |
-| Madde ilkesi denetlenmez (çok maddeli kararda başka bölümün maddesi) | t10 |
-| Yürürlükten kalkma bilinemez (yalnız güncellik işareti) | t13 |
-| Sürüm notu ("revize") önlem sayılabilir; sürüm birleştirme OD'yi değil listeyi sınırlar | t17 |
-| Hariç türler (BİDR taslağı) audit'te yeniden denetlenmez | t25 |
-| Kurum/fakülte geneli tavanı yalnız yönetmelik/yönerge/senato türünde ya da model söyleyince | t26, B.4.1 vakası |
-| K→Ö bağı denetlenmez (önlem izleme sonucuna dayanıyor mu) | B.1.5 vakası |
-| Öneri/niyet önlem sayılabilir | B.1.3 vakası |
-| Özgün halka tek beyanla kurulur (süreklilik, dış tanınma aranmaz) | B.2.1 vakası |
-| Tür tavanı birim ilişkisine bakmaz: bölümün kendi usul-esası (`yonerge`) `kurum_geneli` işareti alır | t14 |
+| Eski açık | Örnek | Kapatan (audit işareti) |
+|---|---|---|
+| Gelecek zaman / gerçekleşme kaydı yokluğu denetlenmez (duyuru = uygulama) | t01, t02, t27 | `gerceklesme_kaniti_yok` (+ t27: `tarih.olay_tarihi_en_gec`) |
+| Aşama modelin: tek seferlik sonuç "izleme", bilgilendirme "önlem" sayılabilir | t03, A.4.2 vakası | `katilim_izleme_degil`, `bilgilendirme_onlem_degil` |
+| Boş form ile dolu sonuç ayrımı OD'de yok | t04 | `bos_form` |
+| Birim aitliği ve "kanıt değil" yalnız modelden; audit metne bakmaz | t09, t24, A.1.3 vakası | `birim_iliskisi_kod` (→ `belirsiz`), `bilgisiz_ekran` |
+| Madde ilkesi denetlenmez (çok maddeli kararda başka bölümün maddesi) | t10 | `madde_baska_birim` |
+| Yürürlükten kalkma bilinemez (yalnız güncellik işareti) | t13 | `yururlukten_kalkmis` (yayımlanan listeye de girmez) |
+| Sürüm notu ("revize") önlem sayılabilir | t17 | `surum_notu_onlem_degil` |
+| Hariç türler (BİDR taslağı) audit'te yeniden denetlenmez | t25 | `haric_tur` |
+| Kurum/fakülte geneli tavanı yalnız yönetmelik/yönerge/senato türünde ya da model söyleyince | t26, B.4.1 vakası | `birim_iliskisi_kod` (→ `kurum_geneli`/`fakulte_geneli`) |
+| K→Ö bağı denetlenmez (önlem izleme sonucuna dayanıyor mu) | B.1.5 vakası | `onlem_izlemeye_dayanmiyor` |
+| Öneri/niyet önlem sayılabilir | B.1.3 vakası | `niyet_onlem_degil` |
+| Özgün halka tek beyanla kurulur (süreklilik, dış tanınma aranmaz) | B.2.1 vakası | `ozgun_kanitsiz` |
+| Tür tavanı birim ilişkisine bakmaz: bölümün kendi usul-esası (`yonerge`) `kurum_geneli` işareti alır | t14 | bölümün kendi usul belgesi (`Savunma.own_regulation`) |
 
-Bir açık kapanırsa ilgili test XPASS verip başarısız olur (strict): beklenen.yaml'dan
-`bilinen_acik` kaldırılmalı ve bu tablo güncellenmelidir.
+Yeni bir açık bulunursa ilgili kayda `bilinen_acik` (gerekçe) eklenir ve bu tabloya satır
+girer; kapanınca test XPASS verip başarısız olur (strict): alan `kapanan_acik`'a çevrilir.
 
 ## Sınırlar
 

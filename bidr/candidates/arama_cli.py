@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import sys
 
 
 def _run(args) -> int:
@@ -13,6 +14,15 @@ def _run(args) -> int:
         res = measure(ws.root, args.review)
         print(json.dumps(res, ensure_ascii=False, indent=1) if args.json else format_table(res))
         return 0
+    if args.action == "prepare":
+        # Aşama kapısı: zayıf ölçütler audit'in (insan incelemesinden geçmiş) OD'sinden seçilir;
+        # audit bitmeden paket hazırlanmaz (yönetilen çalışma alanında; bidr/pipeline/gate.py).
+        from bidr.pipeline.gate import check_gate
+        if (rc := check_gate(ws.root, "ikinci_arama")) is not None:
+            print("HATA `bidr arama prepare` audit bittikten sonra çalışır: zayıf ölçütler incelenmiş "
+                  "audit OD'sinden seçilir (review.xlsx kararları → `bidr audit apply`). "
+                  f"Sıradaki adım için: bidr next -w {ws.root}", file=sys.stderr)
+            return rc
     if not ws.text_dir.exists():
         print(f"text/ yok: {ws.text_dir}")
         return 2
