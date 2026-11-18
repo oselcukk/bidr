@@ -39,9 +39,10 @@ ETIKET = {
     "surum_yururlukten_kalkmis": "sürüm dönemden önce yenilendi (kanıt değil)",
     "surum_donem_sonrasi": "dönem sonrası sürüm (kanıt değil)",
     "surum_dogrulanmali": "sürüm doğrulanmalı",
+    "yururlukten_kalkmis": "başka bir belgeyle yürürlükten kaldırılmış (kanıt değil)",
 }
 # sayılmayan dönem işaretleri (satır görünür; yayımlanan listeye girmez: bidr/file/select.py)
-DONEM_DISI = ("donem_sonrasi", "surum_yururlukten_kalkmis", "surum_donem_sonrasi")
+DONEM_DISI = ("donem_sonrasi", "surum_yururlukten_kalkmis", "surum_donem_sonrasi", "yururlukten_kalkmis")
 KAYNAK = {"bas_en_sik": "baş bölgede en sık tarih", "bas_ilk": "baş bölgedeki ilk tarih",
           "metin_ilk": "metindeki ilk tarih"}
 _YIL = re.compile(r"(?<!\d)((?:19|20)\d\d)(?!\d)")

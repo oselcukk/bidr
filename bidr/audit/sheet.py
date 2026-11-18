@@ -77,6 +77,13 @@ COLS = [
 ]
 HEAD = {h: k for k, h, _, _ in COLS}
 
+# "Ölçüt özeti": kodun önerdiği OD ile komisyonun onayladığı nihai OD ayrı sütunlarda
+SUM_OD, SUM_NOT = "ONAYLANAN OD (insan)", "OD notu"
+SUM_USER = (SUM_OD, SUM_NOT)
+SUM_COLS = [("ölçüt", 8), ("başlık", 40), ("önerilen OD", 10), ("OD (düşük güven dahil)", 10), ("P planla", 9),
+            ("U uygula", 9), ("K kontrol_et", 9), ("Ö onlem_al", 9), ("Z ozgun", 9), ("eşleşme", 8), ("belge", 7),
+            ("dolu yuva", 9), ("öncelik", 8), ("eksikler", 70), ("notlar", 50), (SUM_OD, 12), (SUM_NOT, 30)]
+
 F_HEAD = PatternFill("solid", fgColor="DDDDDD")
 F_USER = PatternFill("solid", fgColor="E8F0FE")
 F_OD4 = PatternFill("solid", fgColor="FCE4D6")
@@ -130,6 +137,13 @@ HELP = [
     "`bidr audit apply` düzeltmeyi kanit-adlari.jsonl'e (kaynak: insan) yazar.",
     f"'{SHEET_UNIT}' sayfası: modelin başka birime ait saydığı belgeler. 'insan_birim_iliskisi' "
     "doldurulursa insan kararı modelinkinin önüne geçer (ayrıntı sayfanın ilk satırında).",
+    "Gri satırlarda ve işaretlerde kodun savunmaları: hariç tür, bilgisiz ekran, yürürlükten kaldırılmış "
+    "düzenleme, başka birimin maddesi, boş form, duyuru/gelecek zaman, katılım ≠ izleme, öneri/bilgilendirme/"
+    "sürüm notu ≠ iyileştirme, izlemeye dayanmayan iyileştirme, özgünlük kanıtı yetersiz. Yanlışsa satırı "
+    "kabul (modelin aşaması) ya da duzelt edin. Ayrıntı: docs/AUDIT.md \"Kod tarafı savunmalar\".",
+    f"'{SHEET_SUM}' sayfası: 'önerilen OD' kodun önerisidir; komisyonun onayladığı nihai düzeyi "
+    f"'{SUM_OD}' sütununa (1-5) yazın, gerekirse '{SUM_NOT}'. Kod önerisi değişmez; ikisi ayrı kaydedilir "
+    "(olcut-od-kararlari.jsonl, audit-olcutler.json `od_kod_onerisi` / `od_onayli`). OD5 önerisi insan onayı bekler.",
     "Tabloyu doldurduktan sonra: bidr audit apply -w <çalışma alanı>",
 ]
 
@@ -193,14 +207,12 @@ def write_review(a, path: Path) -> None:
     ws.auto_filter.ref = f"A1:{get_column_letter(len(COLS))}{last}"
 
     s = wb.create_sheet(SHEET_SUM)
-    head = ["ölçüt", "başlık", "önerilen OD", "OD (düşük güven dahil)", "P planla", "U uygula",
-            "K kontrol_et", "Ö onlem_al", "Z ozgun", "eşleşme", "belge", "dolu yuva", "öncelik",
-            "eksikler", "notlar"]
+    head = [h for h, _ in SUM_COLS]
     s.append(head)
-    for i, w in enumerate((8, 40, 10, 10, 9, 9, 9, 9, 9, 8, 7, 9, 8, 70, 50), 1):
+    for i, (h, w) in enumerate(SUM_COLS, 1):
         s.column_dimensions[get_column_letter(i)].width = w
         s.cell(row=1, column=i).font = Font(bold=True)
-        s.cell(row=1, column=i).fill = F_HEAD
+        s.cell(row=1, column=i).fill = F_USER if h in SUM_USER else F_HEAD
         s.cell(row=1, column=i).alignment = Alignment(wrap_text=True, vertical="top")
     lab = {"var": "var", "dusuk": "düşük", "yok": "—", "yuvasiz": "yuvasız"}
     for c in a.criteria:
@@ -212,9 +224,11 @@ def write_review(a, path: Path) -> None:
                *[f"{lab[c['zincir'][x]['durum']]}" + (f" ({c['zincir'][x]['eslesme']})"
                                                        if c['zincir'][x]['eslesme'] else "") for x in LINKS],
                c["eslesme"], c["belge"], f"{c['yuva_dolu']}/{c['yuva_toplam']}", c["oncelik_grubu"],
-               eks, "; ".join(c["notlar"])]
+               eks, "; ".join(c["notlar"]), c.get("od_onayli") or "", ((c.get("od_onay") or {}).get("not") or "")]
         s.append(row)
         n = s.max_row
+        for i in (len(head) - 1, len(head)):
+            s.cell(row=n, column=i).fill = F_USER
         for i in range(1, len(head) + 1):
             s.cell(row=n, column=i).alignment = Alignment(wrap_text=True, vertical="top")
         for j, x in enumerate(LINKS, 5):
@@ -225,6 +239,10 @@ def write_review(a, path: Path) -> None:
             s.cell(row=n, column=3).fill = F_OD4
         s.cell(row=n, column=3).font = Font(bold=True)
     s.freeze_panes = "C2"
+    dv = DataValidation(type="list", formula1='"1,2,3,4,5"', allow_blank=True)
+    col = get_column_letter(len(head) - 1)
+    dv.add(f"{col}2:{col}{max(s.max_row, 2)}")
+    s.add_data_validation(dv)
 
     _write_units(wb, getattr(a, "birim_sayfa", None) or [])
 
@@ -237,7 +255,8 @@ def write_review(a, path: Path) -> None:
     m = wb.create_sheet(SHEET_META)
     for k, v in (("surum", 1), ("kararlar_sha", a.decisions_sha), ("profil", a.profile or ""),
                  ("calisma_alani", str(a.ws.root)), ("satir", len(a.rows)),
-                 ("birim_sha", getattr(a, "birim_sha", "") or "")):
+                 ("birim_sha", getattr(a, "birim_sha", "") or ""),
+                 ("faaliyet_sha", getattr(a, "faaliyet_sha", "") or "")):
         m.append([k, v])
     m.sheet_state = "hidden"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -299,6 +318,32 @@ def read_unit_sheet(path: Path) -> list[dict] | None:
         if keys is None:
             raise ValueError(f"'{SHEET_UNIT}' sayfasında 'belge kimliği' başlığı yok")
         return rows
+    finally:
+        wb.close()
+
+
+def read_od_sheet(path: Path) -> list[dict] | None:
+    """"Ölçüt özeti" sayfasından insan OD kararları: [{olcut, od (ham), not, kod_onerisi}]; sayfada
+    ONAYLANAN OD sütunu yoksa (eski tablo) None."""
+    wb = load_workbook(path, read_only=True, data_only=True)
+    try:
+        if SHEET_SUM not in wb.sheetnames:
+            return None
+        it = wb[SHEET_SUM].iter_rows(values_only=True)
+        hs = [str(v).strip() if v is not None else "" for v in (next(it, None) or ())]
+        if SUM_OD not in hs:
+            return None
+        i_c, i_od, i_k = hs.index("ölçüt"), hs.index(SUM_OD), hs.index("önerilen OD")
+        i_n = hs.index(SUM_NOT) if SUM_NOT in hs else None
+        out = []
+        for vals in it:
+            if not vals or vals[i_c] is None:
+                continue
+            out.append({"olcut": str(vals[i_c]).strip(),
+                        "od": "" if vals[i_od] is None else str(vals[i_od]).strip(),
+                        "not": "" if i_n is None or vals[i_n] is None else str(vals[i_n]).strip(),
+                        "kod_onerisi": vals[i_k]})
+        return out
     finally:
         wb.close()
 

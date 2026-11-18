@@ -52,7 +52,7 @@ def test_fine_decision_records_name_and_rejects_person():
     rep = {"ince": {"karar": "olcut_var", "kanit_adi": bad}, "eslesmeler": []}
     assert DR.rep_output(rep)["kanit_adi"] == "Prof. Dr. Ali Veli Anketi"
     sch = json.loads((DR.TASKS_DIR / DR.FINE / "output.schema.json").read_text(encoding="utf-8"))
-    assert "kanit_adi" in sch["required"] and DR.task_version(DR.FINE) == "9"
+    assert "kanit_adi" in sch["required"] and DR.task_version(DR.FINE) == "10"
     assert '"kanit_adi"' in (DR.TASKS_DIR / DR.FINE / "prompt.md").read_text(encoding="utf-8")
 
 

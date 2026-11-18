@@ -1,4 +1,4 @@
-version: 9
+version: 10
 description: >-
   İnce karar. Belge metni + aday alt ölçütlerin rubriği (1-5, birebir) ve kanıt
   yuvaları (PUKÖ aşaması / OD etiketiyle) → her uyan ölçüt için
@@ -23,6 +23,14 @@ description: >-
   iyilestirme, duzenleme, diger). Kod faaliyet kayıtlarını toplar (bidr/faaliyet, faaliyetler.json).
   Alan isteğe bağlı: v8 kayıtları geçerli kalır, faaliyetsiz sayılır. Belge metni bütçesi
   8000 → 7300 karakter (istem boyut sınırı).
+  v10: OD rubriği (K27). Aşama kuralı sıkılaştı: boş form/şablon, duyuru ve gelecek zamanlı
+  ifade uygula değil; katılım sayısı kontrol_et değil; öneri, kurula bilgi, sürüm notu onlem_al
+  değil (önlemin gerekçesi dayandığı izleme sonucunu yazar); ozgun birden çok dönem + bağımsız
+  tanınma ister, öz-övgü/tanıtım metni değil; bölüm kurulu kararı bölüm uygulamasıdır; fotoğraf
+  destekleyici. kanit_degil: herhangi bir yılın BİDR'si/taslağı, giriş ekranı, bağlantı sayfası,
+  yürürlükten kalkmış düzenleme. Bölümün kendi usul belgesi `kendi`dir. Kanıt ilkelerine
+  `iyilestirme_kaniti`, `ozgunluk_kaniti`. Şema aynı. Kod aynı kuralları ucuz denetimlerle de
+  uygular (bidr/audit/savunma.py).
 inputs:
   adaylar: "aday alt ölçütler: başlık, rubrik 1-5, yuvalar `[aşama → OD]` etiketiyle"
   belge_bilgisi: "documents.jsonl içerik alanları (tür tahmini, tarih, sayfa); yol/ad yok"

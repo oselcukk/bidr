@@ -319,7 +319,7 @@ def test_old_v7_records_audit_and_reprepare(ws):
     st = prepare(root, "fine", backend=b, yes=True)
     assert st["yeni"] >= 1 and not st["onay_gerekli"]
     pkg = json.loads((root / "work" / "fine" / f"{ids['ekle']}.json").read_text(encoding="utf-8"))
-    assert pkg["surum"] == "9" and "Birim: Matematik Bölümü" in pkg["istem"]
+    assert pkg["surum"] == "10" and "Birim: Matematik Bölümü" in pkg["istem"]
     assert _recs(root)[ids["ekle"]]["yeniden"]["onceki_surum"] == "7"
 
 

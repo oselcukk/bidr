@@ -34,8 +34,33 @@ def _crit(a, cid):
     return next(c for c in a.criteria if c["olcut"] == cid)
 
 
-def _xfail(reason: str | None):
+# Kod tarafı savunmalarla (bidr/audit/savunma.py, docs/AUDIT.md "Kod tarafı savunmalar") kapanan
+# açıklar. evalsets/ salt okunur: beklenen.yaml'daki `bilinen_acik` alanları ve README tablosu
+# set sahibince güncellenmeli; o zamana dek bu liste xfail'i kaldırır.
+KAPANAN = {
+    "yalniz-kurum-duzenlemesi", "tek-seferlik-anket", "kopuk-puko", "ozgunluk-kanitsiz-od5",
+    "bilgisiz-belgeler-od1", "niyet-onlem-degil",
+    "t01-kariyer-gunu-duyurusu", "t02-matematik-gunu-duyurusu", "t03-matematik-gunu-faaliyet-raporu",
+    "t04-ders-degerlendirme-anket-formu", "t09-kiyas-bolumu-kurul-karari", "t10-fakulte-yonetim-kurulu-karari",
+    "t13-staj-usul-esaslari-2019", "t17-sinav-takvimi-kesin", "t24-obs-giris-ekrani", "t25-bidr-2024-taslagi",
+    "t26-fakulte-staj-raporu", "t27-kariyer-gunu-2026-duyurusu",
+}
+
+
+def _xfail(reason: str | None, key: str = ""):
+    if key in KAPANAN:
+        return []
     return [pytest.mark.xfail(strict=True, reason="bilinen açık: " + " ".join(reason.split()))] if reason else []
+
+
+def _ws(es, out, mod="ideal", vaka=None, birim=True):
+    """Sentetik çalışma alanı + config.yaml (birim adı: gerçek çalışma alanında `bidr init` yazar).
+    Birim adı metin denetimlerinin (birim aitliği, madde ilkesi, bölümün kendi usul belgesi) girdisidir."""
+    ws = dg.make_workspace(es, out, mod, vaka)
+    if birim:
+        (ws / "config.yaml").write_text(yaml.safe_dump({"bidr": {"birim": es.veri["birim"]}}, allow_unicode=True),
+                                        encoding="utf-8")
+    return ws
 
 
 # -- setlerin kendisi ------------------------------------------------------------------------
@@ -76,12 +101,12 @@ def test_check_set_catches_errors(tmp_path):
 def _vaka_params():
     for v in OD_SINIR.vakalar:
         yield pytest.param(v, "ideal", id=f"{v['id']}-ideal")
-        yield pytest.param(v, "naif", id=f"{v['id']}-naif", marks=_xfail(v.get("bilinen_acik")))
+        yield pytest.param(v, "naif", id=f"{v['id']}-naif", marks=_xfail(v.get("bilinen_acik"), v["id"]))
 
 
 @pytest.mark.parametrize("vaka,mod", list(_vaka_params()))
 def test_od_sinir(vaka, mod, tmp_path):
-    ws = dg.make_workspace(OD_SINIR, tmp_path / "ws", mod, vaka["id"])
+    ws = _ws(OD_SINIR, tmp_path / "ws", mod, vaka["id"])
     c = _crit(build(ws), vaka["olcut"])
     assert c["od"] == vaka["beklenen_od"], f"{vaka['id']} ({mod}): audit OD{c['od']}, beklenen OD{vaka['beklenen_od']}"
     if mod == "ideal":
@@ -104,7 +129,7 @@ def test_od_sinir_single_workspace(tmp_path):
 def tuzak_sonuc(tmp_path_factory):
     out = {}
     for mod in dg.MODLAR:
-        ws = dg.make_workspace(TUZAK, tmp_path_factory.mktemp(f"tuzak-{mod}"), mod)
+        ws = _ws(TUZAK, tmp_path_factory.mktemp(f"tuzak-{mod}"), mod)
         out[mod] = dg.compare(TUZAK, ws)
     return out
 
@@ -121,7 +146,7 @@ def test_tuzak_ideal_criteria(tuzak_sonuc):
 def _naif_params():
     for b in TUZAK.belgeler:
         if b.naif_farkli:
-            yield pytest.param(b.dosya, id=b.ad, marks=_xfail(b.kayit.get("bilinen_acik")))
+            yield pytest.param(b.dosya, id=b.ad, marks=_xfail(b.kayit.get("bilinen_acik"), b.ad))
 
 
 @pytest.mark.parametrize("dosya", list(_naif_params()))
@@ -130,10 +155,6 @@ def test_tuzak_naif_caught_by_code(dosya, tuzak_sonuc):
     assert d["sonuc"] == "yakalandı", f"{dosya}: sayılan OD{d['sistem']['od']} > beklenen OD{d['beklenen']['od']} ({d['sistem']['halkalar']})"
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "bilinen açık: tür tavanı (rules.KURUM_GENELI_TURLER) birim ilişkisine bakmaz; bölümün kendi "
-    "usul ve esası (`yonerge` türü, birim_iliskisi: kendi) `kurum_geneli` işareti alır ve file'ın "
-    "kurum geneli sınırına (kurum_geneli_en_fazla) takılabilir"))
 def test_bolumun_kendi_yonergesi_kurum_geneli_sayilmaz(tuzak_sonuc):
     d = next(x for x in tuzak_sonuc["ideal"]["belgeler"] if x["dosya"].startswith("t14-"))
     assert d["beklenen"]["birim"] == "kendi"
@@ -222,5 +243,5 @@ def test_cli(tmp_path, capsys):
     assert dg.main(["karsilastir", "--set", str(ROOT / "evalsets" / "od-sinir"), "-w", str(ws),
                     "--md", str(md), "--json", str(tmp_path / "r.json")]) == 0
     txt = md.read_text(encoding="utf-8")
-    assert "| B.1.5 | kopuk-puko | 3 | 4 | fazla (+1)" in txt
+    assert "| B.1.5 | kopuk-puko | 3 | 3 | tam" in txt          # K→Ö bağı denetimi (kapandı)
     assert json.loads((tmp_path / "r.json").read_text(encoding="utf-8"))["ozet"]["belge"] == len(OD_SINIR.belgeler)

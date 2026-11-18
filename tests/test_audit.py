@@ -62,7 +62,8 @@ def test_effective_stage():
 
 def _m(olcut, yuva, asama, od, guven="orta"):
     return {"olcut": olcut, "yuva": yuva, "asama": asama, "od_onerisi": od, "alinti": "x" * 30,
-            "gerekce": "g", "guven": guven, "denetim": {"red": [], "isaret": []}, "od_kabul": od, "kabul": True}
+            "gerekce": "izleme sonucuna dayanan değişiklik" if asama == "onlem_al" else "g", "guven": guven,
+            "denetim": {"red": [], "isaret": []}, "od_kabul": od, "kabul": True}
 
 
 DOCS = {
