@@ -1,7 +1,7 @@
 """FR-0833 BİDR şablonundan (docx) ölçüt şemasını ve kılavuz kurallarını çıkarır.
 
 Kullanım:
-    python -m bidr.criteria.extract_docx ŞABLON.docx [--out data/criteria]
+    python -m bidr.criteria.extract_docx ŞABLON.docx [--out bidr/data/criteria]
     python -m bidr.criteria.extract_docx ŞABLON.docx --stdout   # yazmadan JSON döker
 
 Metin politikası: hücre/paragraf metni birebir alınır. Yalnız şunlar yapılır:
@@ -352,7 +352,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("template", type=Path, help="boş BİDR şablonu (.docx)")
     ap.add_argument("--out", type=Path, default=None,
-                    help="çıktı klasörü (vars.: repo data/criteria)")
+                    help="çıktı klasörü (vars.: repo bidr/data/criteria)")
     ap.add_argument("--stdout", action="store_true", help="dosya yazma; JSON'u bas")
     a = ap.parse_args(argv)
     criteria, guide, warnings = extract(a.template)

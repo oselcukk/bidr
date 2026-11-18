@@ -11,6 +11,8 @@ SUBCOMMAND_MODULES = [
     "bidr.ingest.cli",
     "bidr.labels.cli",
     "bidr.identify.cli",
+    "bidr.candidates.cli",
+    "bidr.evaluate.cli",
 ]
 
 

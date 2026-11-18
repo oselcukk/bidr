@@ -9,8 +9,8 @@ import yaml
 
 from .model import Area, CriteriaSet, Criterion, SubCriterion, id_key
 
-# Editable kurulumda repo kökündeki data/criteria. BIDR_CRITERIA_DIR ile değiştirilebilir.
-DEFAULT_DIR = Path(__file__).resolve().parents[2] / "data" / "criteria"
+# Paket verisi: bidr/data/criteria. BIDR_CRITERIA_DIR ile değiştirilebilir.
+DEFAULT_DIR = Path(__file__).resolve().parents[1] / "data" / "criteria"
 DEFAULT_FILE = "yokak-2025.yaml"
 SCHEMA_FILE = "schema.json"
 

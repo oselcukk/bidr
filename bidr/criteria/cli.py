@@ -61,7 +61,7 @@ def _cmd_validate(a) -> int:
 
 def register(sub) -> None:
     p = sub.add_parser("criteria", help="YÖKAK/BİDR ölçüt şeması")
-    p.add_argument("--file", default=None, help="ölçüt YAML'ı (vars.: data/criteria/yokak-2025.yaml)")
+    p.add_argument("--file", default=None, help="ölçüt YAML'ı (vars.: bidr/data/criteria/yokak-2025.yaml)")
     s = p.add_subparsers(dest="criteria_cmd", required=True)
     s.add_parser("list", help="ölçüt ağacını listele").set_defaults(func=_cmd_list)
     sh = s.add_parser("show", help="bir ölçütü göster (ör. A.1.2)")
