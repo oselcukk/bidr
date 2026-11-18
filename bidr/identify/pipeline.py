@@ -40,7 +40,7 @@ def _format(method: str) -> str:
     m = (method or "").lower()
     if "docx" in m or "xml" in m or m.startswith(("openpyxl", "text", "pptx", "textutil")):
         return "duzenlenebilir"
-    if "ocr" in m:
+    if "ocr" in m or m == "agent_vision":
         return "tarama"
     if m.startswith("pdftotext"):
         return "pdf_metin"
