@@ -139,3 +139,52 @@ ok, score, span = verify_quote(quote, text)   # Türkçe katlama, boşluk, OCR t
   f.json -w WS [--role R] [--no-cache] [--refresh]`.
 - `bidr/tasks/_echo/` yalnız sınama görevidir. `bidr/tasks/` paket değil, veri
   klasörü (`__init__.py` yok); görevler `load_task(ad)` ile bulunur.
+
+## İkinci arama (K12)
+
+İlk geçişte (`bidr candidates`) belge sorgu, ölçütler derlemdir: belge başına ilk k ölçüt ince
+karara gider. Seyrek ölçütün uygun belgesi o belgenin ilk k'sına giremezse hiç sorulmaz. İkinci
+arama, audit sonrasında kanıtsız ya da zayıf kalan alt ölçütler için yönü çevirir: ölçüt sorgu,
+işlenmiş arşivin bütün belgeleri derlem. Kod: `bidr/candidates/ikinci.py` (zayıf ölçüt + arama),
+`bidr/candidates/synonyms.py` (eşanlamlı grupları), `bidr/candidates/arama.py` (paket + ekleme),
+`bidr/evaluate/ikinci_arama.py` (ölçüm). Yeni bağımlılık yok.
+
+- **Zayıf ölçüt** (`weak_criteria`, profil içinde): `kanitsiz` (sayılan eşleşme yok), `dusuk_od`
+  (önerilen OD ≤ `--od-esik`, vars. 2), `yalniz_kurum_geneli` (audit `kurum_geneli_yalniz`),
+  `bolum_kaniti_yok` (kabul edilmiş eşleşmelerin hiçbiri birimin kendi belgesinden değil; kurum
+  geneli kuralı audit'inkiyle aynı, insan birim kararı öncelikli). OD ve sayılan eşleşme
+  `audit-olcutler.json`'dan; yoksa `decisions.jsonl`'den yaklaşık (`kaynak: decisions`).
+  `--olcut` ile zayıflık hesaplanmadan elle verilir.
+- **Arama**: sorgu = ölçüt metni (başlık ×3, üst ölçüt, tanım, rubrik, örnek kanıt maddeleri =
+  yuvalar) + eşanlamlı genişletme (metinde bir grubun üyesi öbek olarak geçerse ötekilerin
+  sözcükleri sayı 1 ile eklenir; 5 harflik kök çakışması tetiklemez). Puan = sorgu BM25'i (arşiv
+  belgeleri derlem, IDF arşivden) + ilk geçişin yuva sinyali; ikisi belgeler arasında en
+  yükseğe bölünür. knn/tür/öncel kullanılmaz. **Girdi değildir:** `labels.jsonl` (geçmiş rapor
+  etiketleri ve kanıt adları), yol, dosya adı, `kanit-adlari.jsonl`.
+- **Seçim**: ince kararı sonuçlanmış, ölçüt için ilk geçişte aday olmamış (kayıttaki `adaylar`,
+  kaba `secilen` ve eşleşmelerde yok) belgeler; öz-referans türü, başka birime ait sayılan ve
+  kararı devralan mükerrer belge seçilmez. Ölçüt başına en iyi `--n` (vars. 5) belge; belge
+  başına en çok `--max-aday` (vars. 6) ölçüt. Çoklu ölçüt korunur: bir belgeye seçilen bütün
+  zayıf ölçütler aynı pakette sorulur.
+- **Paket** (`bidr arama prepare -w WS`): `work/ikinci_arama/<doc_id>.json`, `classify_fine`
+  görevi, `decide prepare`'inkiyle aynı biçim ve istem (`fine_inputs`; aday listesi yalnız
+  ikinci aramanın ölçütleri). `meta.ikinci_arama`: ölçüt başına puan, arşivdeki sıra, zayıflık
+  nedenleri ve ilk geçişin parmak izi (`ince_parmak`).
+- **Ekleme** (`bidr arama apply -w WS --model M`): şema + `check_matches` (aday dışı ölçüt,
+  yuva, birebir alıntı, OD, birim). Birim ilişkisi kayıttan (ilk geçiş; insan kararı öncelikli),
+  modelin ikinci cevabı `ikinci_arama.son.birim_iliskisi_model`'de. Eşleşmeler kaydın
+  `eslesmeler`ine EKLENİR, `ikinci_arama: true`, `ikinci_arama_paket` (istem sha) ve
+  `denetim.isaret`te `ikinci_arama` ile (review.xlsx "işaretler" sütununda görünür); `olcutler`,
+  `karar`, `reddedilen_eslesme` yeniden hesaplanır; `ince`, `adaylar`, `kaba` değişmez (decide'ın
+  eskime denetimi etkilenmez). Kayıt bölümü `ikinci_arama`: `olcutler` (bakılan ölçüt → puan,
+  sıra, nedenler, istem/cevap sha, eşleşme/kabul sayısı), `ince_parmak`, `eslesme`, `son`.
+  İlk geçiş yeniden karara bağlanırsa (`decide prepare --only`) ikinci arama eşleşmeleri düşer,
+  parmak değişir: eski paket `eski_paket` sayılır, `arama prepare` belgeyi yeniden paketler.
+- **Ölçüm** (`bidr arama olcum -w WS [--json]`): ölçüt başına bakılan çift, önerilen eşleşme,
+  kod kabul/red (nedenleriyle), insan kabul/ret/incelenmedi (`review-decisions.jsonl`, satır
+  `<doc_id>|<yuva>`) ve isabet. İnsanın kabul ettiği = ilk geçişin kaçırdığı kanıt; reddettiği
+  = ikinci aramanın eklediği yanlış.
+- **Hatta bağlama** (öneri; aşama bu sürümde eklenmedi): `audit` sonrası isteğe bağlı M aşaması
+  `ikinci_arama` (önkoşul `audit`; komutlar `arama prepare` / ajan / `arama apply`; tamamlanma:
+  `work/ikinci_arama`'da cevapsız paket yok). Eklenen kabul varsa `decisions.jsonl` değişir ve
+  audit tablosu eskir (`kararlar_sha`): hat audit'i yeniden ister, insan yeni satırları inceler.
