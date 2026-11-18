@@ -277,7 +277,7 @@ def test_run_inventory_and_texts(tmp_path):
     assert before == after  # kaynak değişmedi
 
     inv = read_inv(ws)
-    assert len(rows) == len(inv) == 8
+    assert len(rows) == len(inv) == 9  # arşiv + içindeki a.txt ayrı satır
     tut = inv["alt/tutanak.docx"]
     assert tut["status"] == "ok" and tut["doc_id"] == doc_id(src / "alt" / "tutanak.docx")
     assert tut["sha256"].startswith(tut["doc_id"]) and int(tut["chars"]) > 0
@@ -289,7 +289,9 @@ def test_run_inventory_and_texts(tmp_path):
     assert kop["dup_of"] == "tablo.xlsx" and kop["doc_id"] == x["doc_id"] and kop["status"] == "ok"
 
     assert inv["bos.txt"]["status"] == "empty"
-    assert inv["arsiv.zip"]["status"] == "unsupported" and inv["arsiv.zip"]["doc_id"]
+    assert inv["arsiv.zip"]["status"] == "archive" and inv["arsiv.zip"]["doc_id"]
+    uye = inv["arsiv.zip!/a.txt"]
+    assert uye["status"] == "ok" and uye["kapsayici"] == "arsiv.zip" and text_of(ws, uye) == "x"
     assert inv["bozuk.docx"]["status"] == "error" and inv["bozuk.docx"]["error"]
     assert inv["alt/Belge.pdf"]["status"] == "not_downloaded" and inv["alt/Belge.pdf"]["doc_id"] == ""
     assert inv["not.txt"]["status"] == "ok"
