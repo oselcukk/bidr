@@ -1,0 +1,9 @@
+version: 1
+description: >-
+  Kaba seçim. Belge metni (gerekirse kısaltılmış) + profile göre süzülmüş alt
+  ölçütlerin başlığı ve düzey-3 rubrik metni (birebir) → belgenin kanıt
+  olabileceği en çok 5 alt ölçüt (gerekçeli) ya da olcut_yok / kanit_degil.
+inputs:
+  olcutler: "alt ölçüt listesi; her satır `kimlik — başlık: rubrik 3 metni`"
+  belge_bilgisi: "documents.jsonl içerik alanları (tür tahmini, tarih, sayfa); yol/ad yok"
+  belge_metni: "belge metni; kısaltıldıysa parçalar arası [...]"

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "classify_coarse",
+  "type": "object",
+  "required": ["karar", "olcutler", "gerekce"],
+  "additionalProperties": false,
+  "properties": {
+    "karar": {"enum": ["olcut_var", "olcut_yok", "kanit_degil"]},
+    "olcutler": {
+      "type": "array",
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "required": ["olcut", "gerekce"],
+        "additionalProperties": false,
+        "properties": {
+          "olcut": {"type": "string", "pattern": "^[A-E]\\.[0-9]+\\.[0-9]+$"},
+          "gerekce": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "gerekce": {"type": "string"}
+  }
+}

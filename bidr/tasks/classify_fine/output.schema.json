@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "classify_fine",
+  "type": "object",
+  "required": ["karar", "eslesmeler", "gerekce"],
+  "additionalProperties": false,
+  "properties": {
+    "karar": {"enum": ["olcut_var", "olcut_yok", "kanit_degil"]},
+    "eslesmeler": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "required": ["olcut", "yuva", "asama", "od_onerisi", "alinti", "gerekce", "guven"],
+        "additionalProperties": false,
+        "properties": {
+          "olcut": {"type": "string", "pattern": "^[A-E]\\.[0-9]+\\.[0-9]+$"},
+          "yuva": {"type": "string", "pattern": "^[A-E]\\.[0-9]+\\.[0-9]+/[0-9]+$"},
+          "asama": {"enum": ["planla", "uygula", "kontrol_et", "onlem_al", "ozgun"]},
+          "od_onerisi": {"type": "integer", "minimum": 2, "maximum": 5},
+          "alinti": {"type": "string", "minLength": 1, "maxLength": 600},
+          "gerekce": {"type": "string", "minLength": 1},
+          "guven": {"enum": ["yuksek", "orta", "dusuk"]}
+        }
+      }
+    },
+    "gerekce": {"type": "string"}
+  }
+}

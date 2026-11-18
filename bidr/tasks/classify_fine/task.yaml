@@ -1,0 +1,10 @@
+version: 1
+description: >-
+  İnce karar. Belge metni + aday alt ölçütlerin rubriği (1-5, birebir) ve kanıt
+  yuvaları (PUKÖ aşaması / OD etiketiyle) → her uyan ölçüt için
+  {olcut, yuva, asama, od_onerisi, alinti, gerekce, guven}. Alıntı belgeden
+  birebir olmalı; kod verify_quote ile denetler, tutmayan eşleşme reddedilir.
+inputs:
+  adaylar: "aday alt ölçütler: başlık, rubrik 1-5, yuvalar `[aşama → OD]` etiketiyle"
+  belge_bilgisi: "documents.jsonl içerik alanları (tür tahmini, tarih, sayfa); yol/ad yok"
+  belge_metni: "belge metni; kısaltıldıysa parçalar arası [...]"
