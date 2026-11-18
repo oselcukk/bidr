@@ -1,0 +1,554 @@
+# OD sınır seti: ölçüt başına küçük belge kümeleri ve doğru OD. Biçim: evalsets/README.md.
+#
+# Hayalî birim: Örnek Üniversitesi · Örnek Bölümü (başka birim: Kıyas Bölümü). Rapor yılı 2025.
+# Her vaka tek bir ölçütü sınar; vakalar ayrı ölçütlerde olduğundan set tek çalışma alanında
+# da işlenebilir.
+#
+# Vaka alanları:
+#   beklenen_od    bütün belgeler doğru işlendiğinde ölçütün OD'si (rubrik + docs/AUDIT.md)
+#   eksik_halka    bir üst düzey için eksik halkalar (audit-olcutler.json `eksik[].halka`)
+#   eksik_kosul    eksik koşulun insan okur açıklaması
+#   not_icermeli   ölçüt notlarında geçmesi gereken ifade(ler)
+#   bilinen_acik   naif kayıtla audit'in yanlış OD verdiği bilinen açık (testte xfail gerekçesi)
+# Belge alanları tuzak setindekiyle aynı (eslesmeler = ideal, naif = tuzağa düşen model).
+surum: 1
+set: od-sinir
+birim: Örnek Bölümü
+kurum: Örnek Üniversitesi
+donem: 2025
+
+vakalar:
+  - id: plansiz-uygulama
+    olcut: B.3.5
+    beklenen_od: 3
+    eksik_halka: [kontrol_et, onlem_al]
+    eksik_kosul: >-
+      Plan belgesi yok: OD2 örtük sağlanır (komisyon kararı 2026-11-18), ölçüt "plan belgesi
+      önerilir" diye işaretlenir. OD4 için faaliyetlerin izlenmesi ve taleplere göre iyileştirme gerekir.
+    not_icermeli: ["plan belgesi önerilir"]
+    belgeler:
+      - dosya: v01-plansiz-uygulama/a-faaliyet-raporu-2025.md
+        belge_turu: faaliyet_raporu
+        tarih: "2025-12-22"
+        kanit: evet
+        birim_iliskisi: kendi
+        en_yuksek_od: 3
+        eslesmeler:
+          - {olcut: B.3.5, yuva: B.3.5/2, asama: uygula,
+             alinti: "2025 yılında bölüm öğrenci topluluğu ile birlikte dört sosyal etkinlik düzenlenmiştir"}
+      - dosya: v01-plansiz-uygulama/b-satranc-turnuvasi-katilim.md
+        belge_turu: katilim_listesi
+        tarih: "2025-04-12"
+        kanit: evet
+        birim_iliskisi: kendi
+        en_yuksek_od: 3
+        eslesmeler:
+          - {olcut: B.3.5, yuva: B.3.5/2, asama: uygula,
+             alinti: "toplam 28 öğrenci katılmıştır."}
+        naif:
+          eslesmeler:
+            - {olcut: B.3.5, yuva: B.3.5/5, asama: kontrol_et,
+               alinti: "toplam 28 öğrenci katılmıştır."}
+      - dosya: v01-plansiz-uygulama/c-bahar-piknigi-haberi.md
+        belge_turu: web_sayfasi
+        tarih: "2025-05-19"
+        kanit: evet
+        birim_iliskisi: kendi
+        en_yuksek_od: 3
+        eslesmeler:
+          - {olcut: B.3.5, yuva: B.3.5/3, asama: uygula,
+             alinti: "Ulaşımı güç olan öğrenciler için bölüm aracı ayrıldı."}
+
+  - id: kurum-yonergesi-ve-bolum-uygulamasi
+    olcut: B.2.3
+    beklenen_od: 3
+    eksik_halka: [kontrol_et, onlem_al]
+    eksik_kosul: >-
+      Kurum yönergesi planlamadır (OD2); bölümün intibak kararı ve yatay geçiş ilanı uygulamadır
+      (OD3). B.2.3'te izleme/önlem yuvası yok: OD4 için ölçüt açıklamasına uygun izleme ve
+      güncelleme ilanı gerekir.
+    belgeler:
+      - dosya: v02-kurum-yonergesi-ve-bolum-uygulamasi/a-muafiyet-intibak-yonergesi.md
+        belge_turu: yonerge
+        tarih: "2022-09-08"
+        kanit: evet
+        birim_iliskisi: kurum_geneli
+        en_yuksek_od: 2
+        eslesmeler:
+          - {olcut: B.2.3, yuva: B.2.3/1, asama: planla,
+             alinti: "Muafiyet talepleri, dersin içeriği ve AKTS iş yükü karşılaştırılarak ilgili bölümün muafiyet ve intibak komisyonunca değerlendirilir."}
+        naif:
+          birim_iliskisi: kendi
+          eslesmeler:
+            - {olcut: B.2.3, yuva: B.2.3/3, asama: uygula,
+               alinti: "Muafiyet talepleri, dersin içeriği ve AKTS iş yükü karşılaştırılarak ilgili bölümün muafiyet ve intibak komisyonunca değerlendirilir."}
+      - dosya: v02-kurum-yonergesi-ve-bolum-uygulamasi/b-intibak-komisyonu-tutanagi.md
+        belge_turu: komisyon_tutanagi
+        tarih: "2025-09-18"
+        kanit: evet
+        birim_iliskisi: kendi
+        en_yuksek_od: 3
+        eslesmeler:
+          - {olcut: B.2.3, yuva: B.2.3/2, asama: uygula,
+             alinti: "14 dersten muafiyet verilmesine, 2 ders için muafiyet talebinin AKTS iş yükü yetersiz olduğundan reddedilmesine karar verilmiştir."}
+      - dosya: v02-kurum-yonergesi-ve-bolum-uygulamasi/c-yatay-gecis-duyurusu.md
+        belge_turu: web_sayfasi
+        tarih: "2025-07-01"
+        kanit: evet
+        birim_iliskisi: kendi
+        en_yuksek_od: 3
+        eslesmeler:
+          - {olcut: B.2.3, yuva: B.2.3/4, asama: uygula,
+             alinti: "Başvuru koşulları, istenen belgeler ve muafiyet işlemlerinin nasıl yapılacağı bu sayfada ilan edilmiştir."}
+
+  - id: yalniz-kurum-duzenlemesi
+    olcut: B.4.1
+    beklenen_od: 2
+    eksik_halka: [uygula]
+    eksik_kosul: >-
+      Yalnız kurum geneli yönerge, senato kararı ve rektörlük ilanı: bölümün kriterleri
+      uyguladığını (bölüm kurulu görüşü, ders–uzmanlık uyumu kararı) gösteren belge yok.
+    bilinen_acik: >-
+      Kurum geneli ilan `resmi_yazi` türündedir (kurum geneli türlerinden değil); model
+      `birim_iliskisi: kendi` derse OD2 tavanı uygulanmaz ve ölçüt OD3 olur.
+    belgeler:
+      - dosya: v03-yalniz-kurum-duzenlemesi/a-atama-yukseltme-yonergesi.md
+        belge_turu: yonerge
+        tarih: "2025-01-20"
+        kanit: evet
+        birim_iliskisi: kurum_geneli
+        en_yuksek_od: 2
+        eslesmeler:
+          - {olcut: B.4.1, yuva: B.4.1/1, asama: planla,
+             alinti: "Doktor öğretim üyesi kadrosuna atanacak adayların, alanında uluslararası hakemli dergilerde en az iki yayını bulunması gerekir."}
+        naif:
+          birim_iliskisi: kendi
+          eslesmeler:
+            - {olcut: B.4.1, yuva: B.4.1/2, asama: uygula,
+               alinti: "Doktor öğretim üyesi kadrosuna atanacak adayların, alanında uluslararası hakemli dergilerde en az iki yayını bulunması gerekir."}
+      - dosya: v03-yalniz-kurum-duzenlemesi/b-senato-karari-olcut-degisikligi.md
+        belge_turu: senato_karari
+        tarih: "2025-01-20"
+        kanit: evet
+        birim_iliskisi: kurum_geneli
+        en_yuksek_od: 2
+        eslesmeler:
+          - {olcut: B.4.1, yuva: B.4.1/1, asama: planla,
+             alinti: "doktor öğretim üyesi kadrosu için aranan yayın koşulunun ikiye çıkarılmasına"}
+        naif:
+          birim_iliskisi: kendi
+          eslesmeler:
+            - {olcut: B.4.1, yuva: B.4.1/3, asama: onlem_al,
+               alinti: "doktor öğretim üyesi kadrosu için aranan yayın koşulunun ikiye çıkarılmasına"}
+      - dosya: v03-yalniz-kurum-duzenlemesi/c-kadro-ilani-yazisi.md
+        belge_turu: resmi_yazi
+        tarih: "2025-03-03"
+        kanit: evet
+        birim_iliskisi: kurum_geneli
+        en_yuksek_od: 2
+        eslesmeler:
+          - {olcut: B.4.1, yuva: B.4.1/2, asama: uygula,
+             alinti: "koşullar çerçevesinde toplam 24 doktor öğretim üyesi alınacaktır."}
+        naif:
+          birim_iliskisi: kendi
+          eslesmeler:
+            - {olcut: B.4.1, yuva: B.4.1/2, asama: uygula,
+               alinti: "koşullar çerçevesinde toplam 24 doktor öğretim üyesi alınacaktır."}
+
+  - id: tek-seferlik-anket
+    olcut: A.4.2
+    beklenen_od: 3
+    eksik_halka: [kontrol_et, onlem_al]
+    eksik_kosul: >-
+      Tek seferlik anket sonucu uygulamadır (kanıt ilkesi bos_form_zinciri). Sonuçların yalnız
+      "bilgiye sunulması" izleme değildir; sonuca dayanan karar/değişiklik (önlem) yok.
+    bilinen_acik: >-
+      Aşama modelin: audit tek seferlik sonucu "izleme", bilgilendirme tutanağını "önlem" sayan
+      kaydı ayırt edemez (bos_form_zinciri ilkesi yalnız istemde); ölçüt OD4 olur.
+    belgeler:
+      - dosya: v04-tek-seferlik-anket/a-ders-degerlendirme-anket-formu.md
+        belge_turu: anket_formu
+        tarih: "2025-01-06"
+        kanit: evet
+        birim_iliskisi: kendi
+        en_yuksek_od: 2
+        eslesmeler:
+          - {olcut: A.4.2, yuva: A.4.2/1, asama: planla,
+             alinti: "Bu anket, öğrencilerin ders hakkındaki görüşlerini almak amacıyla yarıyıl sonunda uygulanır."}
+      - dosya: v04-tek-seferlik-anket/b-anket-sonuclari-2025-guz.md
+        belge_turu: anket_sonucu
+        tarih: "2025-02-20"
+        kanit: evet
+        birim_iliskisi: kendi
+        en_yuksek_od: 3
+        eslesmeler:
+          - {olcut: A.4.2, yuva: A.4.2/2, asama: uygula,
+             alinti: "Anket 2024-2025 güz yarıyılı sonunda 12 derste uygulanmış ve 301 yanıt alınmıştır."}
+        naif:
+          eslesmeler:
+            - {olcut: A.4.2, yuva: A.4.2/2, asama: uygula,
+               alinti: "Anket 2024-2025 güz yarıyılı sonunda 12 derste uygulanmış ve 301 yanıt alınmıştır."}
+            - {olcut: A.4.2, yuva: A.4.2/5, asama: kontrol_et,
+               alinti: "Ders içeriği maddesinin ortalaması 4,0; iş yükü maddesinin ortalaması 3,3 olarak hesaplanmıştır."}
+        yazilmamali:
+          - iddia: "Öğrenci geri bildirimleri sistematik olarak izlenmektedir."
+            olcut: A.4.2
+            atif_sart: false
+            anahtar: ["sistematik olarak izlen", "düzenli olarak izlen", "her yarıyıl izlen"]
+      - dosya: v04-tek-seferlik-anket/c-bolum-kurulu-bilgilendirme-tutanagi.md
+        belge_turu: toplanti_tutanagi
+        tarih: "2025-03-05"
+        kanit: evet
+        birim_iliskisi: kendi
+        en_yuksek_od: 3
+        eslesmeler:
+          - {olcut: A.4.2, yuva: A.4.2/2, asama: uygula,
+             alinti: "ders değerlendirme anketi sonuçları kurul üyelerinin bilgisine sunulmuştur."}
+        naif:
+          eslesmeler:
+            - {olcut: A.4.2, yuva: A.4.2/3, asama: onlem_al,
+               alinti: "ders değerlendirme anketi sonuçları kurul üyelerinin bilgisine sunulmuştur."}
+        yazilmamali:
+          - iddia: "Anket sonuçlarına göre iyileştirme yapılmıştır."
+            olcut: A.4.2
+            atif_sart: false
+            anahtar: ["sonuçlarına göre iyileştir", "sonuçları doğrultusunda", "iyileştirme yapılmıştır"]
+
+  - id: kopuk-puko
+    olcut: B.1.5
+    beklenen_od: 3
+    eksik_halka: [onlem_al]
+    eksik_kosul: >-
+      İzleme (öz değerlendirme raporu, PÇ4 hedefin altında) var; ama yapılan program değişikliği
+      (MAT 214) izleme sonucuna değil öğretim üyesi talebine dayanıyor ve PÇ4 ile ilgisiz. Tek
+      PUKÖ turu kopuk: önlem halkası yok, OD4 iddia edilemez.
+    bilinen_acik: >-
+      Audit K ve Ö halkalarının aynı ölçütte bulunmasına bakar; önlemin izleme sonucuna
+      dayandığını (K→Ö bağı) denetlemez. İlgisiz değişikliği önlem sayan kayıtla ölçüt OD4 olur.
+    belgeler:
+      - dosya: v05-kopuk-puko/a-program-izleme-usulu-karari.md
+        belge_turu: bolum_kurulu_karari
+        tarih: "2025-01-15"
+        kanit: evet
+        birim_iliskisi: kendi
+        en_yuksek_od: 2
+        eslesmeler:
+          - {olcut: B.1.5, yuva: B.1.5/1, asama: planla,
+             alinti: "Program çıktılarına ulaşma düzeyinin her akademik yılın sonunda ders bazlı ölçme sonuçları ve mezun anketiyle izlenmesine"}
+      - dosya: v05-kopuk-puko/b-program-oz-degerlendirme-raporu.md
+        belge_turu: oz_degerlendirme_raporu
+        tarih: "2025-07-10"
+        kanit: evet
+        birim_iliskisi: kendi
+        en_yuksek_od: 4
+        eslesmeler:
+          - {olcut: B.1.5, yuva: B.1.5/3, asama: kontrol_et,
+             alinti: "PÇ4 (bilimsel yazım ve sunum) için ulaşma düzeyi %52'dir ve %70 hedefinin altında kalmıştır."}
+      - dosya: v05-kopuk-puko/c-ders-degisikligi-karari.md
+        belge_turu: bolum_kurulu_karari
+        tarih: "2025-09-03"
+        kanit: evet
+        birim_iliskisi: kendi
+        en_yuksek_od: 3
+        eslesmeler:
+          - {olcut: B.1.5, yuva: B.1.5/2, asama: uygula,
+             alinti: "Dersin sorumlu öğretim üyesinin talebi üzerine MAT 214 Diferansiyel Geometri dersinin"}
+        naif:
+          eslesmeler:
+            - {olcut: B.1.5, yuva: B.1.5/5, asama: onlem_al,
+               alinti: "Dersin sorumlu öğretim üyesinin talebi üzerine MAT 214 Diferansiyel Geometri dersinin"}
+        yazilmamali:
+          - iddia: "Öz değerlendirme sonuçlarına göre program güncellenmiştir."
+            olcut: B.1.5
+            atif_sart: false
+            anahtar: ["sonuçlarına göre", "sonuçları doğrultusunda", "izleme sonuçlarına dayanarak", "PÇ4'ü iyileştirmek"]
+      - dosya: v05-kopuk-puko/d-ogretim-plani-2025.md
+        belge_turu: mufredat
+        tarih: "2025-09-01"
+        kanit: evet
+        birim_iliskisi: kendi
+        en_yuksek_od: 3
+        eslesmeler:
+          - {olcut: B.1.5, yuva: B.1.5/2, asama: uygula,
+             alinti: "Öğretim planı her ders için program çıktılarıyla ilişki tablosunu içerir."}
+
+  - id: ozgunluk-kanitsiz-od5
+    olcut: B.2.1
+    beklenen_od: 4
+    eksik_halka: [ozgun]
+    eksik_kosul: >-
+      Tam bir PUKÖ turu var (ilke kararı, izlence, değerlendirme raporu, rapora dayanan karar):
+      OD4. OD5 için birden çok yılda sürdürülen, içselleşmiş ve dışarıca örnek gösterilen uygulama
+      kanıtı gerekir; bölümün kendi tanıtım sayfasındaki "öncü ve örnek" beyanı kanıt değildir.
+    bilinen_acik: >-
+      Özgün halka tek eşleşmeyle kurulur: audit özgünlüğün kanıtını (süreklilik, dış tanınma) ya
+      da beyanın öz-övgü olduğunu denetlemez; ölçüt OD5 olur.
+    belgeler:
+      - dosya: v06-ozgunluk-kanitsiz-od5/a-ogrenci-merkezli-ogretim-karari.md
+        belge_turu: bolum_kurulu_karari
+        tarih: "2025-01-22"
+        kanit: evet
+        birim_iliskisi: kendi
+        en_yuksek_od: 2
+        eslesmeler:
+          - {olcut: B.2.1, yuva: B.2.1/3, asama: planla,
+             alinti: "her ders izlencesinde kullanılacak yöntemlerin belirtilmesine oy birliğiyle karar verilmiştir."}
+      - dosya: v06-ozgunluk-kanitsiz-od5/b-ders-izlencesi-mat301.md
+        belge_turu: ders_izlencesi
+        tarih: "2025-02-10"
+        kanit: evet
+        birim_iliskisi: kendi
+        en_yuksek_od: 3
+        eslesmeler:
+          - {olcut: B.2.1, yuva: B.2.1/1, asama: uygula,
+             alinti: "Ders saatlerinin üçte biri öğrencilerin tahtada çözüm sunmasına ayrılmıştır."}
+      - dosya: v06-ozgunluk-kanitsiz-od5/c-ogretim-yontemleri-degerlendirme-raporu.md
+        belge_turu: degerlendirme_raporu
+        tarih: "2025-06-30"
+        kanit: evet
+        birim_iliskisi: kendi
+        en_yuksek_od: 4
+        eslesmeler:
+          - {olcut: B.2.1, yuva: B.2.1/5, asama: kontrol_et,
+             alinti: "Öğrenci merkezli yöntemlerin 13 derste uygulandığı, 5 derste yalnız düz anlatım kullanıldığı belirlenmiştir."}
+      - dosya: v06-ozgunluk-kanitsiz-od5/d-proje-tabanli-ogrenme-karari.md
+        belge_turu: bolum_kurulu_karari
+        tarih: "2025-09-10"
+        kanit: evet
+        birim_iliskisi: kendi
+        en_yuksek_od: 4
+        eslesmeler:
+          - {olcut: B.2.1, yuva: B.2.1/5, asama: onlem_al,
+             alinti: "MAT 203 ve MAT 306'da 2025-2026 güz yarıyılından başlayarak proje tabanlı öğrenme uygulanmasına oy birliğiyle karar verilmiştir."}
+      - dosya: v06-ozgunluk-kanitsiz-od5/e-bolum-tanitim-sayfasi.md
+        belge_turu: web_sayfasi
+        tarih: "2025-03-03"
+        kanit: hayir
+        birim_iliskisi: kendi
+        en_yuksek_od: 1
+        eslesmeler: []
+        naif:
+          eslesmeler:
+            - {olcut: B.2.1, yuva: B.2.1/6, asama: ozgun,
+               alinti: "Bölümümüz, öğrenci merkezli öğretimde öncü ve örnek gösterilen uygulamalara sahiptir."}
+        yazilmamali:
+          - iddia: "Bölümün öğrenci merkezli öğretim uygulamaları örnek gösterilebilir / öncüdür."
+            olcut: B.2.1
+            atif_sart: false
+            anahtar: ["örnek gösteril", "öncü", "içselleştiril"]
+
+  - id: ozgun-gecerli-od5
+    olcut: B.3.2
+    beklenen_od: 5
+    eksik_halka: []
+    eksik_kosul: >-
+      Denetim vakası (olumlu): plan (iş akışı), uygulama (eşleştirme), izleme (anket), önleme
+      (ankete dayanan karar) ve özgünlük (2021'den bu yana sürdürülen programın üniversitece iyi
+      uygulama seçilmesi) birlikte; 2023 faaliyet raporu süreklilik kanıtıdır (bu yılın halkası değil).
+    belgeler:
+      - dosya: v07-ozgun-gecerli-od5/a-akran-mentorluk-is-akisi.md
+        belge_turu: is_akisi
+        tarih: "2025-01-06"
+        kanit: evet
+        birim_iliskisi: kendi
+        en_yuksek_od: 2
+        eslesmeler:
+          - {olcut: B.3.2, yuva: B.3.2/1, asama: planla,
+             alinti: "Danışman komisyonu her mentora en çok dört birinci sınıf öğrencisi eşleştirir."}
+      - dosya: v07-ozgun-gecerli-od5/b-mentorluk-eslestirme-listesi-2025.md
+        belge_turu: katilim_listesi
+        tarih: "2025-10-06"
+        kanit: evet
+        birim_iliskisi: kendi
+        en_yuksek_od: 3
+        eslesmeler:
+          - {olcut: B.3.2, yuva: B.3.2/7, asama: uygula,
+             alinti: "2025-2026 güz yarıyılında 19 mentor ile 68 birinci sınıf öğrencisi eşleştirilmiştir."}
+      - dosya: v07-ozgun-gecerli-od5/c-mentorluk-anket-sonuclari-2025.md
+        belge_turu: anket_sonucu
+        tarih: "2025-06-25"
+        kanit: evet
+        birim_iliskisi: kendi
+        en_yuksek_od: 4
+        eslesmeler:
+          - {olcut: B.3.2, yuva: B.3.2/8, asama: kontrol_et,
+             alinti: "Öğrencilerin %38'i görüşmelerin sıklığının yetersiz olduğunu belirtmiştir."}
+      - dosya: v07-ozgun-gecerli-od5/d-mentorluk-iyilestirme-karari-2025.md
+        belge_turu: bolum_kurulu_karari
+        tarih: "2025-07-02"
+        kanit: evet
+        birim_iliskisi: kendi
+        en_yuksek_od: 4
+        eslesmeler:
+          - {olcut: B.3.2, yuva: B.3.2/9, asama: onlem_al,
+             alinti: "görüşmelerin haftalık yapılmasına ve mentor başına öğrenci sayısının dörtle sınırlandırılmasına oy birliğiyle karar verilmiştir."}
+      - dosya: v07-ozgun-gecerli-od5/e-iyi-uygulama-yazisi.md
+        belge_turu: resmi_yazi
+        tarih: "2025-11-14"
+        kanit: evet
+        birim_iliskisi: ust_birim_bu_birim_hakkinda
+        en_yuksek_od: 5
+        eslesmeler:
+          - {olcut: B.3.2, yuva: B.3.2/10, asama: ozgun,
+             alinti: "Üniversite Kalite Komisyonunca 2025 yılı iyi uygulama örneği seçilmiş ve diğer bölümlere yaygınlaştırılmasına karar verilmiştir."}
+      - dosya: v07-ozgun-gecerli-od5/f-mentorluk-faaliyet-raporu-2023.md
+        belge_turu: faaliyet_raporu
+        tarih: "2023-12-18"
+        kanit: gecmis
+        birim_iliskisi: kendi
+        en_yuksek_od: 1
+        eslesmeler:
+          - {olcut: B.3.2, yuva: B.3.2/7, asama: uygula,
+             alinti: "2023 yılında programa 54 birinci sınıf öğrencisi ve 15 mentor katılmıştır."}
+
+  - id: bilgisiz-belgeler-od1
+    olcut: A.1.3
+    beklenen_od: 1
+    eksik_halka: [planla]
+    eksik_kosul: >-
+      Giriş ekranı ve bağlantı listesi bilgi içermez (kanıt ilkesi bilgisiz_ekran); değişim yol
+      haritası Kıyas Bölümünündür. Bölümün değişim ihtiyacını belirlediğine dair belge yok.
+    bilinen_acik: >-
+      "Kanıt değil" ve "başka birim" kararları yalnız modelin; bu alanları kaçıran kayıtta audit
+      bilgisiz ekranı uygulama, başka bölümün planını plan sayar; ölçüt OD3 olur.
+    belgeler:
+      - dosya: v08-bilgisiz-belgeler-od1/a-obs-giris-ekrani.md
+        belge_turu: ekran_goruntusu
+        tarih: "2025-03-12"
+        kanit: hayir
+        birim_iliskisi: kendi
+        en_yuksek_od: 1
+        eslesmeler: []
+        naif:
+          eslesmeler:
+            - {olcut: A.1.3, yuva: A.1.3/7, asama: uygula,
+               alinti: "Yeni sürüme geçiş için tıklayınız"}
+      - dosya: v08-bilgisiz-belgeler-od1/b-baglanti-listesi.md
+        belge_turu: web_sayfasi
+        tarih: "2025-04-02"
+        kanit: hayir
+        birim_iliskisi: kendi
+        en_yuksek_od: 1
+        eslesmeler: []
+        naif:
+          eslesmeler:
+            - {olcut: A.1.3, yuva: A.1.3/1, asama: planla,
+               alinti: "Stratejik plan ve değişim yol haritası"}
+      - dosya: v08-bilgisiz-belgeler-od1/c-kiyas-bolumu-degisim-plani.md
+        belge_turu: stratejik_plan
+        tarih: "2025-04-09"
+        kanit: hayir
+        birim_iliskisi: baska_birim
+        en_yuksek_od: 1
+        eslesmeler:
+          - {olcut: A.1.3, yuva: A.1.3/2, asama: planla,
+             alinti: "2027 yılına kadar programını yeniden yapılandırmayı planlamaktadır."}
+        naif:
+          birim_iliskisi: kendi
+          eslesmeler:
+            - {olcut: A.1.3, yuva: A.1.3/2, asama: planla,
+               alinti: "2027 yılına kadar programını yeniden yapılandırmayı planlamaktadır."}
+        yazilmamali:
+          - iddia: "Bölümün değişim yol haritası vardır / değişim süreci altı ayda bir izlenmektedir."
+            olcut: A.1.3
+            atif_sart: false
+            anahtar: ["yol haritası", "altı ayda bir", "veri bilimi"]
+
+  - id: onceki-ve-sonraki-yil
+    olcut: B.1.2
+    beklenen_od: 2
+    eksik_halka: [uygula]
+    eksik_kosul: >-
+      2025'te kabul edilen ders dağılım ilkeleri planlamadır. Dağılım kararları 2024 güz (geçmiş
+      kanıt) ve 2026 bahar (dönem sonrası) yarıyıllarına ait: rapor yılında uygulama kanıtı yok.
+    belgeler:
+      - dosya: v09-onceki-ve-sonraki-yil/a-ders-dagilim-ilkeleri-karari.md
+        belge_turu: bolum_kurulu_karari
+        tarih: "2025-01-29"
+        kanit: evet
+        birim_iliskisi: kendi
+        en_yuksek_od: 2
+        eslesmeler:
+          - {olcut: B.1.2, yuva: B.1.2/1, asama: planla,
+             alinti: "Derslerin öğretim elemanlarına dağılımında uzmanlık alanının esas alınmasına"}
+      - dosya: v09-onceki-ve-sonraki-yil/b-ders-dagilimi-2024-guz.md
+        belge_turu: bolum_kurulu_karari
+        tarih: "2024-09-04"
+        kanit: gecmis
+        birim_iliskisi: kendi
+        en_yuksek_od: 1
+        eslesmeler:
+          - {olcut: B.1.2, yuva: B.1.2/3, asama: uygula,
+             alinti: "2024-2025 güz yarıyılında açılacak derslerin öğretim elemanlarına ekteki çizelgede gösterildiği biçimde, uzmanlık alanları gözetilerek dağıtılmasına"}
+      - dosya: v09-onceki-ve-sonraki-yil/c-ders-dagilimi-2026-bahar.md
+        belge_turu: bolum_kurulu_karari
+        tarih: "2026-01-14"
+        kanit: hayir
+        birim_iliskisi: kendi
+        en_yuksek_od: 1
+        eslesmeler:
+          - {olcut: B.1.2, yuva: B.1.2/3, asama: uygula,
+             alinti: "ders dağılım ilkelerine uygun olarak dağıtılmasına oy birliğiyle karar verilmiştir."}
+        yazilmamali:
+          - iddia: "Ders dağılımı 2025 yılında ilkelere uygun olarak yapılmıştır."
+            olcut: B.1.2
+            atif_sart: false
+            anahtar: ["ilkelere uygun olarak dağıtılmıştır", "ilkelere uygun olarak yapılmıştır", "2025-2026 bahar"]
+
+  - id: niyet-onlem-degil
+    olcut: B.1.3
+    beklenen_od: 3
+    eksik_halka: [onlem_al]
+    eksik_kosul: >-
+      İlke kararı (P), ilişki tablosu (U), uyum incelemesi ve kazanım anketi (K). Kazanımların
+      güncellenmesi yalnız ÖNERİLMİŞ ("önümüzdeki akademik yılda"): yapılmış bir iyileştirme yok.
+    bilinen_acik: >-
+      Öneri/niyet cümlesini önlem sayan kayıtta audit gerçekleşmeyi (zaman kipi, "önerilmiştir")
+      denetlemez; ölçüt OD4 olur.
+    belgeler:
+      - dosya: v10-niyet-onlem-degil/a-kazanim-iliskilendirme-ilkeleri.md
+        belge_turu: bolum_kurulu_karari
+        tarih: "2025-02-05"
+        kanit: evet
+        birim_iliskisi: kendi
+        en_yuksek_od: 2
+        eslesmeler:
+          - {olcut: B.1.3, yuva: B.1.3/1, asama: planla,
+             alinti: "her dersin kazanımlarının en az iki program çıktısıyla ilişkilendirilmesine"}
+      - dosya: v10-niyet-onlem-degil/b-ders-pc-iliski-tablosu.md
+        belge_turu: akts_bilgi_paketi
+        tarih: "2025-09-01"
+        kanit: evet
+        birim_iliskisi: kendi
+        en_yuksek_od: 3
+        eslesmeler:
+          - {olcut: B.1.3, yuva: B.1.3/2, asama: uygula,
+             alinti: "Her dersin kazanımları ders bilgi paketinde program çıktılarıyla ilişkilendirilmiştir."}
+      - dosya: v10-niyet-onlem-degil/c-kazanim-uyum-inceleme-tutanagi.md
+        belge_turu: komisyon_tutanagi
+        tarih: "2025-06-24"
+        kanit: evet
+        birim_iliskisi: kendi
+        en_yuksek_od: 4
+        eslesmeler:
+          - {olcut: B.1.3, yuva: B.1.3/4, asama: kontrol_et,
+             alinti: "MAT 402 derslerinde kazanım-PÇ uyumunun zayıf olduğu görülmüştür"}
+        naif:
+          eslesmeler:
+            - {olcut: B.1.3, yuva: B.1.3/4, asama: onlem_al,
+               alinti: "bu derslerin kazanımlarının önümüzdeki akademik yılda güncellenmesi önerilmiştir."}
+        yazilmamali:
+          - iddia: "Uyumu zayıf derslerin kazanımları güncellenmiştir."
+            olcut: B.1.3
+            atif_sart: false
+            anahtar: ["kazanımları güncellenmiştir", "kazanımları yeniden yazılmıştır", "kazanımları iyileştirilmiştir"]
+            haric: ["önerilmiştir", "önerilmiş"]
+      - dosya: v10-niyet-onlem-degil/d-kazanim-ogrenci-anketi-sonuclari.md
+        belge_turu: anket_sonucu
+        tarih: "2025-06-20"
+        kanit: evet
+        birim_iliskisi: kendi
+        en_yuksek_od: 4
+        eslesmeler:
+          - {olcut: B.1.3, yuva: B.1.3/4, asama: kontrol_et,
+             alinti: "42 yanıta göre en düşük ortalama PÇ4'te (3,1/5) görülmüştür."}
