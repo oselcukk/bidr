@@ -27,8 +27,19 @@ def _cmd(args) -> int:
                 print(f"  reddedildi {c} (kod):")
                 for w in why:
                     print(f"    - {w}")
+            y = st.get("yonler") or {}
+            if y.get("metin") or y.get("eski_metin"):
+                print(f"güçlü/gelişmeye açık yönler: {y['metin']} alan, {y['paket']} paket ({y['yeni']} yeni/değişen), "
+                      f"zaten_tamam={y['zaten_tamam']}, kod denetiminde reddedilen={len(y['kod_reddi'])}"
+                      + (f", bekleyen {y['bekleyen']} → {y['klasor']}/README.md" if y.get("klasor") else ""))
+                for a, why in y["kod_reddi"].items():
+                    print(f"  reddedildi {a} (kod):")
+                    for w in why:
+                        print(f"    - {w}")
+                if y["eski_metin"]:
+                    print(f"  girdisi değişen alan (önce bidr yonler prepare): {', '.join(y['eski_metin'])}")
             print(f"Ajan (metni yazandan bağımsız olmalı): {st['klasor']}/README.md")
-            return 1 if st["kod_reddi"] else 0
+            return 1 if st["kod_reddi"] or y.get("kod_reddi") else 0
         st = R.apply(args.workspace, model=args.model)
     except (FileNotFoundError, KeyError, ValueError) as e:
         print(f"HATA {e}")
@@ -43,7 +54,18 @@ def _cmd(args) -> int:
         print(f"  geçersiz cevap {c}: {'; '.join(errs)}")
     if st["eski"]:
         print(f"  eski paket (metin değişti; yeniden prepare): {', '.join(st['eski'])}")
-    return 1 if st["gecersiz"] or st["reddedildi"] else 0
+    y = st.get("yonler") or {}
+    if any(y.get(k) for k in ("dogrulandi", "reddedildi", "bekleyen", "gecersiz", "eski")):
+        print(f"güçlü/gelişmeye açık yönler: dogrulandi={len(y['dogrulandi'])} reddedildi={len(y['reddedildi'])} "
+              f"bekleyen={len(y['bekleyen'])} geçersiz={len(y['gecersiz'])} eski paket={len(y['eski'])}")
+        for a, why in y["reddedildi"].items():
+            print(f"  reddedildi {a}:")
+            for w in why:
+                print(f"    - {w}")
+        for a, errs in y["gecersiz"].items():
+            print(f"  geçersiz cevap {a}: {'; '.join(errs)}")
+    bad = st["gecersiz"] or st["reddedildi"] or y.get("gecersiz") or y.get("reddedildi")
+    return 1 if bad else 0
 
 
 def register(sub):

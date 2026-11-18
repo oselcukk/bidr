@@ -480,6 +480,8 @@ def verify_tamam(c: Ctx) -> Check:
     texts = V._texts(ws, None)
     if not texts:
         return Check(atlandi=True, neden="doğrulanacak metin yok")
+    from bidr.write import yonler as Y
+    yp = Y.verify_pending(ws)              # alan düzeyi güçlü/gelişmeye açık yönler (aynı akış)
     log, human = V.load_log(ws), V.load_human(ws)
     unsettled = []
     for t in texts:
@@ -492,7 +494,9 @@ def verify_tamam(c: Ctx) -> Check:
     out = {k for k, t in rej.items() if V.excluded(t, human)}
     prog = {"metin": len(texts), "dogrulandi": len(ok), "reddedildi": len(rej), "cikarildi": len(out),
             "bekleyen": len(unsettled)}
-    if unsettled:
+    if yp["bekleyen"]:
+        prog["yonler_bekleyen"] = len(yp["bekleyen"])
+    if unsettled or yp["bekleyen"]:
         d = W.work_dir(ws, V.STAGE)
         pk = {}
         for pp in K.pkg_paths(d) if d.exists() else []:
@@ -503,24 +507,27 @@ def verify_tamam(c: Ctx) -> Check:
         cur = {t["olcut"] for t in unsettled if (x := pk.get(t["olcut"]))
                and (x.get("meta") or {}).get("metin_sha") == W.text_sha(t)
                and str(x.get("surum")) == W.task_version(V.TASK)}
-        nopkg = {t["olcut"] for t in unsettled} - cur
+        nopkg = ({t["olcut"] for t in unsettled} - cur) | (yp["bekleyen"] - yp["paketli"])
         if nopkg:
             return Check(kim=KOMUT, ilerleme=prog, komutlar=[prep],
                          neden=f"{len(nopkg)} metin doğrulanmadı (paketi yok ya da metin değişti): prepare "
                                "(kod denetimi burada; geçemeyen metin model işine gitmeden reddedilir)")
-        no_out = {k for k in cur if not (d / f"{k}.out.json").exists()}
-        bad = _invalid_keys(d / "GECERSIZ.md", r"^- `([A-E]\.\d+\.\d+)\.json`") & cur
+        no_out = {k for k in cur if not (d / f"{k}.out.json").exists()} | yp["cevapsiz"]
+        bad = (_invalid_keys(d / "GECERSIZ.md", r"^- `([A-E]\.\d+\.\d+)\.json`") & cur) | yp["gecersiz"]
         if no_out or bad:
             parts = [x for x in (f"{len(no_out)} paket cevapsız" if no_out else "",
                                  f"{len(bad)} cevap geçersiz (work/verify/GECERSIZ.md)" if bad else "") if x]
-            return Check(kim=AJAN, ilerleme=prog,
-                         komutlar=["(metni YAZMAMIŞ, taze ve bağımsız bir ajan) work/verify/README.md'yi oku; her "
-                                   "<ölçüt>.json için work/verify/<ölçüt>.out.json yaz: her cümleye destekleniyor/"
-                                   "kismen/desteklenmiyor + gerekçe, yalnız atıf yapılan kanıtın alıntısına göre",
-                                   apply_],
+            cmds = ["(metni YAZMAMIŞ, taze ve bağımsız bir ajan) work/verify/README.md'yi oku; her "
+                    "<ölçüt>.json için work/verify/<ölçüt>.out.json yaz: her cümleye destekleniyor/"
+                    "kismen/desteklenmiyor + gerekçe, yalnız atıf yapılan kanıtın alıntısına göre"]
+            if yp["cevapsiz"] or yp["gecersiz"]:
+                cmds.append("(aynı bağımsız ajan) work/verify/yonler/README.md'yi oku; her <alan>.json için "
+                            "work/verify/yonler/<alan>.out.json yaz: her maddeye destekleniyor/kismen/desteklenmiyor "
+                            "+ gerekçe, yalnız atıf yapılan ölçütün doğrulanmış metni ya da bulgusuna göre")
+            return Check(kim=AJAN, ilerleme=prog, komutlar=cmds + [apply_],
                          neden=", ".join(parts) + ": bağımsız doğrulama ajanda")
         return Check(kim=KOMUT, ilerleme=prog, komutlar=[apply_],
-                     neden=f"{len(cur)} doğrulama cevabı işlenmemiş: apply")
+                     neden=f"{len(cur) + len(yp['paketli'])} doğrulama cevabı işlenmemiş: apply")
     from bidr.write import sources as S
     idx, _ = _write_inputs(ws)
     have = set(S.load_index(idx)) if idx.exists() else set()
@@ -556,6 +563,86 @@ def verify_tamam(c: Ctx) -> Check:
                  neden=f"{len(ok)} metin doğrulandı" + (f", {len(out)} rapordan çıkarıldı" if out else ""))
 
 
+# -- yonler (alan düzeyi Güçlü / Gelişmeye Açık Yönler) ---------------------------------------------
+
+def yonler_tamam(c: Ctx) -> Check:
+    from bidr.write import packages as K
+    from bidr.write import run as W
+    from bidr.write import yonler as Y
+    ws = c.ws
+    prep, apply_ = c.fmt(c.stage["komut"][0]), c.fmt(c.stage["komut"][2])
+    try:
+        src = Y.Inputs(ws.root)
+    except FileNotFoundError as e:
+        return Check(kim=KOMUT, komutlar=[prep], neden=str(e))
+    need = [a for a in Y.ALANLAR if src.criteria(a)]
+    if not need:
+        return Check(atlandi=True, neden="birimin doldurduğu ölçüt yok: alan maddesi yazılmaz")
+    cur_sha = {a: src.girdi_sha(a) for a in need}
+    texts = {a: t for a in need if (t := Y.load(ws, a))}
+    d = Y.work_dir(ws)
+    pkgs = {}
+    for pp in K.pkg_paths(d, K.ALAN_KEY) if d.exists() else []:
+        try:
+            pkgs[pp.stem] = json.loads(pp.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
+    ver = W.task_version(Y.TASK)
+    pending = {a for a in need if a in pkgs and ((texts.get(a) or {}).get("kaynak") or {}).get("istem_sha")
+               != pkgs[a].get("istem_sha")}
+    bad_pkg = {a for a in pending if str(pkgs[a].get("surum")) != ver
+               or (pkgs[a].get("meta") or {}).get("girdi_sha") != cur_sha[a]}
+    stale = {a for a, t in texts.items() if t.get("girdi_sha") != cur_sha[a]}
+    todo = (set(need) - set(texts) - pending) | (stale - pending) | bad_pkg
+    log = Y.load_log(ws)
+    rej = Y.rejected(ws, log)
+    lim = W.rewrite_limit(ws.root)
+    prog = {"alan": len(need), "metin": len(set(texts) - stale), "bekleyen_paket": len(pending),
+            "dogrulandi": sum(1 for a, t in texts.items() if a not in stale and t.get("durum") == "dogrulandi")}
+    uy = list(src.uyarilar)
+    if todo:
+        return Check(kim=KOMUT, ilerleme=prog, uyarilar=uy, komutlar=[prep],
+                     neden=f"{len(todo)} alanın maddeleri yok ya da eski (ölçüt metinleri/audit değişti): prepare")
+    if pending:
+        rounds = sorted(a for a in pending if int((pkgs[a].get("meta") or {}).get("tur") or 0) > 0)
+        no_out = {a for a in pending if not (d / f"{a}.out.json").exists()}
+        bad = _invalid_keys(d / "GECERSIZ.md", r"^- `([A-E])\.json`") & pending
+        if no_out or bad:
+            parts = [x for x in (f"{len(no_out)} paket cevapsız" if no_out else "",
+                                 f"{len(bad)} cevap geçersiz (work/yonler/GECERSIZ.md)" if bad else "") if x]
+            who = ("maddeleri ilk yazandan ve doğrulayıcıdan AYRI, taze bir ajan" if rounds
+                   else "ajan (doğrulamayı sonra başka, taze bir ajan yapar)")
+            return Check(kim=AJAN, ilerleme=prog, uyarilar=uy,
+                         komutlar=[f"({who}) work/yonler/README.md'yi oku; cevapsız/geçersiz her <alan>.json için "
+                                   "work/yonler/<alan>.out.json yaz (her cümle ölçüt kodlu; güçlü yön yalnız "
+                                   "doğrulanmış metinden, gelişmeye açık yön yalnız audit bulgusundan)", apply_],
+                         neden=", ".join(parts) + ": model işi ajanda")
+        return Check(kim=KOMUT, ilerleme=prog, uyarilar=uy, komutlar=[apply_],
+                     neden=f"{len(pending)} cevap yazılmış ama işlenmemiş: apply")
+    unverified = sorted(a for a, t in texts.items() if t.get("durum") not in Y.FINAL)
+    if unverified:
+        return Check(kim=KOMUT, ilerleme=prog, uyarilar=uy, komutlar=[c.fmt("bidr verify prepare -w {ws}")],
+                     neden=f"{len(unverified)} alanın maddeleri doğrulanmadı: {', '.join(unverified)}")
+    under = sorted(a for a, t in rej.items() if int(t.get("tur") or 0) < lim)
+    over = sorted(a for a in rej if a not in under)
+    if over:
+        uy.append(f"{len(over)} alanın maddeleri {lim} yeniden yazım turundan sonra hâlâ reddedildi ({', '.join(over)}): "
+                  "hücreler şablon yönergesiyle kalır, rapor TASLAK damgalı olur; gerekçeyi (verify-yonler.jsonl) "
+                  "kullanıcıya göster")
+    if under:
+        return Check(kim=KOMUT, ilerleme=prog, uyarilar=uy,
+                     komutlar=[c.fmt("bidr yonler prepare -w {ws} --reddedilenler")],
+                     neden=f"{len(under)} alanın maddeleri doğrulamada reddedildi; yeniden yazım turu: "
+                           + ", ".join(f"{a} (tur {int(rej[a].get('tur') or 0) + 1}/{lim})" for a in under)
+                           + ". Yeniden yazımı ve doğrulamayı ayrı, taze ajanlara ver")
+    empty = sorted(a for a, t in texts.items() if a not in rej and not (t.get("guclu") and t.get("gelisme")))
+    if empty:
+        uy.append(f"dayanağı olmadığı için boş liste kalan alan ({', '.join(empty)}): o hücre şablon yönergesiyle "
+                  "kalır, rapor TASLAK damgalı olur")
+    return Check(bitti=True, ilerleme=prog, uyarilar=uy,
+                 neden=f"{prog['dogrulandi']} alanın güçlü/gelişmeye açık yönleri doğrulandı")
+
+
 def _crit_key(k: str):
     from bidr.criteria.model import id_key
     return id_key(k)
@@ -564,7 +651,7 @@ def _crit_key(k: str):
 # -- render --------------------------------------------------------------------------------------------
 
 def render_tamam(c: Ctx) -> Check:
-    from bidr.render.run import inputs_sha, load_manifest
+    from bidr.render.run import load_manifest, workspace_sha
     from bidr.write.sources import rapor_section
     ws = c.ws
     cmd = c.fmt(c.stage["komut"][0])
@@ -579,14 +666,19 @@ def render_tamam(c: Ctx) -> Check:
         return Check(kim=KOMUT, komutlar=[cmd], neden="report.docx üretilmedi")
     g = m.get("girdiler") or {}
     sp = Path(str(sablon)).expanduser() if sablon else Path(m["sablon"])
-    cur = inputs_sha(sp, Path(g.get("texts") or ws.root / "texts"),
-                     Path(g["audit"]) if g.get("audit") else ws.root / "audit-olcutler.json",
-                     Path(g["index"]) if g.get("index") else ws.root / "evidence-index.csv")
+    cur = workspace_sha(ws.root, sp, Path(g.get("texts") or ws.root / "texts"),
+                        Path(g["audit"]) if g.get("audit") else ws.root / "audit-olcutler.json",
+                        Path(g["index"]) if g.get("index") else ws.root / "evidence-index.csv")
     if cur != m.get("girdi_sha"):
-        return Check(kim=KOMUT, komutlar=[cmd], neden="rapor eski: şablon, metinler, audit ya da kanıt dizini değişti")
+        return Check(kim=KOMUT, komutlar=[cmd], neden="rapor eski: şablon, metinler, alan maddeleri, audit, kanıt "
+                                                      "dizini, hazırlayanlar ya da kapsam değişti")
     uy = []
     if m.get("taslak"):
-        uy.append("rapor TASLAK damgalı: doğrulanmamış metin var (" + ", ".join(m.get("dogrulanmamis") or []) + ")")
+        why = m.get("taslak_nedenleri") or ["doğrulanmamış metin: " + ", ".join(m.get("dogrulanmamis") or [])]
+        uy.append("rapor TASLAK damgalı: " + "; ".join(why))
+    if m.get("karar_gerekli"):
+        uy.append(f"{len(m['karar_gerekli'])} ölçütte kapsam kararı gerekli (gaps.md 'Kapsam kararı gereken "
+                  "ölçütler'): KULLANICI karar verir, cevabı config.yaml rapor.kapsam'a yazılır")
     if m.get("baglantisiz_kanit"):
         uy.append(f"{m['baglantisiz_kanit']} kanıtın adı bağlantısız (gaps.md)")
     prog = {"dolu": m.get("dolu"), "bos": m.get("bos"), "baglantili_kanit": m.get("baglantili_kanit")}
@@ -622,6 +714,7 @@ CHECKS: dict[str, Callable[[Ctx], Check]] = {
     "file_tamam": file_tamam,
     "write_tamam": write_tamam,
     "verify_tamam": verify_tamam,
+    "yonler_tamam": yonler_tamam,
     "render_tamam": render_tamam,
     "yok": yok,
 }

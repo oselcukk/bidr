@@ -1,7 +1,9 @@
 """`bidr render -w WS [--sablon FR-0833.docx] [--out report.docx] [--birim "…"] [--yil 2026]`.
 
 Şablon verilmezse config.yaml `rapor.sablon`. Kanıt bağlantıları `evidence-index.csv`'den
-(`baglanti` sütunu); bağlantısız kanıtlar gaps.md "bağlantı yok" bölümüne yazılır."""
+(`baglanti` sütunu); bağlantısız kanıtlar gaps.md "bağlantı yok" bölümüne yazılır. Kapak
+hazırlayanları config.yaml `rapor.hazirlayanlar`; ölçüt kapsamı profil + `rapor.kapsam`
+(bidr/render/kapsam.py; kapsam kararı soruları gaps.md); alan maddeleri `yonler/<alan>.json`."""
 from __future__ import annotations
 
 import json
@@ -13,7 +15,8 @@ def _run(args) -> int:
     from bidr.pipeline.gate import check_gate
     from bidr.write.sources import rapor_section
 
-    from .run import Options, inputs_sha, render, update_link_gaps, write_manifest
+    from .run import (YONLER_DIR, Options, render, update_link_gaps, update_scope_gaps, workspace_inputs,
+                      workspace_sha, write_manifest)
 
     ws = Path(args.workspace).expanduser().resolve()
     if (rc := check_gate(ws, "render")) is not None:
@@ -38,23 +41,34 @@ def _run(args) -> int:
         opts.bos_ifade = args.bos_ifade
     if args.bos_kanit:
         opts.bos_kanit = args.bos_kanit
+    if args.kapsam_disi is not None:
+        opts.kapsam_disi = args.kapsam_disi
+    kapsam, people, pre = workspace_inputs(ws)
     try:
         res = render(sablon, out, texts_dir=texts, audit_path=audit,
-                     birim=birim, yil=args.yil, opts=opts, index_path=index)
+                     birim=birim, yil=args.yil, opts=opts, index_path=index,
+                     kapsam=kapsam, yonler_dir=ws / YONLER_DIR, hazirlayanlar=people)
     except (FileNotFoundError, ValueError) as e:
         print(f"HATA {e}", file=sys.stderr)
         return 2
-    write_manifest(ws, res, inputs_sha(sablon, texts, audit, index), sablon, texts_dir=texts,
+    write_manifest(ws, res, workspace_sha(ws, sablon, texts, audit, index), sablon, texts_dir=texts,
                    audit_path=audit, index_path=index)
     update_link_gaps(ws, index)
-    for u in res.uyarilar:
+    update_scope_gaps(ws, res.karar_gerekli)
+    for u in pre + res.uyarilar:
         print(f"uyarı: {u}")
+    if res.kapsam_disi:
+        print(f"birimin doldurma sorumluluğunda olmayan {len(res.kapsam_disi)} ölçüt: kapsam ifadesiyle yazıldı")
+    if res.karar_gerekli:
+        print(f"uyarı: {len(res.karar_gerekli)} ölçütte kapsam kararı gerekli ({', '.join(res.karar_gerekli)}): "
+              "soru gaps.md'de; KULLANICI karar verir (config.yaml rapor.kapsam)")
     if res.baglantisiz:
         print(f"uyarı: {len(res.baglantisiz)} kanıtın bağlantısı yok (gaps.md 'Bağlantısı olmayan kanıtlar')")
     print(json.dumps(res.ozet(), ensure_ascii=False, indent=1))
     if res.taslak:
-        print("Belge TASLAK damgalı: doğrulanmamış metin var → "
-              + ", ".join(res.dogrulanmamis + res.reddedildi))
+        print("Belge TASLAK damgalı:")
+        for n in res.taslak_nedenleri:
+            print(f"  - {n}")
     print(f"report: {res.out}")
     return 0
 
@@ -71,6 +85,9 @@ def register(sub):
     p.add_argument("--yil", default=None, help="kapaktaki yıl (verilmezse şablondaki kalır)")
     p.add_argument("--texts", default=None, help="metin klasörü (vars.: WS/texts)")
     p.add_argument("--audit", default=None, help="audit-olcutler.json (vars.: WS/audit-olcutler.json)")
+    p.add_argument("--kapsam-disi", default=None,
+                   help="birimin doldurmadığı (kapsam baska_birim) ölçütün Açıklamalar ifadesi; '' = hücre boş "
+                        "(vars.: 'Bu ölçüt birimin doldurma sorumluluğunda değildir.')")
     p.add_argument("--puan-isareti", choices=["kalin", "golge", "yok"], default="kalin",
                    help="öz değerlendirme düzeyinin rubrikte işaretlenmesi (vars.: kalin, "
                         "Kimya 2025 raporu usulü; Matematik/Fizik/MBG işaretlememiş: yok)")

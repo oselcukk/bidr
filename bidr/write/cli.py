@@ -83,3 +83,66 @@ def register(sub):
     _src_args(a)
     a.add_argument("--model", default="ajan:belirtilmemis", help="metni yazan ajan/model (kayda geçer)")
     a.set_defaults(func=_cmd)
+    register_yonler(sub)        # aynı katman (iş paketi + kod denetimi); ayrı modül listesi gerekmez
+
+
+# -- bidr yonler: alan düzeyinde Güçlü / Gelişmeye Açık Yönler (bkz. bidr/write/yonler.py) ------------
+
+def _yonler_cmd(args) -> int:
+    from bidr.pipeline.gate import check_gate
+    if (rc := check_gate(args.workspace, "yonler")) is not None:
+        return rc
+    from . import yonler as Y
+    only = [x.strip().upper() for x in re.split(r"[,\s]+", args.only) if x.strip()] if getattr(args, "only", None) else None
+    try:
+        if args.action == "prepare":
+            st = Y.prepare(args.workspace, only=only, redo=args.redo, rejected_only=args.reddedilenler,
+                           hitap=args.hitap, index=args.index, audit=args.audit)
+            for u in st["uyarilar"]:
+                print(f"uyarı: {u}")
+            print(f"{st['paket']} paket ({st['yeni']} yeni/değişen), zaten_tamam={st['zaten_tamam']}, "
+                  f"bekleyen {st['bekleyen']} → {st['klasor']}")
+            for a, n in st["tur"].items():
+                print(f"  {a}: yeniden yazım turu {n}")
+            if st["insan_gerekli"]:
+                print("yeniden yazım sınırına ulaşan alan (hücreler şablon yönergesiyle kalır, rapor TASLAK; "
+                      "kullanıcıya göster): " + ", ".join(st["insan_gerekli"]))
+            if st["bos_alan"]:
+                print(f"birimin doldurduğu ölçütü olmayan alan (paket yok): {', '.join(st['bos_alan'])}")
+            who = ("metni ilk yazandan ve doğrulayıcıdan AYRI, taze bir ajan" if st["tur"]
+                   else "ajan (doğrulamayı sonra başka, taze bir ajan yapar)")
+            print(f"Ajan ({who}): {st['klasor']}/README.md")
+            return 0
+        st = Y.apply(args.workspace, model=args.model, index=args.index, audit=args.audit)
+    except (FileNotFoundError, KeyError) as e:
+        print(f"HATA {e}")
+        return 2
+    print(f"işlenen={st['islenen']} değişmedi={st['degismedi']} bekleyen={len(st['bekleyen'])} "
+          f"geçersiz={len(st['gecersiz'])} eski paket={len(st['eski'])}")
+    for a, errs in st["gecersiz"].items():
+        print(f"  geçersiz {a}:")
+        for e in errs:
+            print(f"    - {e}")
+    if st["eski"]:
+        print(f"  eski paket (ölçüt metinleri/audit değişti; yeniden prepare): {', '.join(st['eski'])}")
+    if st["islenen"]:
+        print("Sıradaki: bidr verify prepare (bağımsız doğrulama; alan maddeleri de)")
+    return 1 if st["gecersiz"] else 0
+
+
+def register_yonler(sub):
+    p = sub.add_parser("yonler", help="alan düzeyinde Güçlü / Gelişmeye Açık Yönler (ajan modu) → yonler/<alan>.json")
+    act = p.add_subparsers(dest="action", required=True)
+    a = act.add_parser("prepare", help="iş paketleri work/yonler/<alan>.json (A, B, C, D)")
+    _src_args(a)
+    a.add_argument("--only", metavar="ALAN[,…]", help="yalnız bu alanlar (ör. A,C)")
+    a.add_argument("--redo", action="store_true", help="yazılmış alanları da yeniden paketle")
+    a.add_argument("--reddedilenler", action="store_true",
+                   help="yeniden yazım turu: doğrulamada reddedilen alanlar için gerekçeli yeni paket "
+                        "(sınır: config.yaml rapor.yeniden_yazim_siniri, vars. 2)")
+    a.add_argument("--hitap", help="kurumsal özne (vars. profile göre 'Bölümümüzde' / 'Birimimizde')")
+    a.set_defaults(func=_yonler_cmd)
+    a = act.add_parser("apply", help="<alan>.out.json cevaplarını denetle ve yonler/'e yaz")
+    _src_args(a)
+    a.add_argument("--model", default="ajan:belirtilmemis", help="maddeleri yazan ajan/model (kayda geçer)")
+    a.set_defaults(func=_yonler_cmd)

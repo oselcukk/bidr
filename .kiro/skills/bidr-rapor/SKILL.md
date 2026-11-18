@@ -175,11 +175,35 @@ Alt ajan açamıyorsan dur ve kullanıcıya söyle; aynı bağlamda doğrulama y
    vermek (`rapor-notlari.yaml`), ya da `bidr verify karar -w WS <ölçüt> cikar` (metin rapora
    girmez) / `tekrar` (bir tur daha). Bu komutu yalnız kullanıcı söyleyince çalıştır.
 
+## Güçlü / Gelişmeye Açık Yönler (yonler)
+
+Şablonun son tablosunda A, B, C, D alanlarının her biri için iki hücre. `bidr yonler prepare
+-w WS` → `work/yonler/README.md`; her `<alan>.json` paketinin `istem`i görevin tamamıdır: güçlü
+yön YALNIZ o alanın doğrulanmış ölçüt metninden, gelişmeye açık yön YALNIZ audit bulgusundan
+(eksik PUKÖ halkası, düşük OD, kanıtsız ölçüt); her cümle ölçüt kodunu parantez içinde taşır
+"(B.1.1)"; öğüt ("-malıdır", "önerilir") ve vaat ("yapılacaktır") yok. Dayanağı olmayan liste
+boş kalır, madde uydurulmaz. → `bidr yonler apply -w WS --model <ajan adı>`.
+Doğrulama aynı `bidr verify prepare|apply` akışındadır (`work/verify/yonler/README.md`; taze,
+maddeleri yazmamış ajan). Reddedilen alan için `bidr next` `bidr yonler prepare -w WS
+--reddedilenler` der (taze yazar). Sınırdan sonra hâlâ reddedilen alanın hücreleri şablon
+yönergesiyle kalır ve rapor TASLAK olur: gerekçeyi (`verify-yonler.jsonl`) kullanıcıya göster.
+
 ## Rapor (render)
 
 `bidr render -w WS` FR-0833 şablonunu (`config.yaml` `rapor.sablon`) doldurur → `report.docx`.
 Şablon yolu yoksa `bidr next` kullanıcıdan istenmesini söyler; yolu kullanıcıdan al, uydurma.
-Doğrulanmamış metin varsa belge TASLAK damgalıdır; bunu kullanıcıya söyle.
+Belge şu durumlarda TASLAK damgalıdır ve render nedenleri yazar; kullanıcıya söyle:
+doğrulanmamış metin; boş ya da şablon yönergesi kalan güçlü/gelişmeye açık yön hücresi;
+kapakta "Raporu Hazırlayanlar" yer tutucusu (`rapor.hazirlayanlar` boş: kişileri kullanıcıdan
+al, answers.yaml `hazirlayanlar` ile `bidr init`; ad, e-posta uydurma); kapsam kararı gereken
+ölçüt.
+
+Ölçüt kapsamı (bidr/render/kapsam.py): `bolum`/`ortak` ölçütte kanıt yoksa "kanıt
+bulunamamıştır" yazılır; `baska_birim` (birimin doldurma sorumluluğunda değil) ölçüte kısa
+kapsam ifadesi yazılır, kanıt yokluğu yazılmaz; `karar_gerekli` ölçüt gaps.md "Kapsam kararı
+gereken ölçütler"de sorulur. Bu KULLANICININ kararıdır: soruyu göster, cevabını
+`config.yaml` `rapor: {kapsam: {<ölçüt>: bolum|ortak|baska_birim}}` olarak yalnız kullanıcı
+söyleyince yaz, sonra `bidr render`.
 
 ## Bitirirken
 

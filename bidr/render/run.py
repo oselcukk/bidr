@@ -2,7 +2,13 @@
 
 Şablon dosyasına yazılmaz; çıktı her zaman ayrı bir yoldur. Değişen yerler yalnız:
 alt ölçüt bloklarının "Açıklamalar" ve "Kanıtlar" hücreleri, öz değerlendirme işareti
-(rubrik hücresi), kapaktaki birim adı / yıl ve (gerekirse) üstbilgideki TASLAK satırı.
+(rubrik hücresi), kapaktaki birim adı / yıl / "Raporu Hazırlayanlar" satırları, son tablodaki
+dört alanın "Güçlü Yönler" / "Gelişmeye Açık Yönler" hücreleri ve (gerekirse) üstbilgideki
+TASLAK satırı. Altbilgi (form no, yayın/değişiklik bilgisi, sayfa numarası) değişmez.
+
+TASLAK nedenleri: doğrulanmamış metin; boş ya da şablon yönergesi kalan güçlü/gelişmeye açık
+yön hücresi; kapakta kalan hazırlayan yer tutucusu (`rapor.hazirlayanlar` boş); kapsam kararı
+gereken (`karar_gerekli`) ölçüt. Kapsam: bidr/render/kapsam.py.
 """
 from __future__ import annotations
 
@@ -14,7 +20,9 @@ from pathlib import Path
 from bidr.criteria.extract_docx import W, _ptext
 
 from . import docx_ops as ops
-from .template import ACIKLAMA, COVER_STOP, KANIT, find_blocks
+from .kapsam import BASKA, KARAR
+from .template import (ACIKLAMA, COVER_STOP, GELISME, GUCLU, HAZIRLAYAN_YER_TUTUCU, KANIT, YONLER_YONERGE,
+                       find_blocks, find_yonler)
 
 # Metni olmayan ölçüt için varsayılan ifade. Gerekçe: kılavuzun "Kapsam" bölümüne göre rapor
 # önceki takvim yılıyla sınırlıdır; ifade yalnız bu dönemde *kanıt* bulunamadığını söyler,
@@ -22,7 +30,16 @@ from .template import ACIKLAMA, COVER_STOP, KANIT, find_blocks
 # 2025 Matematik raporundaki "Bu kısım için veri bulunmamaktadır." kullanımıyla aynı tonda.
 BOS_IFADE = "Bu ölçüt için bu dönemde kanıt bulunamamıştır."
 BOS_KANIT = "Bu ölçüt için kanıt bulunmamaktadır."
-TASLAK_METNI = "TASLAK — doğrulanmamış metin içerir"
+# Birimin doldurma sorumluluğunda olmayan ölçüt (kapsam `baska_birim`). Gerekçe: şablonun "Sorumlu
+# Birimler" bölümü alt ölçütü kimin dolduracağını ölçüt tablosundaki "DOLDURACAK BİRİMLER"e
+# bağlar ve her birimi "kılavuzda ilgili olduğu belirtilen bölümler bazında" sorumlu tutar.
+# Hücre boş bırakılırsa unutulmuş sanılır; "kanıt bulunamadı" ise birimin eksiği gibi okunur.
+# Kısa bir kapsam ifadesi ikisinden de kaçınır; Kanıtlar hücresi yalnız etiketle kalır.
+KAPSAM_DISI = "Bu ölçüt birimin doldurma sorumluluğunda değildir."
+KAPSAM_KARARI = ("[kapsam kararı gerekli] Bu ölçütün birimce doldurulup doldurulmayacağı henüz "
+                 "belirlenmemiştir (gaps.md).")
+MADDE = "• "
+TASLAK_METNI = "TASLAK — doğrulanmamış ya da eksik içerik var"
 DOGRULANMADI = "[doğrulanmadı]"
 GOLGE = "FFE699"
 PUAN_ISARETLERI = ("kalin", "golge", "yok")
@@ -50,6 +67,7 @@ class Options:
     bos_ifade: str = BOS_IFADE
     bos_kanit: str = BOS_KANIT
     eksik_notu: bool = True
+    kapsam_disi: str = KAPSAM_DISI   # boş dize: Açıklamalar hücresi yalnız etiketle kalır
 
 
 @dataclass
@@ -66,11 +84,18 @@ class Result:
     degisen_parcalar: list[str] = field(default_factory=list)
     baglantili: int = 0
     baglantisiz: list[str] = field(default_factory=list)
+    kapsam_disi: list[str] = field(default_factory=list)
+    karar_gerekli: list[str] = field(default_factory=list)
+    yonler: dict[str, str] = field(default_factory=dict)        # "A Güçlü Yönler" → dolu | bos | yonerge
+    hazirlayan: int = 0
+    taslak_nedenleri: list[str] = field(default_factory=list)
 
     def ozet(self) -> dict:
         return {"cikti": str(self.out), "dolu": len(self.dolu), "bos": len(self.bos),
                 "dogrulanmamis": self.dogrulanmamis, "reddedildi": self.reddedildi,
-                "od_isaretli": len(self.od), "taslak": self.taslak, "kapak": self.kapak,
+                "od_isaretli": len(self.od), "taslak": self.taslak, "taslak_nedenleri": self.taslak_nedenleri,
+                "kapak": self.kapak, "hazirlayan": self.hazirlayan,
+                "kapsam_disi": self.kapsam_disi, "karar_gerekli": self.karar_gerekli, "yonler": self.yonler,
                 "uyari": len(self.uyarilar), "baglantili_kanit": self.baglantili,
                 "baglantisiz_kanit": len(self.baglantisiz),
                 "degisen_parcalar": self.degisen_parcalar}
@@ -159,13 +184,20 @@ def _mark_od(block, od: int, mode: str) -> bool:
     return True
 
 
+def cover_paragraphs(doc) -> list:
+    out = []
+    for el in doc.element.body.iterchildren(W + "p"):
+        if _ptext(el).strip() == COVER_STOP:
+            break
+        out.append(el)
+    return out
+
+
 def fill_cover(doc, birim: str | None, yil: int | str | None) -> dict[str, str]:
     """Kapak: "[Birim Adı]" yer tutucusu ve yalnız bir yıl olan ilk paragraf."""
     done: dict[str, str] = {}
-    for el in doc.element.body.iterchildren(W + "p"):
+    for el in cover_paragraphs(doc):
         txt = _ptext(el).strip()
-        if txt == COVER_STOP:
-            break
         if birim and "birim" not in done and "[Birim Adı]" in txt:
             ops.set_paragraph_text(el, birim)
             done["birim"] = birim
@@ -175,9 +207,98 @@ def fill_cover(doc, birim: str | None, yil: int | str | None) -> dict[str, str]:
     return done
 
 
+def preparer_line(x: dict) -> str:
+    """"Dr. Öğr. Üyesi Örnek Kişi, ornek@example.edu, Görev" (şablon: [Üye Unvan, Adı Soyadı, eposta, Görevi])."""
+    head = " ".join(str(x.get(k) or "").strip() for k in ("unvan", "ad_soyad")).strip()
+    return ", ".join(v for v in (head, str(x.get("eposta") or "").strip(), str(x.get("gorev") or "").strip()) if v)
+
+
+def fill_preparers(doc, people: list[dict] | None) -> tuple[int, list[str]]:
+    """Kapaktaki "[Üye Unvan, Adı Soyadı, eposta adresi, Görevi]" yer tutucularını doldurur.
+    Kişi yer tutucudan çoksa son satır kopyalanır ve ardındaki boş paragraflardan biri silinir (kapak
+    sayfası taşmasın); azsa artan yer tutucular boş paragraf olur. Liste boşsa hiçbir şey değişmez.
+    Döner: (yazılan kişi sayısı, uyarılar)."""
+    import copy
+    ph = [p for p in cover_paragraphs(doc) if HAZIRLAYAN_YER_TUTUCU in _ptext(p)]
+    if not people:
+        return 0, []
+    if not ph:
+        return 0, ["kapakta 'Raporu Hazırlayanlar' yer tutucusu bulunamadı; hazırlayanlar yazılmadı"]
+    lines = [preparer_line(x) for x in people]
+    last = ph[-1]
+    for i, line in enumerate(lines):
+        if i < len(ph):
+            ops.set_paragraph_text(ph[i], line)
+            last = ph[i] if i == len(ph) - 1 else last
+            continue
+        new = copy.deepcopy(ph[-1])
+        ops.set_paragraph_text(new, line)
+        nxt = last.getnext()
+        last.addnext(new)
+        if nxt is not None and nxt.tag == W + "p" and ops.is_blank_paragraph(nxt):
+            nxt.getparent().remove(nxt)
+        last = new
+    for p in ph[len(lines):]:
+        ops.set_paragraph_text(p, "")
+    return len(lines), []
+
+
+def cover_placeholders_left(doc) -> int:
+    return sum(1 for p in cover_paragraphs(doc) if HAZIRLAYAN_YER_TUTUCU in _ptext(p))
+
+
+# -- Güçlü / Gelişmeye Açık Yönler ------------------------------------------------------------------
+
+def load_yonler(d: Path | None) -> dict[str, dict]:
+    out = {}
+    if d is None or not Path(d).is_dir():
+        return out
+    for p in sorted(Path(d).glob("*.json")):
+        try:
+            t = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if t.get("alan"):
+            out[t["alan"]] = t
+    return out
+
+
+def _cell_state(tc) -> str:
+    txt = " ".join(_ptext(p) for p in tc.iter(W + "p")).strip()
+    if not txt:
+        return "bos"
+    return "yonerge" if YONLER_YONERGE in txt else "dolu"
+
+
+def fill_yonler(doc, yonler: dict[str, dict], res: "Result") -> None:
+    cells, uy = find_yonler(doc)
+    res.uyarilar += uy
+    for alan in sorted(set(yonler) - set(cells)):
+        res.uyarilar.append(f"{alan}: güçlü/gelişmeye açık yön maddeleri var ama şablonda tablosu yok; yazılmadı")
+    for alan, c in sorted(cells.items()):
+        t = yonler.get(alan)
+        usable = t and t.get("durum") != "reddedildi"
+        for key, tc, label in (("guclu", c.guclu_tc, GUCLU), ("gelisme", c.gelisme_tc, GELISME)):
+            items = [x for x in (t or {}).get(key) or [] if (x.get("metin") or "").strip()] if usable else []
+            if items:
+                paras = []
+                if t.get("durum") != "dogrulandi":
+                    paras.append(ops.make_paragraph([(
+                        f"{DOGRULANMADI} Bu maddeler doğrulama aşamasından geçmemiştir "
+                        f"(durum: {t.get('durum') or 'belirtilmemiş'}).",
+                        {"italic": True, "color": ops.TASLAK_RENK})]))
+                paras += [ops.make_paragraph(MADDE + " ".join(x["metin"].split())) for x in items]
+                ops.replace_cell(tc, paras)
+            res.yonler[f"{alan} {label}"] = _cell_state(tc)
+
+
 def render(template: Path, out: Path, *, texts_dir: Path, audit_path: Path | None,
            birim: str | None = None, yil: int | str | None = None,
-           opts: Options | None = None, index_path: Path | None = None) -> Result:
+           opts: Options | None = None, index_path: Path | None = None,
+           kapsam: dict[str, str] | None = None, yonler_dir: Path | None = None,
+           hazirlayanlar: list[dict] | None = None) -> Result:
+    """`kapsam`: {ölçüt: bolum|ortak|baska_birim|karar_gerekli} (verilmezse hepsi bolum);
+    `yonler_dir`: `yonler/<alan>.json` klasörü; `hazirlayanlar`: config.yaml `rapor.hazirlayanlar`."""
     import docx
 
     opts = opts or Options()
@@ -208,11 +329,37 @@ def render(template: Path, out: Path, *, texts_dir: Path, audit_path: Path | Non
     for cid in sorted(set(texts) - set(blocks)):
         res.uyarilar.append(f"{cid}: metni var ama şablonda bloğu yok; yazılmadı")
 
+    kapsam = kapsam or {}
     for cid, b in blocks.items():
         t, a = texts.get(cid), audit.get(cid)
         aciklama: list = []
         kanit: list = []
         od = None
+        k = kapsam.get(cid, "bolum")
+        if k == BASKA:
+            # birimin doldurma sorumluluğunda değil: kısa kapsam ifadesi; kanıt yokluğu yazılmaz, OD yok
+            res.kapsam_disi.append(cid)
+            if _usable(t):
+                res.uyarilar.append(f"{cid}: kapsam baska_birim ama metni var; rapora alınmadı "
+                                    "(kapsam yanlışsa config.yaml rapor.kapsam)")
+            if opts.kapsam_disi:
+                aciklama.append(ops.make_paragraph(opts.kapsam_disi))
+            if b.aciklama_tc is not None:
+                ops.fill_cell(b.aciklama_tc, ACIKLAMA, aciklama)
+            if b.kanit_tc is not None:
+                ops.fill_cell(b.kanit_tc, KANIT, [])
+            continue
+        if k == KARAR:
+            res.karar_gerekli.append(cid)
+            if not _usable(t):
+                # kim dolduracak belli değil: "kanıt bulunamadı" yazılmaz; görünür işaret + TASLAK
+                aciklama.append(ops.make_paragraph([(KAPSAM_KARARI, {"italic": True, "color": ops.TASLAK_RENK})]))
+                if b.aciklama_tc is not None:
+                    ops.fill_cell(b.aciklama_tc, ACIKLAMA, aciklama)
+                if b.kanit_tc is not None:
+                    ops.fill_cell(b.kanit_tc, KANIT, [])
+                res.bos.append(cid)
+                continue
         if _usable(t):
             res.dolu.append(cid)
             if t.get("durum") != "dogrulandi":
@@ -273,18 +420,40 @@ def render(template: Path, out: Path, *, texts_dir: Path, audit_path: Path | Non
         if od is not None and _mark_od(b, int(od), opts.puan_isareti):
             res.od[cid] = int(od)
 
-    # Doğrulanmamış metin varsa TASLAK. İnsanın raporun dışında bıraktığı reddedilmiş metin
-    # (`bidr verify karar … cikar`) rapora girmez ve belgeyi taslak yapmaz.
-    res.taslak = any(t.get("durum") != "dogrulandi" and not (t.get("durum") == "reddedildi"
-                                                             and t.get("insan_karari") == "cikar")
-                     for t in texts.values())
-    if res.taslak:
-        ops.add_draft_mark(doc, TASLAK_METNI)
+    fill_yonler(doc, load_yonler(yonler_dir), res)
     res.kapak = fill_cover(doc, birim, yil)
     if birim and "birim" not in res.kapak:
         res.uyarilar.append("kapakta '[Birim Adı]' yer tutucusu bulunamadı")
     if yil and "yil" not in res.kapak:
         res.uyarilar.append("kapakta yıl paragrafı bulunamadı")
+    res.hazirlayan, uy = fill_preparers(doc, hazirlayanlar)
+    res.uyarilar += uy
+
+    # TASLAK nedenleri. İnsanın raporun dışında bıraktığı reddedilmiş metin (`bidr verify karar …
+    # cikar`) rapora girmez ve belgeyi taslak yapmaz; birimin doldurmadığı ölçütün metni de öyle.
+    N = res.taslak_nedenleri
+    unver = sorted((c for c, t in texts.items() if kapsam.get(c, "bolum") != BASKA and c in blocks
+                    and t.get("durum") != "dogrulandi"
+                    and not (t.get("durum") == "reddedildi" and t.get("insan_karari") == "cikar")),
+                   key=lambda x: [x.split(".")[0], *map(int, x.split(".")[1:])])
+    if unver:
+        N.append("doğrulanmamış metin: " + ", ".join(unver))
+    unver_y = sorted(a for a, t in load_yonler(yonler_dir).items()
+                     if t.get("durum") == "taslak" and any(res.yonler.get(f"{a} {x}") == "dolu" for x in (GUCLU, GELISME)))
+    if unver_y:
+        N.append("doğrulanmamış güçlü/gelişmeye açık yön maddeleri: " + ", ".join(unver_y))
+    empty = [k for k, v in res.yonler.items() if v != "dolu"]
+    if empty:
+        N.append("boş ya da şablon yönergesi kalan güçlü/gelişmeye açık yön hücresi: " + ", ".join(empty))
+    left = cover_placeholders_left(doc)
+    if left:
+        N.append(f"kapakta {left} 'Raporu Hazırlayanlar' yer tutucusu kaldı (config.yaml rapor.hazirlayanlar boş)")
+        res.uyarilar.append("rapor.hazirlayanlar boş: kapaktaki 'Raporu Hazırlayanlar' yer tutucuları kaldı")
+    if res.karar_gerekli:
+        N.append("kapsam kararı gereken ölçüt (gaps.md): " + ", ".join(res.karar_gerekli))
+    res.taslak = bool(N)
+    if res.taslak:
+        ops.add_draft_mark(doc, TASLAK_METNI)
     out.parent.mkdir(parents=True, exist_ok=True)
     res.degisen_parcalar = ops.save_preserving(doc, template, out)
     return res
@@ -292,16 +461,88 @@ def render(template: Path, out: Path, *, texts_dir: Path, audit_path: Path | Non
 
 # -- çalışma alanı kaydı (render_tamam) ---------------------------------------------------------
 
-def inputs_sha(template: Path, texts_dir: Path, audit_path: Path | None, index_path: Path | None) -> str:
-    """Raporun girdilerinin özeti: şablon, metinler, audit, kanıt dizini."""
+def inputs_sha(template: Path, texts_dir: Path, audit_path: Path | None, index_path: Path | None,
+               yonler_dir: Path | None = None, extra: dict | None = None) -> str:
+    """Raporun girdilerinin özeti: şablon, metinler, audit, kanıt dizini, alan maddeleri
+    (`yonler/`) ve `extra` (hazırlayanlar, kapsam görünümü)."""
     import hashlib
+
+    def files(d) -> list[Path]:
+        return sorted(Path(d).glob("*.json")) if d and Path(d).is_dir() else []
     h = hashlib.sha256()
-    for p in [Path(template), *(sorted(Path(texts_dir).glob("*.json")) if Path(texts_dir).is_dir() else []),
-              *(x for x in (audit_path, index_path) if x)]:
-        p = Path(p)
-        h.update(p.name.encode())
+    named = [(p.name, p) for p in [Path(template), *files(texts_dir), *(Path(x) for x in (audit_path, index_path) if x)]]
+    named += [(f"yonler/{p.name}", p) for p in files(yonler_dir)]
+    for name, p in named:
+        h.update(name.encode())
         h.update(p.read_bytes() if p.exists() else b"-")
+    if extra:
+        h.update(json.dumps(extra, ensure_ascii=False, sort_keys=True).encode())
     return h.hexdigest()[:16]
+
+
+def workspace_inputs(ws: Path) -> tuple[dict[str, str], list[dict] | None, list[str]]:
+    """Çalışma alanının render girdileri: (kapsam görünümü, hazırlayanlar, uyarılar)."""
+    from bidr.init.config import check_preparers
+    from bidr.write.sources import rapor_section
+
+    from .kapsam import workspace_scope
+    kapsam, uy = workspace_scope(Path(ws))
+    raw = rapor_section(Path(ws)).get("hazirlayanlar")
+    people, errs = check_preparers(raw)
+    uy += [f"config.yaml rapor.hazirlayanlar: {e}" for e in errs]
+    return kapsam, people, uy
+
+
+def workspace_sha(ws: Path, template: Path, texts_dir: Path, audit_path: Path | None,
+                  index_path: Path | None) -> str:
+    """render_tamam ile render CLI'nin ortak girdi özeti."""
+    kapsam, people, _ = workspace_inputs(ws)
+    return inputs_sha(template, texts_dir, audit_path, index_path, Path(ws) / YONLER_DIR,
+                      {"hazirlayanlar": people or [], "kapsam": kapsam})
+
+
+YONLER_DIR = "yonler"
+
+
+# -- gaps.md: kapsam kararı soruları -------------------------------------------------------------------
+KAPSAM_BEGIN = "<!-- bidr:kapsam -->"
+KAPSAM_END = "<!-- /bidr:kapsam -->"
+
+
+def scope_block(cids: list[str]) -> str:
+    from bidr.criteria.loader import load_criteria
+    cs = load_criteria()
+    L = [KAPSAM_BEGIN, "## Kapsam kararı gereken ölçütler", "",
+         "Bu ölçütleri birimin doldurup doldurmayacağı profilden çıkarılamadı; rapor bu yüzden TASLAK. "
+         "Kullanıcıya sorun ve cevabını config.yaml'a yazın: `rapor: {kapsam: {<ölçüt>: bolum | ortak | "
+         "baska_birim}}` (bolum: birim doldurur; ortak: başka birimlerle birlikte; baska_birim: birimin "
+         "sorumluluğunda değil). Sonra `bidr render`.", ""]
+    for c in cids:
+        try:
+            s = cs.get(c)
+            L.append(f"- **{c}** {s.title} — DOLDURACAK BİRİMLER: {s.units}. Soru: bu ölçütü birim mi dolduracak?")
+        except KeyError:
+            L.append(f"- **{c}** — Soru: bu ölçütü birim mi dolduracak?")
+    L.append(KAPSAM_END)
+    return "\n".join(L) + "\n"
+
+
+def update_scope_gaps(ws: Path, cids: list[str]) -> None:
+    """gaps.md'deki kapsam bölümünü yeniler; soru yoksa bölümü kaldırır."""
+    path = Path(ws) / "gaps.md"
+    cur = path.read_text(encoding="utf-8") if path.exists() else ""
+    a, b = cur.find(KAPSAM_BEGIN), cur.find(KAPSAM_END)
+    old = cur[a:b + len(KAPSAM_END)] + ("\n" if cur[b + len(KAPSAM_END):b + len(KAPSAM_END) + 1] == "\n" else "") \
+        if a >= 0 and b > a else None
+    block = scope_block(cids) if cids else ""
+    if old is not None:
+        new = cur.replace(old, block)
+    elif block:
+        new = (cur.rstrip() + "\n\n" if cur.strip() else "") + block
+    else:
+        return
+    if new != cur:
+        path.write_text(new, encoding="utf-8")
 
 
 def write_manifest(ws: Path, res: Result, sha: str, template: Path, *, texts_dir: Path,

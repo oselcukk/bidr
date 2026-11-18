@@ -41,7 +41,8 @@ hepsini gösterir; önkoşulu bitmemiş aşamanın komutu çıkış kodu 3 ile d
 | 11 | file | D | audit | `evidence/A/A.1/A.1.2/…`, `evidence-index.csv` (ad, bağlantı) |
 | 12 | write | M | file | `texts/<ölçüt>.json` |
 | 13 | verify | D + M (+I) | write | `verify.jsonl`; reddedilen → yeniden yazım döngüsü; sınırdan sonra insan kararı |
-| 14 | render | D | verify | `report.docx` (kanıt adları bağlantılı), `gaps.md` bağlantı bölümü |
+| 14 | yonler | M (+D) | verify | `yonler/<alan>.json` (alan düzeyi Güçlü / Gelişmeye Açık Yönler; doğrulaması verify akışında, `verify-yonler.jsonl`) |
+| 15 | render | D | yonler | `report.docx` (kanıt adları bağlantılı, kapak hazırlayanları, 8 güçlü/gelişme hücresi, ölçüt kapsamı), `gaps.md` bağlantı ve kapsam kararı bölümleri |
 
 Rapor katmanının arayüzü: `docs/REPORT_LAYER.md`; denetim kuralları: `docs/AUDIT.md`;
 model katmanı: `docs/MODEL_LAYER.md`.
@@ -68,7 +69,7 @@ Matematik'te sınanınca alt ölçüt R@1/R@5/R@10 0.22 / 0.67 / 0.77; ana ölç
 Kalan işler:
 1. `fotograf` türünün dönem sınıfı `bidr/data/profiles/donem_kurali.yaml`'a işlenmeli (şimdilik
    kodda karma: planla yapı, üstü olay).
-2. Gerçek veriyle tam tur (mat2025): name → audit kararları → file → write → verify → render;
+2. Gerçek veriyle tam tur (mat2025): name → audit kararları → file → write → verify → yonler → render;
    bağlantı önerilerinin isabeti (web çıktılarının üst/altbilgisi) gerçek belgelerle ölçülmeli.
 3. Etiket tutarlılığı incelemesi (aynı içerik, farklı birimde farklı ölçüt); yuva etiketi
    önerilerinin (`slot-tags-oneri.yaml`) paket verisine işlenmesi kullanıcı onayıyla.

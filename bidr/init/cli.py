@@ -27,6 +27,8 @@ gecmis_etiket: false                      # kaynakta geçmiş yılın BİDR rapo
 etiket_birim: null                        # (gecmis_etiket) labels --unit; null = birim
 egitim: []                                # (isteğe bağlı) etiketli başka çalışma alanları, candidates --train
 ajan: null                                # model işini yapan ajan, kayda geçer (ör. claude-code:sonnet)
+hazirlayanlar: []                         # kapaktaki "Raporu Hazırlayanlar" (config.yaml rapor.hazirlayanlar);
+                                          # her kişi: {{unvan: …, ad_soyad: …, eposta: …, gorev: …}}; boşsa rapor TASLAK
 """
 
 
@@ -39,13 +41,29 @@ QUESTIONS = [
     ("kurum", "Kurum profili (boş = hepsi)", ""),
     ("gecmis_etiket", "Kaynakta geçmiş yılın raporu ve etiketli kanıt klasörleri var mı? (e/h)", "h"),
     ("ajan", "Model işini yapan ajanın adı (boş bırakılabilir)", ""),
+    ("hazirlayanlar", "Raporu hazırlayanlar, her satıra bir kişi: unvan; ad soyad; e-posta; görev "
+                      "(boş satır bitirir)", None),
 ]
+
+
+def _ask_preparers(q: str) -> list[dict]:
+    print(q + ":")
+    out = []
+    while True:
+        v = input(f"  {len(out) + 1}. ").strip()
+        if not v:
+            return out
+        parts = [x.strip() for x in v.split(";")] + ["", "", "", ""]
+        out.append({"unvan": parts[0], "ad_soyad": parts[1], "eposta": parts[2], "gorev": parts[3]})
 
 
 def _interactive(ws: str | None) -> dict:
     ans: dict = {}
     for k, q, d in QUESTIONS:
         if k == "calisma_alani" and ws:
+            continue
+        if k == "hazirlayanlar":
+            ans[k] = _ask_preparers(q)
             continue
         v = input(f"{q}{f' [{d}]' if d else ''}: ").strip() or (d or "")
         if k == "gecmis_etiket":
@@ -62,7 +80,7 @@ def _diff(old: dict, new: dict) -> list[str]:
 
 def _run(args) -> int:
     from . import agentfiles
-    from .config import load_section, validate, write_section
+    from .config import check_preparers, load_rapor, load_section, validate, write_rapor_key, write_section
 
     if args.sablon:
         print(template(), end="")
@@ -91,8 +109,14 @@ def _run(args) -> int:
         return 2
     ws = Path(wsarg).expanduser().resolve()
     old = load_section(ws) if ws.exists() else None
+    people = None
+    if "hazirlayanlar" in answers:            # rapor: bölümüne gider; cevapta yoksa var olan liste korunur
+        people = check_preparers(answers["hazirlayanlar"])[0] or []
     if old is not None:
         d = _diff(old, sec)
+        prev = load_rapor(ws).get("hazirlayanlar") or []
+        if people is not None and prev and prev != people:
+            d.append(f"  rapor.hazirlayanlar: {len(prev)} kişi → {len(people)} kişi")
         if d and not args.yes:
             print(f"Bu çalışma alanı zaten kurulu ({ws}/config.yaml) ve cevaplar farklı:")
             print("\n".join(d))
@@ -101,8 +125,13 @@ def _run(args) -> int:
             return APPROVAL_EXIT
     ws.mkdir(parents=True, exist_ok=True)
     write_section(ws, sec)
+    if people is not None:
+        write_rapor_key(ws, "hazirlayanlar", people)
     notes = agentfiles.write_workspace_files(ws, sec, claude_hook=args.claude_hook)
     print(f"Kuruldu: {ws}/config.yaml ({sec['birim']} · {sec['donem']} · profil {sec['profil']})")
+    n = len(load_rapor(ws).get("hazirlayanlar") or [])
+    print(f"  raporu hazırlayanlar: {n} kişi" + ("" if n else " (boş: kapak yer tutucuları kalır, rapor TASLAK; "
+                                                    "answers.yaml `hazirlayanlar` ile yeniden bidr init)"))
     for n in notes:
         print(f"  {n}")
     from bidr.pipeline.state import bidr_command

@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "write_yonler",
+  "type": "object",
+  "required": ["guclu", "gelisme"],
+  "additionalProperties": false,
+  "properties": {
+    "guclu": {
+      "type": "array",
+      "maxItems": 6,
+      "items": {
+        "type": "object",
+        "required": ["metin"],
+        "additionalProperties": false,
+        "properties": {"metin": {"type": "string", "minLength": 20, "maxLength": 500}}
+      }
+    },
+    "gelisme": {
+      "type": "array",
+      "maxItems": 6,
+      "items": {
+        "type": "object",
+        "required": ["metin"],
+        "additionalProperties": false,
+        "properties": {"metin": {"type": "string", "minLength": 20, "maxLength": 500}}
+      }
+    }
+  }
+}

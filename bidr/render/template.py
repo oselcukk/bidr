@@ -89,3 +89,66 @@ def find_blocks(doc) -> tuple[dict[str, Block], list[str]]:
         if not b.rubric:
             warnings.append(f"{sid}: rubrik satırı bulunamadı")
     return blocks, warnings
+
+
+# -- Güçlü Yönler / Gelişmeye Açık Yönler tablosu -----------------------------------------------
+# Şablonun sonunda dört alan için iki sütunlu tablo: alan başlık satırı (ör. "EĞİTİM VE
+# ÖĞRETİM"), "Güçlü Yönler | Gelişmeye Açık Yönler" satırı, ardından iki içerik hücresi
+# (şablonda yönerge metniyle: "… güçlü yönlerini değerlendiriniz.").
+GUCLU = "Güçlü Yönler"
+GELISME = "Gelişmeye Açık Yönler"
+YONLER_YONERGE = "değerlendiriniz"
+# Başlık satırındaki anahtar sözcük → alan (şablondaki yazım hatalarına dayanıklı: "LİDELİK").
+ALAN_ANAHTAR = (("LİDER", "A"), ("LİDEL", "A"), ("YÖNETİŞİM", "A"), ("EĞİTİM", "B"), ("ARAŞTIRMA", "C"),
+                ("TOPLUMSAL", "D"))
+
+
+@dataclass
+class YonCells:
+    alan: str
+    baslik: str
+    guclu_tc: object
+    gelisme_tc: object
+
+
+def _alan_of(head: str) -> str | None:
+    up = head.replace("i", "İ").replace("ı", "I").upper()
+    for key, alan in ALAN_ANAHTAR:
+        if key in up:
+            return alan
+    return None
+
+
+def find_yonler(doc) -> tuple[dict[str, YonCells], list[str]]:
+    """{alan: YonCells} ve uyarılar. Tablo yoksa boş sözlük."""
+    out: dict[str, YonCells] = {}
+    warnings: list[str] = []
+    for tbl in doc.element.body.iterchildren(W + "tbl"):
+        rows = [r for r in tbl.iter(W + "tr")]
+        head, order = None, 0
+        for i, tr in enumerate(rows):
+            cells = _row_cells(tr)
+            flat = [" ".join(_cell_lines(c)).strip() for c in cells]
+            if len(cells) == 1 and flat[0]:
+                head = flat[0]
+                continue
+            if len(cells) == 2 and flat[0] == GUCLU and flat[1] == GELISME and i + 1 < len(rows):
+                nxt = _row_cells(rows[i + 1])
+                if len(nxt) != 2:
+                    warnings.append(f"'{head}': güçlü/gelişmeye açık yönler içerik satırı bulunamadı")
+                    continue
+                alan = _alan_of(head or "") or ("ABCD"[order] if order < 4 else None)
+                order += 1
+                if alan is None:
+                    warnings.append(f"'{head}': alan belirlenemedi")
+                    continue
+                if alan in out:
+                    warnings.append(f"{alan}: güçlü/gelişmeye açık yönler iki kez; ilki kullanıldı")
+                    continue
+                out[alan] = YonCells(alan, head or "", nxt[0], nxt[1])
+    return out, warnings
+
+
+# -- kapak: "Raporu Hazırlayanlar" ----------------------------------------------------------------
+HAZIRLAYAN_BASLIK = "Raporu Hazırlayanlar"
+HAZIRLAYAN_YER_TUTUCU = "[Üye Unvan"

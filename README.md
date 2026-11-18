@@ -42,7 +42,9 @@ Aşamalar (`bidr/data/pipeline.yaml`, ayrıntı `docs/ARCHITECTURE.md`):
    sayar, rapor TASLAK kalır (bkz. `bidr-rapor` skill'i).
 4. **Rapor:** file (kanıt klasörü `evidence/`, `evidence-index.csv`) → write (ölçüt metni) →
    verify (kod + metni yazmamış, taze bir ajan; reddedilen metin gerekçesiyle yeniden yazılır,
-   2 turdan sonra kullanıcı karar verir) → render (`report.docx`, FR-0833 şablonu).
+   2 turdan sonra kullanıcı karar verir) → yonler (alan düzeyi Güçlü / Gelişmeye Açık Yönler;
+   yalnız doğrulanmış metin ve audit bulgusundan, aynı bağımsız doğrulamayla) → render
+   (`report.docx`, FR-0833 şablonu; kapak hazırlayanları, ölçüt kapsamı).
 
 **Sandbox'lı ajan ortamı** (Codex, Claude Code sandbox gibi; yalnız çalışma klasörüne yazılabilir):
 paket yöneticisi önbelleği ve geçici klasör çalışma klasörüne alınır, yoksa kurulum ya da OCR

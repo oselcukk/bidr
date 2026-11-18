@@ -7,6 +7,7 @@ Bu modül yalnız `bidr:` bölümünü okur/yazar; diğer bölümlere (ve yoruml
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 import yaml
@@ -30,8 +31,41 @@ FIELDS: dict[str, tuple[type | tuple, bool, str]] = {
 }
 
 
+# `rapor:` bölümüne yazılan cevaplar (bidr bölümüne girmez): anahtar → açıklama
+RAPOR_FIELDS = {
+    "hazirlayanlar": "kapaktaki 'Raporu Hazırlayanlar': [{unvan, ad_soyad, eposta, gorev}, …]",
+}
+HAZIRLAYAN_KEYS = ("unvan", "ad_soyad", "eposta", "gorev")
+RAPOR_SECTION = "rapor"
+
+
 class ConfigError(ValueError):
     pass
+
+
+def check_preparers(v) -> tuple[list[dict] | None, list[str]]:
+    """`rapor.hazirlayanlar` listesi → (temiz liste | None, hatalar). None/boş: liste yok.
+    Her kişi: `ad_soyad` gerekli; `unvan`, `eposta`, `gorev` isteğe bağlı (kapakta boş kalır)."""
+    import re
+    if v is None or v == "" or v == []:
+        return None, []
+    if not isinstance(v, list):
+        return None, ["hazirlayanlar bir liste olmalı: [{unvan, ad_soyad, eposta, gorev}, …]"]
+    out, errs = [], []
+    for i, x in enumerate(v, 1):
+        if not isinstance(x, dict):
+            errs.append(f"hazirlayanlar #{i}: sözlük olmalı ({', '.join(HAZIRLAYAN_KEYS)})")
+            continue
+        bad = sorted(set(map(str, x)) - set(HAZIRLAYAN_KEYS))
+        if bad:
+            errs.append(f"hazirlayanlar #{i}: bilinmeyen alan(lar) {', '.join(bad)} (geçerli: {', '.join(HAZIRLAYAN_KEYS)})")
+        rec = {k: " ".join(str(x.get(k) or "").split()) for k in HAZIRLAYAN_KEYS}
+        if not rec["ad_soyad"]:
+            errs.append(f"hazirlayanlar #{i}: `ad_soyad` gerekli")
+        if rec["eposta"] and not re.fullmatch(r"[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+", rec["eposta"]):
+            errs.append(f"hazirlayanlar #{i}: e-posta biçimi geçersiz: {rec['eposta']}")
+        out.append(rec)
+    return (None, errs) if errs else (out, [])
 
 
 def data_dir() -> Path:
@@ -80,9 +114,11 @@ def validate(answers: dict, ws: Path | None = None) -> tuple[dict, list[str]]:
     errs: list[str] = []
     if not isinstance(answers, dict):
         return {}, ["cevap dosyası bir YAML sözlüğü olmalı"]
-    unknown = sorted(set(answers) - set(FIELDS))
+    unknown = sorted(set(answers) - set(FIELDS) - set(RAPOR_FIELDS))
     if unknown:
-        errs.append(f"bilinmeyen alan(lar): {', '.join(unknown)} (geçerli: {', '.join(FIELDS)})")
+        errs.append(f"bilinmeyen alan(lar): {', '.join(unknown)} (geçerli: {', '.join([*FIELDS, *RAPOR_FIELDS])})")
+    if "hazirlayanlar" in answers:
+        errs += check_preparers(answers["hazirlayanlar"])[1]
     for k, (typ, req, _) in FIELDS.items():
         v = answers.get(k)
         if v is None or v == "":
@@ -207,5 +243,68 @@ def write_section(ws: Path, sec: dict) -> Path:
         out.append(("\n" if out else "") + block)
     text = "".join(out)
     yaml.safe_load(text)  # bozuk yazmayalım
+    p.write_text(text, encoding="utf-8")
+    return p
+
+
+def load_rapor(ws: Path) -> dict:
+    try:
+        sec = read_raw(ws).get(RAPOR_SECTION)
+    except yaml.YAMLError:
+        return {}
+    return sec if isinstance(sec, dict) else {}
+
+
+def write_rapor_key(ws: Path, key: str, value) -> Path:
+    """config.yaml `rapor:` bölümünde yalnız `key`'i yazar; bölümün öteki anahtarları ve dosyanın
+    öteki bölümleri (yorumlarıyla) korunur. Blok biçimli bölümde yalnız o anahtarın satırları
+    değişir; akış biçimli (`rapor: {…}`) bölüm anahtarları korunarak blok biçimine çevrilir."""
+    p = Path(ws) / CONFIG
+    raw = read_raw(ws) if p.exists() else {}
+    cur = raw.get(RAPOR_SECTION) if isinstance(raw.get(RAPOR_SECTION), dict) else None
+    sub = yaml.safe_dump({key: value}, allow_unicode=True, sort_keys=False, default_flow_style=False)
+    sub_lines = ["  " + ln + "\n" for ln in sub.rstrip("\n").split("\n")]
+    lines = p.read_text(encoding="utf-8").splitlines(keepends=True) if p.exists() else []
+    head = next((i for i, ln in enumerate(lines) if ln.startswith(f"{RAPOR_SECTION}:")), None)
+    if head is None:
+        if lines and not lines[-1].endswith("\n"):
+            lines[-1] += "\n"
+        lines += (["\n"] if lines else []) + [f"{RAPOR_SECTION}:\n"] + sub_lines
+    elif lines[head].split("#")[0].strip() != f"{RAPOR_SECTION}:":
+        # akış biçimi ya da tek satır: bölümü anahtarları koruyarak yeniden yaz
+        end = head + 1
+        while end < len(lines) and (lines[end].startswith((" ", "\t")) or not lines[end].strip()):
+            end += 1
+        merged = dict(cur or {})
+        merged[key] = value
+        body = yaml.safe_dump({RAPOR_SECTION: merged}, allow_unicode=True, sort_keys=False, default_flow_style=False)
+        lines[head:end] = [body]
+    else:
+        end = head + 1
+        while end < len(lines) and (lines[end].startswith((" ", "\t")) or not lines[end].strip()):
+            end += 1
+        while end > head + 1 and not lines[end - 1].strip():
+            end -= 1
+        k0 = next((i for i in range(head + 1, end) if re.match(rf"^\s+{re.escape(key)}\s*:", lines[i])), None)
+        if k0 is None:
+            lines[end:end] = sub_lines
+        else:
+            ind = len(lines[k0]) - len(lines[k0].lstrip())
+
+            def inside(ln: str) -> bool:
+                d = len(ln) - len(ln.lstrip())
+                return not ln.strip() or d > ind or (d == ind and ln.lstrip().startswith("- "))
+            k1 = k0 + 1
+            while k1 < end and inside(lines[k1]):
+                k1 += 1
+            lines[k0:k1] = [" " * ind + ln[2:] for ln in sub_lines]
+    text = "".join(lines)
+    parsed = yaml.safe_load(text) or {}
+    got = (parsed.get(RAPOR_SECTION) or {}) if isinstance(parsed, dict) else {}
+    want = dict(cur or {})
+    want[key] = value
+    if got != want or {k: v for k, v in parsed.items() if k != RAPOR_SECTION} != \
+            {k: v for k, v in raw.items() if k != RAPOR_SECTION}:
+        raise ConfigError("config.yaml `rapor:` bölümü güvenle güncellenemedi; elle düzeltin")
     p.write_text(text, encoding="utf-8")
     return p

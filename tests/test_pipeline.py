@@ -80,7 +80,8 @@ def test_spec_is_consistent():
     assert not [s["id"] for s in spec["asamalar"] if not s["uygulandi"]]
     by = {s["id"]: s for s in spec["asamalar"]}
     assert by["file"]["onkosul"] == ["audit"] and by["write"]["onkosul"] == ["file"]
-    assert by["verify"]["onkosul"] == ["write"] and by["render"]["onkosul"] == ["verify"]
+    assert by["verify"]["onkosul"] == ["write"] and by["yonler"]["onkosul"] == ["verify"]
+    assert by["render"]["onkosul"] == ["yonler"]
     assert "name" in by["audit"]["onkosul"] and by["name"]["istege_bagli"]
     for sid in ("file", "write", "verify", "render", "name"):
         assert by[sid]["sart"]["denetim"] == f"{sid}_tamam"
@@ -258,6 +259,37 @@ def _verify_answers(ws: Path, reject: set[str] = frozenset()) -> None:
         (d / f"{p.stem}.out.json").write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
 
 
+def _yonler_answers(ws: Path, fiil: str = "ilgili karar alınmıştır") -> list[str]:
+    """Ajan taklidi (alan maddeleri): güçlü yön doğrulanmış metinden, gelişme bulgudan; ölçüt kodlu."""
+    d = ws / "work" / "yonler"
+    done = []
+    for p in sorted(d.glob("?.json")):
+        if (d / f"{p.stem}.out.json").exists():
+            continue
+        m = json.loads(p.read_text(encoding="utf-8"))["meta"]
+        out = {"guclu": [{"metin": f"Bölümümüzde {fiil} ({c})."} for c in m["guclu_olcutler"][:1]],
+               "gelisme": [{"metin": f"Ölçüte ilişkin izleme kanıtı bulunmamaktadır ({c})."}
+                           for c in m["gelisme_olcutler"][:1]]}
+        (d / f"{p.stem}.out.json").write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
+        done.append(p.stem)
+    return done
+
+
+def _verify_yonler_answers(ws: Path, reject: set[str] = frozenset()) -> list[str]:
+    d = ws / "work" / "verify" / "yonler"
+    done = []
+    for p in sorted(d.glob("?.json")):
+        if (d / f"{p.stem}.out.json").exists():
+            continue
+        ms = json.loads(p.read_text(encoding="utf-8"))["meta"]["maddeler"]
+        out = {"maddeler": [{"yer": x["yer"], "karar": "desteklenmiyor" if p.stem in reject and i == 0
+                             else "destekleniyor", "gerekce": "metinde yok" if p.stem in reject and i == 0
+                             else "metinde var"} for i, x in enumerate(ms)], "genel": ""}
+        (d / f"{p.stem}.out.json").write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
+        done.append(p.stem)
+    return done
+
+
 def _report_layer(ws: Path, capsys) -> None:
     """audit'ten sonra: file → write → verify (ret → yeniden yazım → sınır → insan) → render."""
     import csv
@@ -349,6 +381,37 @@ def _report_layer(ws: Path, capsys) -> None:
     assert main(["verify", "karar", "-w", str(ws), "B.1.1", "cikar"]) == 0
     v = ev("verify")
     assert v.durum == "bitti" and any("rapora alınmayacak" in u for u in v.uyarilar)
+
+    # yonler: alan maddeleri → bağımsız doğrulama verify akışında → ret → yeniden yazım → render
+    assert ev("render").durum == "engelli"
+    y = ev("yonler")
+    assert y.kim == "komut" and "yonler prepare" in y.komutlar[0]
+    assert main(["yonler", "prepare", "-w", str(ws)]) == 0
+    assert ev("yonler").kim == "ajan"
+    pk = json.loads((ws / "work/yonler/B.json").read_text(encoding="utf-8"))["meta"]
+    assert pk["guclu_olcutler"] == ["B.2.3"]               # B.1.1 kullanıcı kararıyla çıkarıldı
+    assert "B.1.1" in pk["gelisme_olcutler"]
+    assert sorted(_yonler_answers(ws)) == ["A", "B", "C", "D"]
+    assert ev("yonler").kim == "komut"
+    assert main(["yonler", "apply", "-w", str(ws), "--model", "test-ajan"]) == 0
+    assert ev("verify").kim == "komut" and ev("yonler").durum == "engelli"    # doğrulama verify akışında
+    assert main(["verify", "prepare", "-w", str(ws)]) == 0
+    v = ev("verify")
+    assert v.kim == "ajan" and any("verify/yonler" in k for k in v.komutlar)
+    assert _verify_yonler_answers(ws, reject={"B"})
+    assert main(["verify", "apply", "-w", str(ws), "--model", "test-dogrulayici"]) == 1
+    assert ev("verify").durum == "bitti"
+    y = ev("yonler")
+    assert y.kim == "komut" and y.komutlar[0].endswith("yonler prepare -w " + str(ws) + " --reddedilenler")
+    assert main(["yonler", "prepare", "-w", str(ws), "--reddedilenler"]) == 0
+    pkg = json.loads((ws / "work/yonler/B.json").read_text(encoding="utf-8"))
+    assert pkg["meta"]["tur"] == 1 and "g1 (desteklenmiyor)" in pkg["istem"]
+    assert _yonler_answers(ws, "ilgili kurul kararı alınmıştır") == ["B"]
+    assert main(["yonler", "apply", "-w", str(ws), "--model", "test-ajan-2"]) == 0
+    assert main(["verify", "prepare", "-w", str(ws)]) == 0
+    _verify_yonler_answers(ws)
+    assert main(["verify", "apply", "-w", str(ws), "--model", "test-dogrulayici-2"]) == 0
+    assert ev("verify").durum == "bitti" and ev("yonler").durum == "bitti"
 
     # render: şablon yoksa kullanıcıdan alınır; sonra rapor, bağlantılı kanıt adları
     r = ev("render")
@@ -473,11 +536,47 @@ def test_init_does_not_overwrite_user_agents_md(tmp_path, capsys):
 def test_init_sablon_is_valid_shape(capsys):
     assert main(["init", "--sablon"]) == 0
     data = yaml.safe_load(capsys.readouterr().out)
-    from bidr.init.config import FIELDS
-    assert set(data) == set(FIELDS)
+    from bidr.init.config import FIELDS, RAPOR_FIELDS
+    assert set(data) == set(FIELDS) | set(RAPOR_FIELDS)
+    assert data["hazirlayanlar"] == []             # örnek kişi yok: kullanıcıya sorulur
 
 
 def test_unmanaged_workspace_has_no_gate(tmp_path):
     from bidr.pipeline import require_stage
     (tmp_path / "w").mkdir()
     require_stage(tmp_path / "w", "karar_ince")    # bidr bölümü yok → kapı yok
+
+
+def test_init_preparers(kurulum, capsys):
+    """`hazirlayanlar` cevabı config.yaml `rapor.hazirlayanlar`'a gider; rapor bölümünün öteki anahtarları
+    korunur; cevapta yoksa liste korunur; değişiklik kullanıcı onayı ister."""
+    src, ws, ans = kurulum
+    a = yaml.safe_load(ans.read_text(encoding="utf-8"))
+    people = [{"unvan": "Dr. Öğr. Üyesi", "ad_soyad": "Örnek Kişi", "eposta": "ornek@example.edu",
+               "gorev": "Komisyon Başkanı"}]
+    bad = {**a, "hazirlayanlar": [{"unvan": "Dr.", "eposta": "ornek-at-example"}]}
+    ans.write_text(yaml.safe_dump(bad, allow_unicode=True), encoding="utf-8")
+    assert main(["init", "-w", str(ws), "--answers", str(ans)]) == 2
+    err = capsys.readouterr().err
+    assert "ad_soyad" in err and "e-posta" in err
+    ans.write_text(yaml.safe_dump({**a, "hazirlayanlar": people}, allow_unicode=True), encoding="utf-8")
+    assert main(["init", "-w", str(ws), "--answers", str(ans)]) == 0
+    assert "raporu hazırlayanlar: 1 kişi" in capsys.readouterr().out
+    _rapor_config(ws, sablon="/yok/sablon.docx")
+    cfg = yaml.safe_load((ws / "config.yaml").read_text(encoding="utf-8"))
+    assert cfg["rapor"]["hazirlayanlar"] == people and cfg["bidr"]["birim"] == "Örnek Bölümü"
+    # cevapta hazirlayanlar yok: liste ve rapor bölümü korunur
+    ans.write_text(yaml.safe_dump(a, allow_unicode=True), encoding="utf-8")
+    assert main(["init", "-w", str(ws), "--answers", str(ans)]) == 0
+    cfg = yaml.safe_load((ws / "config.yaml").read_text(encoding="utf-8"))
+    assert cfg["rapor"] == {"hazirlayanlar": people, "sablon": "/yok/sablon.docx"}
+    # farklı liste: onay gerekir
+    two = people + [{"ad_soyad": "Deneme Ad", "eposta": "deneme@example.edu", "gorev": "Üye"}]
+    ans.write_text(yaml.safe_dump({**a, "hazirlayanlar": two}, allow_unicode=True), encoding="utf-8")
+    capsys.readouterr()
+    assert main(["init", "-w", str(ws), "--answers", str(ans)]) == 5          # onay gerekir
+    assert "rapor.hazirlayanlar: 1 kişi → 2 kişi" in capsys.readouterr().out
+    assert main(["init", "-w", str(ws), "--answers", str(ans), "--yes"]) == 0
+    cfg = yaml.safe_load((ws / "config.yaml").read_text(encoding="utf-8"))
+    assert len(cfg["rapor"]["hazirlayanlar"]) == 2 and cfg["rapor"]["hazirlayanlar"][1]["unvan"] == ""
+    assert cfg["rapor"]["sablon"] == "/yok/sablon.docx"
