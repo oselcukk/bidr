@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "sayfalar": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "sayfa": {"type": "integer", "minimum": 1},
+          "metin": {"type": "string"},
+          "okunabilirlik": {"enum": ["iyi", "orta", "kotu", "bos"]}
+        },
+        "required": ["sayfa", "metin", "okunabilirlik"],
+        "additionalProperties": false
+      }
+    },
+    "notlar": {"type": "string"}
+  },
+  "required": ["sayfalar"],
+  "additionalProperties": false
+}

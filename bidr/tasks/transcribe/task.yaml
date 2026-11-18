@@ -1,0 +1,8 @@
+version: "1"
+description: >-
+  Görsel yazıya geçirme (ajan modu). El yazılı ya da kötü taranmış belgenin sayfa
+  görüntülerini okuyan ajan, her sayfadaki metni olduğu gibi yazar; okunamayan yer
+  [okunamadı] ile işaretlenir. Çıktı belgenin yeni metni olur (eski OCR metni saklanır).
+inputs:
+  sayfa_sayisi: "sayfa görüntüsü sayısı"
+  sayfa_dosyalari: "paket klasöründeki sayfa görüntülerinin adları, sırayla (1. sayfa ilk)"
