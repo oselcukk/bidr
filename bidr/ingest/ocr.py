@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import functools
+import re
 import os
 import shutil
 import subprocess
 import tempfile
 import threading
+from dataclasses import dataclass
 from pathlib import Path
 
 OCR_LANGS = "tur+eng"
@@ -47,21 +49,64 @@ def _psm() -> str:
     return "1" if "osd" in available_langs() else "3"
 
 
-def ocr_image(path: Path) -> str:
-    """Tek bir görsel dosyasını OCR'la (tesseract'ın okuyabildiği biçimde olmalı)."""
+@dataclass
+class OcrResult:
+    """OCR metni + tesseract'ın kelime güvenleri (0-100; harf sayısıyla ağırlıklı ortalama)."""
+    text: str
+    conf: float | None  # kelime yoksa None
+    words: int = 0
+
+    def __str__(self) -> str:  # eski çağıranlar metni beklerse
+        return self.text
+
+
+def _tsv_conf(tsv: str) -> tuple[float | None, int]:
+    tot = wsum = 0.0
+    n = 0
+    for line in tsv.splitlines()[1:]:
+        parts = line.split("\t")
+        if len(parts) < 12 or parts[0] != "5":
+            continue
+        word = parts[11].strip()
+        try:
+            c = float(parts[10])
+        except ValueError:
+            continue
+        if not word or c < 0:
+            continue
+        w = max(1, sum(ch.isalnum() for ch in word))
+        tot += c * w
+        wsum += w
+        n += 1
+    return (tot / wsum if wsum else None), n
+
+
+def ocr_image_q(path: Path) -> OcrResult:
+    """Tek görseli OCR'la; metin ve güven birlikte (tek tesseract çağrısı: txt + tsv)."""
     if not ocr_available():
         raise OcrUnavailable(f"tesseract veya '{OCR_LANGS}' dil verisi yok")
-    with _SLOTS:
-        r = subprocess.run(
-            ["tesseract", str(path), "stdout", "-l", OCR_LANGS, "--psm", _psm()],
-            capture_output=True, text=True, timeout=OCR_TIMEOUT, env=_env(),
-        )
-    if r.returncode != 0:
-        raise RuntimeError(f"tesseract hata {r.returncode}: {r.stderr.strip()[:200]}")
-    return r.stdout
+    with tempfile.TemporaryDirectory(prefix="bidr-tess-") as td:
+        base = Path(td) / "o"
+        with _SLOTS:
+            r = subprocess.run(
+                ["tesseract", str(path), str(base), "-l", OCR_LANGS, "--psm", _psm(), "txt", "tsv"],
+                capture_output=True, text=True, timeout=OCR_TIMEOUT, env=_env(),
+            )
+        if r.returncode != 0:
+            raise RuntimeError(f"tesseract hata {r.returncode}: {r.stderr.strip()[:200]}")
+        text = base.with_suffix(".txt").read_text(encoding="utf-8", errors="replace")
+        tsv_p = base.with_suffix(".tsv")
+        tsv = tsv_p.read_text(encoding="utf-8", errors="replace") if tsv_p.exists() else ""
+    conf, n = _tsv_conf(tsv)
+    return OcrResult(text, conf, n)
 
 
-def ocr_pdf_page(pdf: Path, page: int) -> str:
+def ocr_image(path: Path) -> str:
+    """Tek bir görsel dosyasını OCR'la (tesseract'ın okuyabildiği biçimde olmalı)."""
+    return ocr_image_q(path).text
+
+
+def ocr_pdf_page(pdf: Path, page: int) -> OcrResult:
     """PDF'nin 1 tabanlı `page` sayfasını görüntüye çevirip OCR'la."""
     if not shutil.which("pdftoppm"):
         raise OcrUnavailable("pdftoppm yok")
@@ -75,4 +120,44 @@ def ocr_pdf_page(pdf: Path, page: int) -> str:
         img = prefix.with_suffix(".png")
         if r.returncode != 0 or not img.exists():
             raise RuntimeError(f"pdftoppm hata {r.returncode}: {r.stderr.strip()[:200]}")
-        return ocr_image(img)
+        return ocr_image_q(img)
+
+
+# ------------------------------------------------------------- metin sağlığı
+
+_LETTERS = "A-Za-zÇĞİÖŞÜçğıöşüÂâÎîÛûÉéÀàÄäß"
+_WORD = re.compile(rf"^[{_LETTERS}]+(?:[-'’][{_LETTERS}]+)*$")
+_NUM = re.compile(r"^[\d.,:/%()+\-–]*\d[\d.,:/%()+\-–]*$")
+# e-posta, URL, kod (FR-0069, MBG111, A.1.2) da sağlıklı belirteçtir
+_SPECIAL = re.compile(r"^(?:[\w.+-]+@[\w-]+(?:\.[\w-]+)+|(?:https?://|www\.)\S+"
+                      r"|[A-ZÇĞİÖŞÜ]{1,6}[-.]?\d+(?:[-.]\d+)*)$")
+_VOWELS = set("aeıioöuüâîûéàäAEIİOÖUÜÂÎÛÉÀÄ")
+_PUNCT = "\"'“”‘’()[]{}<>.,;:!?«»|*•·-–—_"
+
+
+def text_health(text: str) -> float | None:
+    """Kelime benzeri belirteçlerin karakter payı (0-1). OCR çöpünü ayırmak için.
+
+    İyi belirteç: (noktalamadan arındırılmış) en az 2 harfli, yalnız harf, büyük/küçük
+    düzeni makul (tümü büyük, tümü küçük ya da baş harf büyük), 4+ harfliyse sesli
+    harf içeren kelime; ya da rakam içeren sayı/tarih. Belirteç yoksa None.
+    """
+    good = total = 0
+    for tok in text.split():
+        core = tok.strip(_PUNCT)
+        n = len(tok)
+        total += n
+        if not core:
+            continue
+        if _NUM.match(core) or _SPECIAL.match(core):
+            good += n
+            continue
+        if len(core) < 2 or not _WORD.match(core):
+            continue
+        body = core[1:]
+        if not (core.isupper() or core.islower() or body.islower()):
+            continue
+        if len(core) >= 4 and not any(c in _VOWELS for c in core):
+            continue
+        good += n
+    return good / total if total else None

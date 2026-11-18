@@ -345,3 +345,186 @@ def test_cli_registered(tmp_path):
     src = build_source(tmp_path)
     assert main(["ingest", str(src), "--workspace", str(tmp_path / "ws"), "--no-ocr"]) == 0
     assert (tmp_path / "ws" / "inventory.csv").exists()
+
+
+# ------------------------------------------------- gömülü görseller ve kalite
+
+def make_docx_with_images(path: Path, tmp: Path, *, body_text: str = "") -> Path:
+    """Gövdede büyük ekran görüntüsü + küçük logo; üstbilgide logo."""
+    import docx
+    from docx.shared import Cm
+
+    shot = tmp / "shot.png"
+    make_text_image(shot, ["EKRAN GORUNTUSU", "DERS KAYIT LISTESI", "OGRENCI NUMARASI VE ADI"])
+    logo = tmp / "logo.png"
+    make_text_image(logo, ["LOGO METNI"])
+    d = docx.Document()
+    d.sections[0].header.paragraphs[0].add_run().add_picture(str(logo), width=Cm(12))
+    if body_text:
+        d.add_paragraph(body_text)
+    d.add_picture(str(logo), width=Cm(2))        # küçük gösterim: elenir
+    d.add_picture(str(shot), width=Cm(15))
+    d.save(path)
+    return path
+
+
+@pytest.mark.skipif(not HAS_OCR, reason="tesseract yok")
+def test_docx_embedded_image_ocr(tmp_path):
+    p = make_docx_with_images(tmp_path / "ekran.docx", tmp_path)
+    res = ex.extract(p, use_ocr=True)
+    t = res.text
+    assert "[gömülü görsel: word/media/" in t
+    assert "KAYIT" in t.upper()
+    assert "LOGO" not in t.upper()  # küçük gösterilen ve üstbilgideki logo OCR'lanmaz
+    assert res.images_ocr == 1 and "img-ocr(1)" in res.method
+    q = ex.assess(res)
+    assert q["ocr_conf"] and q["quality"] >= ex.LOW_QUALITY and not q["low_quality"]
+
+
+def test_docx_embedded_image_no_ocr_needs_ocr(tmp_path):
+    src = tmp_path / "k"
+    src.mkdir()
+    make_docx_with_images(src / "ekran.docx", tmp_path)
+    ws = tmp_path / "ws"
+    run(src, ws, use_ocr=False, log=lambda m: None)
+    assert read_inv(ws)["ekran.docx"]["status"] == "needs_ocr"
+
+
+@pytest.mark.skipif(not HAS_OCR, reason="tesseract yok")
+def test_docx_with_text_and_image_pipeline(tmp_path):
+    src = tmp_path / "k"
+    src.mkdir()
+    make_docx_with_images(src / "ekran.docx", tmp_path, body_text="Govde metni burada")
+    ws = tmp_path / "ws"
+    run(src, ws, log=lambda m: None)
+    r = read_inv(ws)["ekran.docx"]
+    assert r["status"] == "ocr" and r["images_ocr"] == "1" and r["low_quality"] == ""
+    t = text_of(ws, r)
+    assert t.index("Govde metni") < t.index("[gömülü görsel")
+
+
+@pytest.mark.skipif(not HAS_OCR, reason="tesseract yok")
+def test_pptx_embedded_image_ocr(tmp_path):
+    from pptx import Presentation
+    from pptx.util import Cm
+
+    shot = tmp_path / "shot.png"
+    make_text_image(shot, ["SLAYT GORSELI", "KOMISYON UYELERI"])
+    prs = Presentation()
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    s.shapes.add_picture(str(shot), Cm(1), Cm(1), width=Cm(20))
+    s.shapes.add_picture(str(shot), Cm(1), Cm(15), width=Cm(2))  # aynı görsel: bir kez
+    p = tmp_path / "s.pptx"
+    prs.save(p)
+    res = ex.extract(p, use_ocr=True)
+    assert res.page_count == 1 and "KOMISYON" in res.pages[0].upper()
+    assert res.pages[0].count("[gömülü görsel: slayt 1") == 1
+
+
+def make_noise_image(path: Path, seed: int = 7):
+    """Metinsiz, gürültülü 'fotoğraf': OCR çöp ya da hiç metin vermez."""
+    import random
+    from PIL import Image, ImageDraw
+
+    rnd = random.Random(seed)
+    img = Image.new("L", (900, 700), 200)
+    dr = ImageDraw.Draw(img)
+    for _ in range(400):
+        x, y = rnd.randrange(900), rnd.randrange(700)
+        dr.line((x, y, x + rnd.randrange(-60, 60), y + rnd.randrange(-60, 60)),
+                fill=rnd.randrange(0, 120), width=rnd.randrange(1, 6))
+    img.save(path)
+
+
+@pytest.mark.skipif(not HAS_OCR, reason="tesseract yok")
+def test_photo_flagged_low_quality(tmp_path):
+    src = tmp_path / "k"
+    src.mkdir()
+    make_noise_image(src / "foto.png")
+    make_text_image(src / "temiz.png", ["BOLUM KURULU TOPLANTI TUTANAGI", "GUNDEM MADDELERI VE KARARLAR",
+                                         "KATILIMCILAR LISTESI"])
+    ws = tmp_path / "ws"
+    run(src, ws, log=lambda m: None)
+    inv = read_inv(ws)
+    assert inv["foto.png"]["low_quality"] == "1"
+    assert inv["temiz.png"]["low_quality"] == "" and float(inv["temiz.png"]["quality"]) >= ex.LOW_QUALITY
+    assert inv["temiz.png"]["ocr_conf"]
+
+
+def test_text_health_and_assess_without_ocr():
+    from bidr.ingest.ocr import text_health
+
+    assert text_health("Bölüm Kurulu 12.03.2025 tarihinde toplandı.") == 1.0
+    assert text_health("ii Rrkk ;: |l ~~ aSdF eE 7x") < 0.3
+    assert text_health("   ") is None
+    assert text_health("Kime: Ad SOYAD <ad@gtu.edu.tr>; FR-0069 www.gtu.edu.tr") == 1.0
+    q = ex.assess(ex.Extraction(["metin"], "text"))
+    assert q == {"ocr_conf": "", "quality": "", "low_quality": False}
+    # OCR'dan 24 karakter çöp: güven yüksek olsa da düşük kalite
+    junk = ex.Extraction(["al ~ Ze. ii |] aSdF Rrkk"], "ocr", 1, 1, ocr_units=[("al ~ Ze. ii |] aSdF Rrkk", 60.0)])
+    assert ex.assess(junk)["low_quality"]
+
+
+@pytest.mark.skipif(not HAS_OCR, reason="tesseract/poppler yok")
+def test_pdf_figure_page_not_ocred(tmp_path, monkeypatch):
+    """Metin katmanı yeterli, yalnız logo boyutunda görsel olan PDF sayfası OCR'a gitmez;
+    metin katmanı kısa (vektör çizilmiş metin) ya da tam sayfa tarama olan sayfa OCR'lanır."""
+    from PIL import Image
+
+    fig = tmp_path / "fig.png"
+    make_text_image(fig, ["SEKIL ICINDEKI YAZI"])
+    pdf = tmp_path / "fig.pdf"
+    page = Image.new("RGB", (1240, 1754), "white")  # A4 @150dpi
+    small = Image.open(fig).resize((400, 80))
+    page.paste(small, (100, 100))
+    page.save(pdf, "PDF", resolution=150)
+    # pdfimages tek tam sayfa görsel görür; kapsamayı monkeypatch ile şekil boyutuna indir
+    calls: list[int] = []
+    real = ocr.ocr_pdf_page
+    monkeypatch.setattr(ocr, "ocr_pdf_page", lambda p, n: (calls.append(n), real(p, n))[1])
+    real_run = ex._run
+    text = "Word belgesinden gelen yeterince uzun metin katmani burada duruyor ve okunuyor " * 5
+    assert ex.TEXT_ENOUGH <= ex._alnum(text) < ex.STAMP_PAGE_ALNUM
+    monkeypatch.setattr(ex, "_run", _fake_run_factory(real_run, text, cover_ppi=1200))  # ~%1.6
+    res = ex.extract(pdf, use_ocr=True)
+    assert calls == [] and res.ocr_pages == 0 and "Word belgesinden" in res.text
+    # aynı logo, ama metin katmanı kısa: OCR denenir
+    short = "Etkinlik uyeleri ozet bolumu kisa metin katmani parcasi"
+    monkeypatch.setattr(ex, "_run", _fake_run_factory(real_run, short, cover_ppi=1200))
+    ex.extract(pdf, use_ocr=True)
+    assert calls == [1]
+    calls.clear()
+    monkeypatch.setattr(ex, "_run", _fake_run_factory(real_run, text, cover_ppi=150))
+    ex.extract(pdf, use_ocr=True)
+    assert calls == [1]  # tam sayfa tarama: damga durumunda OCR denenir
+
+
+def _fake_run_factory(real_run, text: str, cover_ppi: int):
+    """pdftotext çıktısını `text` yap; pdfimages ppi değerini `cover_ppi` olarak bildir."""
+    def fake(cmd, timeout=300):
+        r = real_run(cmd, timeout)
+        if cmd[0] == "pdftotext":
+            r.stdout = text.encode()
+        elif cmd[0] == "pdfimages":
+            lines = r.stdout.decode().splitlines()
+            out = lines[:2]
+            for ln in lines[2:]:
+                parts = ln.split()
+                parts[12] = parts[13] = str(cover_ppi)
+                out.append(" ".join(parts))
+            r.stdout = "\n".join(out).encode()
+        return r
+    return fake
+
+
+@pytest.mark.skipif(not HAS_OCR, reason="tesseract/poppler yok")
+def test_photo_pdf_without_text_flagged(tmp_path):
+    src = tmp_path / "k"
+    src.mkdir()
+    make_noise_image(tmp_path / "n.png")
+    from PIL import Image
+    Image.open(tmp_path / "n.png").convert("RGB").save(src / "foto.pdf", "PDF", resolution=100)
+    ws = tmp_path / "ws"
+    run(src, ws, log=lambda m: None)
+    r = read_inv(ws)["foto.pdf"]
+    assert r["low_quality"] == "1"
