@@ -1,0 +1,19 @@
+# Birim profili: fakülteye bağlı akademik bölüm (ör. Matematik Bölümü).
+#
+# Ölçütün "DOLDURACAK BİRİMLER" (units) metni virgülle öğelere bölünür.
+# - dahil: bir öğe bu ifadelerden birini içeriyorsa ölçüt bu birimce doldurulur.
+# - belirsiz: dahil eşleşmesi yoksa ve bu ifadelerden biri varsa ölçüt "belirsiz"
+#   sayılır; ne yapılacağı `belirsiz_politika` ile (tut | dus) belirlenir.
+# - kararlar: ölçüt kimliğine göre elle verilmiş kesin karar (dahil | haric);
+#   kurallardan önce gelir. Şef/insan onayıyla doldurulur.
+# Eşleme Türkçe büyük harf ve boşluk farkına duyarsızdır.
+ad: akademik_bolum
+aciklama: Fakülteye bağlı akademik bölüm (lisans/lisansüstü programları yürüten).
+dahil:
+  - TÜM AKADEMİK BİRİMLER
+  - TÜM AKADEMİK VE İDARİ BİRİMLER
+belirsiz:
+  - ENSTİTÜLER VE FAKÜLTELER   # bölüm bir fakültenin parçası; fakülte mi bölüm mü dolduracak?
+  - TÜM ENSTİTÜLER             # doktora programı enstitüde, yürütücü bölüm
+belirsiz_politika: tut
+kararlar: {}

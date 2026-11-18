@@ -1,0 +1,2543 @@
+# Üretildi ve elle gözden geçirildi; öneri niteliğinde (durum: oneri).
+surum: 1
+olcut_surumu: bfafe690bbe78d1e437f7fd23a298c268e09ef2b3bb2a33860daf92f2287f04b
+aciklama: 'Kanıt yuvası PUKÖ aşaması ve olgunluk düzeyi (OD) ÖNERİLERİ. Rubrik (1-5) metinlerine dayanır. Her kayıt durum: oneri — insan onayı bekliyor. belirsiz = aşama içeriğe bağlı. Eşleme: planla→2, uygula→3, kontrol_et→4, onlem_al→4, ozgun→5. metin şablondan birebirdir.'
+etiketler:
+- yuva: A.1.1/1
+  metin: Yönetişim modeli ve organizasyon şeması
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: Model/şema = yapı belirlenmiş (rubrik 2).
+  durum: oneri
+- yuva: A.1.1/2
+  metin: Birimin yönetişim ve idari alanlarla ilgili politikasını ve stratejik amaçlarını uyguladığına dair uygulamalar/kanıtlar
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Politikanın uygulandığına dair uygulamalar (rubrik 3).
+  durum: oneri
+- yuva: A.1.1/3
+  metin: Yönetişim ve organizasyonel yapılanma uygulamalarına ilişkin izleme ve iyileştirme kanıtları
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: '''İzleme ve iyileştirme'' → rubrik 4 (izlenmekte ve iyileştirilmektedir).'
+  durum: oneri
+- yuva: A.1.1/4
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: A.1.2/1
+  metin: Kurumun yöneticilerinin liderlik özelliklerini ve yetkinliklerini ölçmek ve izlemek için kullanılan yöntemler, elde edilen izleme sonuçları ve bağlı iyileştirmeler
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: Ölçme/izleme yöntemleri, izleme sonuçları ve bağlı iyileştirmeler (rubrik 4).
+  durum: oneri
+- yuva: A.1.2/2
+  metin: Kurumdaki kalite kültürünün gelişimini ölçmek ve izlemek için kullanılan yöntemler, elde edilen izleme sonuçları ve bağlı iyileştirmeler
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: Kalite kültürü ölçme/izleme ve bağlı iyileştirmeler (rubrik 4).
+  durum: oneri
+- yuva: A.1.2/3
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: A.1.3/1
+  metin: Değişim yönetim modeli
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: Değişim yönetim modeli = yaklaşımın tanımı (rubrik 2).
+  durum: oneri
+- yuva: A.1.3/2
+  metin: Değişim planları, yol haritaları
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: Plan ve yol haritası.
+  durum: oneri
+- yuva: A.1.3/3
+  metin: Yükseköğretim ekosisteminde ve temel fonksiyonları çevresinde meydana gelen değişime yönelik analiz raporları
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: 'Değişim ihtiyacının belirlenmesi analizi (rubrik 2: ihtiyaç belirlenmiştir).'
+  durum: oneri
+- yuva: A.1.3/4
+  metin: Gelecek senaryoları
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: Gelecek senaryoları planlama girdisidir.
+  durum: oneri
+- yuva: A.1.3/5
+  metin: Kıyaslama raporları
+  tur: kanit
+  asama:
+  - belirsiz
+  od: []
+  gerekce: Kıyaslama izleme (4) de planlama girdisi (2) de olabilir.
+  durum: oneri
+- yuva: A.1.3/6
+  metin: Yenilik yönetim sistemi
+  tur: kanit
+  asama:
+  - belirsiz
+  od: []
+  gerekce: Sistemin varlığı tanım (2) mı işleyiş (3) mü, belirsiz.
+  durum: oneri
+- yuva: A.1.3/7
+  metin: Değişim ekipleri belgeleri
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: 'Ekiplerin çalıştığını gösterir (rubrik 3: yürütülmektedir).'
+  durum: oneri
+- yuva: A.1.3/8
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: A.1.4/1
+  metin: Kalite güvencesi rehberi gibi tanımlı süreç belgeleri, Kalite Komisyonu çalışma usul ve esasları
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: 'Tanımlı süreç belgeleri, usul ve esaslar (rubrik 2: tanımlanmıştır).'
+  durum: oneri
+- yuva: A.1.4/2
+  metin: İş akış şemaları, takvim, görev ve sorumluluklar ve paydaşların rollerini gösteren kanıtlar
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: İş akışı, görev ve sorumluluk tanımı (rubrik 2).
+  durum: oneri
+- yuva: A.1.4/3
+  metin: Bilgi Yönetim Sistemi
+  tur: kanit
+  asama:
+  - belirsiz
+  od: []
+  gerekce: BYS hangi aşamayı gösterdiği içeriğe bağlı.
+  durum: oneri
+- yuva: A.1.4/4
+  metin: Kurumsal Risk Yönetim Planı
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: Risk yönetim planı.
+  durum: oneri
+- yuva: A.1.4/5
+  metin: Geri bildirim yöntemleri
+  tur: kanit
+  asama:
+  - belirsiz
+  od: []
+  gerekce: Yöntem tanımı (2) ya da işleyişi (3/4) olabilir.
+  durum: oneri
+- yuva: A.1.4/6
+  metin: Paydaş katılımına ilişkin belgeler
+  tur: kanit
+  asama:
+  - belirsiz
+  od: []
+  gerekce: Paydaş katılımı her PUKÖ katmanında olabilir.
+  durum: oneri
+- yuva: A.1.4/7
+  metin: Yıllık izleme ve iyileştirme raporları
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: Yıllık izleme ve iyileştirme raporu (rubrik 4).
+  durum: oneri
+- yuva: A.1.4/8
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: A.1.5/1
+  metin: Kamuoyunu bilgilendirme ve hesap verebilirlik ile ilişkili olarak benimsenen ilke, kural, yöntemler ve bilgilendirme adımlarının ilan edildiğini gösteren kanıtlar
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: 'İlan edilmiş ilke/kural (rubrik 2: tanımlı süreçler).'
+  durum: oneri
+- yuva: A.1.5/2
+  metin: Kurumun/birimlerin internet sayfalarının güncel ve erişilebilir olduğuna dair kanıtlar
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Güncel web sayfası = mekanizma işletiliyor (rubrik 3).
+  durum: oneri
+- yuva: A.1.5/3
+  metin: Kurum içi ve dışı hesap verebilirlik tanımlı süreçlerinin uygulanmakta olduğunu gösteren kanıtlar
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Tanımlı süreçlerin uygulanması (rubrik 3).
+  durum: oneri
+- yuva: A.1.5/4
+  metin: İç ve dış paydaşların kamuoyunu bilgilendirme ve hesap verebilirlikle ilgili memnuniyeti ve geri bildirimleri
+  tur: kanit
+  asama:
+  - kontrol_et
+  od:
+  - 4
+  gerekce: 'Paydaş memnuniyeti/geri bildirim (rubrik 4: paydaş görüşleriyle izleme).'
+  durum: oneri
+- yuva: A.1.5/5
+  metin: Kamuoyunu bilgilendirme ve hesap verebilirlik mekanizmalarına ilişkin izleme ve iyileştirme kanıtları
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: '''İzleme ve iyileştirme'' → rubrik 4 (izlenmekte ve iyileştirilmektedir).'
+  durum: oneri
+- yuva: A.1.5/6
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: A.2.1/1
+  metin: Misyon ve vizyon
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: Misyon/vizyon tanımı (rubrik 2).
+  durum: oneri
+- yuva: A.2.1/2
+  metin: Politika belgeleri (Eğitim ve öğretim politika belgesi uzaktan eğitimi de içermelidir)
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: Politika belgesi (rubrik 2).
+  durum: oneri
+- yuva: A.2.1/3
+  metin: Politika belgelerinin ilgili paydaş katılımıyla hazırlandığını kanıtlayan belgeler
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: Politikanın hazırlanma süreci.
+  durum: oneri
+- yuva: A.2.1/4
+  metin: Politika belgelerinde bütüncül ilişkiyi gösteren ifadeler ve uygulama örnekleri (Eğitim programlarında araştırma vurgusu, araştırma süreçlerinde topluma hizmet vurgusu, uzaktan eğitim vurgusu)
+  tur: kanit
+  asama:
+  - planla
+  - uygula
+  od:
+  - 2
+  - 3
+  gerekce: Politika ifadeleri (2) ve uygulama örnekleri (3).
+  durum: oneri
+- yuva: A.2.1/5
+  metin: Politikaların izlendiğine ve değerlendirildiğine ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - kontrol_et
+  od:
+  - 4
+  gerekce: İzlenme ve değerlendirilme (rubrik 4); önlem kısmı yok.
+  durum: oneri
+- yuva: A.2.1/6
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: A.2.2/1
+  metin: Kamuoyuna ilan edilmiş, kurumun stratejik amaç ve hedeflerini içeren dokümanlar (stratejik plan, strateji belgesi vb.) ve dokümanın geliştirilme süreci
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: İlan edilmiş stratejik plan ve geliştirilme süreci (rubrik 2).
+  durum: oneri
+- yuva: A.2.2/2
+  metin: Kurumun stratejik planına planlama, uygulama, kontrol etme ve önlem alma aşamalarında iç ve dış paydaş katılımını gösteren kanıtlar
+  tur: kanit
+  asama:
+  - planla
+  - uygula
+  - kontrol_et
+  - onlem_al
+  od:
+  - 2
+  - 3
+  - 4
+  gerekce: Madde açıkça dört PUKÖ aşamasında paydaş katılımını ister.
+  durum: oneri
+- yuva: A.2.2/3
+  metin: Stratejik plan ve hedeflerin, Birleşmiş Milletler Sürdürülebilir Kalkınma Amaçları’yla uyumunu gösteren kanıtlar
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: Planın SKA uyumu plan içeriğine dairdir.
+  durum: oneri
+- yuva: A.2.2/4
+  metin: Stratejik Planda yer alan göstergelerin yıllık gerçekleşme takibini ve iyileştirme önerilerini içeren performans raporları
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: Gösterge gerçekleşme takibi (K) ve iyileştirme önerileri (Ö) → rubrik 4.
+  durum: oneri
+- yuva: A.2.2/5
+  metin: Stratejik amaçlar ve hedefler kapsamında paydaşlardan gelen talep, şikayet vb. kapsayacak şekilde uygulamaların sonuçlarını analiz eden iyileştirme raporları
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: Sonuçları analiz eden iyileştirme raporları (rubrik 4).
+  durum: oneri
+- yuva: A.2.2/6
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: A.2.3/1
+  metin: Performans yönetim prosedürlerine dair belgeler
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: 'Prosedür belgeleri (rubrik 2: mekanizmalar tanımlanmıştır).'
+  durum: oneri
+- yuva: A.2.3/2
+  metin: Performans göstergeleri ve anahtar performans göstergeleri
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: Göstergeler tanımlanmıştır (rubrik 2).
+  durum: oneri
+- yuva: A.2.3/3
+  metin: Performans yönetimi sürecinin nasıl işlediğini gösteren kanıtlar
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Sürecin işleyişi (rubrik 3).
+  durum: oneri
+- yuva: A.2.3/4
+  metin: Performans programı raporu
+  tur: kanit
+  asama:
+  - belirsiz
+  od: []
+  gerekce: Performans programı plan belgesidir; 'raporu' gerçekleşme izlemesi de olabilir.
+  durum: oneri
+- yuva: A.2.3/5
+  metin: Performans yönetimi mekanizmalarının izlendiğine ve iyileştirildiğine dair kanıtlar
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: '''İzleme ve iyileştirme'' → rubrik 4 (izlenmekte ve iyileştirilmektedir).'
+  durum: oneri
+- yuva: A.2.3/6
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: A.3.1/1
+  metin: Bilgi Yönetim Sistemi ve bu sistemin fonksiyonlarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - planla
+  - uygula
+  od:
+  - 2
+  - 3
+  gerekce: Sistem oluşturulmuş (2) ve işletiliyor (3).
+  durum: oneri
+- yuva: A.3.1/2
+  metin: Kişisel Verilerin İşlenmesine yönelik süreçler ve uygulamalar
+  tur: kanit
+  asama:
+  - planla
+  - uygula
+  od:
+  - 2
+  - 3
+  gerekce: Süreçler (2) ve uygulamalar (3).
+  durum: oneri
+- yuva: A.3.1/3
+  metin: Bilgi Yönetim Sistemi’nin izlenmesi ve iyileştirilmesine ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: '''İzleme ve iyileştirme'' → rubrik 4 (izlenmekte ve iyileştirilmektedir).'
+  durum: oneri
+- yuva: A.3.1/4
+  metin: Bilgi güvenliğini ve güvenirliğini sağlamaya yönelik süreçler ve uygulamalar
+  tur: kanit
+  asama:
+  - planla
+  - uygula
+  od:
+  - 2
+  - 3
+  gerekce: Süreçler (2) ve uygulamalar (3).
+  durum: oneri
+- yuva: A.3.1/5
+  metin: Siber tehditlere yönelik risk, sızma testleri ve bağlı iyileştirmeler
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: Risk/sızma testi = kontrol, bağlı iyileştirme = önlem (rubrik 4).
+  durum: oneri
+- yuva: A.3.1/6
+  metin: Standart uygulamalar ve mevzuatın yanı sıra kurumun ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: A.3.2/1
+  metin: İnsan kaynakları politikası ve hedefleri ve bunlara ilişkin uygulamalar (Yetkinlik, işe alınma, hizmet içi eğitim, teşvik ve ödüllendirme vb.)
+  tur: kanit
+  asama:
+  - planla
+  - uygula
+  od:
+  - 2
+  - 3
+  gerekce: Politika/hedef (2) ve uygulamalar (3).
+  durum: oneri
+- yuva: A.3.2/2
+  metin: Çalışan (akademik ve idari) memnuniyeti anketleri, uygulama sistematiği ve anket sonuçları
+  tur: kanit
+  asama:
+  - kontrol_et
+  od:
+  - 4
+  gerekce: Memnuniyet anketi sonuçları = iç paydaşlarla izleme (rubrik 4).
+  durum: oneri
+- yuva: A.3.2/3
+  metin: İnsan kaynakları yönetimi uygulamalarına ilişkin izleme ve iyileştirme kanıtları
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: '''İzleme ve iyileştirme'' → rubrik 4 (izlenmekte ve iyileştirilmektedir).'
+  durum: oneri
+- yuva: A.3.2/4
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin/kurumun ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: A.3.3/1
+  metin: Finansal kaynakların yönetimine ilişkin tanımlı süreçler ve uygulamalar (Kaynak dağılımı, kaynakların etkin ve verimli kullanılması, kaynak çeşitliliği)
+  tur: kanit
+  asama:
+  - planla
+  - uygula
+  od:
+  - 2
+  - 3
+  gerekce: Tanımlı süreçler (2) ve uygulamalar (3).
+  durum: oneri
+- yuva: A.3.3/2
+  metin: Finansal kaynakların planlama, kullanım ve izleme uygulamalarının kurumun stratejik planı ile uyumunu gösteren belgeler
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: Stratejik hedeflerle uyumlu tanımlı süreç (rubrik 2).
+  durum: oneri
+- yuva: A.3.3/3
+  metin: Finansal kaynakların yönetimi süreçlerine ilişkin izleme raporları ve analizleri ve iyileştirme kanıtları
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: İzleme raporları ve iyileştirme (rubrik 4).
+  durum: oneri
+- yuva: A.3.3/4
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: A.3.4/1
+  metin: Süreç yönetim modeli ve/veya Süreç Yönetimi El Kitabı
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: Süreç modeli/el kitabı = süreçler tanımlanmıştır (rubrik 2).
+  durum: oneri
+- yuva: A.3.4/2
+  metin: Süreç Kılavuzları ve Süreç Sorumluları Eğitim Belgeleri
+  tur: kanit
+  asama:
+  - planla
+  - uygula
+  od:
+  - 2
+  - 3
+  gerekce: Kılavuz (2) ve sorumlu eğitimi (3).
+  durum: oneri
+- yuva: A.3.4/3
+  metin: Süreç yönetimi uygulamaları (Uzaktan eğitim dahil)
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Süreç yönetimi uygulamaları (rubrik 3).
+  durum: oneri
+- yuva: A.3.4/4
+  metin: Paydaş katılımına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - belirsiz
+  od: []
+  gerekce: Paydaş katılımı tanım (2) ya da değerlendirme (4) olabilir.
+  durum: oneri
+- yuva: A.3.4/5
+  metin: Süreç yönetim mekanizmalarının izlenmesi ve iyileştirilmesine ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: '''İzleme ve iyileştirme'' → rubrik 4 (izlenmekte ve iyileştirilmektedir).'
+  durum: oneri
+- yuva: A.3.4/6
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: A.4.1/1
+  metin: Kurumun süreçlerine özgü oluşturulmuş iç ve dış paydaş listesi ile paydaşların önceliklendirilmesine ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: Paydaş listesi ve önceliklendirme = planlama (rubrik 2).
+  durum: oneri
+- yuva: A.4.1/2
+  metin: Paydaş görüşlerinin alınması sürecinde kullanılan veri toplama araçları ve yöntemi (Anketler, odak grup toplantıları, çalıştaylar, bilgi yönetim sistemi vb.)
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Veri toplama araçları = mekanizmalar (rubrik 3).
+  durum: oneri
+- yuva: A.4.1/3
+  metin: Karar alma süreçlerinde paydaş katılımının sağlandığını gösteren belgeler
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Karar süreçlerinde katılımın gerçekleşmesi (rubrik 3).
+  durum: oneri
+- yuva: A.4.1/4
+  metin: Paydaş katılım mekanizmalarının işleyişine ilişkin izleme ve iyileştirme kanıtları
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: '''İzleme ve iyileştirme'' → rubrik 4 (izlenmekte ve iyileştirilmektedir).'
+  durum: oneri
+- yuva: A.4.1/5
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: A.4.2/1
+  metin: Öğrenci geri bildirimi elde etmeye ilişkin ilke ve kurallar
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: İlke ve kurallar oluşturulmuştur (rubrik 2).
+  durum: oneri
+- yuva: A.4.2/2
+  metin: Tanımlı öğrenci geri bildirim mekanizmalarının tür, yöntem ve çeşitliliğini gösteren kanıtlar (Uzaktan/karma eğitim dahil)
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Geri bildirimin alındığı mekanizmalar (rubrik 3).
+  durum: oneri
+- yuva: A.4.2/3
+  metin: Öğrenci geri bildirimleri kapsamında gerçekleştirilen iyileştirmelere ilişkin uygulamalar
+  tur: kanit
+  asama:
+  - onlem_al
+  od:
+  - 4
+  gerekce: Geri bildirime dayalı iyileştirmeler (rubrik 4).
+  durum: oneri
+- yuva: A.4.2/4
+  metin: Öğrencilerin karar alma mekanizmalarına katılımı örnekleri
+  tur: kanit
+  asama:
+  - belirsiz
+  od: []
+  gerekce: Karar mekanizmasına katılım işleyiş (3) ya da sonuçların karara yansıması (4).
+  durum: oneri
+- yuva: A.4.2/5
+  metin: Öğrenci geri bildirim mekanizmasının izlenmesi ve iyileştirilmesine yönelik kanıtlar
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: '''İzleme ve iyileştirme'' → rubrik 4 (izlenmekte ve iyileştirilmektedir).'
+  durum: oneri
+- yuva: A.4.2/6
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: A.4.2/7
+  metin: '* 2015 AKTS Kullanıcı Kılavuzu’ndaki anahtar prensipleri taşımalıdır.'
+  tur: dipnot
+  asama:
+  - belirsiz
+  od: []
+  gerekce: Kanıt maddesi değil; AKTS kılavuzu dipnotu.
+  durum: oneri
+- yuva: A.4.3/1
+  metin: Mezun izleme sisteminin özellikleri
+  tur: kanit
+  asama:
+  - planla
+  - uygula
+  od:
+  - 2
+  - 3
+  gerekce: 'Sistemin özellikleri: planlama (2) ya da uygulama (3).'
+  durum: oneri
+- yuva: A.4.3/2
+  metin: Mezunların sahip olduğu yeterlilikler ve programın amaç ve hedeflerine ulaşılmasına ilişkin memnuniyet düzeyi
+  tur: kanit
+  asama:
+  - kontrol_et
+  od:
+  - 4
+  gerekce: Mezun memnuniyeti/yeterlilik düzeyi = izleme sonucu (rubrik 4).
+  durum: oneri
+- yuva: A.4.3/3
+  metin: Mezun izleme sistemi kapsamında programlarda gerçekleştirilen güncelleme çalışmaları
+  tur: kanit
+  asama:
+  - onlem_al
+  od:
+  - 4
+  gerekce: Programlarda güncelleme (rubrik 4).
+  durum: oneri
+- yuva: A.4.3/4
+  metin: Mezun geri bildirimleri
+  tur: kanit
+  asama:
+  - belirsiz
+  od: []
+  gerekce: Mezun geri bildirimi alınması (3) ya da izleme (4).
+  durum: oneri
+- yuva: A.4.3/5
+  metin: Standart uygulamalar ve mevzuatın yanı sıra; birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: A.5.1/1
+  metin: Uluslararasılaşma süreçlerinin yönetimi ve organizasyonel yapısı
+  tur: kanit
+  asama:
+  - planla
+  - uygula
+  od:
+  - 2
+  - 3
+  gerekce: Organizasyonel yapı planı (2) ya da tamamlanmış yapı (3).
+  durum: oneri
+- yuva: A.5.1/2
+  metin: Uluslararasılaşma süreçlerinin yönetimine ilişkin uygulama kanıtları
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Uygulama kanıtları (rubrik 3).
+  durum: oneri
+- yuva: A.5.1/3
+  metin: Yönetim ve organizasyonel yapıya ilişkin izleme ve iyileştirme kanıtları
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: '''İzleme ve iyileştirme'' → rubrik 4 (izlenmekte ve iyileştirilmektedir).'
+  durum: oneri
+- yuva: A.5.1/4
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin/kurumun ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: A.5.2/1
+  metin: Birimin/Kurumun uluslararasılaşma faaliyetlerini sürdürebilmesine yönelik kaynakların planlama kanıtları
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: Kaynak planlaması (rubrik 2).
+  durum: oneri
+- yuva: A.5.2/2
+  metin: Uluslararası çalışmalar için ayrılan kaynaklarının yönetimine ilişkin belgeler (Erasmus vb. bütçelerin kulanım oranı, AB proje bütçelerinin yönetimi ve ikili protokoller kapsamında gerçekleşen kaynakların yönetimine ilişkin belgeler gibi)
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Kaynakların yönetimi (rubrik 3).
+  durum: oneri
+- yuva: A.5.2/3
+  metin: Uluslararasılaşma kaynakların dağılımının izlenmesi ve iyileştirilmesine ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: '''İzleme ve iyileştirme'' → rubrik 4 (izlenmekte ve iyileştirilmektedir).'
+  durum: oneri
+- yuva: A.5.2/4
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin/kurumun ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: A.5.3/1
+  metin: Stratejik plan ve uluslararasılaşma politikasına ilişkin performans göstergeleri
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: Performans göstergeleri planlama girdisidir (rubrik 2).
+  durum: oneri
+- yuva: A.5.3/2
+  metin: Uluslararasılaşma faaliyetleri (Uluslararası kapsamda düzenlediği toplantılar, katılım sağladığı programlar, protokoller kapsamında faaliyetler vb.)
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Faaliyetler (rubrik 3).
+  durum: oneri
+- yuva: A.5.3/3
+  metin: Uluslararasılaşma hedeflerine ulaşılıp ulaşılmadığını izlemek üzere oluşturulan mekanizmalar
+  tur: kanit
+  asama:
+  - kontrol_et
+  od:
+  - 4
+  gerekce: 'İzleme mekanizmaları (rubrik 4: izlenmekte).'
+  durum: oneri
+- yuva: A.5.3/4
+  metin: Uluslararasılaşma süreçlerine ilişkin yıllık öz değerlendirme raporları ve iyileştirme çalışmaları
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: Öz değerlendirme (K) ve iyileştirme (Ö) → rubrik 4.
+  durum: oneri
+- yuva: A.5.3/5
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin/kurumun ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: B.1.1/1
+  metin: Program tasarımı ve onayı için kullanılan tanımlı süreçler (Eğitim politikasıyla uyumu, el kitabı, kılavuz, usul ve esas vb.)
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: Tanımlı süreçler (rubrik 2).
+  durum: oneri
+- yuva: B.1.1/2
+  metin: Program tasarımı ve onayı süreçlerinin yönetsel ve organizasyonel yapısı (Komisyonlar, süreç sorumluları, süreç akışı vb.)
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: Yönetsel/organizasyonel yapı, süreç akışı (rubrik 2).
+  durum: oneri
+- yuva: B.1.1/3
+  metin: Program amaç ve çıktılarının TYÇ ile uyumunu gösteren kanıtlar (ders program örnekleri, güncel ders izlence örnekleri vb.)
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Ders programı/izlence örnekleri = programlar yürütülüyor (rubrik 3).
+  durum: oneri
+- yuva: B.1.1/4
+  metin: Uzaktan-karma program tasarımında bölüm/alan bazlı uygulama çeşitliliğine ilişkin kanıtlar (bölümlerin farklı uzaktan eğitim taleplerinin dikkate alındığına ilişkin kanıtlar vb.)
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Uygulama çeşitliliği (rubrik 3).
+  durum: oneri
+- yuva: B.1.1/5
+  metin: Program tasarım süreçlerine paydaş katılımını gösteren kanıtlar
+  tur: kanit
+  asama:
+  - belirsiz
+  od: []
+  gerekce: Paydaş katılımı tanımlı süreçte (2) ya da değerlendirmede (4).
+  durum: oneri
+- yuva: B.1.1/6
+  metin: Programların tasarım ve onay sürecinin izlendiği ve buna göre yapılan iyileştirilmelere ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: '''İzleme ve iyileştirme'' → rubrik 4 (izlenmekte ve iyileştirilmektedir).'
+  durum: oneri
+- yuva: B.1.1/7
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: B.1.2/1
+  metin: Ders dağılımına ilişkin ilke ve yöntemler ile buna ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - planla
+  - uygula
+  od:
+  - 2
+  - 3
+  gerekce: İlke/yöntem (2) ve buna ilişkin kanıtlar (3).
+  durum: oneri
+- yuva: B.1.2/2
+  metin: İlan edilmiş ders bilgi paketlerinde ders dağılım dengesinin gözetildiğine ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: İlan edilmiş paketlerde uygulama (rubrik 3).
+  durum: oneri
+- yuva: B.1.2/3
+  metin: Eğitim komisyonu kararı, senato kararları vb.
+  tur: kanit
+  asama:
+  - belirsiz
+  od: []
+  gerekce: Kurul kararı her aşamada olabilir.
+  durum: oneri
+- yuva: B.1.2/4
+  metin: Ders dağılım dengesinin izlenmesine ve iyileştirilmesine ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: '''İzleme ve iyileştirme'' → rubrik 4 (izlenmekte ve iyileştirilmektedir).'
+  durum: oneri
+- yuva: B.1.2/5
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: B.1.3/1
+  metin: Birimde, ders kazanımlarını değerlendirilmesi ve müfredat öğrenim hedeflerine ulaşılması ve bunların program çıktıları ile uyumunun nasıl ölçtüğüne dair etkili süreçleri nasıl gerçekleşeceğini gösteren yönerge ve planlama kanıtları
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: Yönerge ve planlama kanıtları (rubrik 2).
+  durum: oneri
+- yuva: B.1.3/2
+  metin: Program çıktıları ve ders kazanımlarının ilişkilendirilmesi
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: 'Ders kazanımı–PÇ ilişkilendirmesi yapılmış (rubrik 3: uyumlandırılmıştır).'
+  durum: oneri
+- yuva: B.1.3/3
+  metin: Program dışından alınan derslerin (örgün veya uzaktan) program çıktılarıyla uyumunu gösteren kanıtlar
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Program dışı derslerin uyumu uygulaması (rubrik 3).
+  durum: oneri
+- yuva: B.1.3/4
+  metin: Ders kazanımların program çıktılarıyla uyumunun izlenmesine ve iyileştirilmesine ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: '''İzleme ve iyileştirme'' → rubrik 4 (izlenmekte ve iyileştirilmektedir).'
+  durum: oneri
+- yuva: B.1.3/5
+  metin: Standart uygulamalar ve mevzuatın yanı sıra; birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: B.1.4/1
+  metin: AKTS ders bilgi paketleri* (Uzaktan ve karma eğitim programları dahil)
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: 'İlan edilmiş AKTS paketleri (rubrik 3: tasarlanmış, ilan edilmiş).'
+  durum: oneri
+- yuva: B.1.4/2
+  metin: Öğrenci iş yükü kredisinin mesleki uygulamalar, değişim programları, staj ve projeler için tanımlandığını gösteren kanıtlar*
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: Staj/hareketlilik iş yükü tanımı (rubrik 2 boyutları).
+  durum: oneri
+- yuva: B.1.4/3
+  metin: İş yükü temelli kredilerin transferi ve tanınmasına ilişkin tanımlı süreçleri içeren belgeler
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: Tanımlı süreç belgeleri (rubrik 2).
+  durum: oneri
+- yuva: B.1.4/4
+  metin: Programlarda öğrenci İş yükünün belirlenmesinde öğrenci katılımının sağlandığına ilişkin belgeler ve mekanizmalar
+  tur: kanit
+  asama:
+  - belirsiz
+  od: []
+  gerekce: Öğrenci katılımı iş yükü belirleme (2/3) ya da izleme (4).
+  durum: oneri
+- yuva: B.1.4/5
+  metin: Diploma Eki
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Diploma eki uygulama çıktısıdır (rubrik 3).
+  durum: oneri
+- yuva: B.1.4/6
+  metin: Derslerin AKTS kredileri ve AKTS hesaplama tablolarının takibini gösteren kanıtlar
+  tur: kanit
+  asama:
+  - kontrol_et
+  od:
+  - 4
+  gerekce: 'AKTS takibi (rubrik 4: iş yükü izlenmekte).'
+  durum: oneri
+- yuva: B.1.4/7
+  metin: AKTS hesaplama tabloları ve ek belgeler (örn; öğretim üyeleri ve öğrencilerle yapılan anketler)
+  tur: kanit
+  asama:
+  - uygula
+  - kontrol_et
+  od:
+  - 3
+  - 4
+  gerekce: Hesaplama tabloları (3) ve anketler (4).
+  durum: oneri
+- yuva: B.1.4/8
+  metin: İş yükü temelli kredilerin geribildirimler doğrultusunda güncellendiğine ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - onlem_al
+  od:
+  - 4
+  gerekce: Geri bildirimle güncelleme (rubrik 4).
+  durum: oneri
+- yuva: B.1.4/9
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: B.1.4/10
+  metin: '* 2015 AKTS Kullanıcı Kılavuzu’ndaki anahtar prensipleri taşımalıdır.'
+  tur: dipnot
+  asama:
+  - belirsiz
+  od: []
+  gerekce: Kanıt maddesi değil; AKTS kılavuzu dipnotu.
+  durum: oneri
+- yuva: B.1.5/1
+  metin: Programların izlenmesi ve güncellenmesine ilişkin periyot (yıllık ve program süresinin sonunda) ilke, kural, gösterge, plan ve uygulamalar
+  tur: kanit
+  asama:
+  - planla
+  - uygula
+  od:
+  - 2
+  - 3
+  gerekce: Periyot, ilke, kural, gösterge (rubrik 2) ve uygulamalar.
+  durum: oneri
+- yuva: B.1.5/2
+  metin: Birimin, kurumun misyon, vizyon ve hedefleri doğrultusunda programlarını güncellemek üzere kurduğu mekanizma örnekleri
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: 'Mekanizma örnekleri (rubrik 3: işletilmektedir).'
+  durum: oneri
+- yuva: B.1.5/3
+  metin: Programların yıllık öz değerlendirme raporları (Program çıktıları açısından değerlendirme)
+  tur: kanit
+  asama:
+  - kontrol_et
+  od:
+  - 4
+  gerekce: 'Yıllık öz değerlendirme (rubrik 4: izlenmekte).'
+  durum: oneri
+- yuva: B.1.5/4
+  metin: Program çıktılarına ulaşılıp ulaşılmadığını izleyen sistemler (Bilgi Yönetim Sistemi)
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: İzleme sistemi = mekanizma işletimi (rubrik 3).
+  durum: oneri
+- yuva: B.1.5/5
+  metin: Programların yıllık ve program süresi temelli izlemelerden hareketle yapılan iyileştirmeler
+  tur: kanit
+  asama:
+  - onlem_al
+  od:
+  - 4
+  gerekce: İzlemeden hareketle iyileştirmeler (rubrik 4).
+  durum: oneri
+- yuva: B.1.5/6
+  metin: Yapılan iyileştirmeler ve değişiklikler konusunda paydaşların bilgilendirildiği uygulamalar
+  tur: kanit
+  asama:
+  - belirsiz
+  od: []
+  gerekce: İyileştirmelerin duyurulması önlem aşamasına ait gibi ama rubrikte açık değil.
+  durum: oneri
+- yuva: B.1.5/7
+  metin: Programın amaçlarına ulaşıp ulaşmadığına ilişkin geri bildirimler
+  tur: kanit
+  asama:
+  - kontrol_et
+  od:
+  - 4
+  gerekce: 'Amaçlara ulaşma geri bildirimi (rubrik 4: paydaş görüşleri).'
+  durum: oneri
+- yuva: B.1.5/8
+  metin: Doğal afet vb. gibi olağan dışı durumlar karşısında programların yürütülmesi için gerekli sürdürülebilir öğretim modelinin oluşturulduğuna dair kanıtlar
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: Sürdürülebilir öğretim modelinin oluşturulması.
+  durum: oneri
+- yuva: B.1.5/9
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: B.1.6/1
+  metin: Eğitim ve öğretim süreçlerinin yönetimine ilişkin organizasyonel yapılanma ve iş akış şemaları
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: 'Organizasyon ve iş akışı (rubrik 2: sistem, ilke, kural).'
+  durum: oneri
+- yuva: B.1.6/2
+  metin: Eğitim ve öğretim ile ölçme ve değerlendirme süreçlerinin yönetimine ilişkin ilke, kurallar ve takvim
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: İlke, kural, takvim (rubrik 2).
+  durum: oneri
+- yuva: B.1.6/3
+  metin: Bilgi Yönetim Sistemi
+  tur: kanit
+  asama:
+  - belirsiz
+  od: []
+  gerekce: BYS hangi aşamayı gösterdiği içeriğe bağlı.
+  durum: oneri
+- yuva: B.1.6/4
+  metin: Eğitim ve öğretim süreçlerinin yönetimine ilişkin izleme ve iyileştirme kanıtları
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: '''İzleme ve iyileştirme'' → rubrik 4 (izlenmekte ve iyileştirilmektedir).'
+  durum: oneri
+- yuva: B.1.6/5
+  metin: İzleme çalışmalarına dair değerlendirme raporları, geri bildirimlerin analiz edildiği raporlar ya da analiz içeren dokümanlar ve bu dokümanlara dayanarak yapılan iyileştirmelere ilişkin yapılan düzenlemeler
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: Değerlendirme/analiz raporları (K) ve dayalı düzenlemeler (Ö).
+  durum: oneri
+- yuva: B.1.6/6
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: B.2.1/1
+  metin: Ders bilgi paketlerinde öğrenci merkezli öğretim yöntemlerinin varlığı
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: 'Ders paketlerinde yöntemlerin bulunması (rubrik 3: uygulanmaktadır).'
+  durum: oneri
+- yuva: B.2.1/2
+  metin: Uzaktan eğitime özgü öğretim materyali geliştirme ve öğretim yöntemlerine ilişkin ilkeler, mekanizmalar
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: İlkeler, mekanizmalar (rubrik 2).
+  durum: oneri
+- yuva: B.2.1/3
+  metin: Aktif ve etkileşimli öğretme yöntemlerine ilişkin tanımlı süreçler ve uygulamalar
+  tur: kanit
+  asama:
+  - planla
+  - uygula
+  od:
+  - 2
+  - 3
+  gerekce: Tanımlı süreçler (2) ve uygulamalar (3).
+  durum: oneri
+- yuva: B.2.1/4
+  metin: Eğiticilerin eğitimi program içeriğinde öğrenci merkezli öğrenme-öğretme yaklaşımına ilişkin uygulamalar
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Eğiticilerin eğitimi uygulamaları (rubrik 3).
+  durum: oneri
+- yuva: B.2.1/5
+  metin: Süreçlerin izlenmesine ve buna bağlı iyileştirme çalışmalarına yönelik kanıtlar
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: '''İzleme ve iyileştirme'' → rubrik 4 (izlenmekte ve iyileştirilmektedir).'
+  durum: oneri
+- yuva: B.2.1/6
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: B.2.2/1
+  metin: Öğrenci merkezli ölçme ve değerlendirme yaklaşımlarını içeren planlama dokümanları, organizasyon yapıları ve görev tanımları
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: Planlama dokümanları, görev tanımları (rubrik 2).
+  durum: oneri
+- yuva: B.2.2/2
+  metin: Programlardaki ölçme ve değerlendirme çeşitliliğine ilişkin uygulama örnekleri
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Uygulama örnekleri (rubrik 3).
+  durum: oneri
+- yuva: B.2.2/3
+  metin: Örgün/uzaktan/karma derslerde kullanılan sınav örnekleri (programda yer verilen farklı ölçme araçlarına ilişkin)
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Sınav örnekleri (rubrik 3).
+  durum: oneri
+- yuva: B.2.2/4
+  metin: Ölçme ve değerlendirme uygulamalarının ders kazanımları ve program yeterlilikleriyle ilişkilendirildiğini, öğrenci iş yükünü temel aldığını* gösteren ders bilgi paketi örnekleri
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Ders bilgi paketi örnekleri (rubrik 3).
+  durum: oneri
+- yuva: B.2.2/5
+  metin: Dezavantajlı gruplar ve çevrimiçi sınavlar gibi özel ölçme türlerine ilişkin mekanizmalar
+  tur: kanit
+  asama:
+  - planla
+  - uygula
+  od:
+  - 2
+  - 3
+  gerekce: Mekanizma tanımı (2) ve işleyişi (3).
+  durum: oneri
+- yuva: B.2.2/6
+  metin: Sınav güvenliği mekanizmaları
+  tur: kanit
+  asama:
+  - planla
+  - uygula
+  od:
+  - 2
+  - 3
+  gerekce: Mekanizma tanımı (2) ve işleyişi (3).
+  durum: oneri
+- yuva: B.2.2/7
+  metin: İzleme ve paydaş katılımına dayalı iyileştirme kanıtları
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: İzleme ve paydaş katılımlı iyileştirme (rubrik 4).
+  durum: oneri
+- yuva: B.2.2/8
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: B.2.2/9
+  metin: '* 2015 AKTS Kullanıcı Kılavuzu’ndaki anahtar prensipleri taşımalıdır.'
+  tur: dipnot
+  asama:
+  - belirsiz
+  od: []
+  gerekce: Kanıt maddesi değil; AKTS kılavuzu dipnotu.
+  durum: oneri
+- yuva: B.2.3/1
+  metin: Öğrenci kabulü, önceki öğrenmenin tanınması ve kredilendirilmesine ilişkin ilke ve kurallar
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: İlke ve kurallar (rubrik 2).
+  durum: oneri
+- yuva: B.2.3/2
+  metin: Önceki öğrenmelerin tanınmasında öğrenci iş yükü temelli kredilerin kullanıldığına dair belgeler
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Kredilerin kullanıldığı belgeler (rubrik 3).
+  durum: oneri
+- yuva: B.2.3/3
+  metin: Uygulamaların tanımlı süreçlerle uyumuna ve sürekliliğine ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Uygulamaların tanımlı süreçle uyumu (rubrik 3).
+  durum: oneri
+- yuva: B.2.3/4
+  metin: Paydaşların bilgilendirildiği mekanizmalar
+  tur: kanit
+  asama:
+  - belirsiz
+  od: []
+  gerekce: Bilgilendirme genel (3) ya da güncellemelerin ilanı (4).
+  durum: oneri
+- yuva: B.2.3/5
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: B.2.3/6
+  metin: '* 2015 AKTS Kullanıcı Kılavuzu’ndaki anahtar prensipleri taşımalıdır.'
+  tur: dipnot
+  asama:
+  - belirsiz
+  od: []
+  gerekce: Kanıt maddesi değil; AKTS kılavuzu dipnotu.
+  durum: oneri
+- yuva: B.2.4/1
+  metin: Öğrencinin akademik ve kariyer gelişimini izlemek, diploma onayı ve yeterliliklerin sertifikalandırılmasına ilişkin tanımlı süreçler ve mevcut uygulamalar
+  tur: kanit
+  asama:
+  - planla
+  - uygula
+  od:
+  - 2
+  - 3
+  gerekce: Tanımlı süreçler (2) ve mevcut uygulamalar (3).
+  durum: oneri
+- yuva: B.2.4/2
+  metin: Merkezi yerleştirmeyle gelen öğrenci grupları dışında kalan yatay geçiş, yabancı uyruklu öğrenci sınavı (YÖS), çift anadal programı (ÇAP), yandal öğrenci kabullerinde uygulanan kriterler
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: 'Kabul kriterleri (rubrik 2: ilke, kural).'
+  durum: oneri
+- yuva: B.2.4/3
+  metin: Öğrenci iş yükü kredisinin değişim programlarında herhangi bir ek çalışmaya gerek kalmaksızın tanındığını gösteren belgeler*
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Kredinin tanındığını gösteren belgeler (rubrik 3).
+  durum: oneri
+- yuva: B.2.4/4
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: B.2.4/5
+  metin: '* 2015 AKTS Kullanıcı Kılavuzu’ndaki anahtar prensipleri taşımalıdır.'
+  tur: dipnot
+  asama:
+  - belirsiz
+  od: []
+  gerekce: Kanıt maddesi değil; AKTS kılavuzu dipnotu.
+  durum: oneri
+- yuva: B.3.1/1
+  metin: Öğrenme kaynakları ve bu kaynakların yeterlilik durumu, geliştirilmesine ilişkin planlamalar ve uygulamalar
+  tur: kanit
+  asama:
+  - planla
+  - uygula
+  od:
+  - 2
+  - 3
+  gerekce: Planlamalar (2) ve uygulamalar (3).
+  durum: oneri
+- yuva: B.3.1/2
+  metin: Öğrenci el kitabı (kurumun sunduğu öğrenme ortan ve kaynaklarını anlatan)
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: 'El kitabı mevcut kaynakları anlatır (rubrik 3: erişilebilirlik).'
+  durum: oneri
+- yuva: B.3.1/3
+  metin: Öğrencilerin (kütüphane, laboratuvar vb.) erişim analizleri
+  tur: kanit
+  asama:
+  - kontrol_et
+  od:
+  - 4
+  gerekce: Erişim analizi = kullanım izlemesi (rubrik 4).
+  durum: oneri
+- yuva: B.3.1/4
+  metin: Öğrenme kaynaklarına erişilebilirlik kanıtları (Uzaktan eğitim dahil)
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Erişilebilirlik (rubrik 3).
+  durum: oneri
+- yuva: B.3.1/5
+  metin: Öğrenme yönetim sistemi uygulamalarına ilişkin örnekler
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: ÖYS uygulama örnekleri (rubrik 3).
+  durum: oneri
+- yuva: B.3.1/6
+  metin: Öğrencilere sunulan öğrenme kaynakları ile ilgili öğrenci geri bildirim araçları (Anketler vb.)
+  tur: kanit
+  asama:
+  - belirsiz
+  od: []
+  gerekce: Geri bildirim aracı tanımı (2/3) ya da izleme (4).
+  durum: oneri
+- yuva: B.3.1/7
+  metin: Öğrenme kaynaklarının düzenli izlendiğine ve iyileştirildiğine ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: '''İzleme ve iyileştirme'' → rubrik 4 (izlenmekte ve iyileştirilmektedir).'
+  durum: oneri
+- yuva: B.3.1/8
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin/kurumun ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: B.3.2/1
+  metin: Akademik destek hizmetleri için kullanılan tanımlı süreçler
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: Tanımlı süreçler (rubrik 2).
+  durum: oneri
+- yuva: B.3.2/2
+  metin: Varsa uzaktan eğitimde akademik ve teknik öğrenci danışmanlığı mekanizmaları ve tanımlı süreçler
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: Mekanizmalar ve tanımlı süreçler (rubrik 2).
+  durum: oneri
+- yuva: B.3.2/3
+  metin: Öğrencilerin danışmanlara erişimine ilişkin mekanizmalar
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Erişim mekanizmaları işleyişi (rubrik 3).
+  durum: oneri
+- yuva: B.3.2/4
+  metin: Psikolojik danışmanlık veya kariyer merkezi organizasyonel yapılanması
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: Organizasyonel yapılanma (rubrik 2).
+  durum: oneri
+- yuva: B.3.2/5
+  metin: Rehberlik, psikolojik danışmanlık ve kariyer hizmetlerine ilişkin planlama ve uygulamalar
+  tur: kanit
+  asama:
+  - planla
+  - uygula
+  od:
+  - 2
+  - 3
+  gerekce: Planlama (2) ve uygulamalar (3).
+  durum: oneri
+- yuva: B.3.2/6
+  metin: Kariyer merkezi uygulamaları
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Merkez uygulamaları (rubrik 3).
+  durum: oneri
+- yuva: B.3.2/7
+  metin: Öğrencilerin katılımına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: 'Öğrenci katılımı (rubrik 3: hizmetler yürütülmektedir).'
+  durum: oneri
+- yuva: B.3.2/8
+  metin: Öğrencilere sunulan hizmetlerle ilgili öğrenci geri bildirim araçlarının sonuçları ve izleme kanıtları
+  tur: kanit
+  asama:
+  - kontrol_et
+  od:
+  - 4
+  gerekce: Geri bildirim sonuçları ve izleme (rubrik 4).
+  durum: oneri
+- yuva: B.3.2/9
+  metin: Sürece ilişkin yapılan güncelleme ve iyileştirme kanıtları
+  tur: kanit
+  asama:
+  - onlem_al
+  od:
+  - 4
+  gerekce: Güncelleme ve iyileştirme (rubrik 4).
+  durum: oneri
+- yuva: B.3.2/10
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: B.3.3/1
+  metin: Tesis ve altyapının kullanımına yönelik ilke ve kurallar
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: İlke ve kurallar (rubrik 2).
+  durum: oneri
+- yuva: B.3.3/2
+  metin: Erişim ve kullanıma ilişkin uygulamalar
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Erişim ve kullanım (rubrik 3).
+  durum: oneri
+- yuva: B.3.3/3
+  metin: Tesis ve altyapının kurumsal büyüme ile ilişkili olarak gelişim durumu (Örneğin, birim sayısındaki artış ile fiziksel alanlardaki artış arasındaki ilişki gibi)
+  tur: kanit
+  asama:
+  - belirsiz
+  od: []
+  gerekce: Gelişim durumu planlama (2) ya da izleme (4) olabilir.
+  durum: oneri
+- yuva: B.3.3/4
+  metin: Birimde/Kurumda uzaktan eğitim programları ve uygulamaları varsa; bunlara yönelik alt yapı, tesis, donanım ve yazılım durumları
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Altyapı durumu (rubrik 3).
+  durum: oneri
+- yuva: B.3.3/5
+  metin: Tesis ve altyapı hizmetlerinin izlenmesi, çeşitlendirilmesi ve iyileştirilmesine ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: İzleme, çeşitlendirme, iyileştirme (rubrik 4).
+  durum: oneri
+- yuva: B.3.3/6
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin/kurumun ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: B.3.4/1
+  metin: Dezavantajlı öğrenci gruplarına sunulacak hizmetlerle ilgili planlama ve uygulamalar (Kurullarda temsil, engelsiz üniversite uygulamaları, varsa uzaktan eğitim süreçlerindeki uygulamalar vb.)
+  tur: kanit
+  asama:
+  - planla
+  - uygula
+  od:
+  - 2
+  - 3
+  gerekce: Planlama (2) ve uygulamalar (3).
+  durum: oneri
+- yuva: B.3.4/2
+  metin: Dezavantajlı gruplardan alınan geri bildirimlerin izleme ve iyileştirme mekanizmalarında kullanıldığına ilişkin belgeler
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: Geri bildirimin izleme/iyileştirmede kullanımı (rubrik 4).
+  durum: oneri
+- yuva: B.3.4/3
+  metin: Engelsiz üniversite uygulamalarına ilişkin izleme ve iyileştirme kanıtları
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: '''İzleme ve iyileştirme'' → rubrik 4 (izlenmekte ve iyileştirilmektedir).'
+  durum: oneri
+- yuva: B.3.4/4
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: B.3.5/1
+  metin: Sosyal, kültürel ve sportif faaliyetlerin planlanması ve yürütülmesine ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - planla
+  - uygula
+  od:
+  - 2
+  - 3
+  gerekce: Planlama (2) ve yürütme (3).
+  durum: oneri
+- yuva: B.3.5/2
+  metin: Yıl içerisinde öğrencilere yönelik yıllık sportif, kültürel, sosyal faaliyetlerin listesi (Faaliyet türü, konusu, katılımcı sayısı vb. bilgilerle)
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Faaliyet listesi (rubrik 3).
+  durum: oneri
+- yuva: B.3.5/3
+  metin: Faaliyetlerin erişilebilirliği ve fırsat eşitliğini gözettiğine dair kanıt örnekleri
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Erişilebilirlik ve fırsat eşitliği (rubrik 3).
+  durum: oneri
+- yuva: B.3.5/4
+  metin: Faaliyetlerin çeşitliliği ve paydaş geribildirimlerinin göze alındığını gösteren kanıtlar
+  tur: kanit
+  asama:
+  - belirsiz
+  od: []
+  gerekce: Çeşitlilik (3) ve talebe göre çeşitlendirme (4) birlikte.
+  durum: oneri
+- yuva: B.3.5/5
+  metin: Sosyal, kültürel ve sportif faaliyetlerin izlenmesine ilişkin araçlar, izleme raporları, iyileştirme ve çeşitlendirme kanıtları
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: İzleme raporları, iyileştirme ve çeşitlendirme (rubrik 4).
+  durum: oneri
+- yuva: B.3.5/6
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: B.4.1/1
+  metin: Öğretim elemanı atama, yükseltme ve görevlendirme kriterlerinin tanımlı ve kamuoyuna açık olduğunu gösterir kanıtlar
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: Kriterler tanımlı (rubrik 2); kamuoyuna açıklık rubrik 3'e de dokunur.
+  durum: oneri
+- yuva: B.4.1/2
+  metin: Akademik kadronun uzmanlık alanı ile yürüttükleri ders arasında uyumun sağlanmasına yönelik uygulamalar
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Uzmanlık–ders uyumu uygulamaları (rubrik 3).
+  durum: oneri
+- yuva: B.4.1/3
+  metin: Atama, yükseltme ve görevlendirme kriterleri izleme ve iyileştirme kanıtları
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: '''İzleme ve iyileştirme'' → rubrik 4 (izlenmekte ve iyileştirilmektedir).'
+  durum: oneri
+- yuva: B.4.1/4
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: B.4.2/1
+  metin: Eğiticilerin eğitimi uygulamalarına ilişkin planlamalara (kapsamı, veriliş yöntemi, katılım bilgileri vb.) ait kanıtlar (Uzaktan eğitim uygulamaları dahil)
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: Planlamalar (rubrik 2).
+  durum: oneri
+- yuva: B.4.2/2
+  metin: Öğrenme öğretme merkezi uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Merkez uygulamaları (rubrik 3).
+  durum: oneri
+- yuva: B.4.2/3
+  metin: Eğiticilerin eğitimi uygulamalarına (kapsamı, veriliş yöntemi, katılım bilgileri vb.) ilişkin kanıtlar (Uzaktan eğitim uygulamaları dahil)
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Eğiticilerin eğitimi uygulamaları (rubrik 3).
+  durum: oneri
+- yuva: B.4.2/4
+  metin: Eğiticilerin eğitimi dışında öğretim elemanı öğretim yetkinliğinin geliştirilmesine yönelik uygulamalar
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Geliştirme uygulamaları (rubrik 3).
+  durum: oneri
+- yuva: B.4.2/5
+  metin: Eğitim kadrosunun eğitim-öğretim performansını izleme süreçlerini gösteren belgeler ve dokümanlar
+  tur: kanit
+  asama:
+  - kontrol_et
+  od:
+  - 4
+  gerekce: 'Performans izleme süreçleri (rubrik 4: bulgular izlenmekte).'
+  durum: oneri
+- yuva: B.4.2/6
+  metin: Öğretim elemanlarının izleme ve iyileştirme süreçlerine katılımını gösteren kanıtlar
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: İzleme/iyileştirmeye öğretim elemanı katılımı (rubrik 4).
+  durum: oneri
+- yuva: B.4.2/7
+  metin: Öğretim yetkinliği geliştirme süreçlerine ilişkin izleme ve iyileştirme kanıtları
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: '''İzleme ve iyileştirme'' → rubrik 4 (izlenmekte ve iyileştirilmektedir).'
+  durum: oneri
+- yuva: B.4.2/8
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: B.4.3/1
+  metin: Eğitim kadrosunun eğitim-öğretim performansını takdir etmek, tanımak ve ödüllendirmek için kurumun geneline yayılmış teşvik mekanizmaları/tanımlı süreçler
+  tur: kanit
+  asama:
+  - planla
+  - uygula
+  od:
+  - 2
+  - 3
+  gerekce: Tanımlı süreçler (2), kurum geneline yayılmış (3).
+  durum: oneri
+- yuva: B.4.3/2
+  metin: Bu alanda yürütülen faaliyetlere ilişkin uygulama örnekleri
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Uygulama örnekleri (rubrik 3).
+  durum: oneri
+- yuva: B.4.3/3
+  metin: Eğitim kadrosunun eğitim faaliyetlerine yönelik teşvik ve ödüllendirmeye ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Teşvik/ödül kanıtları (rubrik 3).
+  durum: oneri
+- yuva: B.4.3/4
+  metin: Eğitim kadrosunun eğitim-öğretim performansını takdir-tanıma ve ödüllendirmek üzere yürütülen faaliyetlere ilişkin izleme ve iyileştirme kanıtları
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: '''İzleme ve iyileştirme'' → rubrik 4 (izlenmekte ve iyileştirilmektedir).'
+  durum: oneri
+- yuva: B.4.3/5
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: C.1.1/1
+  metin: Araştırma süreçlerin yönetimi ve organizasyon yapısı
+  tur: kanit
+  asama:
+  - planla
+  - uygula
+  od:
+  - 2
+  - 3
+  gerekce: Yapı planı (2) ya da uygulanan yapı (3).
+  durum: oneri
+- yuva: C.1.1/2
+  metin: Araştırma yönetişim modeli ve uygulamaları
+  tur: kanit
+  asama:
+  - planla
+  - uygula
+  od:
+  - 2
+  - 3
+  gerekce: Model (2) ve uygulamaları (3).
+  durum: oneri
+- yuva: C.1.1/3
+  metin: Araştırma yönetimi ve organizasyonel yapının işlerliğinin izlendiği ve iyileştirildiğine ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: İşlerliğin izlenmesi ve iyileştirme (rubrik 4).
+  durum: oneri
+- yuva: C.1.1/4
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: C.1.2/1
+  metin: Araştırma-geliştirme bütçesi ve dağılımı
+  tur: kanit
+  asama:
+  - planla
+  - uygula
+  od:
+  - 2
+  - 3
+  gerekce: Bütçe planı (2) ve gerçekleşen dağılım (3).
+  durum: oneri
+- yuva: C.1.2/2
+  metin: Araştırma çerçevesinde yapılan stratejik ortaklıklar (Kamu veya özel)
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Ortaklıklar (rubrik 3).
+  durum: oneri
+- yuva: C.1.2/3
+  metin: Araştırma-geliştirme kaynaklarının araştırma stratejisi doğrultusunda yönetildiğini gösteren kanıtlar
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Stratejiye göre yönetim (rubrik 3).
+  durum: oneri
+- yuva: C.1.2/4
+  metin: Araştırma kaynaklarının çeşitliliği ve yeterliliğinin izlendiğine ve iyileştirildiğine ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: Yeterlilik/çeşitlilik izleme ve iyileştirme (rubrik 4).
+  durum: oneri
+- yuva: C.1.2/5
+  metin: İç kaynaklar ve kullanımına ilişkin tanımlı süreçler (BAP Yönergesi, İç Kaynak Kullanım Yönergesi vb.)
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: Tanımlı süreçler, yönergeler (rubrik 2).
+  durum: oneri
+- yuva: C.1.2/6
+  metin: İç kaynakların birimler arası dağılımı
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: 'Birimler arası dağılım (rubrik 3: denge gözetilerek).'
+  durum: oneri
+- yuva: C.1.2/7
+  metin: Dış kaynakların kullanımını desteklemek üzere oluşturulmuş yöntem ve birimler
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: Oluşturulmuş yöntem ve birimler (rubrik 2).
+  durum: oneri
+- yuva: C.1.2/8
+  metin: Dış kaynakların dağılımını gösteren kanıtlar
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Dağılım (rubrik 3).
+  durum: oneri
+- yuva: C.1.2/9
+  metin: Dış kaynaklarda yıllar itibarıyla gerçekleşen değişimler
+  tur: kanit
+  asama:
+  - kontrol_et
+  od:
+  - 4
+  gerekce: Yıllara göre değişim = eğilim izleme (rubrik 4).
+  durum: oneri
+- yuva: C.1.2/10
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: C.1.3/1
+  metin: Doktora programları ve doktora sonrası imkanlara ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - planla
+  - uygula
+  od:
+  - 2
+  - 3
+  gerekce: Planlamalar (2) ya da yürütülen programlar (3).
+  durum: oneri
+- yuva: C.1.3/2
+  metin: Bu programlar ve imkanlardan yararlanan öğrenci/araştırmacı sayıları ve bunların birimlere göre dağılımı
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Yararlanan sayıları = yürütme (rubrik 3).
+  durum: oneri
+- yuva: C.1.3/3
+  metin: Doktora programları ve doktora sonrası imkanlara yönelik izleme ve iyileştirme kanıtları
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: '''İzleme ve iyileştirme'' → rubrik 4 (izlenmekte ve iyileştirilmektedir).'
+  durum: oneri
+- yuva: C.1.3/4
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: C.2.1/1
+  metin: Öğretim elemanlarının araştırma yetkinliğinin geliştirilmesine yönelik planlama ve uygulamalar (destekleyici eğitimler, uluslararası fırsatlar, proje iş birliği çalışmaları vb.)
+  tur: kanit
+  asama:
+  - planla
+  - uygula
+  od:
+  - 2
+  - 3
+  gerekce: Planlama (2) ve uygulamalar (3).
+  durum: oneri
+- yuva: C.2.1/2
+  metin: Öğretim elemanlarının geri bildirimleri
+  tur: kanit
+  asama:
+  - belirsiz
+  od: []
+  gerekce: Geri bildirim alınması (3) ya da birlikte değerlendirme (4).
+  durum: oneri
+- yuva: C.2.1/3
+  metin: Öğretim elemanlarının araştırma yetkinliğinin izlenmesi ve iyileştirilmesine ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: '''İzleme ve iyileştirme'' → rubrik 4 (izlenmekte ve iyileştirilmektedir).'
+  durum: oneri
+- yuva: C.2.1/4
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: C.2.2/1
+  metin: Ulusal ve uluslararası düzeyde ortak programlar ve ortak araştırma birimleri oluşturulmasına yönelik mekanizmalar
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: 'Mekanizmalar (rubrik 2: planlamalar ve mekanizmalar).'
+  durum: oneri
+- yuva: C.2.2/2
+  metin: Ortak programlar ve ortak araştırma faaliyetlerine yönelik ikili anlaşmalar ve iş birliklerine ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Anlaşma ve iş birlikleri (rubrik 3).
+  durum: oneri
+- yuva: C.2.2/3
+  metin: Birimin dahil olduğu araştırma ağları, birimin/kurumun ortak programları ve araştırma birimleri, ortak araştırmalardan üretilen çalışmalar ve projeler
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Ağlar, ortak çalışmalar (rubrik 3).
+  durum: oneri
+- yuva: C.2.2/4
+  metin: Paydaş geri bildirimleri
+  tur: kanit
+  asama:
+  - belirsiz
+  od: []
+  gerekce: Paydaş geri bildirimi (3/4).
+  durum: oneri
+- yuva: C.2.2/5
+  metin: Ortak programlar ve ortak araştırma faaliyetlerinin izlenmesine ve iyileştirilmesine yönelik kanıtlar
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: '''İzleme ve iyileştirme'' → rubrik 4 (izlenmekte ve iyileştirilmektedir).'
+  durum: oneri
+- yuva: C.2.2/6
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: C.3.1/1
+  metin: Araştırma performansını izlemek üzere geçerli olan tanımlı süreçler
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: 'Tanımlı süreçler (rubrik 2: ilke, kural, göstergeler).'
+  durum: oneri
+- yuva: C.3.1/2
+  metin: Araştırma hedeflerine ulaşılıp ulaşılmadığını izlemek üzere oluşturulan mekanizmalar
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: 'Mekanizmalar (rubrik 3: mekanizmalar kullanılmaktadır).'
+  durum: oneri
+- yuva: C.3.1/3
+  metin: Paydaş geri bildirimleri
+  tur: kanit
+  asama:
+  - belirsiz
+  od: []
+  gerekce: Paydaş geri bildirimi (3/4).
+  durum: oneri
+- yuva: C.3.1/4
+  metin: Araştırma performansının izlenmesine ve iyileştirilmesine ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: '''İzleme ve iyileştirme'' → rubrik 4 (izlenmekte ve iyileştirilmektedir).'
+  durum: oneri
+- yuva: C.3.1/5
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: C.3.2/1
+  metin: Akademik personelin araştırma-geliştirme performansını izlemek üzere geçerli olan tanımlı süreçler (Yönetmelik, yönerge, süreç tanımı, ölçme araçları, rehber, kılavuz, takdir-tanıma sistemi, teşvik mekanizmaları vb.)
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: Tanımlı süreçler (rubrik 2).
+  durum: oneri
+- yuva: C.3.2/2
+  metin: Öğretim elemanlarının araştırma performansına yönelik analiz raporları
+  tur: kanit
+  asama:
+  - uygula
+  - kontrol_et
+  od:
+  - 3
+  - 4
+  gerekce: Analiz raporu mekanizma kullanımı (3) ve izleme (4).
+  durum: oneri
+- yuva: C.3.2/3
+  metin: Öğretim elemanlarının geri bildirimleri
+  tur: kanit
+  asama:
+  - belirsiz
+  od: []
+  gerekce: Geri bildirim (3/4).
+  durum: oneri
+- yuva: C.3.2/4
+  metin: Araştırma geliştirme performansına ilişkin izleme ve iyileştirme kanıtları
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: '''İzleme ve iyileştirme'' → rubrik 4 (izlenmekte ve iyileştirilmektedir).'
+  durum: oneri
+- yuva: C.3.2/5
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin/kurumun ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: D.1.1/1
+  metin: Toplumsal katkı süreçlerinin yönetimi ve organizasyon yapısını gösteren kanıtlar
+  tur: kanit
+  asama:
+  - planla
+  - uygula
+  od:
+  - 2
+  - 3
+  gerekce: Yapı planı (2) ya da uygulanan yapı (3).
+  durum: oneri
+- yuva: D.1.1/2
+  metin: Toplumsal katkı yönetişim modelini gösteren kanıtlar
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: Yönetişim modeli (rubrik 2).
+  durum: oneri
+- yuva: D.1.1/3
+  metin: Toplumsal katkı faaliyetlerini yürüten birimler ve uygulama örnekleri
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Uygulama örnekleri (rubrik 3).
+  durum: oneri
+- yuva: D.1.1/4
+  metin: Toplumsal katkı süreçlerinin yönetimi ve organizasyonel yapısının işlerliğine ilişkin izleme ve iyileştirme kanıtları
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: '''İzleme ve iyileştirme'' → rubrik 4 (izlenmekte ve iyileştirilmektedir).'
+  durum: oneri
+- yuva: D.1.1/5
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin/kurumun ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: D.1.2/1
+  metin: Toplumsal katkı faaliyetlerini yürüten araştırma ve uygulama merkezleri ve diğer birimlere ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - planla
+  - uygula
+  od:
+  - 2
+  - 3
+  gerekce: Kaynak oluşturma (2) ve kullanım (3).
+  durum: oneri
+- yuva: D.1.2/2
+  metin: Toplumsal katkı faaliyetlerine ayrılan bütçe ve yıllar içinde dağılımını içeren kanıtlar
+  tur: kanit
+  asama:
+  - planla
+  - uygula
+  od:
+  - 2
+  - 3
+  gerekce: Bütçe (2) ve yıllara dağılım (3).
+  durum: oneri
+- yuva: D.1.2/3
+  metin: Toplumsal katkı kaynaklarının toplumsal katkı stratejisi doğrultusunda yönetildiğini gösteren kanıtlar
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Stratejiye göre yönetim (rubrik 3).
+  durum: oneri
+- yuva: D.1.2/4
+  metin: Toplumsal katkı kaynaklarının çeşitliliği ve yeterliliğinin izlendiğine ve iyileştirildiğine ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: Yeterlilik/çeşitlilik izleme ve iyileştirme (rubrik 4).
+  durum: oneri
+- yuva: D.1.2/5
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin/kurumun ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
+- yuva: D.2.1/1
+  metin: Birimin/kurumun hedefleriyle uyumlu toplumsal katkı faaliyetleri
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Faaliyetler (rubrik 3).
+  durum: oneri
+- yuva: D.2.1/2
+  metin: Toplumsal katkı performansını izlemek ve değerlendirmek üzere geçerli olan tanımlı süreçlere ait kanıtlar
+  tur: kanit
+  asama:
+  - planla
+  od:
+  - 2
+  gerekce: Tanımlı süreçler (rubrik 2).
+  durum: oneri
+- yuva: D.2.1/3
+  metin: Toplumsal katkı hedeflerine ulaşılıp ulaşılmadığını izlemek üzere oluşturulan mekanizmaları gösteren kanıtlar
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: 'İzleme mekanizmaları (rubrik 3: mekanizmalar kullanılmaktadır).'
+  durum: oneri
+- yuva: D.2.1/4
+  metin: Birimde/kurumda yürütülen toplumsal katkı faaliyetlerinin değerlendirildiğini gösteren kanıtlar/izleme raporları
+  tur: kanit
+  asama:
+  - kontrol_et
+  od:
+  - 4
+  gerekce: Değerlendirme/izleme raporları (rubrik 4).
+  durum: oneri
+- yuva: D.2.1/5
+  metin: Toplumsal katkı faaliyetlerine ilişkin izlemeye dayalı iyileştirmelerin yapıldığını gösteren kanıtlar/raporlar
+  tur: kanit
+  asama:
+  - onlem_al
+  od:
+  - 4
+  gerekce: İzlemeye dayalı iyileştirmeler (rubrik 4).
+  durum: oneri
+- yuva: D.2.1/6
+  metin: İşbirliği yapılan kurumlarla imzalanan protokoller ve anlaşmalar
+  tur: kanit
+  asama:
+  - uygula
+  od:
+  - 3
+  gerekce: Protokoller = yürütülen iş birlikleri (rubrik 3).
+  durum: oneri
+- yuva: D.2.1/7
+  metin: Paydaş geri bildirimleri
+  tur: kanit
+  asama:
+  - belirsiz
+  od: []
+  gerekce: Paydaş geri bildirimi (3/4).
+  durum: oneri
+- yuva: D.2.1/8
+  metin: Toplumsal katkı performansının izlenmesine ve iyileştirilmesine ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - kontrol_et
+  - onlem_al
+  od:
+  - 4
+  gerekce: '''İzleme ve iyileştirme'' → rubrik 4 (izlenmekte ve iyileştirilmektedir).'
+  durum: oneri
+- yuva: D.2.1/9
+  metin: Standart uygulamalar ve mevzuatın yanı sıra birimin/kurumun ihtiyaçları doğrultusunda geliştirdiği özgün yaklaşım ve uygulamalarına ilişkin kanıtlar
+  tur: kanit
+  asama:
+  - ozgun
+  od:
+  - 5
+  gerekce: 'Rubrik 5: içselleştirilmiş/örnek gösterilebilir uygulama; özgün yaklaşım kanıtı.'
+  durum: oneri
