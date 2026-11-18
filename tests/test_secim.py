@@ -71,7 +71,7 @@ def _karar(i: int, guven="yuksek", isaret=(), yuva="B.1.1/4", asama="uygula") ->
 # -- K18: ilgililik ---------------------------------------------------------------------------
 
 def test_cap_keeps_audit_od_and_lists_dropped(tmp_path):
-    docs = [_karar(i) for i in range(9)]
+    docs = [_karar(i) for i in range(13)]                         # varsayılan sınır 10 (2026-11-19)
     docs.append({"id": "kontrol", "text": "Program izleme raporu değerlendirildi.",
                  "eslesmeler": [_m("B.1.1", "B.1.1/6", "kontrol_et", "Program izleme raporu")]})
     ws, src = _ws(tmp_path, docs)
@@ -79,11 +79,11 @@ def test_cap_keeps_audit_od_and_lists_dropped(tmp_path):
     n_before = _decision_count(ws)
     st = R.run(ws, out=out, source=src)
     rows = [r for r in _index(out) if r["olcut"] == "B.1.1"]
-    assert len(rows) == 6 and st["elenen"] == 4 and st["aday"] == 10
+    assert len(rows) == 10 and st["elenen"] == 4 and st["aday"] == 14
     assert "kontrol" in {r["doc_id"] for r in rows}             # en yüksek OD önce
     # audit eşleşme kaybetmez: satırlar ve OD seçimden bağımsız
     a = build(ws)
-    assert len(a.rows) == n_before == 10
+    assert len(a.rows) == n_before == 14
     assert {e["neden"] for e in _secim(out)["elenen"]} == {"ust_sinir"}
     g = (out / "gaps.md").read_text(encoding="utf-8")
     assert S.GAPS_BEGIN in g and "Kanıt listesine alınmayan diğer belgeler" in g and "ölçüt üst sınırı dolu" in g
@@ -95,7 +95,7 @@ def test_cap_keeps_audit_od_and_lists_dropped(tmp_path):
     assert len(_index(out)) == 3 and R.status(out, ws)["guncel"]
     (ws / "config.yaml").write_text("rapor:\n  kanit_secimi:\n    olcut_basina_en_fazla: null\n", encoding="utf-8")
     R.run(ws, out=out, source=src)
-    assert len(_index(out)) == 10
+    assert len(_index(out)) == 14
 
 
 def test_low_confidence_and_indirect_dropped_but_chain_kept(tmp_path):
@@ -115,22 +115,22 @@ def test_low_confidence_and_indirect_dropped_but_chain_kept(tmp_path):
 
 
 def test_uncounted_candidates_ranked_last(tmp_path):
-    docs = [dict(_karar(i), donem_ici=True) for i in range(6)]
-    docs.append(dict(_karar(9), donem_ici=None, tarih=None))     # tarihsiz olay: OD'ye sayılmaz
+    docs = [dict(_karar(i), donem_ici=True) for i in range(10)]
+    docs.append(dict(_karar(19), donem_ici=None, tarih=None))    # tarihsiz olay: OD'ye sayılmaz
     ws, src = _ws(tmp_path, docs)
     out = tmp_path / "out"
     R.run(ws, out=out, source=src)
-    assert [(e["doc_id"], e["neden"]) for e in _secim(out)["elenen"]] == [("k09", "ust_sinir")]
-    (ws / "config.yaml").write_text("rapor:\n  kanit_secimi:\n    olcut_basina_en_fazla: 7\n", encoding="utf-8")
+    assert [(e["doc_id"], e["neden"]) for e in _secim(out)["elenen"]] == [("k19", "ust_sinir")]
+    (ws / "config.yaml").write_text("rapor:\n  kanit_secimi:\n    olcut_basina_en_fazla: 11\n", encoding="utf-8")
     R.run(ws, out=out, source=src)
-    k9 = next(r for r in _index(out) if r["doc_id"] == "k09")
+    k9 = next(r for r in _index(out) if r["doc_id"] == "k19")
     assert "od_sayilmadi" in k9["isaretler"]                     # elenmez, işaretli girer
 
 
 def test_kurum_geneli_limit_prefers_article_quotes(tmp_path):
     docs = []
-    for i in range(5):
-        madde = i in (2, 4)
+    for i in range(7):
+        madde = i in (2, 4, 6)
         t = (f"MADDE {i + 3} - Program tasarımı usulü {i}." if madde else f"Genel hükümler yönetmelik {i} amaç.")
         docs.append({"id": f"y{i}", "text": t, "doc_type": "yonetmelik",
                      "eslesmeler": [_m("B.1.1", "B.1.1/1", "planla", t[:25])]})
@@ -139,11 +139,11 @@ def test_kurum_geneli_limit_prefers_article_quotes(tmp_path):
     out = tmp_path / "out"
     st = R.run(ws, out=out, source=src)
     ids = {r["doc_id"] for r in _index(out)}
-    assert ids == {"k00", "y2", "y4"}                            # madde alıntılı ikisi
-    assert st["elenen_kurum_geneli"] == 3
+    assert ids == {"k00", "y2", "y4", "y6"}                      # madde alıntılı üçü (sınır 3)
+    assert st["elenen_kurum_geneli"] == 4
     g = (out / "gaps.md").read_text(encoding="utf-8")
     assert "### Elenen kurum geneli belgeler" in g and "madde alıntısı yok" in g
-    assert all(f"`y{i}`" in g for i in (0, 1, 3))
+    assert all(f"`y{i}`" in g for i in (0, 1, 3, 5))
     # audit yeniden yazılınca file'ın bölümü korunur
     audit(ws, out=out)
     g2 = (out / "gaps.md").read_text(encoding="utf-8")
@@ -204,7 +204,11 @@ def test_settings_validation(tmp_path):
     with pytest.raises(S.SelectionError):
         S.load_settings(tmp_path)
     s = S.load_settings(None)
-    assert (s.olcut_en_fazla, s.kurum_geneli_en_fazla, s.en_dusuk_guven) == (6, 2, "orta")
+    assert (s.olcut_en_fazla, s.kurum_geneli_en_fazla, s.en_dusuk_guven, s.gecmis_en_fazla) == (10, 3, "orta", 1)
+    (tmp_path / "config.yaml").write_text("rapor:\n  kanit_secimi:\n    gecmis_kanit_en_fazla: -1\n",
+                                          encoding="utf-8")
+    with pytest.raises(S.SelectionError):
+        S.load_settings(tmp_path)
 
 
 # -- K20: sürüm ve kopya ----------------------------------------------------------------------

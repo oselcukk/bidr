@@ -171,6 +171,8 @@ class Item:
     dolayli: bool = False                                      # her sayılan satırı dolaylı işaretli
     kopyalar_surum: list[str] = field(default_factory=list)    # tek kanıt sayılan sürümler
     secim: str = ""                                            # neden yayımlandı (select.NEDEN)
+    donem_disi: str = ""                                       # sayılmayan: "sonra" | "gecmis" (select.donem_disi)
+    birim_bekliyor: bool = False                               # birim aitliği insanca onaylanmadı
 
 
 def _names_sha(ws_root: Path, review_dir: Path) -> str:
@@ -272,7 +274,9 @@ def plan(ws_root: Path, *, review_dir: Path | None = None, profile: str | None =
             and any(r["karar"] != "duzelt" for r in rows),
             madde=any(_MADDE.search(fold(q)) for q in alintilar),
             dolayli_isaretler=set().union(*dol) if dol else set(),
-            dolayli=bool(dol) and all(dol)))
+            dolayli=bool(dol) and all(dol),
+            donem_disi="" if counted else S.donem_disi(rows),
+            birim_bekliyor=all(r.get("birim_onay_bekliyor") for r in rows)))
     meta = {"inceleme": reviewed, "review": str(rpath) if reviewed else None,
             "kararlar_sha": _sha(ws.root / "decisions.jsonl"), "inceleme_sha": _sha(rpath),
             "profil": a.profile, "secim_sha": settings.sha(), "secim": None}
@@ -309,7 +313,8 @@ def _select(ws: Workspace, items: list[Item], settings, prev_index: Path) -> tup
         kept += k
         dropped += d
     return kept, {"settings": settings, "kept": kept, "dropped": dropped, "merges": merges,
-                  "uyarilar": uy, "atiflar": atiflar, "aday": len(items), "docs": docs}
+                  "uyarilar": uy, "atiflar": atiflar, "aday": len(items), "docs": docs,
+                  "metin_var": (ws.root / S.TEXTS).is_dir()}
 
 
 def _criterion_dir(olcut: str) -> Path:
@@ -438,7 +443,8 @@ def run(ws_root: Path, *, out: Path | None = None, source: str | Path | None = N
     S.record(out / S.SECIM, secim["settings"], secim["kept"], secim["dropped"], secim["merges"],
              secim["uyarilar"], secim["atiflar"])
     update_gaps(out / GAPS, S.gaps_block(secim["settings"], secim["kept"], secim["dropped"], secim["merges"],
-                                         secim["docs"], secim["aday"]), S.GAPS_BEGIN, S.GAPS_END)
+                                         secim["docs"], secim["aday"], secim.get("metin_var", False)),
+                S.GAPS_BEGIN, S.GAPS_END)
     ozet = {"aday": secim["aday"], "elenen": len(secim["dropped"]),
             "elenen_kurum_geneli": sum(1 for d in secim["dropped"] if d["kurum_geneli"]),
             "surum_birlesen": sum(len(m["uyeler"]) for m in secim["merges"])}

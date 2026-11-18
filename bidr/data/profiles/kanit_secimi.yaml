@@ -11,12 +11,17 @@
 # Ölçüt başına atıfsız kanıt üst sınırı. Metinde atıf yapılan kanıtlar (write sonrası)
 # sınıra sayılmaz; insan onaylı (review.xlsx kabul/duzelt) ve OD zinciri için gereken kanıt
 # sınıra sayılır ama sınır yüzünden düşmez. null: sınır yok.
-olcut_basina_en_fazla: 6
+olcut_basina_en_fazla: 10        # 2026-11-19: 6 → 10
 
 # Kurum/fakülte geneli düzenlemeler (yönetmelik, yönerge, kurum geneli ilişkili belge) bir
 # ölçütte en çok bu kadar; madde alıntısı olanlar önce. Kalanlar gaps.md "Elenen kurum geneli
 # belgeler".
-kurum_geneli_en_fazla: 2
+kurum_geneli_en_fazla: 3         # 2026-11-19: 2 → 3
+
+# Geçmiş kanıt (süreklilik): önceki yıl olayı, OD'ye sayılmaz; yayımlanan listede ölçüt başına en
+# çok bu kadar (sistematiklik/karşılaştırma için). Dönem sonrası belge, yürürlükteki sürüm olmayan
+# düzenleme ve birim aitliği insanca onaylanmamış belge hiç girmez (ayar yok).
+gecmis_kanit_en_fazla: 1
 
 # Atıfsız kanıt için en düşük model güveni (yuksek | orta | dusuk).
 en_dusuk_guven: orta
