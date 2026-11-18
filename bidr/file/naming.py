@@ -102,3 +102,49 @@ def file_name(olcut: str, sira: int, od: int, ad: str, ext: str) -> str:
     listesi gösterimiyle (`[1-OD3]. Ad.pdf`) aynı; ölçüt öneki dosyayı klasörü dışında da
     tanınır kılar."""
     return f"[{olcut}-{sira}-OD{od}] {ad}{ext.lower()}"
+
+
+# -- kanıt kodunun OD'si ve numaralama -------------------------------------------------------
+# FR-0833 kanıt gösterimi (`[1-OD3]. Ad.pdf`, metinde `[1_OD3]`): koddaki OD kanıtın gösterdiği
+# düzeydir, ölçütün nihai OD'si değil; kanıt ölçütün önerilen OD'sinin üstünde olabilir (kılavuz
+# örneği: metin OD2, kanıt [2_OD4]). Ama kodun kendi düşüşleri yansır: audit satırının `od`'si
+# etkin aşamadan gelir (kurum geneli düzenleme → planla → OD2; `od_kabul` düşüşü). Ölçütün
+# OD'sine sayılmayan kanıt (dönem kuralı: geçmiş/tarihsiz olay; düşük güven) ölçütün önerilen
+# OD'sinin üstünde düzey göstermez. Modelin ham OD'si (`od_kabul`, `od_onerisi`) kullanılmaz.
+
+def _zayif(row: dict) -> bool:
+    return bool(row.get("zayif")) and row.get("karar") not in ("kabul", "duzelt")
+
+
+def evidence_od(rows: list[dict], criterion_od: int | None = None) -> int | None:
+    """Bir ölçütte bir kanıtın (audit satırları) kodundaki OD. `criterion_od`: audit'in
+    önerdiği ölçüt OD'si (`audit-olcutler.json` `od`). Düzey yoksa None."""
+    sayilan = [r["od"] for r in rows if r.get("sayilir") and r.get("od") and not _zayif(r)]
+    if sayilan:
+        return max(sayilan)
+    etkin = [r["od"] for r in rows if r.get("od")]
+    if not etkin:
+        return None
+    od = max(etkin)
+    return min(od, criterion_od) if criterion_od else od
+
+
+def source_key(doc_id: str, docs: dict | None = None) -> str:
+    """Numaralamada aynı kaynak: aynı içerik (doc_id = sha önekidir) ya da aynı sürüm grubu."""
+    g = ((docs or {}).get(doc_id) or {}).get("surum_grubu")
+    return f"surum:{g}" if g else f"sha:{doc_id}"
+
+
+def number_sources(items: list, key, od) -> list[tuple[int, int, object]]:
+    """Bir ölçütün sıralı kalemlerine kanıt numarası verir → [(sıra, kod OD'si, kalem)].
+    Aynı kaynağın (`key(kalem)`; bkz. `source_key`) kalemleri tek numara alır: numara grubun ilk
+    göründüğü yerde verilir, üyeler yan yana dizilir, kod OD'si grubun en yüksek `od(kalem)`'idir
+    (aynı numara tek OD taşır). Seçimi değiştirmez: kalem atılmaz, yalnız numara paylaşılır."""
+    order: dict = {}
+    for it in items:
+        order.setdefault(key(it), []).append(it)
+    out = []
+    for sira, (_, mem) in enumerate(order.items(), 1):
+        g_od = max(od(it) for it in mem)
+        out.extend((sira, g_od, it) for it in mem)
+    return out

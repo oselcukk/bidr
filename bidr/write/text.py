@@ -11,6 +11,9 @@
   üst düzey ifadeleri). İzleme/iyileştirme fiili kullanan cümle OD4+ kanıta, özgün/örnek
   gösterilebilir diyen cümle OD5 kanıta atıf yapmalıdır.
 - Yasak ifadeler: abartı, slogan, koçluk dili (bkz. YASAK).
+- Belge/birim adı içindeki terim ("GTÜ Yapay Zekâ Politikası", "Sürdürülebilirlik
+  Koordinatörlüğü", tırnak içi ad) yasak ifade, vaat ve üst düzey dil denetimlerinden muaftır
+  (`name_spans`); ad dışındaki aynı terim yakalanır.
 """
 from __future__ import annotations
 
@@ -20,7 +23,10 @@ ATIF = re.compile(r"\[(\d+)_OD([1-5])\]")
 KOMISYON = "[komisyon]"
 _BRACKET = re.compile(r"\[[^\[\]]{1,40}\]")
 _ABBR = {"vb", "vs", "ör", "örn", "bkz", "bk", "dr", "prof", "doç", "öğr", "gör", "arş", "no", "s",
-         "sn", "md", "mad", "yy", "st", "yrd", "çev", "ed", "vd", "a.ş", "ltd", "şti"}
+         "sn", "md", "mad", "yy", "st", "yrd", "çev", "ed", "vd", "a.ş", "ltd", "şti", "t.c", "nr", "tel",
+         "uzm", "okt", "müh", "yük", "sy", "c", "ss", "bşk", "mah", "cad", "sok", "dk", "sa"}
+# Harf+nokta dizisi: "T.C.", "A.Ş.", "a.g.e." — son noktadan önceki parça "T.C" biçimindedir.
+_LETTER_DOTS = re.compile(r"(?:[^\W\d_]{1,2}\.)+[^\W\d_]{1,2}")
 _BOUNDARY = re.compile(r"[.!?…]+(?=\s+[\"“'(\[A-ZÇĞİÖŞÜ0-9])")
 
 
@@ -32,7 +38,7 @@ def _is_abbrev(before: str) -> bool:
     tok = before.split()[-1] if before.split() else ""
     tok = tok.lstrip("(\"“'")
     low = tr_lower(tok)
-    if low in _ABBR or len(tok) == 1:
+    if low in _ABBR or len(tok) == 1 or _LETTER_DOTS.fullmatch(tok):
         return True
     if re.fullmatch(r"[A-E](\.\d+)+", tok):          # ölçüt kimliği: "B.1.1."
         return True
@@ -117,6 +123,78 @@ OLUMSUZ = re.compile(r"\w+(mamaktadır|memektedir|mamıştır|memiştir|mamakta|
 OD_ANIS = re.compile(r"\b(?:od|olgunluk düzeyi\w*)\s*[-:]?\s*([1-5])\b")
 
 
+# -- özel adlar (belge/birim adı) ------------------------------------------------------------
+# Belge ya da birim adının içindeki terim ("GTÜ Yapay Zekâ Politikası", "Sürdürülebilirlik
+# Koordinatörlüğü") metnin kendi iddiası değildir: yasak ifade ve üst düzey dil denetimleri
+# ad öbeklerini görmez. Ad öbeği: tırnak içi ad; büyük harfle başlayan en az iki sözcüklük öbek
+# (arada "ve/ile/için" olabilir); ya da bir ad ekiyle (Politikası, Koordinatörlüğü, …) biten öbek.
+_AD_EKI = ("politika", "yönerge", "yönetmeli", "koordinatörlü", "ofis", "merkez", "komisyon", "kurul",
+           "birim", "müdürlü", "başkanlı", "rektörlü", "dekanlı", "bölüm", "fakülte", "enstitü",
+           "üniversite", "program", "plan", "rapor", "strateji", "esasları", "usul", "kılavuz", "rehber",
+           "amaçları", "proje", "topluluğ", "kulüb", "laboratuvar", "platform", "grub", "çalıştay",
+           "sempozyum", "kongre", "ödül", "ağı", "akademi", "okulu", "konsey", "kanun", "ilke")
+_BAGLAC = {"ve", "ile", "için", "&", "-", "–", "veya", "ve/veya"}
+_TIRNAK = re.compile(r"“[^“”]{1,150}”|\"[^\"]{1,150}\"|«[^«»]{1,150}»|‘[^‘’]{1,150}’")
+_TOKEN = re.compile(r"\S+")
+_UPPER = "ABCÇDEFGĞHIİJKLMNOÖPQRSŞTUÜVWXYZÂÎÛ"
+
+
+def _core(tok: str) -> str:
+    return tok.strip("\"“”«»‘'(),;:.!?…[]")
+
+
+def _is_cap(tok: str) -> bool:
+    c = _core(tok)
+    return bool(c) and c[0] in _UPPER and not re.match(r"OD\s*\d", c)
+
+
+def _has_eki(tok: str) -> bool:
+    w = tr_lower(re.split(r"['’]", _core(tok))[0])
+    return any(w.startswith(e) for e in _AD_EKI)
+
+
+def _ends_run(tok: str) -> bool:
+    return tok[-1:] in ",;:.!?…)]\"”»"
+
+
+def name_spans(s: str) -> list[tuple[int, int]]:
+    """Cümledeki belge/birim adı öbeklerinin [başlangıç, bitiş) aralıkları."""
+    spans = [(m.start(), m.end()) for m in _TIRNAK.finditer(s)]
+    toks = list(_TOKEN.finditer(s))
+    first = next((i for i, t in enumerate(toks) if not t.group(0).startswith("[")), 0)
+    i = 0
+    while i < len(toks):
+        if not _is_cap(toks[i].group(0)):
+            i += 1
+            continue
+        run, j = [i], i
+        while not _ends_run(toks[j].group(0)) and j + 1 < len(toks):
+            nxt = toks[j + 1].group(0)
+            if _is_cap(nxt):
+                j += 1
+            elif (nxt.lower() in _BAGLAC and j + 2 < len(toks) and _is_cap(toks[j + 2].group(0))):
+                j += 2
+            else:
+                break
+            run.append(j)
+        eki = _has_eki(toks[run[-1]].group(0))
+        # Cümle başındaki sözcük her durumda büyük harfle yazılır: öbek ad ekiyle bitmiyorsa ve
+        # sözcük kısaltma değilse ada sayılmaz ("Mükemmel GTÜ ortamı" → yalnız "GTÜ").
+        if run[0] == first and not eki and not _core(toks[run[0]].group(0)).isupper():
+            run = run[1:]
+        if run and (len(run) >= 2 or eki):
+            spans.append((toks[run[0]].start(), toks[run[-1]].end()))
+        i = j + 1
+    return spans
+
+
+def mask_names(s: str) -> str:
+    """Ad öbeklerini boşlukla örter (uzunluk korunur)."""
+    for a, b in name_spans(s):
+        s = s[:a] + " " * (b - a) + s[b:]
+    return s
+
+
 def check_sentence(s: str, *, index_nos: set[str], od: int, komisyon: bool) -> list[dict]:
     """Tek cümlenin kod denetimi → sorun listesi [{kod, ayrinti}]."""
     issues: list[dict] = []
@@ -133,15 +211,18 @@ def check_sentence(s: str, *, index_nos: set[str], od: int, komisyon: bool) -> l
     if kom and not komisyon:
         issues.append({"kod": "komisyon_bilgisi_yok", "ayrinti": "[komisyon] işareti var ama bu ölçüt için "
                                                                  "komisyon bilgisi verilmedi"})
-    low = tr_lower(ATIF.sub(" ", s).replace(KOMISYON, " "))
+    bare = ATIF.sub(" ", s).replace(KOMISYON, " ")
+    low = tr_lower(bare)
+    # Yasak ifade, vaat ve üst düzey dil denetimleri belge/birim adlarını görmez (`ad`).
+    ad = tr_lower(mask_names(bare))
     for rx, kind in _YASAK:
-        m = rx.search(low)
+        m = rx.search(ad)
         if m and kind == "koçluk" and m.group(0).startswith("tavsiye") and "tavsiye edil" in low \
                 and cites and DUZENLEME.search(low):
             continue   # "yönergede … tavsiye edilmektedir": belgenin içeriği, öğüt değil
         if m:
             issues.append({"kod": "yasak_ifade", "ayrinti": f"{kind}: “{m.group(0)}”"})
-    g = GELECEK.search(low)
+    g = GELECEK.search(ad)
     # Mevzuat dili: "yönergede … öngörülmektedir" gelecek vaadi değil, "hükme bağlanmıştır"
     # anlamındadır; atıflı ve bir düzenleme belgesini anlatan cümlede kabul edilir.
     if g and g.group(0).strip() in BELGE_FIIL and cites and DUZENLEME.search(low):
@@ -155,15 +236,15 @@ def check_sentence(s: str, *, index_nos: set[str], od: int, komisyon: bool) -> l
     neg = bool(OLUMSUZ.search(low))
     if not neg:
         for lvl, rx in UST_DUZEY.items():
-            m = rx.search(low)
+            m = rx.search(ad)
             if m and od < lvl:
                 issues.append({"kod": "od_asimi", "ayrinti": f"“{m.group(0)}” OD{lvl} dili; önerilen OD{od}"})
         top = max((citation_od(c) for c in cites if c in index_nos), default=0)
-        m = FIIL_K.search(low)
+        m = FIIL_K.search(ad)
         if m and top < 4:
             issues.append({"kod": "kanitsiz_ust_duzey",
                            "ayrinti": f"“{m.group(0)}” izleme/iyileştirme iddiası OD4+ kanıt atfı ister"})
-        m = FIIL_Z.search(low)
+        m = FIIL_Z.search(ad)
         if m and top < 5:
             issues.append({"kod": "kanitsiz_ust_duzey",
                            "ayrinti": f"“{m.group(0)}” özgünlük iddiası OD5 kanıt atfı ister"})
