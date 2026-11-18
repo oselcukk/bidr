@@ -136,10 +136,10 @@ def test_structure_documents_count_with_currency_flag(ws):
 def test_event_documents(ws):
     a = build(ws)
     by = a.by_key
-    # önceki yıl U/K/Ö sayılmaz; planla (usul kararı) sayılır + güncellik
+    # önceki yıl olayı hiçbir halkayı kanıtlamaz (planla da): geçmiş kanıt (süreklilik)
     assert not by["anket_2023|A.4.2/5"]["sayilir"] and "gecmis_kanit" in by["anket_2023|A.4.2/5"]["flags"]
     assert not by["karar_2022|A.4.2/2"]["sayilir"]
-    assert by["karar_2022|A.4.2/1"]["sayilir"] and "guncellik_dogrulanmali" in by["karar_2022|A.4.2/1"]["flags"]
+    assert not by["karar_2022|A.4.2/1"]["sayilir"] and "gecmis_kanit" in by["karar_2022|A.4.2/1"]["flags"]
     # sonraki yıl ve tarihsiz: hiçbir aşama sayılmaz, satır var
     assert not by["tutanak_2026|A.4.2/3"]["sayilir"] and "donem_sonrasi" in by["tutanak_2026|A.4.2/3"]["flags"]
     r = by["anket_tarihsiz|A.4.2/2"]
@@ -150,7 +150,8 @@ def test_event_documents(ws):
     c = _crit(a, "A.4.2")
     assert c["od"] == 2                               # yalnız plan halkaları sayıldı
     assert c["od_tarih_dogrulanirsa"] == 3            # tarihsiz anket doğrulanırsa
-    assert {g["satir"] for g in c["gecmis_kanit"]} == {"anket_2023|A.4.2/5", "karar_2022|A.4.2/2"}
+    assert {g["satir"] for g in c["gecmis_kanit"]} == {"anket_2023|A.4.2/5", "karar_2022|A.4.2/1",
+                                                       "karar_2022|A.4.2/2"}
     assert any("geçmiş kanıt" in n and "2022, 2023" in n for n in c["notlar"])
     assert any("doğrulanırsa OD3" in n for n in c["notlar"])
 

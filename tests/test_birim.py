@@ -230,8 +230,9 @@ def test_audit_relation_column_flags_and_gaps(tmp_path):
     rows = a.by_key
     assert "d_kimya|B.1.1/3" not in rows                       # başka birim: tabloya gelmez
     r = rows["d_belirsiz|B.1.1/3"]
-    assert r["sayilir"] and r["birim_iliskisi"] == "belirsiz"     # kabul edilir, sayılır
-    assert "birim_aitligi_dogrulanmali" in r["flags"] and "birim aitliği" in r["vurgu"]
+    # insan onaylamadıkça sayılmaz (kör test 2026-11-19: başka birimin belgesi kanıt sayılıyordu)
+    assert not r["sayilir"] and r["birim_iliskisi"] == "belirsiz" and r["birim_onay_bekliyor"]
+    assert "birim_aitligi_dogrulanmali" in r["flags"] and "BİRİM AİTLİĞİ" in r["vurgu"]
     f = rows["d_fak|B.2.3/1"]
     assert {"kurum_geneli", "fakulte_geneli"} <= set(f["flags"]) and f["etkin_asama"] == "planla"
     # üst birimin bu birim hakkındaki senato kararı tür yüzünden planla'ya inmez; kendi senato kararı iner
@@ -247,7 +248,7 @@ def test_audit_relation_column_flags_and_gaps(tmp_path):
     assert vals["d_belirsiz|B.1.1/3"] == "belirsiz" and vals["d_kendi|B.1.1/1"] == "kendi"
     # gaps.md listeleri
     g = paths["gaps"].read_text(encoding="utf-8")
-    assert "## Birim aitliği doğrulanmalı" in g and "`2025_d_belirsiz` (1 eşleşme): bölüm adı yok" in g
+    assert "## Birim aitliği doğrulanmalı" in g and "`2025_d_belirsiz` (1 eşleşme; onay bekliyor: sayılmadı): bölüm adı yok" in g
     assert "## Başka birime ait sayılan belgeler" in g and "Kimya Bölümü laboratuvar tutanağı" in g
     assert "--only" in g
     js = json.loads(paths["json"].read_text(encoding="utf-8"))

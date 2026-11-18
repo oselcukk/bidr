@@ -111,10 +111,12 @@ def test_build_od_and_flags(ws):
     assert b23["od"] == 2 and b23["kurum_geneli_yalniz"]
     r = a.by_key["d_yon|B.2.3/2"]
     assert r["etkin_asama"] == "planla" and "uygulama_kaniti_eksik" in r["flags"]
-    # dönem dışı uygulama kanıtı sayılmaz; planı sayılır
+    # dönem dışı (önceki yıl) olay belgesi hiçbir halkayı kanıtlamaz: uygulaması da planı da
+    # (2026-11-19; `onceki_olay_plani_sayilir: false`)
     a11 = _crit(a, "A.1.1")
-    assert a11["od"] == 2 and not a.by_key["d_eski|A.1.1/2"]["sayilir"]
-    assert a.by_key["d_eski|A.1.1/1"]["sayilir"]
+    assert a11["od"] == 1 and not a.by_key["d_eski|A.1.1/2"]["sayilir"]
+    assert not a.by_key["d_eski|A.1.1/1"]["sayilir"]
+    assert a11["eksik_kanit_notu"]["durum"] == "neredeyse_kanitsiz"
     # boş ölçüt OD1, eksik yuvaları listeli
     a12 = _crit(a, "A.1.2")
     assert a12["od"] == 1 and a12["yuva_dolu"] == 0 and a12["bos_yuvalar"]

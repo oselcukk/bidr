@@ -20,14 +20,15 @@ UNIT_COLS = [
     ("belge", "belge (çalışma adı)", 36, False),
     ("kanit_adi", "kanıt adı", 30, False),
     ("gerekce", "modelin gerekçesi", 50, False),
-    ("eslesmeler", "reddedilen eşleşmeler (model önerisi: ölçüt yuva · aşama · OD: alıntı)", 70, False),
+    ("eslesmeler", "eşleşmeler: başka birimde reddedilen, belirsizde onay bekleyen (ölçüt yuva · aşama · OD: alıntı)", 70, False),
     ("durum", "durum", 30, False),
     ("insan_birim_iliskisi", "insan_birim_iliskisi", 22, True),
     ("not", "not", 40, True),
 ]
 UNIT_HEAD = {h: k for k, h, _, _ in UNIT_COLS}
-UNIT_NOTE = ("İnce karar bu belgeleri başka bir bölüm/birimin belgesi saydı; eşleşmeleri reddedildi, kanıt "
-             "sayılmadı. Yanlışsa 'insan_birim_iliskisi' sütununda doğru ilişkiyi seçin (kendi, "
+UNIT_NOTE = ("İnce karar bu belgeleri başka bir bölüm/birimin belgesi saydı (eşleşmeleri reddedildi, kanıt "
+             "sayılmadı) ya da birim aitliğini anlayamadı (belirsiz: insan onaylayana dek kanıt sayılmaz, "
+             "yayımlanan listeye girmez). Yanlışsa ya da belirsiz belgeyi onaylamak için 'insan_birim_iliskisi' sütununda doğru ilişkiyi seçin (kendi, "
              "ust_birim_bu_birim_hakkinda, fakulte_geneli, kurum_geneli; başka birim olduğunu onaylamak için "
              "baska_birim) ve `bidr audit apply` çalıştırın. İnsan kararı modelinkinin önüne geçer: reddedilen "
              "eşleşmeler geri gelir (fakülte/kurum geneli yalnız P, OD2) ve `bidr audit` ile tabloyu "
@@ -45,6 +46,7 @@ COLS = [
     ("birim_iliskisi", "birim ilişkisi", 14, False),
     ("donem_ici", "dönem içi", 9, False),
     ("donem_kurali", "dönem kuralı", 26, False),
+    ("tarih_bilgisi", "tarih · kaynağı", 26, False),
     ("olcut", "ölçüt", 8, False),
     ("yuva", "yuva", 9, False),
     ("yuva_metni", "yuva metni", 42, False),
@@ -105,15 +107,20 @@ HELP = [
     "Birim ilişkisi (ince karar): kendi = birimin belgesi; ust_birim_bu_birim_hakkinda = dekanlık/"
     "fakülte yönetim kurulu/senato/rektörlüğün bu birimi konu alan kararı (OD tavanı yok); "
     "fakulte_geneli / kurum_geneli = bütün birimleri kapsayan düzenleme ya da faaliyet (yalnız P, OD2); "
-    "belirsiz (sarı) = model aitliği anlayamadı: sayıldı ama birimin belgesi olduğunu doğrulayın, "
-    "değilse ret. Başka birime ait belgeler bu sayfaya gelmez; ayrı sayfada listelenir ve oradan geri alınabilir.",
+    "belirsiz = model aitliği anlayamadı: bu satırlar tablonun başında (turuncu) ve insan onaylayana dek "
+    "SAYILMAZ, yayımlanan kanıt listesine girmez. Birimin belgesiyse KARAR kabul (ya da birim sayfasında "
+    "ilişkiyi seçin), değilse ret. Başka birime ait belgeler bu sayfaya gelmez; ayrı sayfada listelenir ve oradan geri alınabilir.",
     "Gri satır: sayılmayan eşleşme (ret; önceki yıl olayı = geçmiş kanıt; tarihi bilinmeyen ya da "
-    "rapor yılından sonraki olay belgesi).",
+    "rapor yılından sonraki belge; yürürlükteki sürüm olmayan düzenleme; birim aitliği onay bekleyen).",
+    "'tarih · kaynağı': belgenin tarihi ve nereden alındığı (metin içi etiket, baş bölge, akademik dönem, "
+    "dosya adı); birden çok tarih olay tarihini belirsiz kılıyorsa nedeni yazar.",
     "Dönem kuralı (komisyon kararı): yapı belgesi (müfredat, ders kataloğu/bilgi formu, yönerge, iş akışı, "
     "görev dağılımı, stratejik plan) rapor yılında yürürlükteyse sayılır; tarihi başka yıl ya da yoksa "
     "'güncellik doğrulanmalı' (sarı). Olay belgesi (karar, tutanak, anket sonucu, etkinlik, rapor, yazışma) "
     "rapor yılında gerçekleşmiş olmalı: önceki yıl 'geçmiş kanıt (süreklilik)', tarihsiz 'tarih doğrulanmalı' "
-    "(sayılmaz; tarih rapor yılındaysa duzelt + aşama ile sayın). Ölçütte gözden geçirme döngüsü tanımlıysa "
+    "(sayılmaz; tarih rapor yılındaysa duzelt + aşama ile sayın). Rapor yılından sonra tarihli belge o "
+    "dönemin kanıtı değildir; düzenlemenin revizyon tarihi dönem sonrasıysa dönemdeki sürüm aranmalı. Aynı "
+    "düzenlemenin sürümlerinden yalnız rapor yılında yürürlükte olan sayılır. Ölçütte gözden geçirme döngüsü tanımlıysa "
     "döngü içindeki önceki yıl olayı 'döngü halkası' olarak sayılır.",
     "Önerilen OD kuralı: P→OD2, +U→OD3, +K ve Ö (ikisi)→OD4, +Z→OD5; zincir eksikse düşük düzey. "
     "Kurum geneli yönetmelik/yönerge yalnız P sayılır. Ayrıntı: docs/AUDIT.md.",
@@ -145,7 +152,8 @@ def write_review(a, path: Path) -> None:
         c.alignment = Alignment(wrap_text=True, vertical="top")
         ws.column_dimensions[get_column_letter(i)].width = w
     idx = {k: i for i, (k, _, _, _) in enumerate(COLS, 1)}
-    for r in a.rows:
+    # birim aitliği onay bekleyen satırlar öne (insan onaylamadıkça sayılmaz)
+    for r in sorted(a.rows, key=lambda r: not r.get("birim_onay_bekliyor")):
         ws.append([_fmt(r.get(k, "")) for k, _, _, _ in COLS])
         n = ws.max_row
         for i in range(1, len(COLS) + 1):
@@ -158,12 +166,17 @@ def write_review(a, path: Path) -> None:
             for k in ("od", "etiket", "etiket_durumu", "vurgu"):
                 ws.cell(row=n, column=idx[k]).fill = fill
             ws.cell(row=n, column=idx["od"]).font = Font(bold=True)
-        if {"guncellik_dogrulanmali", "tarih_dogrulanmali"} & set(r["flags"]):
+        if {"guncellik_dogrulanmali", "tarih_dogrulanmali", "revizyon_donem_sonrasi",
+                "surum_dogrulanmali"} & set(r["flags"]):
             ws.cell(row=n, column=idx["donem_kurali"]).fill = F_LOW
         if r["zayif"]:
             ws.cell(row=n, column=idx["guven"]).fill = F_LOW
             ws.cell(row=n, column=idx["vurgu"]).fill = F_LOW
-        if r.get("birim_iliskisi") == "belirsiz":
+        if r.get("birim_onay_bekliyor"):
+            for k in ("birim_iliskisi", "vurgu", "karar"):
+                ws.cell(row=n, column=idx[k]).fill = F_ONERI
+            ws.cell(row=n, column=idx["vurgu"]).font = Font(bold=True)
+        elif r.get("birim_iliskisi") == "belirsiz":
             ws.cell(row=n, column=idx["birim_iliskisi"]).fill = F_LOW
         if r.get("alinti_kaynagi") == "betimleme":
             ws.cell(row=n, column=idx["alinti_kaynagi"]).fill = F_LOW

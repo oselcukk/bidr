@@ -78,12 +78,14 @@ def _tag_text(t: SlotTag | None) -> str:
 
 
 def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | None = None,
-         link: tuple | None = None, betimleme: bool = False) -> dict:
+         link: tuple | None = None, betimleme: bool = False, dosya: str | None = None,
+         surum: dict | None = None) -> dict:
     did = rec["doc_id"]
     doc = docs.get(did) or {}
     key = f"{did}|{m['yuva']}"
     rel = record_unit_relation(rec)
-    flags = list((m.get("denetim") or {}).get("isaret") or [])
+    # birim aitliği işareti kaydın ilişkisinden yeniden kurulur (insan birim kararı kaldırır)
+    flags = [f for f in (m.get("denetim") or {}).get("isaret") or [] if f != "birim_aitligi_dogrulanmali"]
     olcut, yuva, asama = m["olcut"], m["yuva"], m.get("asama")
     etkin = effective_stage(asama, m.get("od_kabul"))
     if etkin != asama:
@@ -115,7 +117,8 @@ def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | 
                 etkin = "planla"
                 flags.append("uygulama_kaniti_eksik")
     # Dönem kuralı (yapı/olay/karma). İnsan kararında (ret/duzelt) yalnız gösterilir.
-    dz_ = D.apply_row(rule, doc, dtype, etkin) if rule is not None and etkin else None
+    dz_ = (D.apply_row(rule, doc, dtype, etkin, dosya, (surum or {}).get(did))
+           if rule is not None and etkin else None)
     if dz_ and karar not in ("ret", "duzelt"):
         sayilir = dz_["sayilir"]
         flags.extend(dz_["flags"])
@@ -137,9 +140,18 @@ def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | 
         vurgu.append("düşük güven")
     elif dusuk:
         vurgu.append("düşük güven (incelemede onaylandı)")
+    birim_bekler = False
     if rel == BIRIM_BELIRSIZ:
-        flags.append("birim_aitligi_dogrulanmali")
-        vurgu.append("birim aitliği doğrulanmalı")
+        # İnsan birim ilişkisini onaylamadıkça (satır kararı kabul/duzelt ya da birim sayfası)
+        # belge kanıt sayılmaz ve yayımlanan listeye girmez ("devam et" de bunu aşmaz).
+        if karar in ("kabul", "duzelt"):
+            flags.append("birim_aitligi_onaylandi")
+            vurgu.append("birim aitliği incelemede onaylandı")
+        elif karar != "ret":
+            birim_bekler = True
+            sayilir = False
+            flags += ["birim_aitligi_dogrulanmali", "birim_onay_bekliyor"]
+            vurgu.insert(0, "BİRİM AİTLİĞİ DOĞRULANMALI: onaylanana dek sayılmaz")
     if betimleme:
         flags.append("betimleme_alintisi")
         vurgu.append("alıntı görsel betimlemeden")
@@ -158,6 +170,8 @@ def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | 
         "donem_ici": {True: "evet", False: "hayır"}.get(donem_ici, "?"),
         "donem_sinif": dz_["sinif"] if dz_ else "", "donem_zaman": dz_["zaman"] if dz_ else "",
         "donem_yil": dz_["yil"] if dz_ else None,
+        "tarih": doc.get("tarih") or "", "tarih_kaynagi": dz_["kaynak"] if dz_ else "",
+        "tarih_notu": dz_["not"] if dz_ else "", "birim_onay_bekliyor": birim_bekler,
         "olcut": olcut, "yuva": yuva, "yuva_metni": ymetin,
         "olcut_model": m["olcut"], "yuva_model": m["yuva"],
         "asama": asama, "od_model": m.get("od_onerisi"), "od_kabul": m.get("od_kabul"),
@@ -169,6 +183,7 @@ def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | 
         **_decision_cells(dec),
     }
     row["donem_kurali"] = D.describe(row)
+    row["tarih_bilgisi"] = " · ".join(x for x in (row["tarih"], row["tarih_kaynagi"], row["tarih_notu"]) if x)
     return row
 
 
@@ -214,7 +229,8 @@ def _cycle(rule: D.Rule | None, rows: list[dict], period: int | None) -> dict | 
     n, src = min(found, key=lambda x: (x[0], x[1]["satir"]))
     acilan = []
     for r in rows:
-        if "gecmis_kanit" in r["flags"] and not _human(r) and r["donem_yil"] and r["donem_yil"] > period - n:
+        if ("gecmis_kanit" in r["flags"] and not _human(r) and "birim_onay_bekliyor" not in r["flags"]
+                and r["donem_yil"] and r["donem_yil"] > period - n):
             r["sayilir"] = True
             r["flags"] = ["dongu_halkasi" if f == "gecmis_kanit" else f for f in r["flags"]]
             r["isaretler"] = ", ".join(r["flags"])
@@ -236,6 +252,8 @@ def _criterion(cs, tags, cid, rows, allowed, rule: D.Rule | None = None,
     tarihsiz = [r for r in rows if "tarih_dogrulanmali" in r["flags"] and not _human(r)]
     rt = criterion_od(strong | {r["etkin_asama"] for r in tarihsiz if not r["zayif"]}, has)
     gecmis = [r for r in rows if "gecmis_kanit" in r["flags"] and not _human(r)]
+    sonra = [r for r in rows if set(D.DONEM_DISI) & set(r["flags"]) and not _human(r)]
+    birim_bek = [r for r in rows if r.get("birim_onay_bekliyor")]
     filled = {r["yuva"] for r in counted}
     empty = [s for s in slots if s.id not in filled]
     halka = {}
@@ -282,6 +300,18 @@ def _criterion(cs, tags, cid, rows, allowed, rule: D.Rule | None = None,
     gd = {r["doc_id"] for r in counted if "guncellik_dogrulanmali" in r["flags"]}
     if gd:
         notlar.append(f"{len(gd)} belgenin rapor yılında yürürlükte olduğu doğrulanmalı (güncellik; tarih dönem dışı ya da yok)")
+    if sonra:
+        notlar.append(f"{len({r['doc_id'] for r in sonra})} belge dönem sonrasına ait ya da yürürlükteki sürüm değil: "
+                      "bu dönemin kanıtı sayılmadı")
+    rv = {r["doc_id"] for r in counted if "revizyon_donem_sonrasi" in r["flags"]}
+    if rv:
+        notlar.append(f"{len(rv)} düzenlemenin revizyon tarihi dönem sonrası: dönemdeki sürüm aranmalı")
+    if birim_bek:
+        notlar.append(f"{len({r['doc_id'] for r in birim_bek})} belgenin birim aitliği doğrulanmadı: "
+                      "onaylanana dek sayılmadı")
+    eksik_notu = _missing_note(rows, counted, rs)
+    if eksik_notu and eksik_notu["durum"] == "neredeyse_kanitsiz":
+        notlar.append("neredeyse kanıtsız: " + ", ".join(EKSIK_NEDEN[x] for x in eksik_notu["nedenler"]))
     dongu_onerisi = (rule.cycle_criteria.get(cid) if rule is not None and not cycle else None)
     if dongu_onerisi:
         notlar.append("döngü önerisi: " + dongu_onerisi)
@@ -303,8 +333,53 @@ def _criterion(cs, tags, cid, rows, allowed, rule: D.Rule | None = None,
         "od_tarih_dogrulanirsa": rt.od, "dongu": cycle, "dongu_onerisi": dongu_onerisi,
         "gecmis_kanit": [{"satir": r["satir"], "belge": r["belge"], "yuva": r["yuva"],
                           "asama": r["etkin_asama"], "yil": r["donem_yil"]} for r in gecmis],
+        "donem_sonrasi": [{"satir": r["satir"], "belge": r["belge"], "yuva": r["yuva"],
+                           "asama": r["etkin_asama"], "yil": r["donem_yil"],
+                           "isaret": next(f for f in r["flags"] if f in D.DONEM_DISI)} for r in sonra],
+        "eksik_kanit_notu": eksik_notu,
         "rubrik": {str(k): v for k, v in sub.rubric.items()},
     }
+
+
+EKSIK_NEDEN = {
+    "yalniz_kurum_geneli": "yalnız kurum/fakülte geneli düzenleme",
+    "yalniz_dusuk_guven": "yalnız düşük güvenli eşleşme",
+    "yalniz_donem_disi": "yalnız dönem dışı belge (geçmiş, dönem sonrası ya da yürürlükte olmayan sürüm)",
+    "tarihi_dogrulanmamis": "tarihi doğrulanmamış olay belgesi",
+    "birim_dogrulanmamis": "birim aitliği doğrulanmamış belge",
+}
+
+
+def _missing_note(rows: list[dict], counted: list[dict], rs) -> dict | None:
+    """Eksik kanıt notu (render okur: `eksik_kanit_notu.metin`). `kanitsiz`: ölçütte hiç eşleşme
+    yok (ya da hepsi insanca reddedildi); `neredeyse_kanitsiz`: eşleşme var ama bölümün bu döneme
+    ait, düşük güvenli olmayan ve kurum geneli olmayan sayılan kanıtı yok. Aksi None."""
+    own = [r for r in counted if not r["zayif"] and "kurum_geneli" not in r["flags"]]
+    if own:
+        return None
+    live = [r for r in rows if "insan_reddetti" not in r["flags"]]
+    nedenler: list[str] = []
+    if any("kurum_geneli" in r["flags"] for r in counted):
+        nedenler.append("yalniz_kurum_geneli")
+    if any(r["zayif"] for r in counted):
+        nedenler.append("yalniz_dusuk_guven")
+    off = [set(r["flags"]) for r in live if not r["sayilir"]]
+    if any(f & {"gecmis_kanit", *D.DONEM_DISI} for f in off):
+        nedenler.append("yalniz_donem_disi")
+    if any("tarih_dogrulanmali" in f for f in off):
+        nedenler.append("tarihi_dogrulanmamis")
+    if any("birim_onay_bekliyor" in f for f in off):
+        nedenler.append("birim_dogrulanmamis")
+    gereken = [GEREKEN[x] for x in rs.eksik if x in GEREKEN]
+    if not live or not nedenler:
+        durum = "kanitsiz"
+        metin = "Eksik kanıt notu: " + ("; ".join(gereken) if gereken else "bu ölçüt için kanıt bulunamadı") + "."
+    else:
+        durum = "neredeyse_kanitsiz"
+        metin = ("Eksik kanıt notu: bölümün bu döneme ait doğrudan kanıtı yok ("
+                 + "; ".join(EKSIK_NEDEN[x] for x in nedenler) + ")"
+                 + (". Gereken: " + "; ".join(gereken) if gereken else "") + ".")
+    return {"durum": durum, "nedenler": nedenler, "metin": metin}
 
 
 def _names(ws_root: Path, out: Path, docs: dict, recs: list[dict]):
@@ -376,12 +451,15 @@ def _unit_row(rec: dict, eff: dict, pin: dict | None, docs: dict, name: str) -> 
     """Birim sayfası satırı: modelin gerekçesi ve birim yüzünden reddedilen eşleşmeleri."""
     did = rec["doc_id"]
     ince = rec.get("ince") or {}
-    red = [m for m in rec.get("eslesmeler") or [] if BIRIM_DISI in ((m.get("denetim") or {}).get("red") or [])]
+    belirsiz = record_unit_relation(rec) == BIRIM_BELIRSIZ
+    red = [m for m in rec.get("eslesmeler") or []
+           if (m.get("kabul") if belirsiz else BIRIM_DISI in ((m.get("denetim") or {}).get("red") or []))]
     esl = "\n".join(f"{m.get('olcut')} {m.get('yuva')} · {m.get('asama') or '?'} · OD{m.get('od_onerisi') or '?'}"
                     f": \"{_short(m.get('alinti'))}\"" for m in red)
     rel = (pin or {}).get("birim_iliskisi") or ""
     if not rel:
-        durum = "model: başka birim (kanıt sayılmadı)"
+        durum = ("model: birim aitliği belirsiz (onaylanana dek kanıt sayılmaz)" if belirsiz
+                 else "model: başka birim (kanıt sayılmadı)")
     elif rel == BIRIM_DISI:
         durum = "insan onayladı: başka birim"
     elif pin_applied(rec, pin):
@@ -418,8 +496,14 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
     pins = load_unit_pins(out) if pins is None else pins
     rows, uy = [], []
     rule, period = None, None
+    inv: dict[str, str] = {}
+    if ws.inventory.exists():
+        from bidr.file.run import _inventory
+        inv = {k: v.get("rel_path") or "" for k, v in _inventory(ws).items()}
+    surum: dict[str, str] = {}
     if any("donem_ici" in d for d in docs.values()):
         rule = D.load_rule()
+        surum = D.version_status(docs, rule, inv)
         from collections import Counter
         ps = Counter(d["donem"] for d in docs.values() if d.get("donem") is not None)
         period = ps.most_common(1)[0][0] if ps else None
@@ -439,7 +523,7 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
         pin = pins.get(orig["doc_id"])
         # insan birim kararı (öncelik insan > model): kaydın görünümü değişir, dosya değişmez
         rec = unit_view(orig, pins, tags)
-        if pin or record_unit_relation(orig) == BIRIM_DISI:
+        if pin or record_unit_relation(orig) in (BIRIM_DISI, BIRIM_BELIRSIZ):
             sayfa.append(_unit_row(orig, rec, pin, docs, names(orig["doc_id"])[0]))
         rel = record_unit_relation(rec)
         if rel in (BIRIM_DISI, BIRIM_BELIRSIZ):
@@ -453,9 +537,13 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
             if m.get("kabul"):
                 rows.append(_row(cs, tags, docs, rec, m, review.get(f"{rec['doc_id']}|{m['yuva']}"), rule,
                                  names(rec["doc_id"]), links(rec["doc_id"]),
-                                 desc(rec["doc_id"], m.get("alinti") or "")))
+                                 desc(rec["doc_id"], m.get("alinti") or ""), inv.get(rec["doc_id"]), surum))
     if not n_ince:
         uy.append("decisions.jsonl'de ince karar yok: tablo boş")
+    for x in birim["belirsiz"]:          # satır kararıyla onaylanan / bekleyen eşleşme sayısı
+        rs_ = [r for r in rows if r["doc_id"] == x["doc_id"] and "insan_reddetti" not in r["flags"]]
+        x["bekleyen"] = sum(1 for r in rs_ if r["birim_onay_bekliyor"])
+        x["onaylanan"] = sum(1 for r in rs_ if "birim_aitligi_onaylandi" in r["flags"])
     rows.sort(key=lambda r: (id_key(r["olcut"]), r["yuva"], r["belge"]))
     by_c: dict[str, list] = {}
     for r in rows:

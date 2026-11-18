@@ -12,10 +12,17 @@
 #   Yürürlükten kalktığı biliniyorsa kanıt değildir (kanıt ilkesi `yururlukten_kalkmis`;
 #   model `kanit_degil` der, satır audit'e hiç gelmez).
 # - olay: bir kez gerçekleşen işin kaydı. Rapor yılında gerçekleşmiş olmalı. Önceki yıl:
-#   o yılın U/K/Ö halkası SAYILMAZ, "geçmiş kanıt (süreklilik)" olarak ayrı listelenir;
-#   önceki yıl olayının planla eşleşmesi (usul tanımlayan karar) yapı gibi sayılır +
-#   güncellik işareti. Sonraki yıl ya da tarihi bilinmiyor: hiçbir aşama sayılmaz, satır
-#   görünür kalır ("dönem sonrası" / "tarih doğrulanmalı").
+#   hiçbir halkası SAYILMAZ, "geçmiş kanıt (süreklilik)" olarak ayrı listelenir (yayımlanan
+#   listede ölçüt başına en çok `kanit_secimi.yaml` `gecmis_kanit_en_fazla`). Sonraki yıl ya
+#   da tarihi bilinmiyor: hiçbir aşama sayılmaz, satır görünür kalır ("dönem sonrası" /
+#   "tarih doğrulanmalı"); dönem sonrası belge yayımlanan listeye de girmez.
+# - yapı, tarihi rapor yılından SONRA: dönemden sonra yürürlüğe girmiş, o dönemin kanıtı
+#   değil ("dönem sonrası"). Tarih bir revizyon/değişiklik etiketinden geliyorsa ya da metinde
+#   rapor yılı/öncesi tarih varsa önceki sürüm dönemde yürürlükte olabilir: sayılır, "revizyon
+#   tarihi dönem sonrası; dönemdeki sürüm aranmalı" uyarısı.
+# - yapı sürümleri (identify `surum_grubu`): rapor yılında yürürlükte olan sürüm (yılı rapor
+#   yılı ya da öncesi olan en yeni) sayılır; rapor yılından önce yenilenmiş sürüm ve dönem
+#   sonrası sürüm kanıt değil; tarihsiz sürüm varsa "sürüm doğrulanmalı".
 # - karma: tür tek başına belirlemez (web sayfası hem misyon metni hem haber olabilir; form
 #   boşken tanım, doluyken kayıttır). Eşleşmenin aşaması belirler: planla → yapı,
 #   uygula/kontrol_et/onlem_al/ozgun → olay. Katalogda olmayan tür (`bilinmiyor`) da karma.
@@ -23,7 +30,23 @@
 # Kurumlar bu dosyayı kendi profil klasörlerinde (BIDR_PROFILES_DIR) değiştirebilir. Tür
 # adları bidr/data/doc_types.yaml kataloğundandır; testler her katalog türünün tam bir
 # sınıfta olduğunu denetler.
-surum: 1
+surum: 2
+
+# Önceki yıl olayının planla eşleşmesi (usul tanımlayan eski karar) yapı gibi sayılsın mı.
+# false (vars., 2026-11-19 kör test kararı): eski olay belgesi hiçbir halkayı kanıtlamaz,
+# geçmiş kanıt (süreklilik) olarak kalır. true: 2026-11-18 komisyon kararındaki eski davranış.
+onceki_olay_plani_sayilir: false
+
+# Olay belgesinin tarihi (birden çok tarih varsa). identify'ın birincil tarihi etiketten
+# geliyorsa (ör. "Toplantı tarihi:") o olayın tarihidir. Değilse ve belgede birincil tarihe göre
+# farklı döneme düşen tarihler varsa (rapor yılı + dönem sonrası; ya da önceki yıl + rapor yılı)
+# olay tarihi kodla ayrılamaz: "tarih doğrulanmalı". Aşağıdaki türlerde olay tarihi belgedeki
+# EN GEÇ tarihtir (duyuru yayım tarihini değil etkinlik tarihini taşır).
+tarih:
+  olay_tarihi_en_gec:
+    - etkinlik_duyurusu
+  # tarih_kaynagi'nda (katlanmış) bunlardan biri geçerse tarih bir revizyon tarihidir
+  revizyon_etiketleri: [revizyon, degisiklik, guncelleme]
 
 yapi:
   - fotograf                # tesis/mekân/etkinlik fotoğrafı: gösterdiği durum; tarihsizse "güncellik doğrulanmalı" (şef kararı 2026-11-18)

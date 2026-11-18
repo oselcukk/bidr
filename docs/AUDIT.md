@@ -63,12 +63,20 @@ Tek yumuşatma (komisyon kararı, 2026-11-18): plan halkası eksik ama U/K/Ö va
    eşleşmeleri decide'da reddedilir, "Eşleşmeler" sayfasına gelmez; review.xlsx "Başka birime
    ait sayılanlar" sayfasında ve gaps.md "Başka birime ait sayılan belgeler" bölümünde
    gerekçesiyle listelenir; komisyon kararı geri alabilir (aşağıda "Birim ilişkisini geri
-   alma"). `belirsiz` belge sayılır, satır `birim_aitligi_dogrulanmali` işareti ve
-   "birim aitliği doğrulanmalı" vurgusu alır; gaps.md "Birim aitliği doğrulanmalı". Eski
-   kayıtta alan yoksa `kendi` (eski `kurum_geneli` bayrağı varsa `kurum_geneli`).
-3. **Dönem kuralı** (belge türüne göre; aşağıda): yapı belgesi yürürlükteyse sayılır, olay
-   belgesi rapor yılında gerçekleşmiş olmalı; önceki yıl olayı "geçmiş kanıt", tarihsiz olay
-   "tarih doğrulanmalı" (sayılmaz).
+   alma"). `belirsiz` belge **insan onaylayana dek sayılmaz** (kör test 2026-11-19: başka
+   bölümün anket/tutanakları bu işaretle kanıt sayılıyordu): satır `birim_aitligi_dogrulanmali`
+   + `birim_onay_bekliyor` işareti, `birim_onay_bekliyor: true` alanı ve "BİRİM AİTLİĞİ
+   DOĞRULANMALI" vurgusu alır, OD'ye katılmaz, yayımlanan kanıt listesine girmez (`bidr file`
+   `birim_dogrulanmali` nedeniyle eler). Onay: satırın KARAR'ı `kabul`/`duzelt`
+   (`birim_aitligi_onaylandi`) ya da birim sayfasında belgeye ilişki seçmek (`kendi` vb.;
+   işaret kalkar). Kullanıcı inceleme yapmadan "devam et" derse de kural geçerlidir: karar
+   yoksa sayılmaz. review.xlsx'te bu satırlar "Eşleşmeler"in başındadır (birim, vurgu, KARAR
+   hücreleri koyu turuncu) ve belgeler birim sayfasında da listelenir; gaps.md "Birim aitliği
+   doğrulanmalı" belge başına onay durumunu yazar. Döngü (aşağıda) onay bekleyen satırı açmaz.
+   Eski kayıtta alan yoksa `kendi` (eski `kurum_geneli` bayrağı varsa `kurum_geneli`).
+3. **Dönem kuralı** (belge türüne göre; aşağıda): yapı belgesi rapor yılında yürürlükteyse
+   sayılır, olay belgesi rapor yılında gerçekleşmiş olmalı; önceki yıl olayı "geçmiş kanıt",
+   tarihsiz olay "tarih doğrulanmalı", dönem sonrası belge "dönem sonrası" (hiçbiri sayılmaz).
 4. **Düşük güven** (`guven: dusuk`): önerilen OD'ye katılmaz; ayrıca "OD (düşük güven
    dahil)" hesaplanır ve fark varsa not düşülür. Bu, OD'yi doğrulanmamış eşleşmeyle şişirmemek
    içindir. İnceleme kararı `kabul` ya da `duzelt` ise eşleşme doğrulanmış sayılır ve OD'ye
@@ -88,18 +96,37 @@ bu bir tanıma kuralı değil komisyon/kurum politikasıdır (`kurum_geneli.yaml
 
 | Sınıf | Türler (örnek) | Rapor yılı | Önceki yıl | Tarih yok | Sonraki yıl |
 |---|---|---|---|---|---|
-| **yapı** | müfredat, ders kataloğu (bilgi paketi), ders bilgi formu, yönerge/yönetmelik, görev dağılımı, iş akışı, stratejik plan | sayılır | sayılır + `guncellik_dogrulanmali` | sayılır + `guncellik_dogrulanmali` | sayılır + `guncellik_dogrulanmali` |
-| **olay** | kurul/komisyon kararı, tutanak, anket sonucu, faaliyet/değerlendirme raporu, yazışma, dönemlik ders kayıtları (ders programı, izlence, açılan dersler) | sayılır | U/K/Ö sayılmaz: `gecmis_kanit`; planla sayılır + güncellik | sayılmaz: `tarih_dogrulanmali` | sayılmaz: `donem_sonrasi` |
+| **yapı** | müfredat, ders kataloğu (bilgi paketi), ders bilgi formu, yönerge/yönetmelik, görev dağılımı, iş akışı, stratejik plan | sayılır | sayılır + `guncellik_dogrulanmali` | sayılır + `guncellik_dogrulanmali` | sayılmaz: `donem_sonrasi`; revizyon kanıtı varsa sayılır + `revizyon_donem_sonrasi` |
+| **olay** | kurul/komisyon kararı, tutanak, anket sonucu, faaliyet/değerlendirme raporu, yazışma, dönemlik ders kayıtları (ders programı, izlence, açılan dersler) | sayılır | hiçbir halka sayılmaz: `gecmis_kanit` | sayılmaz: `tarih_dogrulanmali` | sayılmaz: `donem_sonrasi` |
 | **karma** | web sayfası, ekran görüntüsü, form, anket formu; katalog dışı tür | aşama belirler: planla → yapı, U/K/Ö/Z → olay | | | |
 
 - **Yapı:** önemli olan rapor yılında yürürlükte olmasıdır. Yürürlükten kalktığı biliniyorsa
   kanıt değildir (kanıt ilkesi `yururlukten_kalkmis`: model `kanit_degil` der, satır gelmez).
   Kod yürürlüğü bilemez: tarih rapor yılında değilse "güncellik doğrulanmalı" (gaps.md
   "Güncelliği doğrulanacak belgeler"); yürürlükte değilse kullanıcı satırı `ret` eder.
-- **Olay, önceki yıl:** o yılın U/K/Ö halkası değildir; gaps.md "Geçmiş kanıtlar
-  (süreklilik)" bölümünde ayrı listelenir: OD5'in istediği sistematikliğin ve "bir önceki
-  yıla göre ne değişti" sorusunun kanıtı. Önceki yıl olayının **planla** eşleşmesi (usul
-  tanımlayan karar) yapı gibi sayılır, güncellik işaretlenir.
+- **Yapı, rapor yılından sonra** (kör test 2026-11-19: "Komisyonlar 2026-2027", 2026
+  takvimleri bölümün tek yapı kanıtı olmuştu): dönemden sonra yürürlüğe girmiş, o dönemin
+  kanıtı değil (`donem_sonrasi`, sayılmaz, yayımlanan listeye girmez). İstisna: tarih bir
+  revizyon/değişiklik etiketinden geliyorsa (`tarih_kaynagi`'nda `tarih.revizyon_etiketleri`)
+  ya da metinde rapor yılı veya öncesine ait tarih varsa düzenlemenin önceki sürümü dönemde
+  yürürlükte olabilir: sayılır, `revizyon_donem_sonrasi` ("revizyon tarihi dönem sonrası;
+  dönemdeki sürüm aranmalı"; gaps.md "Revizyon tarihi dönem sonrası olan düzenlemeler").
+- **Yapı sürümleri** (identify `surum_grubu`, yalnız yapı sınıfı türler; kör test: ÇAP
+  yönergesinin 2014/2017/2018/2026 sürümleri birlikte sayılmıştı): rapor yılında yürürlükte
+  olan sürüm seçilir: yılı rapor yılı ya da öncesi olan en yeni sürüm. Daha yeni sürümü rapor
+  yılından önce çıkmış sürüm dönemden önce yerini bırakmıştır (`surum_yururlukten_kalkmis`,
+  kanıt ilkesi `yururlukten_kalkmis`); rapor yılından sonraki sürüm de kanıt değildir
+  (`surum_donem_sonrasi`); ikisi de sayılmaz, yayımlanmaz. Yenisi rapor yılında çıkan önceki
+  sürüm dönemin bir kısmında yürürlükteydi: sayılır. Tarihsiz sürüm varsa hangisinin yürürlükte
+  olduğu belirlenemez: `surum_dogrulanmali` (tarihli aday sayılır, tarihsiz üye sayılmaz;
+  tarihli aday yoksa tarihsizler sayılır); gaps.md "Sürümü doğrulanacak düzenlemeler".
+- **Olay, önceki yıl** (eski olay belgesi): hiçbir halkayı kanıtlamaz, planla dahil (kör test
+  2026-11-19: 2024'ten eski 26 satırın 20'si OD'ye girmişti; `donem_kurali.yaml`
+  `onceki_olay_plani_sayilir: false`; `true` 2026-11-18 kararındaki "usul tanımlayan eski karar
+  yapı gibi" davranışına döner). gaps.md "Geçmiş kanıtlar (süreklilik)" bölümünde ayrı
+  listelenir: OD5'in istediği sistematikliğin ve "bir önceki yıla göre ne değişti" sorusunun
+  kanıtı. Yayımlanan kanıt listesinde ölçüt başına en çok `kanit_secimi.yaml`
+  `gecmis_kanit_en_fazla` (vars. 1).
 - **Olay, tarih yok** (`donem_ici` bilinmiyor): hiçbir aşama sayılmaz, satır tabloda gri ama
   görünür kalır ("tarih doğrulanmalı"; gaps.md "Tarihi doğrulanacak olay belgeleri"; ölçüt
   notu "doğrulanırsa OD x"). Gerekçe: tarihsiz olay rapor yılında da, önce de, sonra da
@@ -108,6 +135,26 @@ bu bir tanıma kuralı değil komisyon/kurum politikasıdır (`kurum_geneli.yaml
   doğrularsa satırı `duzelt` + aşama ile sayar (insan kararı dönem kuralını aşar).
 - **Karma:** web sayfası hem misyon metni hem haber, form boşken tanım doluyken kayıt
   olabilir; türü değil eşleşmenin aşaması belirler.
+- **Belgenin tarihi ve kaynağı** (`donem.doc_time`; satırda `tarih`, `tarih_kaynagi`,
+  `tarih_notu`, review.xlsx "tarih · kaynağı"): öncelik (1) metin içi birincil tarih (identify
+  `tarih`; kaynak "metin (etiket: …)", "metin (baş bölgede en sık tarih)", "metin (baş bölgedeki
+  ilk tarih)", "metin (metindeki ilk tarih)"); (2) akademik dönem (`akademik_donem`; identify
+  karar veremediyse dönemsiz "2026-2027" akademik yılı: rapor yılı aralıktaysa içinde, aralık
+  sonraysa dönem sonrası); (3) kaynak dosya adı (`inventory.csv` `rel_path`, yalnız dosya adı,
+  klasörler değil): zayıf kanıttır, yalnız dışlamada güvenilir: dosya adı rapor yılını
+  gösteren olay belgesi yine "tarih doğrulanmalı" (not "tarih yalnız dosya adından"), dönem
+  sonrası/önceki yılı gösteren dışlanır. Belgenin dosya sistemi üst verisi (oluşturma/değişiklik
+  zamanı) kullanılmaz: kopyalama tarihidir.
+- **Olay belgesinde birden çok tarih** (`identify` `tarihler`): olayın tarihi ile belgede geçen
+  referans tarihleri ayrılır. Birincil tarih bir etiketten geliyorsa (ör. "Toplantı tarihi:")
+  olayın tarihidir; ötekiler referanstır (eylem son tarihi, atıf yapılan karar). Etiketsizse:
+  birincil tarih rapor yılında ve belgede yalnız daha eski tarihler varsa olay rapor yılındadır
+  (referanslar geçmişe atıf yapar); birincil tarih rapor yılında ama dönem sonrası tarih de
+  varsa, ya da birincil tarih önceki yıl ama rapor yılı tarihi de varsa olay tarihi kodla
+  ayrılamaz: `tarih_dogrulanmali` (sayılmaz; not hangi tarihlerin çeliştiğini yazar).
+  `tarih.olay_tarihi_en_gec` türlerinde (vars. `etkinlik_duyurusu`) olayın tarihi belgedeki en
+  geç tarihtir: duyuru yayım tarihini değil etkinlik tarihini taşır (2025 Aralık'ta yayımlanan
+  2026 Ocak semineri dönem sonrasıdır).
 - **Yıllık olmayan döngüler:** ölçütte sayılan (düşük güvenli olmayan) bir eşleşmenin
   kodla doğrulanmış **alıntısı** bir gözden geçirme döngüsü tanımlıyorsa ("her 4 yılda bir",
   "dört yılda bir", "akreditasyon döngüsünde", "program süresinin sonunda"), son N yılın
@@ -143,7 +190,22 @@ değiştirilen belgeler (model → insan değeri ve durum). `audit-olcutler.json
 aynı listeleri ve `insan_karari`'nı taşır.
 
 Dönem bölümleri (varsa): gözden geçirme döngüleri ve döngü önerileri, geçmiş kanıtlar
-(süreklilik), tarihi doğrulanacak olay belgeleri, güncelliği doğrulanacak belgeler.
+(süreklilik), dönem sonrası ve yürürlükte olmayan sürümler (kanıt sayılmadı), revizyon tarihi
+dönem sonrası olan düzenlemeler, sürümü doğrulanacak düzenlemeler, tarihi doğrulanacak olay
+belgeleri (nedeniyle), güncelliği doğrulanacak belgeler.
+
+**Eksik kanıt notu** (`audit-olcutler.json` ölçüt alanı `eksik_kanit_notu`; render şeridi
+okur): `null` ya da `{"durum", "nedenler", "metin"}`.
+- `kanitsiz`: ölçütte hiç eşleşme yok (ya da hepsi insanca reddedildi). `metin` render'ın
+  bugünkü notuyla aynıdır: "Eksik kanıt notu: <eksik halkaların gereken metinleri>."
+- `neredeyse_kanitsiz`: eşleşme var ama bölümün bu döneme ait, düşük güvenli olmayan ve
+  kurum geneli olmayan **sayılan** kanıtı yok. `nedenler` (birden çok olabilir):
+  `yalniz_kurum_geneli`, `yalniz_dusuk_guven`, `yalniz_donem_disi` (geçmiş, dönem sonrası ya da
+  yürürlükte olmayan sürüm), `tarihi_dogrulanmamis`, `birim_dogrulanmamis`. `metin`: "Eksik
+  kanıt notu: bölümün bu döneme ait doğrudan kanıtı yok (<nedenler>). Gereken: <…>."
+- Öteki ölçütlerde `null`. gaps.md "Neredeyse kanıtsız ölçütler (eksik kanıt notu)" bunları
+  listeler; ölçüt notlarına "neredeyse kanıtsız: …" eklenir. Ölçüt ayrıca `donem_sonrasi`
+  listesini taşır (`satir`, `belge`, `yuva`, `asama`, `yil`, `isaret`).
 
 `bidr file`'ın işaretli bölümleri audit yeniden yazarken korunur: "Kanıt seçimi"
 (`<!-- bidr:kanit-secimi -->`: elenen kurum geneli belgeler, listeye alınmayan diğer belgeler,
@@ -168,7 +230,11 @@ okunur "bağlantı (öneri)" ve "bağlantı kaynağı" (insan/belge_metni). "al�
 işaret `betimleme_alintisi`, vurgu "alıntı görsel betimlemeden").
 
 Vurgular: OD4/OD5'e yükselten satırın OD/etiket hücreleri turuncu; yükselten etiket hâlâ
-öneri ise koyu turuncu ve "ÖNERİ etiket" yazar. Düşük güven sarı. Sayılmayan satırlar gri (ret, geçmiş kanıt, tarihsiz ya da dönem sonrası olay).
+öneri ise koyu turuncu ve "ÖNERİ etiket" yazar. Düşük güven sarı. Sayılmayan satırlar gri (ret,
+geçmiş kanıt, tarihsiz ya da dönem sonrası belge, yürürlükteki sürüm olmayan düzenleme, birim
+aitliği onay bekleyen). Birim aitliği onay bekleyen satırlar tablonun başındadır. "tarih ·
+kaynağı" sütunu (dönem kuralının yanında) belgenin tarihini, kaynağını ve varsa tarih notunu
+gösterir.
 Sütunlar başlık adıyla okunur; kullanıcı sütun ekleyip sırayı değiştirebilir.
 
 `bidr audit` yeniden çalıştırılınca işlenmiş kararlar (`review-decisions.jsonl`) tabloya geri
@@ -176,7 +242,8 @@ yazılır; tabloda olup işlenmemiş kararlar da kaybolmaz (yeni tabloya taşın
 `review.onceki.xlsx`).
 
 "Başka birime ait sayılanlar" (birim sayfası): ilk satır kısa açıklama, ikinci satır başlık;
-satır = modelin `baska_birim` dediği ya da insanın birim kararı verdiği belge. Sütunlar: belge
+satır = modelin `baska_birim` ya da `belirsiz` dediği, ya da insanın birim kararı verdiği belge
+(belirsizde eşleşmeler sütunu onay bekleyen eşleşmeleri gösterir). Sütunlar: belge
 kimliği, çalışma adı, kanıt adı, modelin gerekçesi, birim yüzünden reddedilen eşleşmeler
 (ölçüt yuva · aşama · OD önerisi: alıntı, 160 karaktere kısaltılmış), durum, kullanıcı
 sütunları **insan_birim_iliskisi** (açılır liste: kendi, ust_birim_bu_birim_hakkinda,

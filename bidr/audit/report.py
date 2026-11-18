@@ -51,21 +51,48 @@ def _donem_sections(a) -> list[str]:
     gk = [(c, g) for c in a.criteria for g in c.get("gecmis_kanit") or []]
     if gk:
         L += ["", f"## Geçmiş kanıtlar (süreklilik){yil}", "",
-              "Önceki yıllarda gerçekleşmiş olaylar: bu yılın uygulama/izleme/önlem halkası sayılmadı. "
+              "Önceki yıllarda gerçekleşmiş olaylar: bu yılın hiçbir halkası sayılmadı (OD'ye katılmaz; yayımlanan "
+              "listede ölçüt başına sınırlı). "
               "Sürecin yıllar içinde sistematik işlediğinin (OD5) ve \"bir önceki yıla göre ne değişti\" "
               "sorusunun kanıtıdır; açıklama metninde karşılaştırma için kullanın.", ""]
         for c, g in gk:
             L.append(f"- {c['olcut']} `{g['yuva']}` {KISA.get(g['asama'], '?')} {g['yil'] or '?'}: `{g['belge']}`")
-    td = [r for r in a.rows if "tarih_dogrulanmali" in r["flags"] and r["karar"] not in ("ret", "duzelt")]
+    from .donem import DONEM_DISI, ETIKET
+    ds = [(c, g) for c in a.criteria for g in c.get("donem_sonrasi") or []]
+    if ds:
+        L += ["", f"## Dönem sonrası ve yürürlükte olmayan sürümler (kanıt sayılmadı){yil}", "",
+              "Rapor yılından sonra tarihli olay belgeleri, rapor yılından sonra yürürlüğe giren düzenlemeler ve "
+              "aynı düzenlemenin rapor yılında yürürlükte olmayan sürümleri bu dönemin kanıtı değildir: OD'ye "
+              "sayılmadı, yayımlanan kanıt listesine girmez. Tarih yanlışsa tabloda `duzelt` + aşama ile sayın.", ""]
+        for c, g in ds:
+            L.append(f"- {c['olcut']} `{g['yuva']}` {KISA.get(g['asama'], '?')} {g['yil'] or '?'}: `{g['belge']}` "
+                     f"({ETIKET.get(g['isaret'], g['isaret'])})")
+    rv = sorted({r["belge"] for r in a.rows if "revizyon_donem_sonrasi" in r["flags"] and r["sayilir"]})
+    if rv:
+        L += ["", "## Revizyon tarihi dönem sonrası olan düzenlemeler", "",
+              "Belgenin tarihi rapor yılından sonraki bir revizyon/değişiklik tarihi; önceki sürümü dönemde "
+              "yürürlükte olabilir. Sayıldı, ama dönemdeki sürüm aranmalı (kanıt olarak o sürüm konmalı).", ""]
+        L += [f"- `{b}`" for b in rv]
+    sv = sorted({r["belge"] for r in a.rows if "surum_dogrulanmali" in r["flags"] and not _hum(r)})
+    if sv:
+        L += ["", "## Sürümü doğrulanacak düzenlemeler", "",
+              "Aynı düzenlemenin birden çok sürümü var ve rapor yılında hangisinin yürürlükte olduğu tarihlerden "
+              "belirlenemedi (tarihsiz sürüm). Yürürlükteki sürümü `kabul`, ötekileri `ret` edin.", ""]
+        L += [f"- `{b}`" for b in sv]
+    td = [r for r in a.rows if "tarih_dogrulanmali" in r["flags"] and not _hum(r)]
     if td:
         L += ["", "## Tarihi doğrulanacak olay belgeleri", "",
-              "Belgede rapor yılını gösteren tarih bulunamadı; olay belgesi olduğu için hiçbir aşaması sayılmadı "
+              "Belgede rapor yılını gösteren güvenilir tarih bulunamadı (tarih yok, yalnız dosya adında ya da birden "
+              "çok tarihten olayın tarihi ayrılamadı); olay belgesi olduğu için hiçbir aşaması sayılmadı "
               "(satır tabloda gri). Tarih rapor yılındaysa tabloda `duzelt` + aşama ile sayın.", ""]
         by: dict[str, list] = {}
+        nt: dict[str, str] = {}
         for r in td:
             by.setdefault(r["belge"], []).append(f"{r['yuva']} {KISA.get(r['etkin_asama'], '?')}")
+            if r.get("tarih_notu"):
+                nt[r["belge"]] = r["tarih_notu"]
         for b, ys in by.items():
-            L.append(f"- `{b}`: " + ", ".join(ys))
+            L.append(f"- `{b}`: " + ", ".join(ys) + (f" — {nt[b]}" if b in nt else ""))
     gd = sorted({r["belge"] for r in a.rows if "guncellik_dogrulanmali" in r["flags"] and r["sayilir"]})
     if gd:
         L += ["", "## Güncelliği doğrulanacak belgeler", "",
@@ -75,6 +102,10 @@ def _donem_sections(a) -> list[str]:
     return L
 
 
+def _hum(r: dict) -> bool:
+    return r["karar"] in ("ret", "duzelt")
+
+
 def _birim_sections(a) -> list[str]:
     """Birim aitliği: doğrulanacak (belirsiz) ve başka birime ait sayılan belgeler."""
     L: list[str] = []
@@ -82,9 +113,14 @@ def _birim_sections(a) -> list[str]:
     if b.get("belirsiz"):
         L += ["", "## Birim aitliği doğrulanmalı", "",
               "İnce karar belgenin bu birime ait olup olmadığını metinden anlayamadı (`birim_iliskisi: belirsiz`). "
-              "Eşleşmeleri sayıldı ve tabloda işaretli; birimin belgesi değilse satırlarını `ret` edin.", ""]
+              "İnsan onaylamadıkça eşleşmeleri OD'ye sayılmaz ve yayımlanan kanıt listesine girmez (inceleme "
+              "yapılmadan devam edilse de). Birimin belgesiyse review.xlsx'te satırlarını `kabul` edin ya da birim "
+              "sayfasında ilişkiyi seçin; değilse `ret`.", ""]
         for x in b["belirsiz"]:
-            L.append(f"- `{x['belge']}` ({x['eslesme']} eşleşme)" + (f": {x['gerekce']}" if x["gerekce"] else ""))
+            st = ("onay bekliyor: sayılmadı" if x.get("bekleyen")
+                  else "incelemede onaylandı" if x.get("onaylanan") else "")
+            L.append(f"- `{x['belge']}` ({x['eslesme']} eşleşme{'; ' + st if st else ''})"
+                     + (f": {x['gerekce']}" if x["gerekce"] else ""))
     if b.get("baska_birim"):
         from .sheet import SHEET_UNIT
         L += ["", "## Başka birime ait sayılan belgeler (kanıt sayılmadı)", "",
@@ -129,6 +165,13 @@ def gaps_md(a) -> str:
         for c in kg:
             docs = sorted({r["belge"] for r in a.rows if r["olcut"] == c["olcut"] and "kurum_geneli" in r["flags"]})
             L.append(f"- {c['olcut']} {c['baslik']}: " + "; ".join(f"`{d}`" for d in docs[:4]))
+    en = [c for c in a.criteria if (c.get("eksik_kanit_notu") or {}).get("durum") == "neredeyse_kanitsiz"]
+    if en:
+        L += ["", "## Neredeyse kanıtsız ölçütler (eksik kanıt notu)", "",
+              "Eşleşme var ama bölümün bu döneme ait, kurum geneli olmayan sayılan kanıtı yok; raporda eksik kanıt "
+              "notu yazılır (`audit-olcutler.json` `eksik_kanit_notu`).", ""]
+        for c in en:
+            L.append(f"- {c['olcut']} {c['baslik']}: {c['eksik_kanit_notu']['metin']}")
     L += _birim_sections(a)
     L += _donem_sections(a)
     L += ["", "## Ölçüt ölçüt", ""]

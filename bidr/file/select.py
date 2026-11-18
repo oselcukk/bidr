@@ -21,7 +21,9 @@ Sözleşme ve gerekçe: docs/REPORT_LAYER.md "Kanıt seçimi"; ayarlar
    ≥ `en_dusuk_guven`, sayılan eşleşmelerinden en az biri `dolayli_isaretler` taşımıyor; ölçüt
    başına `olcut_basina_en_fazla` (sıra: OD'ye sayılan önce, sonra OD, güven, tarih; dönem kuralı
    yüzünden sayılmayan aday elenmez ama sona kalır); (c) kurum geneli düzenleme bir ölçütte en çok
-   `kurum_geneli_en_fazla` (madde alıntısı olan önce). İnsanın yerleştirdiği (inceleme
+   `kurum_geneli_en_fazla` (madde alıntısı olan önce). Bu dönemin kanıtı olmayan (dönem sonrası, yürürlükteki sürüm olmayan) ve birim
+   aitliği insanca onaylanmamış belge hiç girmez (atıf da aşmaz); geçmiş kanıt (süreklilik)
+   ölçüt başına en çok `gecmis_kanit_en_fazla`. İnsanın yerleştirdiği (inceleme
    `duzelt`) kanıt ve OD zincirinin bir halkasını taşıyan tek kanıt sınır yüzünden düşmez
    (yayımlanan liste audit OD'sini desteklemeye devam eder). İnceleme `kabul`ü güven ve
    dolaylılık eşiğini aşar (insan doğruladı) ama sınırlara tabidir: `audit_tamam` her satıra
@@ -59,6 +61,9 @@ NEDEN = {
     "dolayli": "yuva/tür bağı dolaylı",
     "ust_sinir": "ölçüt üst sınırı dolu",
     "kurum_geneli_siniri": "ölçütte kurum geneli sınırı dolu",
+    "donem_sonrasi": "bu dönemin kanıtı değil (dönem sonrası ya da yürürlükteki sürüm değil)",
+    "birim_dogrulanmali": "birim aitliği insanca onaylanmadı",
+    "gecmis_siniri": "geçmiş kanıt (süreklilik) sınırı dolu",
 }
 SURUM_NEDEN = {
     "ayni_donem": "aynı dönem işaretleri",
@@ -82,6 +87,7 @@ class Settings:
     en_dusuk_guven: str
     dolayli: tuple[str, ...]
     surum_birlestir: bool
+    gecmis_en_fazla: int = 1
 
     def sha(self) -> str:
         return hashlib.sha256(repr(self).encode()).hexdigest()[:16]
@@ -90,7 +96,7 @@ class Settings:
         return {"olcut_basina_en_fazla": self.olcut_en_fazla,
                 "kurum_geneli_en_fazla": self.kurum_geneli_en_fazla,
                 "en_dusuk_guven": self.en_dusuk_guven, "dolayli_isaretler": list(self.dolayli),
-                "surum_birlestir": self.surum_birlestir}
+                "surum_birlestir": self.surum_birlestir, "gecmis_kanit_en_fazla": self.gecmis_en_fazla}
 
 
 def settings_path() -> Path:
@@ -119,8 +125,9 @@ def load_settings(ws_root: Path | None = None) -> Settings:
     if g not in GUVEN:
         raise SelectionError(f"kanıt seçimi: `en_dusuk_guven` {sorted(GUVEN)} içinden olmalı (verilen: {g!r})")
     return Settings(
-        olcut_en_fazla=_nonneg(raw.get("olcut_basina_en_fazla", 6), "olcut_basina_en_fazla", True),
-        kurum_geneli_en_fazla=_nonneg(raw.get("kurum_geneli_en_fazla", 2), "kurum_geneli_en_fazla", False),
+        olcut_en_fazla=_nonneg(raw.get("olcut_basina_en_fazla", 10), "olcut_basina_en_fazla", True),
+        kurum_geneli_en_fazla=_nonneg(raw.get("kurum_geneli_en_fazla", 3), "kurum_geneli_en_fazla", False),
+        gecmis_en_fazla=_nonneg(raw.get("gecmis_kanit_en_fazla", 1), "gecmis_kanit_en_fazla", False),
         en_dusuk_guven=g, dolayli=tuple(str(x) for x in raw.get("dolayli_isaretler") or ()),
         surum_birlestir=bool(raw.get("surum_birlestir", True)))
 
@@ -315,6 +322,21 @@ def merge_versions(items: list, docs: dict, text_of, cited: set[str]) -> tuple[l
 
 # -- ilgililik --------------------------------------------------------------------------------
 
+_SONRA = ("donem_sonrasi", "surum_yururlukten_kalkmis", "surum_donem_sonrasi")   # audit donem.DONEM_DISI
+
+
+def donem_disi(rows: list[dict]) -> str:
+    """OD'ye sayılmayan kalemin dönem durumu (audit satırlarından): "sonra" = bütün satırlar bu
+    dönemin kanıtı değil (dönem sonrası / yürürlükteki sürüm değil); "gecmis" = önceki yıl olayı
+    (geçmiş kanıt, süreklilik); aksi "". İnsan `duzelt`i satırı sayar, buraya gelmez."""
+    fl = [set(r.get("flags") or []) for r in rows]
+    if fl and all(f & set(_SONRA) for f in fl):
+        return "sonra"
+    if any("gecmis_kanit" in f for f in fl):
+        return "gecmis"
+    return ""
+
+
 def _rank_direct(it, docs) -> tuple:
     # OD'ye sayılmayan (dönem kuralı: tarihsiz/geçmiş olay) aday sona: sınır önce onları eler
     return (not it.sayilir, -it.od, -GUVEN.get(it.guven, 1), -_date_num(docs.get(it.doc_id)), it.doc_id)
@@ -327,18 +349,24 @@ def _rank_kg(it, docs) -> tuple:
 def select(items: list, s: Settings, cited: set[str], docs: dict) -> tuple[list, list[dict]]:
     """Bir ölçütün kalemleri → (yayımlanacaklar, elenenler [{doc_id, neden, kurum_geneli, ...}])."""
     keep: dict[int, str] = {}
+    drop: dict[int, str] = {}
     for it in items:
-        if it.doc_id in cited:
+        # bu dönemin kanıtı olmayan ya da birim aitliği onaylanmamış belge hiçbir yoldan girmez
+        # (atıf da aşmaz; insan `duzelt`i audit'te dönem/birim kuralını zaten kaldırır)
+        if getattr(it, "birim_bekliyor", False):
+            drop[id(it)] = "birim_dogrulanmali"
+        elif getattr(it, "donem_disi", "") == "sonra":
+            drop[id(it)] = "donem_sonrasi"
+        elif it.doc_id in cited:
             keep[id(it)] = "atif"
         elif it.insan:
             keep[id(it)] = "insan"
     n_open = sum(1 for it in items if id(it) in keep and keep[id(it)] != "atif")   # atıf sınıra sayılmaz
     n_kg = sum(1 for it in items if id(it) in keep and it.kurum_geneli)
     cap = s.olcut_en_fazla
-    drop: dict[int, str] = {}
     direct, kg = [], []
     for it in items:
-        if id(it) in keep:
+        if id(it) in keep or id(it) in drop:
             continue
         if GUVEN.get(it.guven, 1) < GUVEN[s.en_dusuk_guven] and not it.onay:
             drop[id(it)] = "dusuk_guven"
@@ -348,12 +376,18 @@ def select(items: list, s: Settings, cited: set[str], docs: dict) -> tuple[list,
             drop[id(it)] = "dolayli"
         else:
             direct.append(it)
+    n_gecmis = sum(1 for it in items if id(it) in keep and getattr(it, "donem_disi", "") == "gecmis")
     for it in sorted(direct, key=lambda x: _rank_direct(x, docs)):
+        gecmis = getattr(it, "donem_disi", "") == "gecmis"
+        if gecmis and n_gecmis >= s.gecmis_en_fazla:
+            drop[id(it)] = "gecmis_siniri"
+            continue
         if cap is not None and n_open >= cap:
             drop[id(it)] = "ust_sinir"
             continue
         keep[id(it)] = "dogrudan"
         n_open += 1
+        n_gecmis += gecmis
     for it in sorted(kg, key=lambda x: _rank_kg(x, docs)):
         if n_kg >= s.kurum_geneli_en_fazla:
             drop[id(it)] = "kurum_geneli_siniri"
@@ -369,7 +403,8 @@ def select(items: list, s: Settings, cited: set[str], docs: dict) -> tuple[list,
     for st in stages:
         if any(st in it.asamalar for it in items if id(it) in keep):
             continue
-        cand = [it for it in items if st in it.asamalar and id(it) not in keep]
+        cand = [it for it in items if st in it.asamalar and id(it) not in keep
+                and drop.get(id(it)) not in ("donem_sonrasi", "birim_dogrulanmali")]
         if cand:
             best = min(cand, key=lambda it: (it.kurum_geneli, it.dolayli, not it.madde, *_rank_direct(it, docs)))
             keep[id(best)] = "zincir"
@@ -403,7 +438,7 @@ def record(path: Path, s: Settings, kept: list, dropped: list[dict], merges: lis
 
 
 def gaps_block(s: Settings, kept: list, dropped: list[dict], merges: list[dict], docs: dict,
-               n_cand: int) -> str:
+               n_cand: int, metin_var: bool = False) -> str:
     from bidr.criteria.model import id_key
 
     def nm(did: str) -> str:
@@ -450,6 +485,19 @@ def gaps_block(s: Settings, kept: list, dropped: list[dict], merges: list[dict],
             for m, u in sorted(unsure, key=lambda x: (id_key(x[0]["olcut"]), x[1]["doc_id"])):
                 L.append(f"- {m['olcut']}: {nm(u['doc_id'])} (`{u['doc_id']}`) ↔ temsilci {nm(m['temsilci'])} "
                          f"(`{m['temsilci']}`)")
+            L.append("")
+    if metin_var:
+        un = [it for it in kept if it.secim != "atif"]
+        if un:
+            L += ["### Listede olup metinde atıf almayan kanıtlar", "",
+                  "Yayımlanan listede ama ölçüt metninde atıf yapılmamış: değerlendirici açısından açıklanmamış "
+                  "kanıt. Metinde kullanın (`bidr write`) ya da gerekmiyorsa satırı `ret` edin.", ""]
+            by: dict[str, list] = {}
+            for it in un:
+                by.setdefault(it.olcut, []).append(it)
+            for c in sorted(by, key=id_key):
+                L.append(f"- {c}: " + "; ".join(f"{nm(it.doc_id)} (`{it.doc_id}`, OD{it.od})"
+                                                 for it in sorted(by[c], key=lambda x: x.doc_id)))
             L.append("")
     if not dropped and not merges:
         L += ["Bütün adaylar yayımlandı.", ""]
