@@ -13,6 +13,15 @@ Kurallar:
 5. `[komisyon]` işaretli cümleyi KOMİSYON BİLGİSİ'ne karşı denetle; bilginin ötesine geçiyorsa "kismen" ya da "desteklenmiyor".
 6. Gerekçe en çok 2 cümle; "kismen" ve "desteklenmiyor"da kanıtta olmayan öğeyi adıyla belirt. Listedeki her cümleye tam bir karar ver; cümle ekleme, birleştirme.
 
+Beş zorunlu soru (kılavuz her açıklamada bunları sorar). Her soru için, kimliğiyle, bir kapsam kararı ve o kararı dayandıran cümle yerlerini ver:
+- "kanitla_cevaplandi": soruyu cevaplayan en az bir cümle var ve bu cümle somut bir uygulamayı (ne, kim/hangi kurul, hangi belge, ne zaman) atıf yaptığı kanıtla gösteriyor. Yerler: o cümleler.
+- "cevapsiz": metinde bu soruyu cevaplayan cümle yok. Kanıt yoksa sorunun cevapsız kalması doğrudur; bu bir kusur değildir. Yerler: boş liste.
+- "uydurma_suphesi": soru cevaplanmış görünüyor ama cevap kanıtsız genel ifadeyle dolduruluyor (ör. "süreç düzenli olarak izlenmekte ve değerlendirilmektedir", "gerekli iyileştirmeler yapılmaktadır", "önceki yıla göre süreç geliştirilmiştir") ve atıf yapılan kanıt bu somut cevabı göstermiyor. Yerler: o cümleler; gerekçede eksik olan somut öğeyi yaz.
+Kurallar: "kanitlar" sorusu metnin kanıtlara dayanan somut uygulama örneği verip vermediğidir (özgün uygulama iddiası yalnız onu gösteren kanıtla). "onceki_yil" sorusu çoğunlukla "o." cümleleriyle cevaplanır; önceki yıl metni yoksa ya da fark yazılmamışsa "cevapsiz". `[komisyon]` işaretli cümle tek başına bir soruyu "kanitla_cevaplandi" yapmaz. Bir cümle birden çok soruya yer olabilir. Beş sorunun her birine tam bir karar ver.
+
+SORULAR
+{{sorular}}
+
 ALT ÖLÇÜT
 {{olcut}}
 
@@ -31,4 +40,4 @@ KOMİSYON BİLGİSİ
 {{komisyon_bilgisi}}
 
 Yalnız şu biçimde tek bir JSON nesnesi döndür:
-{"cumleler": [{"yer": "p1.1", "karar": "destekleniyor", "gerekce": "..."}], "genel": "kısa genel değerlendirme"}
+{"cumleler": [{"yer": "p1.1", "karar": "destekleniyor", "gerekce": "..."}], "sorular": [{"soru": "surec", "durum": "kanitla_cevaplandi", "yerler": ["p1.1"], "gerekce": "..."}, {"soru": "izleme", "durum": "cevapsiz", "yerler": [], "gerekce": "..."}, ...beş sorunun hepsi], "genel": "kısa genel değerlendirme"}

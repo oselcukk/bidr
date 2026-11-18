@@ -114,6 +114,45 @@ paket yazar; istemin sonuna doğrulayıcının cümle bazlı gerekçesi ve redde
 kullanıcı `bidr verify karar -w WS <ölçüt> cikar|tekrar` ile karar verir (`verify-insan.jsonl`;
 `cikar` metni rapordan çıkarır, `tekrar` bir tur ekler).
 
+### Beş zorunlu soru kapsamı (K29) → `soru_kapsami`, `soru-kapsami.json`
+FR-0833 her alt ölçüt açıklamasında beş soruyu ister (`bidr/verify/run.py` `SORULAR`; metinler
+kılavuzun "Açıklama Metni Yazımı" bölümüyle aynı, test denetler): `surec` (süreç / planlama ve
+uygulama), `izleme` (izleme ve değerlendirme), `iyilestirme`, `kanitlar` (mevcut ya da özgün
+uygulama kanıtı), `onceki_yil` (önceki yıla göre değişiklik). Doğrulayıcı (`verify_text` v2)
+her soru için bir karar ve cümle yerleri verir:
+- `kanitla_cevaplandi`: en az bir kanıt atıflı cümle soruyu somut uygulamayla cevaplıyor
+  (yalnız `[komisyon]` cümlesi yetmez; yer zorunlu).
+- `cevapsiz`: cevaplayan cümle yok (yer boş). Metni reddettirmez; kanıt yoksa doğrusu budur.
+- `uydurma_suphesi`: soru kanıtsız genel ifadeyle doldurulmuş (yer zorunlu). Metni
+  **reddettirir**; gerekçe `soru <id> (uydurma_suphesi; <yerler>): …` satırıyla `gerekce`ye
+  girer ve metin yeniden yazım döngüsüne gider.
+`verify apply` cevabı doğrular (beş sorunun her biri tam bir kez, yerler metinde var); tutmayan
+cevap `gecersiz`. Kapsam `verify.jsonl` kaydına ve `texts/<olcut>.json`'a aynı biçimde yazılır:
+```json
+"soru_kapsami": {"durum": "denetlendi|denetlenmedi",
+ "sorular": [{"soru": "izleme", "baslik": "İzleme ve değerlendirme nasıl yapılıyor?",
+              "durum": "kanitla_cevaplandi|cevapsiz|uydurma_suphesi", "yerler": ["p2.1"], "gerekce": "…"}]}
+```
+`denetlenmedi` (sorular boş): kod denetiminde reddedilen metin, yeniden doğrulamaya alınmış
+metin, görev v1 ile doğrulanmış eski kayıt (alan yok) ya da metni değişmiş kayıt. Eski v1
+doğrulamaları geçerli kalır (yeniden paketlenmez); yalnız kapsamları bilinmez.
+
+`verify prepare` ve `apply` her çalışmada çalışma alanı kökünde `soru-kapsami.json` yazar
+(bütün `texts/` için; gaps.md'nin "Kanıtla cevaplanmayan sorular" listesinin verisi — listeyi
+audit yazar):
+```json
+{"gorev": "verify_text", "sorular": [{"soru": "surec", "baslik": "…"}],
+ "olcutler": {"B.1.1": {"durum": "denetlendi", "metin_durumu": "dogrulandi", "metin_sha": "…",
+   "sorular": {"izleme": {"durum": "cevapsiz", "yerler": [], "gerekce": "…"}},
+   "kanitla_cevaplanmayan": ["izleme"], "insan_karari": "cikar"}},
+ "kanitla_cevaplanmayan": [{"olcut": "B.1.1", "soru": "izleme", "baslik": "…",
+   "durum": "cevapsiz|uydurma_suphesi", "yerler": [], "gerekce": "…"}],
+ "denetlenmedi": ["B.1.2"]}
+```
+`kanitla_cevaplanmayan` yalnız denetlenmiş metinlerin `cevapsiz` ve `uydurma_suphesi`
+sorularıdır (ölçüt sırasıyla); kapsamı bilinmeyen ölçütler `denetlenmedi`de ayrı listelenir.
+`insan_karari` yalnız varsa bulunur.
+
 ## render → `report.docx`
 FR-0833 şablonunun (config.yaml `rapor.sablon` ya da `--sablon`; salt okunur) ölçüt
 bloklarında "Açıklamalar" ve "Kanıtlar" hücreleri doldurulur; biçim kılavuza uygun. Kanıtlar

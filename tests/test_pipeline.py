@@ -254,7 +254,10 @@ def _verify_answers(ws: Path, reject: set[str] = frozenset()) -> None:
         cs = json.loads(p.read_text(encoding="utf-8"))["meta"]["cumleler"]
         out = {"cumleler": [{"yer": c["yer"], "karar": "desteklenmiyor" if p.stem in reject and i == 0
                              else "destekleniyor", "gerekce": "alıntı kararı göstermiyor" if p.stem in reject
-                             and i == 0 else "alıntıda var"} for i, c in enumerate(cs)], "genel": ""}
+                             and i == 0 else "alıntıda var"} for i, c in enumerate(cs)],
+               "sorular": [{"soru": k, "durum": "cevapsiz", "yerler": [], "gerekce": "kanıt yok"}
+                           for k in ("surec", "izleme", "iyilestirme", "kanitlar", "onceki_yil")],
+               "genel": ""}
         (d / f"{p.stem}.out.json").write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
 
 
