@@ -1,0 +1,85 @@
+# Üretildi: python -m bidr.criteria.extract_docx <şablon.docx>
+# Elle düzenlemeyin; şablon değişince yeniden üretin.
+meta:
+  schema_version: 1
+  source_form: FR-0833 Birim İç Değerlendirme Raporu (BİDR) şablonu, R0
+  source_sha256: bfafe690bbe78d1e437f7fd23a298c268e09ef2b3bb2a33860daf92f2287f04b
+  extracted_by: bidr.criteria.extract_docx
+  text_policy: Paragraflar birebir alıntıdır; her bölüm şablondaki başlık adıyla.
+  notes:
+  - Kurum tanıtım bölümü (kurum adı, e-posta, paylaşım bağlantısı içerir) alınmadı.
+  - Şekil 1 ve Şekil 2 görseldir; metinleri çıkarılmadı.
+sections:
+- section: Hazırlama Yöntemi ve Takvimi
+  parent: BİDR Hazırlarken Dikkat Edilmesi Gereken Hususlar
+  text:
+  - Birim İç Değerlendirme Raporları Akademik ve İdari Birimler tarafından her yılın 2 Ocak – 15 Ocak tarihleri arasında hazırlanır ve birimlerin web sayfalarında yayımlanır. BİDR hazırlama süreci, birim amiri başta olmak üzere birim personeli ile ilgili paydaşların katılımı ve iş birliğiyle tamamlanmalıdır. BİDR’in amacı ve içeriği konusunda birim genelinde farkındalığın oluşturulması için birim amirinin liderliği önem arz etmektedir.
+  - BİDR içeriğinin güncelliğinin ve doğruluğunun sağlanması birim amirinin sorumluluğundadır.
+- section: Sorumlu Birimler
+  parent: BİDR Hazırlarken Dikkat Edilmesi Gereken Hususlar
+  text:
+  - Alt ölçütlerin hangi birimler tarafından doldurulması gerektiği ölçüt tablosunda belirtilmektedir. Kullanılan bazı kavramlar;
+  - 'Akademik Birimler: Fakülteler (Her fakülte sorumlusu kendisine bağlı olan bölümlerin verilerini toplayarak genel fakülte BİDR Raporunu oluşturmaktan sorumludur.), Enstitüler (Tüm enstitülerin verilerinin toplamından oluşan raporu oluşturmaktan Lisansüstü Eğitim Enstitüsü sorumludur.), MYO, Merkezler (Her Merkez kendi verilerini kılavuzda ilgili olduğu belirtilen bölümler bazında raporlaştırmaktan sorumludur.), Rektörlüğe Bağlı Bölümler (Her Bölüm kendi verilerini kılavuzda ilgili olduğu belirtilen bölümler bazında raporlaştırmaktan sorumludur.)'
+  - 'İdari Birimler: Genel Sekreterlik ve bağlı birimleri, Daire Başkanlıkları, Müdürlükler (Özel Kalem, Basın ve Döner Sermaye), Birimler ve Koordinatörlükler, Hukuk Müşavirliği, Teknoloji Transfer Ofisi (TTO)'
+  - (Her Birim kendi verilerini kılavuzda ilgili olduğu belirtilen bölümler bazında raporlaştırmaktan sorumludur.)
+- section: Kapsam
+  parent: BİDR Hazırlarken Dikkat Edilmesi Gereken Hususlar
+  text:
+  - Birim İç Değerlendirme Raporlarının kapsamı hazırlandığı yılın bir önceki takvim yılı (1 Ocak-31 Aralık) içerisinde yaptıkları faaliyetlerle sınırlıdır.
+- section: Açıklama Metni Yazımı
+  parent: BİDR Hazırlarken Dikkat Edilmesi Gereken Hususlar
+  text:
+  - 'Metin içeriğinde aşağıdaki soruların cevaplandığından emin olunuz:'
+  - Süreç nasıl yürütülüyor / planlama ve uygulama nasıl yapılıyor?
+  - İzleme ve değerlendirme nasıl yapılıyor?
+  - İyileştirmeye yönelik adımlar atılıyor mu?
+  - Hangi kanıtlarınız mevcut / Biriminize özgü örnek olabilecek uygulama kanıtınız var mı?
+  - Bir önceki yıla göre farklı neler var?
+- section: Ölçüt Değerlendirme Şekli
+  parent: BİDR Hazırlarken Dikkat Edilmesi Gereken Hususlar
+  text:
+  - Her ölçüt ve alt ölçüt kendi içerisinde değerlendirilmelidir. Değerlendirme yaparken kullanılacak olan kanıtların direkt olarak o ölçüt ile ilgili olması gerekmektedir. Değerlendirmede, 5'li Likert ölçeğine dayalı bir rubrik yöntemi kullanılmaktadır. Bu yöntemde ilgili ölçüte 1-5 arasında bir değer vermeniz beklenmektedir. Bu değerlemenin nasıl yapılacağı Şekil1’de açıklanmıştır.
+  - Şekil 1. Ölçüt Değerlendirme Yöntemi
+  - Şekil 1’de görüldüğü üzere değerlendirme yapmak üzere ele aldığımız ölçüt ile ilgili;
+  - Herhangi bir işlem yapılmamış ise 1 (bir) puan veriniz,
+  - Sadece “planlama” var ise 2 (iki) puan veriniz,
+  - Birimin tamamını kapsayan “planlama” ve “uygulama” var ise 3 (üç) puan veriniz,
+  - “Planlama”, “uygulama”, “uygulama sonrası kontrol etme” ve “önlem alma” süreçlerinin tümü işletiliyorsa ve PUKÖ döngüsü birkaç kez kapatıldıysa 4 (dört) puan veriniz,
+  - Birim geneline yayılmış, paydaşları tarafından içselleştirilmiş, sistematik olarak yürütülebilen ve örnek gösterilebilir bir durum varsa 5 (beş) puan veriniz.
+  - Değerlendirme süreci Şekil 2’de özetlenmektedir.
+  - Şekil 2. Değerlendirme Süreci Özet Gösterimi
+- section: Yazım Kuralları
+  parent: BİDR Hazırlarken Dikkat Edilmesi Gereken Hususlar
+  text:
+  - Raporun tamamında yazı fontu olarak, Time News Roman kullanılmalıdır. Başlıklar 12pt kalın olmalıdır. Numaralama A.1.x.x.x örneğindeki gibi olmalıdır. Gövde metni 10pt olmalıdır. Şekil, tablo, grafik gibi nesne isimleri tablo üstünde eğik ve 10pt boyutunda olmalıdır. Metin içinde referans kaynak ve atıf var ise APA 7 standardı kullanılmalıdır. Tablo ve şekil gösterimlerde açıklama nesnenin üstünde sağa dayalı 10pt ve eğik olmalıdır. Satır aralığı seçeneği tüm metinde öncesi “0 nk”, sonrası “0,6 nk” değerinde olmalıdır.
+- section: Kanıt Gösterimi
+  parent: BİDR Hazırlarken Dikkat Edilmesi Gereken Hususlar
+  text:
+  - BİDR hazırlama sürecinde en önemli kısım kanıt gösterimidir. Kanıt dokümanı ölçüt ile doğrudan ilgili ve gerektiğinde sunulabilir olmalıdır. Kanıt gösterim şeklinin, metin içinde gösterim ve ölçüt sonunda gösterim olmak üzere 2 türü vardır.
+  - Örnek Kanıt Gösterimi;
+  - B.1.1.Program Tasarımı ve Onayı
+  - Üniversitemizde, alan farklılıklarına göre yeterliliklerin çeşitli eğitim türlerine göre kazandırılabileceğine yönelik ilke ve kurallar belirlenmiştir (OD2). Programların tasarımı ve onayına ilişkin tanımlı süreçler doğrultusunda uygulamalar gerçekleştirilmektedir [1_OD3].
+  - Bu uygulamalardan bazı sonuçlar elde edilmekte olup bu sonuçların paydaşlarla birlikte izlenmesi sistematik olarak yapılmaktadır [2_OD4]. Bu çerçevede müfredat geliştirme çalışmaları, Bologna süreci ile birlikte bütün programların ders amacı, ders öğrenme çıktılarını, program çıktılarını TYYÇ ile ilişkilendirilmiş olup, ilgili iç ve dış paydaşların görüşleri alınarak güncellenmiştir [3_OD4].
+  - 'Kanıtlar:'
+  - '[1-OD3]. Uygulama Örnekleri.pdf'
+  - '[2-OD4]. İyileştirme Kanıtları.pdf'
+  - '[3-OD4]. İzleme Sonuçları.docx'
+- section: Örnek Uygulama ve Kanıtlar Listesi
+  parent: null
+  text:
+  - Bu belge YÖKAK KİDR Hazırlama Kılavuzu’nda belirtilenlere ek olarak, 4 ana ölçüte ilişkin uygulamalar ve bunlara dair olası kanıtlar hakkında fikir sunmak amacıyla hazırlanmıştır. Aşağıdaki tablolarda yer alan uygulama ve kanıtların örnek niteliğinde olduğu; raporda yer alan alt ölçütlere ilişkin uygulama ve kanıtların buradakilerle sınırlı olmadığı unutulmamalıdır.
+  - 'UYGUN KANITLAR: Resmî yazı ve yazışmalar, resmî raporlar, web linkleri, Personel Atama ve Yükseltme Sistemi(PAYS), Elektronik Bilgi ve Yönetim Sistemi (EBYS), Talep Yönetim Sistemi(TYS), Bilgi Yönetim Sistemi, Toplumsal Katkı Sistemi(TKS),Bilimsel Araştırma Projeleri Sistemi(BAPSİS), Laboratuvar Sistemi(LABSİS),TÜBİTAK, Kütüphane Veri Toplama Sistemi vb. sistemlerden alınan ekran görüntüleri, katılım belgeleri, ödül belgeleri, afişler, etkinlik çıktıları (örneğin kongre kitapçığı), anket sonuç raporları vb.'
+  - Web üzerinde bulunan linklerin kaldırılması yahut değiştirilmesi ihtimaline karşı internet sayfalarından alınan ekran görüntülerinin pdf formatına dönüştürülerek kanıt klasörüne de eklenmesi gerekmektedir.
+  - 'UYGUN OLMAYAN KANITLAR: Excel dosyalarının ekran görüntüleri, Word dosyalarının ekran görüntüleri, alt ölçütün açıklamasına dikkat edilmeden gönderilen ilgisiz kanıtlar, istenilen verinin hâricinde de veri içeren dosya yığınları, kanıt numaralandırma sistemine uyulmaksızın gönderilen kanıtlar vb.'
+  - 'UYARI: Kişisel Verilerin Korunması Kanunu kapsamında öğrenci ismi, numarası, T.C. No bilgisi; akademik, idari personel kimlik bilgileri, imza görselleri ve bu kapsamda değerlendirilebilecek her türlü bilgi, kanıtlar kısmında maskelenerek sunulmalıdır.'
+evidence_notation:
+  derived_from: Kanıt Gösterimi
+  in_text:
+    pattern: \[(\d+)_OD([1-5])\]
+    example: '[1_OD3]'
+  evidence_list:
+    pattern: ^\[(\d+)-OD([1-5])\]\.\s*(.+)$
+    example: '[1-OD3]. Uygulama Örnekleri.pdf'
+  fields:
+    '1': kanıt sıra numarası
+    '2': olgunluk düzeyi (OD)
