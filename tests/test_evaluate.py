@@ -95,3 +95,55 @@ def test_cli_evaluate(tmp_path):
     assert (te / "eval-t.md").exists()
     md = (ws / "eval-t.md").read_text()
     assert "kapalı" in md and "Ölçüme girmeyen" in md
+
+
+def test_yakin_kopya_egitimden_atilir(tmp_path):
+    """Neredeyse aynı metin (başka tarama/sürüm: birkaç sözcük farkı) eğitimden atılır,
+    sayılır; farklı belge kalır; eşik kapalıyken eski davranış."""
+    from bidr.evaluate.run import NEAR_DUP, tf_cosine
+
+    base = ctext("B.1.1", "toplanti tutanagi")
+    tr = make_ws(tmp_path / "tr", [
+        {"text": base + " imza sayfasi ek", "gold": ["B.1.1"], "units": ["T"]},   # yakın kopya
+        {"text": ctext("A.1.2", "baska belge"), "gold": ["A.1.2"], "units": ["T"]},
+        {"text": ctext("C.2.1"), "gold": ["C.2.1"], "units": ["T"]},
+    ])
+    te = make_ws(tmp_path / "te", [{"text": base, "gold": ["B.1.1"], "units": ["M"]}])
+    trd, ted = load(tr), load(te)
+    near_id = did_of(tr, 0)
+    assert tf_cosine(next(d for d in trd if d.doc_id == near_id).bag, ted[0].bag) >= NEAR_DUP
+    sp = transfer_split(trd, ted, VALID, "t")
+    ids = {d.doc_id for d in sp.train}
+    assert near_id not in ids and len(ids) == 2
+    z = sp.leakage()
+    assert z["egitimden_atilan_yakin_kopya"] == 1 and z["yakin_kopya_esigi"] == NEAR_DUP
+    assert sp.near_dropped[0][:2] == (near_id, ted[0].doc_id)
+    off = transfer_split(trd, ted, VALID, "t", near_dup=None)
+    assert near_id in {d.doc_id for d in off.train}
+    assert off.leakage()["egitimden_atilan_yakin_kopya"] == 0
+    # eşik 1'e çekilirse bu çift atılmaz (birebir aynı değil)
+    assert near_id in {d.doc_id for d in transfer_split(trd, ted, VALID, "t", near_dup=1.0).train}
+
+
+def did_of(ws, i: int) -> str:
+    import csv as _csv
+    with open(ws / "inventory.csv", encoding="utf-8") as f:
+        return list(_csv.DictReader(f))[i]["doc_id"]
+
+
+def test_cli_yakin_kopya_raporu(tmp_path):
+    base = ctext("B.1.1", "toplanti tutanagi")
+    tr = make_ws(tmp_path / "tr", [
+        {"text": base + " imza sayfasi ek", "gold": ["B.1.1"], "units": ["T"]},
+        {"text": ctext("A.1.2", "baska belge"), "gold": ["A.1.2"], "units": ["T"]},
+    ])
+    te = make_ws(tmp_path / "te", [{"text": base, "gold": ["B.1.1"], "units": ["M"]}])
+    assert main(["evaluate", "--transfer", str(tr), str(te), "--name", "y", "-q"]) == 0
+    r = json.loads((te / "eval-y.json").read_text())["sonuclar"][0]
+    assert r["sizinti"]["egitimden_atilan_yakin_kopya"] == 1 and len(r["yakin_kopyalar"]) == 1
+    assert "eğitimden atılan yakın kopya" in (te / "eval-y.md").read_text()
+    assert main(["evaluate", "--transfer", str(tr), str(te), "--name", "z", "--near-dup", "0", "-q"]) == 0
+    r = json.loads((te / "eval-z.json").read_text())
+    assert r["sonuclar"][0]["sizinti"]["egitimden_atilan_yakin_kopya"] == 0
+    assert r["ayarlar"]["yakin_kopya_esigi"] is None
+    assert "Yakın kopya denetimi kapalı" in (te / "eval-z.md").read_text()
