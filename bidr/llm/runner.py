@@ -1,6 +1,7 @@
 """`run_task`: istemi doldur → modele sor → JSON ayıkla → şemayla doğrula → (gerekirse) yeniden sor.
 
-Önbellek anahtarı = sha256(görev adı + görev sürümü + tam istem + sistem istemi + model kimliği).
+Önbellek anahtarı = sha256(görev adı + görev sürümü + tam istem + sistem istemi + model kimliği
++ yapılandırmada varsa üretim ayarları: temperature, max_tokens, params).
 Yalnız şemadan geçen çıktı önbelleğe yazılır.
 """
 from __future__ import annotations
@@ -75,7 +76,11 @@ def build_prompt(task: Task, inputs: dict) -> str:
 
 def cache_key(task: Task, prompt: str, system: str, model: ModelConfig) -> str:
     h = hashlib.sha256()
-    for part in (task.name, task.version, system, prompt, model.model_id):
+    parts = [task.name, task.version, system, prompt, model.model_id]
+    gen = model.generation_signature()
+    if gen:
+        parts.append(gen)
+    for part in parts:
         h.update(part.encode("utf-8"))
         h.update(b"\x00")
     return h.hexdigest()
@@ -113,6 +118,42 @@ def _feedback(errors: list[str]) -> str:
             "(açıklama ya da kod çiti olmadan).")
 
 
+def _as_task(task, tasks_dir=None) -> Task:
+    return task if isinstance(task, Task) else load_task(task, tasks_dir)
+
+
+def render_task(task: str | Path | Task, inputs: dict, *, tasks_dir: Path | None = None) -> dict:
+    """Sağlayıcısız (ajan modu): görevin doldurulmuş istemi ve şeması.
+
+    `run_task`'ın modele gönderdiğiyle aynı istem. Döner:
+    `{"task", "version", "prompt", "schema", "system"}` (`system` = hat modunda
+    kullanılan sistem istemi; ajan isterse yok sayar).
+    """
+    t = _as_task(task, tasks_dir)
+    return {"task": t.name, "version": t.version, "prompt": build_prompt(t, inputs),
+            "schema": t.schema, "system": t.system or SYSTEM_PROMPT}
+
+
+def validate_output(task: str | Path | Task, raw, *, tasks_dir: Path | None = None) -> tuple[Any, list[str]]:
+    """Sağlayıcısız (ajan modu): ham yanıt metni ya da hazır dict/list → `(çıktı | None, hatalar)`.
+
+    `run_task` ile aynı JSON ayıklama ve şema doğrulaması. Geçerliyse
+    `(çıktı, [])`, değilse `(None, [hata, ...])`.
+    """
+    t = _as_task(task, tasks_dir)
+    if isinstance(raw, (dict, list)):
+        value = raw
+    elif isinstance(raw, str):
+        try:
+            value = extract_json(raw, _schema_want(t.schema))
+        except ExtractError as e:
+            return None, [str(e)]
+    else:
+        return None, [f"desteklenmeyen yanıt türü: {type(raw).__name__} (str, dict ya da list olmalı)"]
+    errs = schema_errors(value, t.schema)
+    return (None, errs) if errs else (value, [])
+
+
 def run_task(task: str | Path | Task, inputs: dict, model: ModelConfig, cache_dir: str | Path | None = None,
              *, tasks_dir: Path | None = None, refresh: bool = False) -> TaskResult:
     """Görevi çalıştırır. Bkz. docs/MODEL_LAYER.md.
@@ -122,9 +163,9 @@ def run_task(task: str | Path | Task, inputs: dict, model: ModelConfig, cache_di
       kez yeniden sorulur; geçici aktarım hataları da aynı bütçeden düşer.
     - Başaramazsa `TaskFailed` (son ham yanıt ve hatalarla) yükseltir.
     """
-    t = task if isinstance(task, Task) else load_task(task, tasks_dir)
-    prompt = build_prompt(t, inputs)
-    system = t.system or SYSTEM_PROMPT
+    t = _as_task(task, tasks_dir)
+    rendered = render_task(t, inputs)
+    prompt, system = rendered["prompt"], rendered["system"]
     key = cache_key(t, prompt, system, model)
     model.check_privacy()
 
@@ -136,7 +177,6 @@ def run_task(task: str | Path | Task, inputs: dict, model: ModelConfig, cache_di
                               key=key, version=t.version, errors=list(rec.get("errors", [])))
 
     provider = get_provider(model)
-    want = _schema_want(t.schema)
     messages = [{"role": "user", "content": prompt}]
     errors: list[str] = []
     usage: dict = {}
@@ -158,11 +198,7 @@ def run_task(task: str | Path | Task, inputs: dict, model: ModelConfig, cache_di
         for k, v in (comp.usage or {}).items():
             if isinstance(v, (int, float)) and not isinstance(v, bool):
                 usage[k] = usage.get(k, 0) + v
-        try:
-            value = extract_json(raw, want)
-            errs = schema_errors(value, t.schema)
-        except ExtractError as e:
-            errs = [str(e)]
+        value, errs = validate_output(t, raw)
         if not errs:
             res = TaskResult(task=t.name, output=value, model=model.model_id, attempts=attempt,
                              cached=False, raw=raw, key=key, version=t.version, errors=errors, usage=usage)

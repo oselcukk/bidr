@@ -12,6 +12,7 @@ yapılır; kalan OCR hataları (düşen/yanlış harf) puanı biraz düşürür.
 """
 from __future__ import annotations
 
+import re
 import unicodedata
 from collections import Counter
 from typing import NamedTuple
@@ -20,6 +21,9 @@ _TR = {"İ": "i", "I": "i", "ı": "i", "i̇": "i"}
 _OCR_PAIRS = {"rn": "m", "vv": "w"}
 _OCR_SINGLE = {"0": "o", "1": "l"}
 _EXTRA = {"ß": "ss", "æ": "ae", "œ": "oe", "ø": "o", "đ": "d", "ł": "l"}
+
+
+DIGIT_MISMATCH_CAP = 0.5   # rakam uyuşmazlığında puan en çok bu
 
 
 class QuoteMatch(NamedTuple):
@@ -83,6 +87,44 @@ def skeleton(text: str) -> tuple[str, list[int], list[int]]:
     return "".join(out), starts, ends
 
 
+_TOKEN = re.compile(r"[^\W_]+")
+_DIGIT_LIKE = {"o": "0", "O": "0", "l": "1", "I": "1", "ı": "1", "i": "1", "İ": "1"}
+
+
+def digit_runs(text: str) -> list[str]:
+    """Metindeki sayılar (tarih parçası, sayı, ders kodunun sayı kısmı), sırayla.
+
+    Sözcük içinde rakam ve rakama benzeyen harflerden (O/o→0, l/I/ı/i→1) oluşan
+    en uzun parça, en az bir gerçek rakam içeriyor ve sözcüğün başına ya da
+    sonuna değiyorsa sayıdır: "2O24" → "2024", "l5" → "15", "MAT2l1" → "211".
+    Sözcüğün ortasındaki tek tük rakam ("bi1dirim", "kuru1u") harf hatasıdır,
+    sayı sayılmaz. Rakamlar birbirine katlanmaz.
+    """
+    out: list[str] = []
+    for tok in _TOKEN.findall(unicodedata.normalize("NFKC", text)):
+        if not any(c.isdigit() for c in tok):
+            continue
+        n = len(tok)
+        i = 0
+        while i < n:
+            if tok[i].isdigit() or tok[i] in _DIGIT_LIKE:
+                j = i
+                while j < n and (tok[j].isdigit() or tok[j] in _DIGIT_LIKE):
+                    j += 1
+                seg = tok[i:j]
+                # harfle süren tarafta rakama benzeyen harfler ek sayılır: "10lu" → "10"
+                if j < n:
+                    seg = seg.rstrip("".join(_DIGIT_LIKE))
+                if i > 0:
+                    seg = seg.lstrip("".join(_DIGIT_LIKE))
+                if seg and any(c.isdigit() for c in seg) and (i == 0 or j == n):
+                    out.append("".join(_DIGIT_LIKE.get(c, c) for c in seg))
+                i = j
+            else:
+                i += 1
+    return out
+
+
 def _sellers(q: str, t: str) -> tuple[int, int, int]:
     """q'nun t içindeki en iyi yaklaşık eşleşmesi: (uzaklık, başlangıç, bitiş)."""
     m = len(q)
@@ -131,7 +173,9 @@ def verify_quote(quote: str, text: str, threshold: float = 0.9) -> QuoteMatch:
     """Alıntının metinde (toleranslı) geçip geçmediği.
 
     Döner: `(ok, score, span)`; `score` 0..1, `span` özgün metindeki
-    `(başlangıç, bitiş)` aralığı (eşleşme yoksa None). `ok = score >= threshold`.
+    `(başlangıç, bitiş)` aralığı (eşleşme yoksa None). `ok = score >= threshold`;
+    ancak alıntıdaki rakam dizileri (tarih, sayı, ders kodu) eşleşen aralıktakilerle
+    birebir aynı değilse `ok=False` ve puan en çok `DIGIT_MISMATCH_CAP`.
     """
     if not quote or not text:
         return QuoteMatch(False, 0.0, None)
@@ -143,9 +187,17 @@ def verify_quote(quote: str, text: str, threshold: float = 0.9) -> QuoteMatch:
     def span(s: int, e: int) -> tuple[int, int]:
         return (tstart[s], tend[e - 1])
 
+    q_digits = digit_runs(quote)
+
+    def result(score: float, sp: tuple[int, int]) -> QuoteMatch:
+        # rakamlar birebir: alıntıdaki rakam dizileri eşleşen aralıktakilerle aynı olmalı
+        if q_digits != digit_runs(text[sp[0]:sp[1]]):
+            return QuoteMatch(False, round(min(score, DIGIT_MISMATCH_CAP), 4), sp)
+        return QuoteMatch(score >= threshold, round(score, 4), sp)
+
     pos = t.find(q)
     if pos >= 0:
-        return QuoteMatch(True, 1.0, span(pos, pos + len(q)))
+        return result(1.0, span(pos, pos + len(q)))
 
     m = len(q)
     pad = max(8, m // 4)
@@ -164,5 +216,4 @@ def verify_quote(quote: str, text: str, threshold: float = 0.9) -> QuoteMatch:
     d, s, e = best
     if e <= s:
         return QuoteMatch(False, 0.0, None)
-    score = max(0.0, 1.0 - d / m)
-    return QuoteMatch(score >= threshold, round(score, 4), span(s, e))
+    return result(max(0.0, 1.0 - d / m), span(s, e))

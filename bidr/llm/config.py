@@ -75,6 +75,15 @@ class ModelConfig:
             return f"{self.provider}:{name}@{host}"
         return f"{self.provider}:{name}"
 
+    def generation_signature(self) -> str:
+        """Üretimi etkileyen ayarlar (temperature, max_tokens, params); önbellek anahtarına girer.
+        Hiçbiri yoksa boş dize (anahtar değişmez)."""
+        import json
+
+        sig = {k: v for k, v in (("temperature", self.temperature), ("max_tokens", self.max_tokens),
+                                 ("params", self.params or None)) if v is not None}
+        return json.dumps(sig, sort_keys=True, ensure_ascii=False) if sig else ""
+
     @property
     def is_remote(self) -> bool:
         if self.provider == "fake":

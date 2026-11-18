@@ -388,3 +388,49 @@ def test_cli_check_reports_privacy_violation(tmp_path, capsys):
     ws = write_cfg(tmp_path / "ws", "models:\n  default: {provider: claude-cli}\nprivacy: {no_remote: true}\n")
     assert main(["llm", "check", "-w", str(ws), "--no-call"]) == 2
     assert "no_remote" in capsys.readouterr().out
+
+
+# --- ajan modu: sağlayıcısız render/validate ---------------------------------
+
+def test_render_task_matches_run_task_prompt():
+    from bidr.llm import render_task
+
+    r = render_task("_echo", {"metin": "Bölüm kurulu toplandı."})
+    assert (r["task"], r["version"]) == ("_echo", "1") and r["schema"]["required"]
+    assert "Bölüm kurulu toplandı." in r["prompt"] and '"sozcuk_sayisi"' in r["prompt"]
+    cfg = fake(GOOD)
+    run_task("_echo", {"metin": "Bölüm kurulu toplandı."}, cfg)
+    assert cfg._fake_calls[0]["messages"][0]["content"] == r["prompt"]
+    assert cfg._fake_calls[0]["system"] == r["system"]
+
+
+@pytest.mark.parametrize("raw,ok", [
+    ("Ajanın cevabı:\n```json\n" + json.dumps(GOOD) + "\n```", True),
+    (GOOD, True),
+    ({"alinti": "x", "sozcuk_sayisi": "iki", "dil": "tr"}, False),
+    ("JSON yok", False),
+    (42, False),
+])
+def test_validate_output(raw, ok):
+    from bidr.llm import validate_output
+
+    out, errs = validate_output("_echo", raw)
+    if ok:
+        assert out == GOOD and errs == []
+    else:
+        assert out is None and errs
+
+
+def test_cache_key_includes_generation_params(tmp_path):
+    t = load_task("_echo")
+    from bidr.llm.runner import cache_key
+
+    base = ModelConfig(provider="claude-cli", model="m")
+    k0 = cache_key(t, "p", "s", base)
+    assert k0 == cache_key(t, "p", "s", ModelConfig(provider="claude-cli", model="m", timeout=5))
+    keys = {k0,
+            cache_key(t, "p", "s", ModelConfig(provider="claude-cli", model="m", temperature=0)),
+            cache_key(t, "p", "s", ModelConfig(provider="claude-cli", model="m", temperature=0.7)),
+            cache_key(t, "p", "s", ModelConfig(provider="claude-cli", model="m", max_tokens=100)),
+            cache_key(t, "p", "s", ModelConfig(provider="claude-cli", model="m", params={"seed": 1}))}
+    assert len(keys) == 5

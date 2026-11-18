@@ -91,3 +91,32 @@ def test_long_document_fast_and_located():
 def test_unpacks_as_tuple():
     ok, score, span = verify_quote("ortak çalıştay", DOC)
     assert ok and score == 1.0 and isinstance(span, tuple)
+
+
+@pytest.mark.parametrize("quote", [
+    "Toplantıya 13 öğretim üyesi katılmıştır",   # 12 → 13
+    "Toplantıya 120 öğretim üyesi katılmıştır",  # fazladan rakam
+])
+def test_digits_must_match_exactly(quote):
+    r = verify_quote(quote, DOC)
+    assert not r.ok and r.score <= 0.5 and r.span is not None
+
+
+@pytest.mark.parametrize("doc,quote", [
+    ("Karar 12.03.2O24 tarihinde MAT2l1 dersi için alındı.", "Karar 12.03.2024 tarihinde MAT211 dersi için alındı"),
+    ("Karar 12.03.2024 tarihinde MAT211 dersi için alındı.", "Karar 12.O3.2024 tarihinde MAT2I1 dersi için alındı"),
+    ("Toplam l5 öğrenci katıldı.", "Toplam 15 öğrenci katıldı"),
+    ("Karar 12/03/2024 tarihinde alındı.", "Karar 12.03.2024 tarihinde alındı"),  # ayırıcı farkı serbest
+])
+def test_digit_letter_ocr_tolerated(doc, quote):
+    r = verify_quote(quote, doc)
+    assert r.ok and r.score >= 0.9, r
+
+
+@pytest.mark.parametrize("doc,quote", [
+    ("Karar 12.03.2024 tarihinde alındı.", "Karar 12.03.2023 tarihinde alındı"),
+    ("Karar 12.03.2024 tarihinde alındı.", "Karar 13.03.2024 tarihinde alındı"),
+    ("MAT211 dersi açıldı.", "MAT212 dersi açıldı"),
+])
+def test_wrong_date_or_code_rejected(doc, quote):
+    assert not verify_quote(quote, doc).ok

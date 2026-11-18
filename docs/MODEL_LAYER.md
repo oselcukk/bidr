@@ -51,6 +51,15 @@ ok, score, span = verify_quote(quote, text)   # Türkçe katlama, boşluk, OCR t
 
 ## Uygulama notları (şerit M)
 
+- **Ajan modu (birincil), sağlayıcısız:** `render_task(task, inputs) ->
+  {"task", "version", "prompt", "schema", "system"}` görevin doldurulmuş
+  istemini verir (run_task'ın modele gönderdiğiyle birebir aynı; `system` hat
+  modunun sistem istemidir, ajan yok sayabilir). `validate_output(task, raw)
+  -> (çıktı | None, hatalar)` ham metni (çit/ön söz olabilir) ya da hazır
+  dict/list'i aynı ayıklama + şema doğrulamasından geçirir. `run_task` (hat
+  modu, gözetimsiz) bu ikisinin üstüne yalnız sağlayıcı çağrısı, yeniden
+  deneme ve önbellek ekler. İş paketi dosya biçimi şerit R'nin
+  (`bidr decide prepare/apply`).
 - Modüller: `config` (ModelConfig, config.yaml), `providers`, `tasks` (görev
   yükleme, `{{alan}}`/`{{a.b}}` tek geçişte doldurma; değerin içindeki `{{..}}`
   yeniden işlenmez), `jsonx` (ayıklama + şema), `runner` (run_task, önbellek),
@@ -73,7 +82,8 @@ ok, score, span = verify_quote(quote, text)   # Türkçe katlama, boşluk, OCR t
   aynı deneme bütçesinden yeniden denenir. Başarısızlık: `TaskFailed`
   (`.raw`, `.errors`).
 - Önbellek: `cache_dir/<ilk2>/<sha256>.json`; anahtar = sha256(görev adı,
-  sürüm, sistem istemi, tam istem, model kimliği). Yalnız şemadan geçen çıktı
+  sürüm, sistem istemi, tam istem, model kimliği; yapılandırmada verilmişse
+  üretim ayarları `temperature`, `max_tokens`, `params`). Yalnız şemadan geçen çıktı
   yazılır; bozuk ya da şemaya artık uymayan kayıt yok sayılır. CLI önbelleği
   `<ws>/.cache/llm`. Model kimliği: `claude-cli:opus`,
   `openai-compatible:<model>@<host>`.
@@ -92,7 +102,13 @@ ok, score, span = verify_quote(quote, text)   # Türkçe katlama, boşluk, OCR t
   etkisiz; OCR katlaması rn→m, vv→w, 0→o, 1→l). Tam eşleşme yoksa k-gram
   oylamasıyla aday pencereler + Sellers yaklaşık alt dizi eşlemesi;
   puan = 1 − düzenleme uzaklığı / alıntı iskeleti uzunluğu; `span` özgün
-  metindeki karakter aralığı.
+  metindeki karakter aralığı. **Rakamlar birebir:** alıntıdaki sayılar (tarih,
+  sayı, ders kodunun sayı kısmı) eşleşen aralıktakilerle aynı sırada aynı
+  olmalı; değilse `ok=False`, puan en çok 0.5. Yalnız harf↔rakam karışması
+  gevşer (O/o→0, l/I/ı/i→1; "2O24"="2024", "l5"="15"); ayırıcı farkı
+  (12.03 / 12/03) serbest. Sözcük ortasındaki tek rakam ("bi1dirim") harf
+  hatası sayılır. Bilinen sınır: harften sonra baştaki OCR'lı rakam
+  ("MATl21" ↔ "MAT121") reddedilir (temkinli taraf).
 - `bidr llm check -w WS [--role R] [--no-call]` her rol için yapılandırmayı
   ve küçük bir `_echo` çağrısıyla erişimi sınar. `bidr llm run TASK --input
   f.json -w WS [--role R] [--no-cache] [--refresh]`.
