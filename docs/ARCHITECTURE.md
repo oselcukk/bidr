@@ -69,15 +69,18 @@ aynı kimliği alır; ad değişse de değişmez.
   oranı (200×) sınırları; okuma da sınırla yapılır. Şifreli üye/arşiv `error` ("şifreli"),
   bozuk arşiv `error`, açılamayan tür (bsdtar yokken 7z/rar) `unsupported` ("desteklenmeyen
   arşiv"). Arşiv/e-posta istisnaları gaps.md ingest bölümünde listelenir.
-  **Aşağı akış:** üye dosyanın diskteki yolu `bidr.ingest.containers.source_path(kaynak,
-  rel_path, ws)` ile alınır (düz dosyada `kaynak/rel_path`); kanıt dosyalama arşivi değil üyenin
-  kendisini kopyalamalıdır.
+  **Aşağı akış:** describe, transcribe ve file üye dosyayı `bidr.transcribe.run.source_file`
+  ile alır (açılmış kopya `arsiv/<doc_id><ext>`, yoksa `containers.source_path` kaynaktan yeniden
+  açar; düz dosyada `kaynak/rel_path`); kanıt dosyalama arşivi değil üyenin kendisini kopyalar,
+  `evidence-index.csv` `kaynak` sütunu izlenebilir yolu (`a.zip!/b.pdf`) taşır.
 - **Parça grubu** (`parts.py`): tek belgenin bölünmüş parçaları. B, A'nın devamıdır: B'nin ilk
   sayfa numarası A'nın sonuncusunun bir fazlası ve destek (aynı toplam sayfa "Sayfa 3/6", aynı
   üst bilgi satırı ya da sözcük benzerliği). Dosya adına bakılmaz. Envanter: `parca_grubu`
   (`pg-<en küçük doc_id>`), `parca_sira`, `parca_gerekce`. identify'ın sürüm gruplarına katmak
-  için `bidr.ingest.parts.merge_into_versions(groups, parca)`: aynı parça grubu tek
-  `surum_grubu` (`sg-…`) olur; dosyalama (`bidr/file/select.py`) onu aynı ölçütte tek kanıt sayar.
+  için `bidr.ingest.parts.merge_into_versions(groups, parca)` (identify çağırır; `documents.jsonl`
+  `parca_grubu`, `parca_sira`): aynı parça grubu tek `surum_grubu` (`sg-…`) olur; dosyalama
+  (`bidr/file/select.py`) dönem/tarih/sayı kıyası yapmadan aynı ölçütte tek kanıt sayar (neden
+  `parca_grubu`; temsilci tek parça), audit'in yapı sürümü seçimi parça grubunu tek sürüm sayar.
 - **Birden çok belge şüphesi** (`parts.multi_doc_starts`): birleştirilmiş PDF'te sayfa numarası
   1'e dönüyorsa ya da üst bilgi + başlık + konu (sözcük örtüşmesi) birlikte değişiyorsa
   `coklu_belge_suphesi` = yeni belgenin başladığı sayfalar (`3;7`); bölme yapılmaz, gaps.md'ye
@@ -107,12 +110,7 @@ Kalan işler:
 3. Etiket tutarlılığı incelemesi (aynı içerik, farklı birimde farklı ölçüt); yuva etiketi
    önerilerinin (`slot-tags-oneri.yaml`) paket verisine işlenmesi kullanıcı onayıyla.
 4. Geçen yılla sürüm farkı ve yenilik işareti (önceki yıl metni yalnız yazımda kullanılıyor).
-5. Arşiv/e-posta üyeleri ve parça grupları için aşağı akış bağlantısı (ingest hazır, diğer
-   paketlerde yapılacak): `bidr/file/run.py`, `bidr/describe/run.py`, `bidr/transcribe/run.py`
-   kaynak dosyayı `src_root / rel_path` yerine `containers.source_path` ile almalı (yoksa üye
-   kanıtları `kaynak_dosya_yok` olur); `bidr/identify/pipeline.py` `parca_grubu`'nu envanterden
-   okuyup `parts.merge_into_versions` ile `surum_grubu`'na katmalı; `bidr/audit/run.py`
-   gaps.md'yi yeniden yazarken ingest bölümünü de korumalı. `bidr/file/select.py`'nin sürüm
-   ilişkisi (dönem/tarih/sayı karşılaştırması) parçaları `surum_belirsiz` ya da farklı yıl
-   tarihlerinde `ayri` sayabilir: parça grubunda bu denetim atlanmalı; dosyalanan temsilci tek
-   parçadır (parçaların birleştirilmesi ayrı iş). Birden çok belgeli PDF'in bölünmesi sonraki tur.
+5. Parça grubunun tarihi: parçalar tek kaynak sayılır (identify `surum_grubu`, dosyalamada tek
+   kanıt, audit sürüm durumunda tek üye) ama her parçanın dönem kuralı kendi tarihine bakar; tarihsiz
+   devam parçası grubun tarihini devralmıyor. Parçaların birleştirilmesi ve birden çok belgeli PDF'in
+   bölünmesi sonraki tur.

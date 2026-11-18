@@ -285,7 +285,8 @@ def test_pipeline_uses_content_not_filename(tmp_path):
         "3333333333333333": ("Toplantı Tutanağı.pdf", "kısa"),
     })
     rows = read_inventory(ws)
-    assert all(set(r) <= {"doc_id", "status", "method", "pages"} for r in rows)
+    # parça grubu ingest'in içerikten kurduğu bağdır (yol/ad değil)
+    assert all(set(r) <= {"doc_id", "status", "method", "pages", "parca_grubu", "parca_sira"} for r in rows)
     recs = run(ws.root, period=2025, write_report=True, log=lambda m: None)
     by = {r["doc_id"]: r for r in recs}
     assert by["1111111111111111"]["doc_type"] == "e_posta"

@@ -199,6 +199,11 @@ def plan(row: dict, base: str, src: Path | None, *, force: bool = False) -> dict
     return {"tur": kind, "sayfalar": pick} if pick else None
 
 
+def _src(src_root: Path, row: dict, ws: Workspace) -> Path | None:
+    """Kaynak dosya: düz dosyada `kaynak/rel_path`, arşiv/e-posta üyesinde açılmış kopya."""
+    return T.source_file(src_root, row, ws.root)
+
+
 def select_auto(ws: Workspace, src_root: Path, log: dict[str, dict] | None = None) -> dict[str, dict]:
     """--auto: betimlenecek belgeler ve sayfaları. Salt okunur (yalnız okur/ölçer)."""
     log = load_log(ws) if log is None else log
@@ -208,7 +213,7 @@ def select_auto(ws: Workspace, src_root: Path, log: dict[str, dict] | None = Non
         if row.get("status") not in ("ok", "ocr", "empty", "needs_ocr") or _kind(row.get("ext", "")) is None:
             continue
         try:
-            p = plan(row, base_text(ws, did, log), src_root / row["rel_path"])
+            p = plan(row, base_text(ws, did, log), _src(src_root, row, ws))
         except Exception:     # bozuk kaynak: seçilmez, prepare --only ile denenebilir
             continue
         if p:
@@ -336,8 +341,8 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, auto: bool = False,
             if not redo and settled(ws, did, log):
                 st["zaten_tamam"] += 1
                 continue
-            path = src_root / row["rel_path"]
-            if not path.is_file():
+            path = _src(src_root, row, ws)
+            if path is None or not path.is_file():
                 raise T.Skip("kaynak_dosya_yok")
             if row.get("sha256") and sha256_file(path) != row["sha256"]:
                 raise T.Skip("kaynak_degisti")

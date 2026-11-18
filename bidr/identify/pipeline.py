@@ -1,8 +1,9 @@
 """identify aşaması: text/<doc_id>.txt -> documents.jsonl (+ identify-report.md).
 
 Sınıflandırıcıya yalnız belge METNİ gider. inventory.csv'den yalnız şu sütunlar
-okunur: doc_id, dup_of (yalnız boş/dolu), status, method, pages. Yol/ad/uzantı
-sütunları (rel_path, ext) okunmaz; `INVENTORY_COLUMNS` dışındakiler atılır.
+okunur: doc_id, dup_of (yalnız boş/dolu), status, method, pages ve ingest'in içerikten
+kurduğu parça grubu (parca_grubu, parca_sira). Yol/ad/uzantı sütunları (rel_path, ext)
+okunmaz; `INVENTORY_COLUMNS` dışındakiler atılır.
 """
 from __future__ import annotations
 
@@ -20,7 +21,7 @@ from .classify import classify
 from .dates import DateFinder, academic_terms, term_year
 from .naming import title, working_name
 
-INVENTORY_COLUMNS = ("doc_id", "dup_of", "status", "method", "pages")
+INVENTORY_COLUMNS = ("doc_id", "dup_of", "status", "method", "pages", "parca_grubu", "parca_sira")
 SCHEMA_VERSION = 1
 
 
@@ -111,8 +112,17 @@ def run(workspace: Path, *, period: int | None = None, catalog: Catalog | None =
     groups = versions.group({r["doc_id"]: r["_folded"] for r in records},
                             {r["doc_id"]: r["tarih"] for r in records},
                             {r["doc_id"]: r["doc_type"] for r in records if r["doc_type"] != UNKNOWN})
+    # tek belgenin bölünmüş parçaları (ingest `parca_grubu`, içerikten) aynı sürüm grubuna katılır:
+    # dosyalama aynı ölçütte tek kanıt sayar, numaralama tek numara verir
+    from bidr.ingest.parts import merge_into_versions
+    parts = {row["doc_id"]: row.get("parca_grubu") or None for row in inv}
+    part_no = {row["doc_id"]: row.get("parca_sira") or "" for row in inv}
+    groups = merge_into_versions(groups, parts)
     by_id = {r["doc_id"]: r for r in records}
     for r in records:
+        pg = parts.get(r["doc_id"])
+        r["parca_grubu"] = pg
+        r["parca_sira"] = int(part_no[r["doc_id"]]) if pg and str(part_no[r["doc_id"]]).isdigit() else None
         g = groups.get(r["doc_id"])
         r["surum_grubu"] = g["grup"] if g else None
         r["surum_uyeleri"] = g["uyeler"] if g else []

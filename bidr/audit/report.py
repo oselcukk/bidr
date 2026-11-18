@@ -192,3 +192,88 @@ def gaps_md(a) -> str:
                 L.append(f"  - `{y['yuva']}` [{y['etiket']}] {y['metin']}")
         L.append("")
     return "\n".join(L).rstrip() + "\n"
+
+
+# -- işaretli bölümler ve "Kanıtla cevaplanmayan sorular" ----------------------------------------
+# gaps.md'nin gövdesini audit yazar; öteki aşamalar kendi bölümlerini `<!-- bidr:<ad> -->` …
+# `<!-- /bidr:<ad> -->` arasına yazar (ingest, kanıt seçimi, bağlantı yok, kapsam, …). Audit
+# yeniden yazarken bütün bu bölümleri sırasıyla korur; yalnız kendi ürettiği soru bölümünü yeniler.
+
+import json as _json
+import re as _re
+from pathlib import Path as _Path
+
+SORU_FILE = "soru-kapsami.json"          # bidr.verify.run.SUMMARY (verify yazar; salt okunur)
+SORU_BEGIN = "<!-- bidr:sorular -->"
+SORU_END = "<!-- /bidr:sorular -->"
+_BLOCK = _re.compile(r"<!-- bidr:([\w.-]+) -->.*?<!-- /bidr:\1 -->", _re.DOTALL)
+DURUM = {"cevapsiz": "cevapsız", "uydurma_suphesi": "uydurma şüphesi"}
+
+
+def marked_blocks(text: str, skip: tuple[str, ...] = ()) -> list[str]:
+    """gaps.md'deki işaretli bölümler (belgedeki sırayla; adı `skip`'te olanlar hariç)."""
+    return [m.group(0) + "\n" for m in _BLOCK.finditer(text or "") if m.group(1) not in skip]
+
+
+def soru_block(ws_root) -> str | None:
+    """`soru-kapsami.json` → "Kanıtla cevaplanmayan sorular" bölümü (işaretleyicilerle). Dosya yoksa
+    (verify çalışmadı) ya da okunamazsa None. Kullanıcının rapordan çıkardığı (`cikar`) metin
+    listelenmez."""
+    p = _Path(ws_root) / SORU_FILE
+    try:
+        d = _json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(d, dict):
+        return None
+    olc = d.get("olcutler") or {}
+    cikar = {c for c, e in olc.items() if isinstance(e, dict) and e.get("insan_karari") == "cikar"}
+    acik = [q for q in d.get("kanitla_cevaplanmayan") or [] if q.get("olcut") not in cikar]
+    den = [c for c in d.get("denetlenmedi") or [] if c not in cikar]
+    L = [SORU_BEGIN, "## Kanıtla cevaplanmayan sorular", "",
+         "FR-0833 her alt ölçüt açıklamasında beş soruyu ister (süreç, izleme, iyileştirme, kanıtlar, önceki "
+         "yıla göre değişiklik). Doğrulayıcının kanıt atıflı bir cümleyle cevaplanmadığını bulduğu sorular "
+         "(`soru-kapsami.json`): `cevapsız` kanıt yoksa doğrudur, kanıt varsa metne eklenmeli; `uydurma "
+         "şüphesi` metni reddettirir.", ""]
+    if acik:
+        for q in acik:
+            yer = f" ({', '.join(q.get('yerler') or [])})" if q.get("yerler") else ""
+            ger = f": {q['gerekce']}" if q.get("gerekce") else ""
+            L.append(f"- {q.get('olcut')} · {q.get('baslik') or q.get('soru')} — "
+                     f"{DURUM.get(q.get('durum'), q.get('durum'))}{yer}{ger}")
+    else:
+        L.append("Denetlenen bütün metinlerde beş soru kanıtla cevaplandı.")
+    L.append("")
+    if den:
+        L += ["### Soru kapsamı denetlenmeyen ölçütler", "",
+              "Metin kod denetiminde reddedildi, yeniden doğrulamada ya da eski görevle doğrulandı; "
+              "beş sorunun kapsamı bilinmiyor: " + ", ".join(den) + ".", ""]
+    L.append(SORU_END)
+    return "\n".join(L) + "\n"
+
+
+def compose_gaps(body: str, old: str, ws_root) -> str:
+    """Audit gövdesi + eski gaps.md'deki öteki aşamaların işaretli bölümleri + soru bölümü."""
+    keep = marked_blocks(old, skip=("sorular",))
+    sb = soru_block(ws_root)
+    if sb:
+        keep.append(sb)
+    return body + ("\n" + "\n".join(keep) if keep else "")
+
+
+def update_soru_gaps(gaps_path, ws_root) -> bool:
+    """Yalnız soru bölümünü yeniler (verify sonrası çağrılabilir; gövdeye dokunmaz). Değiştiyse True."""
+    gp = _Path(gaps_path)
+    cur = gp.read_text(encoding="utf-8") if gp.exists() else ""
+    sb = soru_block(ws_root) or ""
+    m = _re.search(_re.escape(SORU_BEGIN) + r".*?" + _re.escape(SORU_END) + r"\n?", cur, _re.DOTALL)
+    if m:
+        new = cur[:m.start()] + sb + cur[m.end():]
+    elif sb:
+        new = (cur.rstrip() + "\n\n" if cur.strip() else "") + sb
+    else:
+        return False
+    if new != cur:
+        gp.write_text(new, encoding="utf-8")
+        return True
+    return False

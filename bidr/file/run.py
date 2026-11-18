@@ -24,7 +24,7 @@ from pathlib import Path
 
 from bidr.common import Workspace, read_jsonl
 
-from .naming import date_of, file_name, safe_name
+from .naming import date_of, evidence_od, file_name, number_sources, safe_name, source_key
 
 SURUM = 1
 INDEX = "evidence-index.csv"
@@ -228,6 +228,7 @@ def plan(ws_root: Path, *, review_dir: Path | None = None, profile: str | None =
             if m.get("kabul") or restorable(m):     # insan birim kararıyla geri alınabilen de
                 spans[(did, m["yuva"])] = (m.get("denetim") or {}).get("alinti_konum")
     settings = S.load_settings(ws.root)
+    crit_od = {c["olcut"]: c.get("od") for c in a.criteria}
     can = _canonical(recs)
     groups: dict[tuple[str, str], list[dict]] = {}
     for row in a.rows:
@@ -245,6 +246,9 @@ def plan(ws_root: Path, *, review_dir: Path | None = None, profile: str | None =
         ods = [x for x in ods if x]
         if not ods:
             continue
+        # kanıt kodunun OD'si: kodun düşüşleri (kurum geneli OD2, od_kabul düşüşü) yansır; ölçüt
+        # OD'sine sayılmayan kanıt ölçüt OD'sinin üstünü göstermez (naming.evidence_od)
+        od = evidence_od(rows, crit_od.get(olcut)) or max(ods)
         own = [r for r in rows if r["doc_id"] == rep]
         flags = sorted({f for r in rows for f in r["flags"]})
         if weak:            # audit'le aynı: düşük güven önerilen OD'ye katılmaz; işaret kalır
@@ -259,7 +263,7 @@ def plan(ws_root: Path, *, review_dir: Path | None = None, profile: str | None =
         alintilar = list(dict.fromkeys(r["alinti"] for r in own if r["alinti"]))
         dol = [set(r["flags"]) & set(settings.dolayli) for r in (counted or rows)]
         items.append(Item(
-            olcut=olcut, doc_id=rep, od=max(ods),
+            olcut=olcut, doc_id=rep, od=od,
             yuvalar=sorted({r["yuva"] for r in rows}, key=lambda y: (y.split("/")[0], int(y.split("/")[1]))),
             alintilar=alintilar,
             spans=[spans.get((rep, r["yuva_model"])) for r in own],
@@ -357,11 +361,15 @@ def run(ws_root: Path, *, out: Path | None = None, source: str | Path | None = N
         uyarilar.append("review-decisions.jsonl yok: inceleme yapılmadı; decisions'taki kabul edilmiş "
                         "eşleşmeler dosyalandı, çıktı 'inceleme yapılmadı' diye işaretli")
 
-    # numaralama: ölçüt içinde OD (artan), sonra çalışma adı, sonra doc_id → kararlı
+    # numaralama: ölçüt içinde OD (artan), sonra çalışma adı, sonra doc_id → kararlı. Aynı kaynak
+    # (aynı içerik ya da aynı sürüm grubu; parça grubu identify'da sürüm grubuna katılır) bir
+    # ölçütte tek numara ve tek kod OD'si alır (naming.number_sources); dizinde aynı numaralı
+    # satırlar aynı adı ve aynı bağlantıyı taşır (write ve render (ölçüt, kanit_no) ile okur).
     by_c: dict[str, list[Item]] = {}
     for it in items:
         by_c.setdefault(it.olcut, []).append(it)
     from bidr.criteria.model import id_key
+    from bidr.transcribe.run import source_file
 
     if ev.exists():
         shutil.rmtree(ev)
@@ -371,34 +379,44 @@ def run(ws_root: Path, *, out: Path | None = None, source: str | Path | None = N
     for olcut in sorted(by_c, key=id_key):
         lst = sorted(by_c[olcut], key=lambda i: (i.od, (docs.get(i.doc_id) or {}).get("calisma_adi") or "",
                                                  i.doc_id))
-        ads = {}
+        numbered = number_sources(lst, key=lambda i: source_key(i.doc_id, docs), od=lambda i: i.od)
         for it in lst:
             if it.doc_id not in names:       # öncelik: insan > model > kural (bidr/name/resolve.py)
                 ad, src, uy = resolver.resolve(it.doc_id, it.kopyalar)
                 names[it.doc_id] = (ad, src)
                 uyarilar.extend(uy)
-            ads[it.doc_id] = names[it.doc_id][0]
-        seen: dict[str, int] = {}
-        for a in ads.values():
-            seen[a] = seen.get(a, 0) + 1
+        groups: dict[int, list[Item]] = {}
+        for sira, _, it in numbered:
+            groups.setdefault(sira, []).append(it)
+        # listede görünen ad numaranın adıdır (grubun ilk üyesi); farklı numaralarda aynı ad tarihle
+        # (yoksa kısa kimlikle) ayrılır
+        shown = {sira: names[mem[0].doc_id][0] for sira, mem in groups.items()}
+        seen = Counter(shown.values())
+        for sira, mem in groups.items():
+            if seen[shown[sira]] > 1:
+                shown[sira] = safe_name(f"{shown[sira]} ({date_of(docs.get(mem[0].doc_id)) or mem[0].doc_id[:6]})")
         cdir = ev / _criterion_dir(olcut)
         cdir.mkdir(parents=True, exist_ok=True)
-        for sira, it in enumerate(lst, 1):
-            ad = ads[it.doc_id]
-            if seen[ad] > 1:          # aynı ölçütte aynı ad: tarihle (yoksa kısa kimlikle) ayır
-                ad = safe_name(f"{ad} ({date_of(docs.get(it.doc_id)) or it.doc_id[:6]})")
+        used: set[str] = set()                 # klasördeki adlar (büyük/küçük harf duyarsız dosya sistemi)
+        crows: list[dict] = []
+        for sira, g_od, it in numbered:
+            mem = groups[sira]
+            ad = shown[sira]
+            fad = ad if len(mem) == 1 else safe_name(
+                f"{names[it.doc_id][0]} ({date_of(docs.get(it.doc_id)) or it.doc_id[:6]})")
             inv_row = inv.get(it.doc_id)
             flags = list(it.isaretler)
+            if len(mem) > 1:
+                flags.append("ayni_kaynak_tek_numara")
             pages_txt, rel_out = "", ""
             if inv_row is None:
                 flags.append("envanterde_yok")
                 n_missing += 1
             else:
-                srcf = src_root / inv_row["rel_path"]
-                ext = (inv_row.get("ext") or srcf.suffix or "").lower()
-                fn = file_name(olcut, sira, it.od, ad, ext)
-                dst = cdir / fn
-                if not srcf.is_file():
+                srcf = source_file(src_root, inv_row, ws.root)      # arşiv/e-posta üyesi: üyenin kendisi
+                ext = (inv_row.get("ext") or Path(inv_row["rel_path"]).suffix or "").lower()
+                dst = cdir / _unique(used, olcut, sira, g_od, fad, ext, it.doc_id)
+                if srcf is None or not srcf.is_file():
                     flags.append("kaynak_dosya_yok")
                     n_missing += 1
                 else:
@@ -420,13 +438,15 @@ def run(ws_root: Path, *, out: Path | None = None, source: str | Path | None = N
                         pages_txt = ""
                     rel_out = dst.relative_to(ev).as_posix()
             link, link_src = linker.resolve(it.doc_id, rel_out, it.kopyalar)
-            rows.append({
-                "kanit_no": f"{sira}_OD{it.od}", "olcut": olcut, "od": it.od, "ad": ad, "dosya": rel_out,
+            crows.append({
+                "kanit_no": f"{sira}_OD{g_od}", "olcut": olcut, "od": g_od, "ad": ad, "dosya": rel_out,
                 "doc_id": it.doc_id, "sayfalar": pages_txt, "yuvalar": "; ".join(it.yuvalar),
                 "alintilar": json.dumps(it.alintilar, ensure_ascii=False), "inceleme": it.inceleme,
                 "kopyalar": "; ".join(dict.fromkeys([*it.kopyalar, *it.kopyalar_surum])), "kaynak": (inv_row or {}).get("rel_path", ""),
-                "isaretler": ", ".join(dict.fromkeys(flags)), "ad_kaynagi": names[it.doc_id][1],
+                "isaretler": ", ".join(dict.fromkeys(flags)), "ad_kaynagi": names[mem[0].doc_id][1],
                 "baglanti": link, "baglanti_kaynagi": link_src})
+        _share_links(crows)
+        rows += crows
 
     idx = out / INDEX
     with open(idx, "w", encoding="utf-8", newline="") as f:
@@ -461,6 +481,36 @@ def run(ws_root: Path, *, out: Path | None = None, source: str | Path | None = N
             "kesilen_pdf": n_cut, "eksik_dosya": n_missing, "inceleme": meta["inceleme"],
             "index": str(idx), "evidence": str(ev), "zip": str(zpath) if zpath else None,
             "uyarilar": list(dict.fromkeys(uyarilar))}
+
+
+_LINK_RANK = {"insan": 0, "belge_metni": 1, "klasor": 2}
+
+
+def _share_links(rows: list[dict]) -> None:
+    """Aynı numaralı satırlar tek bağlantı taşır (render'ın haritası (ölçüt, kanit_no) → adres):
+    öncelik insan > belge metni > klasör, eşitlikte grubun ilk üyesi."""
+    by: dict[str, list[dict]] = {}
+    for r in rows:
+        by.setdefault(r["kanit_no"], []).append(r)
+    for mem in by.values():
+        if len(mem) < 2:
+            continue
+        cand = [r for r in mem if r["baglanti"]]
+        best = min(cand, key=lambda r: _LINK_RANK.get(r["baglanti_kaynagi"], 9)) if cand else None
+        for r in mem:
+            r["baglanti"], r["baglanti_kaynagi"] = (best["baglanti"], best["baglanti_kaynagi"]) if best else ("", "")
+
+
+def _unique(used: set[str], olcut: str, sira: int, od: int, ad: str, ext: str, did: str) -> str:
+    """Klasörde tekil dosya adı (büyük/küçük harf duyarsız: macOS/Windows). Çakışmada ada kısa
+    kimlik, yine çakışırsa sayaç eklenir; `[Ölçüt-sıra-ODk]` öneki ve uzantı korunur."""
+    cand, k = file_name(olcut, sira, od, ad, ext), 1
+    while cand.casefold() in used:
+        # ek kısaltmayla düşmesin: önce ad kısaltılır
+        cand = file_name(olcut, sira, od, f"{safe_name(ad, 64)} ({did[:6]}{'' if k == 1 else f'-{k}'})", ext)
+        k += 1
+    used.add(cand.casefold())
+    return cand
 
 
 def _select_pages(ws: Workspace, it: Item, srcf: Path) -> tuple[list[int] | None, str | None]:

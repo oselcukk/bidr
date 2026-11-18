@@ -133,31 +133,44 @@ def test_old_events_are_continuity_only_and_capped_in_list(tmp_path):
     docs["k_ici"] = (_doc("bolum_kurulu_karari", "2025-04-01"), [_m("B.1.1", "B.1.1/4", "uygula")])
     ws, src = _ws(tmp_path, docs)
     a = build(ws)
-    for d in ("anket_2015", "anket_2016", "anket_2023", "plan_2016"):
+    for d in ("anket_2015", "anket_2016", "anket_2023"):
         r = next(r for r in a.rows if r["doc_id"] == d)
-        assert not r["sayilir"] and "gecmis_kanit" in r["flags"], d     # planla da sayılmaz
-    assert _crit(a, "B.1.1")["od"] == 3                                  # örtük plan + U
+        assert not r["sayilir"] and "gecmis_kanit" in r["flags"], d     # izleme halkası sayılmaz
+    # dönemden önce alınmış, hâlâ yürürlükteki usul kararı plan halkasını kanıtlar (kullanıcı kararı)
+    r = next(r for r in a.rows if r["doc_id"] == "plan_2016")
+    assert r["sayilir"] and "guncellik_dogrulanmali" in r["flags"] and "gecmis_kanit" not in r["flags"]
+    assert _crit(a, "B.1.1")["od"] == 3                                  # plan (eski karar) + U
     out = tmp_path / "out"
     R.run(ws, out=out, source=src)
     ids = _index_ids(out)
-    assert "k_ici" in ids and len(ids & set(docs) - {"k_ici"}) == 1     # en çok 1 geçmiş kanıt
-    assert sum(e["neden"] == "gecmis_siniri" for e in _secim(out)["elenen"]) == 3
+    assert {"k_ici", "plan_2016"} <= ids                                 # plan kanıtı geçmiş sınırına girmez
+    assert len(ids & {"anket_2015", "anket_2016", "anket_2023"}) == 1    # en çok 1 geçmiş kanıt
+    assert sum(e["neden"] == "gecmis_siniri" for e in _secim(out)["elenen"]) == 2
     (ws / "config.yaml").write_text("rapor:\n  kanit_secimi:\n    gecmis_kanit_en_fazla: 0\n", encoding="utf-8")
     R.run(ws, out=out, source=src)
-    assert _index_ids(out) == {"k_ici"}
+    assert _index_ids(out) == {"k_ici", "plan_2016"}
 
 
 def test_previous_year_plan_rule_is_configurable(tmp_path, monkeypatch):
     p = tmp_path / "profiller"
     p.mkdir()
-    txt = D.DEFAULT_PATH.read_text(encoding="utf-8").replace("onceki_olay_plani_sayilir: false",
-                                                             "onceki_olay_plani_sayilir: true")
+    # varsayılan (true): eski usul kararının planı sayılır, uygulaması sayılmaz
+    rule = D.load_rule()
+    assert rule.onceki_olay_plani
+    doc = _doc("bolum_kurulu_karari", "2022-01-01")
+    r = D.apply_row(rule, doc, "bolum_kurulu_karari", "planla")
+    assert r["sayilir"] and "guncellik_dogrulanmali" in r["flags"]
+    r = D.apply_row(rule, doc, "bolum_kurulu_karari", "uygula")
+    assert not r["sayilir"] and "gecmis_kanit" in r["flags"]
+    # kurum false seçerse planla da sayılmaz
+    txt = D.DEFAULT_PATH.read_text(encoding="utf-8").replace("onceki_olay_plani_sayilir: true",
+                                                             "onceki_olay_plani_sayilir: false")
     (p / D.FILE).write_text(txt, encoding="utf-8")
     monkeypatch.setenv("BIDR_PROFILES_DIR", str(p))
     rule = D.load_rule()
-    assert rule.onceki_olay_plani
-    r = D.apply_row(rule, _doc("bolum_kurulu_karari", "2022-01-01"), "bolum_kurulu_karari", "planla")
-    assert r["sayilir"] and "guncellik_dogrulanmali" in r["flags"]
+    assert not rule.onceki_olay_plani
+    r = D.apply_row(rule, doc, "bolum_kurulu_karari", "planla")
+    assert not r["sayilir"] and "gecmis_kanit" in r["flags"]
 
 
 # -- 1c: tarih kaynağı ve birden çok tarih --------------------------------------------------
