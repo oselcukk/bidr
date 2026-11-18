@@ -121,7 +121,7 @@ def test_version_change_needs_summary_and_yes(ws, monkeypatch):
     assert st["paket"] == 4 and st["yeni"] == 4 and not st["onay_gerekli"]
     assert not (root / "work" / "fine" / R.RESTALE).exists()
     recs = _recs(root)
-    assert all(recs[k]["yeniden"] == {"asama": "fine", "neden": "eski_surum", "onceki_surum": "8"} for k in done)
+    assert all(recs[k]["yeniden"] == {"asama": "fine", "neden": "eski_surum", "onceki_surum": "9"} for k in done)
     ck = _check(root, "fine")
     assert not ck.bitti and ck.kim == "ajan" and ck.ilerleme["cevapsiz"] == 4
     _agent(root, fake, "fine")
@@ -223,7 +223,7 @@ def test_kurum_geneli_in_prompt_and_schema():
     sch = json.loads((R.TASKS_DIR / R.FINE / "output.schema.json").read_text(encoding="utf-8"))
     assert "birim_iliskisi" in sch["required"] and "kurum_geneli" not in sch["properties"]
     assert set(sch["properties"]["birim_iliskisi"]["enum"]) == set(R.BIRIM_ILISKILERI)
-    assert R.task_version(R.FINE) == "8"
+    assert R.task_version(R.FINE) == "9"
 
 
 # -- 4. mükerrer metin ------------------------------------------------------------------

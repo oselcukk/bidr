@@ -527,7 +527,7 @@ def apply_fine(ctx: Context, did: str, rec: dict, out: dict, meta: dict, model_i
     rec["ince"] = {"karar": out.get("karar"), "gerekce": out.get("gerekce", ""), "kurum_geneli": kg,
                    "birim_iliskisi": rel, "birim_iliskisi_kaynagi": rel_src,
                    **({"birim_iliskisi_model": model_rel} if pin else {}),
-                   "kanit_adi": evidence_name_of(out), "model": model_id,
+                   "kanit_adi": evidence_name_of(out), **activity_of(out), "model": model_id,
                    "metin": meta["metin"], "istem_token_tahmini": meta["istem_token_tahmini"],
                    **(extra or {})}
     rec["eslesmeler"] = matches
@@ -540,6 +540,19 @@ def apply_fine(ctx: Context, did: str, rec: dict, out: dict, meta: dict, model_i
         rec["karar"] = "olcut_yok"
     rec["reddedilen_eslesme"] = sum(not m["kabul"] for m in matches)
     return rec
+
+
+def activity_of(out: dict) -> dict:
+    """Belge düzeyi `faaliyet` (v9, isteğe bağlı) → `ince` alanı. Cevapta alan yoksa (v8 ve
+    öncesi) kayda girmez: belge faaliyetsiz sayılır. Ad yalnız boşlukça düzeltilir; gruplama
+    ve tarih denetimi `bidr.faaliyet`'te."""
+    if "faaliyet" not in out:
+        return {}
+    f = out.get("faaliyet")
+    if not isinstance(f, dict):
+        return {"faaliyet": None}
+    return {"faaliyet": {"ad": " ".join(str(f.get("ad") or "").split()), "tarih": f.get("tarih"),
+                         "asama": f.get("asama")}}
 
 
 def evidence_name_of(out: dict) -> dict | None:
@@ -696,6 +709,8 @@ def rep_output(rep: dict) -> dict:
     ka = rep["ince"].get("kanit_adi")
     if isinstance(ka, dict) and isinstance(ka.get("oneri"), str):
         out["kanit_adi"] = ka["oneri"]
+    if "faaliyet" in rep["ince"]:
+        out["faaliyet"] = rep["ince"]["faaliyet"]
     return out
 
 
