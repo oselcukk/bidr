@@ -19,6 +19,7 @@ COLS = [
     ("belge", "belge (çalışma adı)", 42, False),
     ("belge_turu", "belge türü", 18, False),
     ("donem_ici", "dönem içi", 9, False),
+    ("donem_kurali", "dönem kuralı", 26, False),
     ("olcut", "ölçüt", 8, False),
     ("yuva", "yuva", 9, False),
     ("yuva_metni", "yuva metni", 42, False),
@@ -62,7 +63,14 @@ HELP = [
     "`bidr audit apply` slot-tags-oneri.yaml önerisi üretir.",
     "Turuncu OD hücresi: ölçütü OD4/OD5'e yükselten eşleşme; koyu turuncu: yükselten etiket henüz öneri.",
     "Sarı güven: düşük güven; bu eşleşme önerilen OD'ye katılmaz (yalnız 'OD düşük güven dahil').",
-    "Gri satır: sayılmayan eşleşme (ret, dönem dışı uygulama kanıtı).",
+    "Gri satır: sayılmayan eşleşme (ret; önceki yıl olayı = geçmiş kanıt; tarihi bilinmeyen ya da "
+    "rapor yılından sonraki olay belgesi).",
+    "Dönem kuralı (komisyon kararı): yapı belgesi (müfredat, ders kataloğu/bilgi formu, yönerge, iş akışı, "
+    "görev dağılımı, stratejik plan) rapor yılında yürürlükteyse sayılır; tarihi başka yıl ya da yoksa "
+    "'güncellik doğrulanmalı' (sarı). Olay belgesi (karar, tutanak, anket sonucu, etkinlik, rapor, yazışma) "
+    "rapor yılında gerçekleşmiş olmalı: önceki yıl 'geçmiş kanıt (süreklilik)', tarihsiz 'tarih doğrulanmalı' "
+    "(sayılmaz; tarih rapor yılındaysa duzelt + aşama ile sayın). Ölçütte gözden geçirme döngüsü tanımlıysa "
+    "döngü içindeki önceki yıl olayı 'döngü halkası' olarak sayılır.",
     "Önerilen OD kuralı: P→OD2, +U→OD3, +K ve Ö (ikisi)→OD4, +Z→OD5; zincir eksikse düşük düzey. "
     "Kurum geneli yönetmelik/yönerge yalnız P sayılır. Ayrıntı: docs/AUDIT.md.",
     "Tabloyu doldurduktan sonra: bidr audit apply -w <çalışma alanı>",
@@ -100,6 +108,8 @@ def write_review(a, path: Path) -> None:
             for k in ("od", "etiket", "etiket_durumu", "vurgu"):
                 ws.cell(row=n, column=idx[k]).fill = fill
             ws.cell(row=n, column=idx["od"]).font = Font(bold=True)
+        if {"guncellik_dogrulanmali", "tarih_dogrulanmali"} & set(r["flags"]):
+            ws.cell(row=n, column=idx["donem_kurali"]).fill = F_LOW
         if r["zayif"]:
             ws.cell(row=n, column=idx["guven"]).fill = F_LOW
             ws.cell(row=n, column=idx["vurgu"]).fill = F_LOW

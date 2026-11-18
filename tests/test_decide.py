@@ -181,7 +181,7 @@ def test_decide_records_and_skips(ws):
     a = recs[ids["aynı"]]
     assert a["karar"] == "olcut_var" and a["olcutler"][0]["olcut"] == "B.1.1"
     assert a["kaba"]["liste_disi"] == ["A.3.1"]
-    assert a["kaba"]["model"] == "fake:test" and a["gorev"] == {"classify_coarse": "2", "classify_fine": "5"}
+    assert a["kaba"]["model"] == "fake:test" and a["gorev"] == {"classify_coarse": "2", "classify_fine": "6"}
     assert a["asama"] == "ince" and a["ince"]["model"] == "fake:test" and a["kaba"]["kip"] == "saglayici"
     # profil dışı aday (A.3.1) birleşime girmez
     assert "A.3.1" not in a["adaylar"] and a["adaylar"][:2] == ["B.1.1", "B.2.1"]
