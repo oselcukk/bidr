@@ -51,7 +51,7 @@ def test_etiket_dosyasi_gecerli_ve_tam():
         assert t.text == CS.get_slot(t.slot).text
     oz = tag_summary(tags)
     assert oz["yuva"] == 273 and oz["dipnot"] == 5
-    assert oz["belirsiz"] > 0
+    assert oz["belirsiz"] == sum(t.uncertain for t in tags.values() if t.kind != "dipnot")
 
 
 def test_etiket_dogrulama_hatalari():
