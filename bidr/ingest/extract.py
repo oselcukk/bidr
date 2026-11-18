@@ -34,6 +34,17 @@ PDF_PAGE_WORKERS = 4
 # sayfalarında (metin vektör çizim) OCR, metin katmanının 5-30 katı metin veriyor.
 LOGO_COVER = 0.05
 TEXT_ENOUGH = 300
+# Taranmış sayfanın gömülü metin katmanı (tarayıcının kendi OCR'ı) çöp olabilir
+# ("Toplantl Saylsl", "GEBnETEKNİK"): harf/rakam sayısı yeterli göründüğü için
+# yukarıdaki kurallar yakalamaz. Görsel kapsaması SCAN_COVER'ı aşan ve metin sağlığı
+# (ocr.text_health) LAYER_HEALTH_OK'un altında kalan sayfa da OCR'lanır. OCR metni
+# yalnız belirgin şekilde daha sağlıklıysa (HEALTH_GAIN) ve metin kaybettirmiyorsa
+# (harf/rakam en az HEALTH_KEEP_ALNUM katı) seçilir; aksi halde metin katmanı kalır.
+# Doğuştan dijital sayfada (görsel yok) OCR, katmanla aynı sağlığı verir: denenmez.
+SCAN_COVER = 0.3
+LAYER_HEALTH_OK = 0.9
+HEALTH_GAIN = 0.05
+HEALTH_KEEP_ALNUM = 0.85
 
 
 class Unsupported(Exception):
@@ -56,6 +67,9 @@ class Extraction:
     images_lowq: int = 0
     # Kalitesi düşük bulunup metne eklenmeyen OCR parçaları (yalnız ölçüm için)
     ocr_dropped: list[tuple[str, float | None]] = field(default_factory=list)
+    # Metne giren PDF metin katmanı sayfaları: (metin, taranmış sayfa mı). Kalitesi
+    # metin sağlığıyla ölçülür (tesseract güveni yok).
+    layer_units: list[tuple[str, bool]] = field(default_factory=list)
 
     @property
     def text(self) -> str:
@@ -151,11 +165,17 @@ def extract_pdf(path: Path, use_ocr: bool) -> Extraction:
     raw += [""] * (n - len(raw))
     pages = [_clean(p) for p in raw[:n]] if n else [_clean(p) for p in raw]
 
+    health = [ocr.text_health(p) for p in pages]
     weak = [i for i, p in enumerate(pages) if _alnum(p) < STAMP_PAGE_ALNUM or _garbled(p)]
-    cover = _pdf_image_cover(path, n or len(pages)) if weak else {}
+    # Taranmış sayfa adayları: katman metni yeterli ama sağlığı düşük (görsel kapsaması
+    # ancak pdfimages ile bilinir; bu yüzden önce ucuz metin süzgeci).
+    sick = [i for i, p in enumerate(pages) if i not in set(weak)
+            and health[i] is not None and health[i] < LAYER_HEALTH_OK]
+    cover = _pdf_image_cover(path, n or len(pages)) if (weak or sick) else {}
+    scanned = [cover.get(i + 1, 0.0) >= SCAN_COVER for i in range(len(pages))]
     ocr_pages = ocr_missing = 0
     can_ocr = use_ocr and ocr.ocr_available()
-    jobs: list[tuple[int, bool]] = []
+    jobs: list[tuple[int, str]] = []
     for i in weak:
         p = pages[i]
         must = _alnum(p) < MIN_PAGE_ALNUM or _garbled(p)
@@ -167,27 +187,47 @@ def extract_pdf(path: Path, use_ocr: bool) -> Extraction:
             if must and (i + 1) in cover:
                 ocr_missing += 1
             continue
-        jobs.append((i, must))
+        jobs.append((i, "must" if must else "stamp"))
+    if can_ocr:
+        jobs += [(i, "health") for i in sick if scanned[i]]
     # Sayfalar paralel OCR'lanır; toplam eşzamanlı OCR ocr modülünde sınırlıdır.
     with ThreadPoolExecutor(max_workers=PDF_PAGE_WORKERS) as pool:
         results = list(pool.map(lambda j: ocr.ocr_pdf_page(path, j[0] + 1), jobs))
     units: list[tuple[str, float | None]] = []
     dropped: list[tuple[str, float | None]] = []
-    for (i, must), res in zip(jobs, results):
+    replaced: set[int] = set()
+    for (i, why), res in zip(jobs, results):
         t = _clean(res.text)
-        p = pages[i]
-        a = _alnum(p)
-        ta = _alnum(t)
-        # Zorunlu durumda OCR daha çok metin verdiyse; damga durumunda belirgin
-        # (2 kat) fazlaysa OCR metni kullanılır.
-        if (must and (ta > a or _garbled(p))) or (not must and ta > 2 * a):
+        if _prefer_ocr(pages[i], t, why):
             pages[i] = t
+            replaced.add(i)
             ocr_pages += 1
             units.append((t, res.conf))
-        elif must:
+        elif why == "must":
             dropped.append((t, res.conf))  # gerekli OCR işe yaramadı: kalite ölçüsüne girer
+    layer = [(p, scanned[i]) for i, p in enumerate(pages) if i not in replaced and p.strip()]
     method = "pdftotext" + (f"+ocr({ocr_pages}/{len(pages)})" if ocr_pages else "")
-    return Extraction(pages, method, n, ocr_pages, ocr_missing, ocr_units=units, ocr_dropped=dropped)
+    return Extraction(pages, method, n, ocr_pages, ocr_missing, ocr_units=units, ocr_dropped=dropped,
+                      layer_units=layer)
+
+
+def _prefer_ocr(layer: str, t: str, why: str) -> bool:
+    """Sayfa için OCR metni metin katmanından iyi mi?
+
+    must: katman boş/okunamaz, OCR daha çok metin veriyorsa; stamp (az metin +
+    görsel): OCR belirgin (2 kat) fazlaysa; ayrıca her durumda OCR belirgin şekilde
+    daha sağlıklı ve metin kaybettirmiyorsa (taranmış sayfanın çöp katmanı)."""
+    a, ta = _alnum(layer), _alnum(t)
+    if why == "must" and (ta > a or _garbled(layer)):
+        return True
+    if why == "stamp" and ta > 2 * a:
+        return True
+    hl, ho = ocr.text_health(layer), ocr.text_health(t)
+    if ho is None or ta == 0:
+        return False
+    if hl is None:
+        return ta > a
+    return ho >= hl + HEALTH_GAIN and ta >= HEALTH_KEEP_ALNUM * a
 
 
 # ------------------------------------------------------------------------ Görsel
@@ -738,15 +778,22 @@ LOW_OCR_ALNUM = 40
 
 
 def assess(res: Extraction) -> dict:
-    """OCR kalite ölçüsü: `ocr_conf` (0-100), `quality` (0-1), `low_quality` (bool).
+    """Kalite ölçüsü: `ocr_conf` (0-100), `quality` (0-1), `low_quality` (bool).
 
-    Yalnız OCR'lanan parçalar ölçülür (metne giren + düşük kaliteden atılan gömülü
-    görseller). OCR'sız belgede alanlar boştur. Düşük kalite işareti, belge metni
-    OCR'a dayandığında (OCR payı >= yarı ya da belge metni kısa) konur.
+    `quality` belgenin metnine giren her parçanın kalitesinin harf/rakam ağırlıklı
+    ortalamasıdır: OCR parçası = tesseract güveni x metin sağlığı (+ kalitesi düşük
+    diye atılan OCR parçaları), PDF metin katmanı sayfası = metin sağlığı. Ne OCR ne
+    PDF metin katmanı olan belgede (docx, xlsx...) alanlar boştur.
+
+    Düşük kalite işareti: belge metni OCR'a dayanıyor (OCR payı >= yarı ya da belge
+    metni kısa) ve OCR kalitesi düşük; ya da metnin en az yarısı taranmış sayfaların
+    metin katmanından geliyor ve o katmanın sağlığı düşük (OCR düzeltemedi/yapılamadı).
     """
     units = [(t, c, True) for t, c in res.ocr_units] + [(t, c, False) for t, c in res.ocr_dropped]
-    if not units:
+    layer = [(t, sc) for t, sc in res.layer_units if t.strip()]
+    if not units and not layer:
         return {"ocr_conf": "", "quality": "", "low_quality": False}
+    total = _alnum(res.text)
     wsum = qsum = csum = cw = 0.0
     used_alnum = 0
     for t, c, used in units:
@@ -759,11 +806,27 @@ def assess(res: Extraction) -> dict:
         if c is not None:
             csum += w * c
             cw += w
-    quality = qsum / wsum if wsum else 0.0
+    ocr_quality = qsum / wsum if wsum else None
     conf = csum / cw if cw else None
-    total = _alnum(res.text)
-    depends = used_alnum * 2 >= total or total < 200
-    low = depends and (quality < LOW_QUALITY or used_alnum < LOW_OCR_ALNUM)
+    low = False
+    if units:
+        depends = used_alnum * 2 >= total or total < 200
+        low = depends and (ocr_quality < LOW_QUALITY or used_alnum < LOW_OCR_ALNUM)
+    scan_a = scan_h = 0.0
+    for t, scanned in layer:
+        h = ocr.text_health(t)
+        if h is None:
+            continue
+        a = _alnum(t)
+        w = max(a, 20)
+        wsum += w
+        qsum += w * h
+        if scanned:
+            scan_a += a
+            scan_h += a * h
+    if scan_a and scan_a * 2 >= total and scan_h / scan_a < LOW_QUALITY:
+        low = True
+    quality = qsum / wsum if wsum else 0.0
     return {
         "ocr_conf": "" if conf is None else round(conf, 1),
         "quality": round(quality, 2),

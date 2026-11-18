@@ -528,3 +528,80 @@ def test_photo_pdf_without_text_flagged(tmp_path):
     run(src, ws, log=lambda m: None)
     r = read_inv(ws)["foto.pdf"]
     assert r["low_quality"] == "1"
+
+
+# ------------------------------------------- taranmış sayfanın çöp metin katmanı
+
+SCAN_LINES = ["BOLUM KURULU TOPLANTI TUTANAGI", "TOPLANTI TARIHI 19.11.2025 SAYISI 4",
+              "GUNDEM MADDELERI VE KARARLAR", "KATILIMCILAR LISTESI VE IMZALAR",
+              "MUFREDAT GUNCELLEME KOMISYONU", "DERS ICERIKLERI GOZDEN GECIRILDI",
+              "OGRENCI GERI BILDIRIMLERI INCELENDI", "KARAR OYBIRLIGI ILE ALINMISTIR",
+              "BOLUM BASKANI ONAYINA SUNULMUSTUR", "TOPLANTI SONA ERMISTIR"] * 2
+# Tarayıcı OCR'ının çöp katmanını taklit eden bozulmuş kopya ("Toplantl Saylsl")
+GARBLED_LAYER = "\n".join(
+    " ".join(w[0] + w[1:].lower().replace("i", "l").replace("a", "|").replace("e", "E")
+             if len(w) > 3 else w for w in ln.split()) for ln in SCAN_LINES)
+
+
+def _scan_pdf(tmp_path: Path) -> Path:
+    from PIL import Image
+
+    img = tmp_path / "sayfa.png"
+    make_text_image(img, SCAN_LINES)
+    pdf = tmp_path / "tarama.pdf"
+    Image.open(img).convert("RGB").save(pdf, "PDF", resolution=150)
+    return pdf
+
+
+@pytest.mark.skipif(not HAS_OCR, reason="tesseract/poppler yok")
+def test_scanned_page_garbled_layer_replaced_by_ocr(tmp_path, monkeypatch):
+    """Taranmış sayfa + yeterli uzunlukta ama sağlıksız metin katmanı: OCR'lanır, daha
+    sağlıklı olan seçilir; kalite metin katmanı için de dolar."""
+    pdf = _scan_pdf(tmp_path)
+    assert ocr.text_health(GARBLED_LAYER) < ex.LAYER_HEALTH_OK
+    assert ex._alnum(GARBLED_LAYER) >= ex.STAMP_PAGE_ALNUM  # eski kurallar OCR'lamazdı
+    monkeypatch.setattr(ex, "_run", _fake_run_factory(ex._run, GARBLED_LAYER, cover_ppi=150))
+    res = ex.extract(pdf, use_ocr=True)
+    assert res.ocr_pages == 1 and "KURULU" in res.text.upper() and "S|ylsl" not in res.text
+    q = ex.assess(res)
+    assert q["ocr_conf"] and q["quality"] >= ex.LOW_QUALITY and not q["low_quality"]
+    # OCR kapalı: katman kalır, kalite katman sağlığından dolar, düşük kalite işaretlenir
+    off = ex.extract(pdf, use_ocr=False)
+    assert "S|ylsl" in off.text and off.layer_units and off.layer_units[0][1]
+    q = ex.assess(off)
+    assert q["ocr_conf"] == "" and q["quality"] == round(ocr.text_health(GARBLED_LAYER), 2)
+    assert q["low_quality"]
+
+
+@pytest.mark.skipif(not HAS_OCR, reason="tesseract/poppler yok")
+def test_healthy_layer_on_scan_not_ocred(tmp_path, monkeypatch):
+    """Taranmış sayfanın sağlıklı metin katmanı (ve görselsiz sayfanın sağlıksız
+    katmanı: tablo/kod) OCR'a gitmez; kalite yine dolar ve düşük işaretlenmez."""
+    pdf = _scan_pdf(tmp_path)
+    calls: list[int] = []
+    real = ocr.ocr_pdf_page
+    monkeypatch.setattr(ocr, "ocr_pdf_page", lambda p, n: (calls.append(n), real(p, n))[1])
+    good = "Bölüm Kurulu toplantı tutanağı gündem maddeleri ve kararlar burada yer alıyor. " * 6
+    monkeypatch.setattr(ex, "_run", _fake_run_factory(ex._run, good, cover_ppi=150))
+    res = ex.extract(pdf, use_ocr=True)
+    assert calls == [] and res.ocr_pages == 0 and "Bölüm Kurulu" in res.text
+    q = ex.assess(res)
+    assert q["quality"] == 1.0 and not q["low_quality"]
+    # görsel kapsaması logo boyutunda: sağlıksız katman da OCR'lanmaz (doğuştan dijital)
+    monkeypatch.setattr(ex, "_run", _fake_run_factory(ex._run, GARBLED_LAYER, cover_ppi=1200))
+    res = ex.extract(pdf, use_ocr=True)
+    assert calls == [] and "S|ylsl" in res.text
+    assert not ex.assess(res)["low_quality"]  # taranmış sayfa değil: işaret yok
+
+
+def test_prefer_ocr_rules():
+    garbled = GARBLED_LAYER
+    clean = "\n".join(SCAN_LINES)
+    assert ex._prefer_ocr(garbled, clean, "health")
+    assert not ex._prefer_ocr(clean, garbled, "health")
+    # daha sağlıklı ama metnin çoğunu kaybettiriyor: katman kalır
+    assert not ex._prefer_ocr(garbled, clean[:120], "health")
+    # zorunlu durum eski kuralı korur: boş katmana OCR
+    assert ex._prefer_ocr("", "kisa metin", "must")
+    # damga durumu: OCR iki kattan fazla metin verirse
+    assert ex._prefer_ocr("EBYS damga 12345", clean, "stamp")
