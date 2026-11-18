@@ -2,11 +2,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "classify_fine",
   "type": "object",
-  "required": ["karar", "kurum_geneli", "eslesmeler", "gerekce"],
+  "required": ["karar", "kurum_geneli", "kanit_adi", "eslesmeler", "gerekce"],
   "additionalProperties": false,
   "properties": {
     "karar": {"enum": ["olcut_var", "olcut_yok", "kanit_degil"]},
     "kurum_geneli": {"type": "boolean"},
+    "kanit_adi": {"type": "string", "minLength": 3, "maxLength": 80},
     "eslesmeler": {
       "type": "array",
       "maxItems": 8,

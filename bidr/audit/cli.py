@@ -23,6 +23,10 @@ def _run(args) -> int:
                 print(f"HATA {len(st['gecersiz'])} satırın kararı geçersiz (yukarıda); düzeltip yeniden "
                       "apply çalıştırın", file=sys.stderr)
                 return 1
+            if st["kanit_adi_gecersiz"]:
+                print(f"HATA {len(st['kanit_adi_gecersiz'])} belgenin kanıt adı düzeltmesi geçersiz "
+                      "(yukarıda); öteki kararlar işlendi", file=sys.stderr)
+                return 1
             if st["bos"]:
                 print(f"{st['bos']} satır karar bekliyor.")
             return 0

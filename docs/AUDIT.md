@@ -128,7 +128,9 @@ dönem kuralı (sınıf · zaman · işaret, ör. "olay · önceki yıl (2023) �
 (süreklilik)"; doğrulama isteyen hücre sarı), ölçüt, yuva ve metni, model aşaması, sayılan aşama, sayılan OD, yuva etiketi (aşama → OD) ve
 durumu (öneri/onaylı), vurgu, güven, işaretler, alıntı, gerekçe; kullanıcı sütunları
 (mavi): **KARAR** (kabul/ret/duzelt), düzelt: ölçüt/yuva/aşama, yuva etiketi kararı
-(onayla/duzelt) ve yeni aşama(lar), NOT.
+(onayla/duzelt) ve yeni aşama(lar), NOT; **kanıt adı** (belge sütununun yanında; öneriyle
+dolu, düzeltilebilir). Sonda salt okunur "kanıt adı (öneri)" ve "kanıt adı kaynağı"
+(insan/model/kural; öncelik insan > model > kural, `bidr/name/resolve.py`).
 
 Vurgular: OD4/OD5'e yükselten satırın OD/etiket hücreleri turuncu; yükselten etiket hâlâ
 öneri ise koyu turuncu ve "ÖNERİ etiket" yazar. Düşük güven sarı. Sayılmayan satırlar gri (ret, geçmiş kanıt, tarihsiz ya da dönem sonrası olay).
@@ -144,7 +146,10 @@ Tabloyu okur, her satırın kararını doğrular (geçersiz karar: çıkış 1, 
 `review-decisions.jsonl`'i yazar, `gaps.md` ve `audit-olcutler.json`'u kararlarla yeniden
 hesaplar (tabloyu yeniden yazmaz). Yuva etiketi kararları `slot-tags-oneri.yaml`'a toplanır:
 yuva, mevcut etiket, önerilen aşama/OD (`durum: onayli`), kaynak satırlar; aynı yuvaya
-çelişen öneriler `celiskiler`'e. Paket verisi (`bidr/data/criteria/`) değişmez; öneriyi
+çelişen öneriler `celiskiler`'e. "kanıt adı" hücresi öneriden farklıysa düzeltme
+`kanit-adlari.jsonl`'e (`--out` klasörü) `kaynak: insan` olarak yazılır; ad belgeye aittir
+(bir satırda değiştirmek yeter). Aynı belgenin satırlarında farklı adlar ya da kişi adı/unvan/
+e-posta içeren ad geçersizdir (`kanit_adi_gecersiz`, çıkış 1; öteki kararlar işlenir). Paket verisi (`bidr/data/criteria/`) değişmez; öneriyi
 işlemek kullanıcı onayıyla ayrı bir adımdır.
 
 ## Tamamlanma şartı (`audit_tamam`)

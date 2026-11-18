@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "name_evidence",
+  "type": "object",
+  "required": ["kanit_adi", "gerekce"],
+  "additionalProperties": false,
+  "properties": {
+    "kanit_adi": {"type": "string", "minLength": 3, "maxLength": 80},
+    "gerekce": {"type": "string", "maxLength": 300}
+  }
+}

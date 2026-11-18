@@ -20,7 +20,7 @@ from pathlib import Path
 
 from bidr.common import Workspace, read_jsonl
 
-from .naming import date_of, evidence_name, file_name, safe_name
+from .naming import date_of, file_name, safe_name
 
 SURUM = 1
 INDEX = "evidence-index.csv"
@@ -31,7 +31,7 @@ NO_REVIEW = "INCELEME_YAPILMADI.txt"
 REVIEW = "review-decisions.jsonl"
 COLUMNS = ["kanit_no", "olcut", "od", "ad", "dosya", "doc_id", "sayfalar", "yuvalar", "alintilar",
            # sözleşme sütunlarından sonra ek bilgi
-           "inceleme", "kopyalar", "kaynak", "isaretler"]
+           "inceleme", "kopyalar", "kaynak", "isaretler", "ad_kaynagi"]
 PDF = ".pdf"
 
 
@@ -156,6 +156,18 @@ class Item:
     isaretler: list[str] = field(default_factory=list)
 
 
+def _names_sha(ws_root: Path, review_dir: Path) -> str:
+    """Kanıt adı kaynaklarının (`kanit-adlari.jsonl`, çalışma alanı + inceleme klasörü) özeti."""
+    from bidr.name.resolve import NAMES
+    ps = dict.fromkeys([(Path(ws_root) / NAMES).resolve(), (Path(review_dir) / NAMES).resolve()])
+    return hashlib.sha256("".join(_sha(p) for p in ps).encode()).hexdigest()[:16]
+
+
+def _weak(row: dict) -> bool:
+    """Düşük güvenli ve inceleme kararıyla (kabul/duzelt) onaylanmamış eşleşme."""
+    return bool(row.get("zayif")) and row.get("karar") not in ("kabul", "duzelt")
+
+
 def _canonical(recs: dict[str, dict]) -> dict[str, str]:
     """Mükerrer bağı: devralan belge → temsilci (decide `mukerrer`)."""
     can = {}
@@ -192,13 +204,16 @@ def plan(ws_root: Path, *, review_dir: Path | None = None, profile: str | None =
     for (olcut, root), rows in groups.items():
         ids = sorted({r["doc_id"] for r in rows})
         rep = root if root in ids else ids[0]
-        counted = [r for r in rows if r["sayilir"] and r["od"]]
+        counted = [r for r in rows if r["sayilir"] and r["od"] and not _weak(r)]
+        weak = [r for r in rows if r["sayilir"] and r["od"] and _weak(r)]
         ods = [r["od"] for r in counted] or [r["od"] or r.get("od_kabul") for r in rows]
         ods = [x for x in ods if x]
         if not ods:
             continue
         own = [r for r in rows if r["doc_id"] == rep]
         flags = sorted({f for r in rows for f in r["flags"]})
+        if weak:            # audit'le aynı: düşük güven önerilen OD'ye katılmaz; işaret kalır
+            flags.append("dusuk_guven_od_disi")
         if not counted:
             flags.append("od_sayilmadi")
         if reviewed:
@@ -245,7 +260,10 @@ def run(ws_root: Path, *, out: Path | None = None, source: str | Path | None = N
     items, meta = plan(ws.root, review_dir=review_dir, profile=profile)
     inv = _inventory(ws)
     docs = {r["doc_id"]: r for r in read_jsonl(ws.documents)} if ws.documents.exists() else {}
-    labels = _type_labels()
+    from bidr.name.resolve import Resolver
+    rdir = Path(review_dir).expanduser().resolve() if review_dir else ws.root
+    resolver = Resolver.load(ws.root, rdir, docs=docs, labels=_type_labels())
+    meta["adlar_sha"] = _names_sha(ws.root, rdir)
     uyarilar: list[str] = []
     if not meta["inceleme"]:
         uyarilar.append("review-decisions.jsonl yok: inceleme yapılmadı; decisions'taki kabul edilmiş "
@@ -261,17 +279,16 @@ def run(ws_root: Path, *, out: Path | None = None, source: str | Path | None = N
         shutil.rmtree(ev)
     ev.mkdir(parents=True)
     rows, n_cut, n_missing = [], 0, 0
-    names: dict[str, tuple[str, list[str]]] = {}
+    names: dict[str, tuple[str, str]] = {}
     for olcut in sorted(by_c, key=id_key):
         lst = sorted(by_c[olcut], key=lambda i: (i.od, (docs.get(i.doc_id) or {}).get("calisma_adi") or "",
                                                  i.doc_id))
         ads = {}
         for it in lst:
-            if it.doc_id not in names:
-                d = docs.get(it.doc_id) or {}
-                names[it.doc_id] = evidence_name({**d, "doc_id": it.doc_id}, labels.get(d.get("doc_type")))
-                for u in names[it.doc_id][1]:
-                    uyarilar.append(u)
+            if it.doc_id not in names:       # öncelik: insan > model > kural (bidr/name/resolve.py)
+                ad, src, uy = resolver.resolve(it.doc_id, it.kopyalar)
+                names[it.doc_id] = (ad, src)
+                uyarilar.extend(uy)
             ads[it.doc_id] = names[it.doc_id][0]
         seen: dict[str, int] = {}
         for a in ads.values():
@@ -319,7 +336,7 @@ def run(ws_root: Path, *, out: Path | None = None, source: str | Path | None = N
                 "doc_id": it.doc_id, "sayfalar": pages_txt, "yuvalar": "; ".join(it.yuvalar),
                 "alintilar": json.dumps(it.alintilar, ensure_ascii=False), "inceleme": it.inceleme,
                 "kopyalar": "; ".join(it.kopyalar), "kaynak": (inv_row or {}).get("rel_path", ""),
-                "isaretler": ", ".join(dict.fromkeys(flags))})
+                "isaretler": ", ".join(dict.fromkeys(flags)), "ad_kaynagi": names[it.doc_id][1]})
 
     idx = out / INDEX
     with open(idx, "w", encoding="utf-8", newline="") as f:
@@ -389,7 +406,8 @@ def status(out: Path, ws_root: Path | None = None, review_dir: Path | None = Non
     st["inceleme"] = bool(m.get("inceleme"))
     st["guncel"] = (m.get("kararlar_sha") == _sha(ws_root / "decisions.jsonl")
                     and m.get("inceleme_sha") == _sha(review_dir / REVIEW)
-                    and m.get("index_sha") == _sha(idx))
+                    and m.get("index_sha") == _sha(idx)
+                    and m.get("adlar_sha", _names_sha(ws_root, review_dir)) == _names_sha(ws_root, review_dir))
     with open(idx, encoding="utf-8", newline="") as f:
         rows = list(csv.DictReader(f))
     st["kanit"] = len(rows)
