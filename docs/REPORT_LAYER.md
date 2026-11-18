@@ -42,7 +42,47 @@ Sözleşme sütunları: `kanit_no` (ölçüt içinde sıra + OD, kılavuz göste
 Ek sütunlar: `inceleme`, `kopyalar`, `kaynak`, `isaretler`, `ad_kaynagi` (insan|model|kural),
 `baglanti` (raporda kanıt adının adresi; boş olabilir), `baglanti_kaynagi`
 (insan|belge_metni|klasor|boş).
-Bir belge bir ölçütte bir kez numaralanır; farklı ölçütlerde ayrı numara alır.
+Bir belge bir ölçütte bir kez numaralanır; farklı ölçütlerde ayrı numara alır. `kopyalar`:
+bu satırın temsil ettiği öteki belgeler (mükerrer metin ve tek kanıt sayılan sürümler).
+Ek dosya `evidence-secim.json`: seçilenler (neden), elenenler (neden), sürüm birleştirmeleri,
+metin atıflarının belge eşlemesi ve ayarlar.
+
+### Kanıt seçimi (`bidr/file/select.py`)
+Eşleşme kümesi audit'le aynıdır ve audit OD'si bütün kabul edilmiş eşleşmelerden hesaplanır;
+seçim yalnız yayımlanan listeyi (`evidence-index.csv`, `evidence/`) belirler. Gerekçe: karışık
+klasörde ince karar yüzlerce eşleşme kabul eder; kurum geneli iş akışı/form/yönergeler ve aynı
+belgenin sürümleri listeyi şişirir. Ölçüt ölçüt iki adım:
+
+1. **Sürüm ve kopya.** Birebir kopya (`dup_of`) ve mükerrer metin (decide `mukerrer`) zaten tek
+   kanıttır. identify'ın `surum_grubu`'ndaki belgeler (metin benzerliği) de tek kanıt sayılır;
+   temsilci en yüksek OD'li, sonra en güncel (`tarih`), sonra en eksiksiz (en uzun metin).
+   Ayrı kalır: farklı döneme ait veri (baş bölgedeki çeyrek, ay-yıl, "YYYY yılı" işaretleri ya da
+   `akademik_donem` ayrık; işaret yoksa tarihleri farklı yıllarda) ve boş şablon ↔ dolu form
+   (kanıt ilkesi `bos_form_zinciri`: yalnız planla olan ↔ uygula/üstü olan, ya da boşluklu
+   ↔ dolu metin). Dönem işareti yok, tarih aynı değil ve sayısal içerik farklıysa emin
+   olunamaz: tek sayılır, satır `surum_belirsiz` işaretlenir, gaps.md "Sürümü doğrulanacak
+   belgeler"de listelenir; komisyon üyenin satırını `duzelt` ederse (yuva aynı kalabilir) ayrı
+   kanıt kalır. Temsilci satırı `surum_temsilcisi` işareti alır.
+2. **İlgililik.** (a) write sonrası metinde atıf yapılan kanıt her zaman girer, sınıra sayılmaz
+   (atıf `texts/<ölçüt>.json`'dan; numara önceki dizinle, dizin değiştiyse `evidence-secim.json`
+   atıf eşlemesiyle belgeye bağlanır). (b) Atıfsız kanıt yalnız doğrudan ilgiliyse girer: güven
+   ≥ `en_dusuk_guven` ve sayılan eşleşmelerinden en az biri `dolayli_isaretler`'den
+   (`asama_yuva_etiketine_uymuyor`, `asama_dusuruldu`, `birim_aitligi_dogrulanmali`) birini
+   taşımıyor; ölçüt başına `olcut_basina_en_fazla` (sıra: OD'ye sayılan önce, sonra OD, güven,
+   tarih). (c) Kurum geneli düzenleme (audit `kurum_geneli` işareti) bir ölçütte en çok
+   `kurum_geneli_en_fazla`; madde alıntısı olan önce; kalanlar gaps.md "Elenen kurum geneli
+   belgeler". İnceleme `duzelt`i (insan yerleştirmesi) sınır yüzünden düşmez; `kabul` güven ve
+   dolaylılık eşiğini aşar ama sınırlara tabidir (`audit_tamam` her satıra karar istediğinden
+   toplu `kabul` seçimi kapatmamalı). Audit'in saydığı her halka (P/U/K/Ö/Z) listede en az bir
+   kanıtla kalır: seçilmemişse en iyi aday sınırlara rağmen girer (`zincir_icin_secildi`), yani
+   yayımlanan liste audit OD'sini destekler.
+
+Elenen her belge nedeniyle gaps.md'nin `<!-- bidr:kanit-secimi -->` bölümünde (file yazar,
+audit korur) ve `evidence-secim.json`'da görünür. Ayarlar `bidr/data/profiles/kanit_secimi.yaml`
+(kurum `BIDR_PROFILES_DIR` ile değiştirir), çalışma alanı config.yaml `rapor.kanit_secimi`
+(anahtar anahtar üstüne yazar); varsayılan: ölçüt başına 6 atıfsız kanıt, kurum geneli 2, en
+düşük güven `orta`, sürüm birleştirme açık. Ayar değişince `file_tamam` yeniden dosyalama ister
+(manifest `secim_sha`).
 `evidence/.bidr-evidence.json` girdilerin özetini tutar (kararlar, inceleme, adlar,
 bağlantılar ve `rapor:` bağlantı ayarları); biri değişince `file_tamam` yeniden dosyalama ister.
 
@@ -89,5 +129,6 @@ taslak saymaz. `.bidr-render.json` girdilerin özetini tutar (`render_tamam`).
 | `sablon` | boş FR-0833 şablonu (render) |
 | `kanit_kok_baglanti` | kanıt klasörünün yüklendiği kök adres (klasör bağlantıları) |
 | `yayin_alan_adlari` | gövde URL'sinin yayın adresi sayılacağı alan adları (ör. `[gtu.edu.tr]`) |
+| `kanit_secimi` | kanıt seçimi ayarları (yukarıda; `olcut_basina_en_fazla`, `kurum_geneli_en_fazla`, `en_dusuk_guven`, `dolayli_isaretler`, `surum_birlestir`) |
 | `yeniden_yazim_siniri` | reddedilen metin için en çok yeniden yazım turu (vars. 2) |
 | `kanit_adi_modeli` | `false`: `name` aşaması atlanır |
