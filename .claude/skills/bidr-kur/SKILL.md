@@ -65,3 +65,5 @@ yazar. Yalnız Claude Code'da çalışır; doğruluk ona dayanmaz (kapılar kodd
 
 `bidr next -w <calisma_alani>` çalıştır ve kullanıcıya sıradaki adımı söyle. Kullanıcı raporla
 devam etmek isterse skill `bidr-rapor`.
+
+- Birim adı karar paketlerine girer ve belgenin bu birime ait olup olmadığı buna göre değerlendirilir: `config.yaml` birim alanına birimin resmî adını yazdırın (ör. "Matematik Bölümü").

@@ -30,3 +30,4 @@ packages = ["bidr"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
