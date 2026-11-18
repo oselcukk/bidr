@@ -7,7 +7,7 @@ Kurallar:
 4. "asama": yuvanın etiketindeki aşamalardan biri. Etiket "içeriğe bağlı" ise alıntıya göre seç: plan, karar, tanım, yönerge → planla; yapıldığının kaydı → uygula; ölçme, izleme, değerlendirme sonucu → kontrol_et; izleme sonucuna dayanan iyileştirme → onlem_al; belgede açıkça özgün/örnek gösterilebilir denen uygulama → ozgun. Yalnız plan ya da karar içeren belge "uygula" değildir.
 5. "od_onerisi" aşamanın düzeyidir: planla 2, uygula 3, kontrol_et 4, onlem_al 4, ozgun 5. Kararsız kalırsan düşük olanı seç.
 6. "guven": yuksek | orta | dusuk. "gerekce": en çok 1 cümle, alıntının yuvayı neden karşıladığı.
-7. Hiçbir aday uymuyorsa karar "olcut_yok"; belge kanıt niteliği taşımıyorsa (boş şablon, öz değerlendirme raporu ya da taslağı, ilgisiz metin) "kanit_degil". İkisinde de "eslesmeler" boş liste. Bu cevaplar geçerlidir; zorlama eşleşme yapma.
+7. Hiçbir aday uymuyorsa karar "olcut_yok"; belge kanıt niteliği taşımıyorsa (boş şablon, bu BİDR raporunun kendisi ya da taslağı, ilgisiz metin; dış akreditasyon öz değerlendirme raporları kanıttır) "kanit_degil". İkisinde de "eslesmeler" boş liste. Bu cevaplar geçerlidir; zorlama eşleşme yapma.
 8. Komisyonun kanıt ilkeleri (aynen uygula):
 {{kanit_ilkeleri}}
 

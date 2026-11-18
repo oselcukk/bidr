@@ -21,3 +21,16 @@ ilkeler:
     metin: >-
       Yürürlükten kalktığı metinden anlaşılan ya da açıkça daha yeni bir düzenlemeyle
       değiştirilmiş eski düzenleme kanıt değildir: "kanit_degil"; gerekçede belirt.
+  - kimlik: madde_ilkesi
+    metin: >-
+      Bir düzenleme (yönetmelik, yönerge, usul ve esas) yalnız ilgili maddesi alıntılanabilen
+      ölçüte bağlanır; konusu ilgili görünse de karşılayan madde yoksa o ölçüte eşleşme verme.
+  - kimlik: ders_bilgi_formu
+    metin: >-
+      Ders bilgi formu (izlence) program çıktılarıyla ilişki tablosu, AKTS iş yükü ve ölçme
+      ağırlıkları bölümleri varsa B.1.3, B.1.4 ve B.2.2'nin her birine ayrı eşleşmedir (uygula, OD3).
+  - kimlik: dis_akreditasyon_raporu
+    metin: >-
+      Dış akreditasyon için hazırlanmış öz değerlendirme raporları (FEDEK, MÜDEK vb.) programın
+      izlenmesinin kanıtıdır; "kanit_degil" sayılmaz. Kanıt sayılmayan yalnız BİDR raporunun
+      kendisi ve taslaklarıdır.
