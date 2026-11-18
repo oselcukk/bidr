@@ -71,6 +71,28 @@ asamalar:
     onay: yok
     skill: bidr-rapor
 
+  - id: describe
+    ad: Görsel betimleme (metni az fotoğraf/afiş/tabela; model işi ajanda)
+    uygulandi: true
+    istege_bagli: true
+    katman: M
+    onkosul: [ingest]
+    girdi: [inventory.csv, text/ (seyreklik), kaynak görseller/PDF/docx (salt okunur)]
+    cikti: [work/describe/<doc_id>/, text/<doc_id>.txt (betimleme; başında BETİMLEME işareti), describe.jsonl]
+    komut:
+      - "bidr describe prepare -w {ws} --auto"
+      - "(ajan) work/describe/README.md'ye göre her <doc_id>/ için görüntüleri betimleyip <doc_id>.out.json yaz"
+      - "bidr describe apply -w {ws} --model {ajan}"
+    sart:
+      denetim: describe_tamam
+      metin: >-
+        Metni seyrek (sağlıklı sözcük < 30) görüntü dosyası, görsel ağırlıklı PDF sayfası ya da gövdesi
+        seyrek docx'in gömülü görseli yoksa atlanır. Varsa her biri ajanca betimlenmiş ve apply ile
+        işlenmiş (ya da ajan 'metin sayfası' dedi: uyarı, transcribe önerilir); geçersiz/şüpheli cevap yok.
+        transcribe ile sırası serbest: ikisi de uygulanırsa yazıya geçirilen metin betimlemenin altında kalır.
+    onay: yok
+    skill: bidr-rapor
+
   - id: etiketler
     ad: Geçmiş etiketler (isteğe bağlı)
     uygulandi: true
@@ -91,7 +113,7 @@ asamalar:
     ad: Belge türü, tarih, sürüm
     uygulandi: true
     katman: D
-    onkosul: [ingest, transcribe]
+    onkosul: [ingest, transcribe, describe]
     girdi: [text/]
     cikti: [documents.jsonl, identify-report.md]
     komut: ["bidr identify -w {ws} --period {donem}{kurum_arg}"]

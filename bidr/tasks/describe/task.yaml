@@ -1,0 +1,10 @@
+version: "1"
+description: >-
+  Görsel betimleme (ajan modu). Metni az ya da hiç olmayan görüntüleri (fotoğraf: laboratuvar,
+  derslik, etkinlik, toplantı, tabela, ödül; afiş) görüntüyü okuyan ajan yalnız görüneni
+  yapılandırılmış alanlarla ve kısa düz metinle betimler. Kişi kimliği, yüz/kişi betimlemesi ve
+  görüntüde yazmayan tarih/yer/kişi çıkarımı yoktur. Çıktı belgenin metni olur (açıkça
+  "betimleme" diye işaretli; eski OCR metni saklanır).
+inputs:
+  gorsel_sayisi: "betimlenecek görüntü sayısı"
+  gorsel_dosyalari: "paket klasöründeki görüntülerin adları, sırayla (1. görsel ilk)"

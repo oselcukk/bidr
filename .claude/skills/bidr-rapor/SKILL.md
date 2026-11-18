@@ -68,6 +68,23 @@ Düşük kaliteli (taranmış/görsel) belge yoksa aşama kendiliğinden "atland
 yaz (okunamayan yeri uydurma, README'nin işaretleme kuralına uy) → `bidr transcribe apply -w WS
 --model <ajan adı>`. `work/transcribe/GECERSIZ.md`'deki paketleri yeniden yap; `bidr next`.
 
+## Görsel betimleme (describe)
+
+Metni az ya da hiç olmayan görüntüler (laboratuvar, derslik, etkinlik, toplantı, tabela, ödül
+fotoğrafı, afiş) OCR'la kanıt olamaz; betimlemeleri olabilir. Böyle belge yoksa aşama "atlandi".
+Varsa: `bidr describe prepare -w WS --auto` → `work/describe/README.md`'yi oku; her `<doc_id>/`
+klasöründeki görüntülere kendin bak ve `<doc_id>.out.json` yaz:
+- YALNIZ görüneni: sahne/mekân türü, sayılabilir nesneler yaklaşık sayılarla, görünen yazılar
+  (tabela, afiş, ekran) BİREBİR, etkinlik türü, kalabalık büyüklüğü;
+- görüntüde yazmayan tarih/yer/kişi adı yok (kod, görünen yazılarda geçmeyen yılı reddeder);
+- kimseyi tanımaya çalışma; yüz/saç/kıyafet/cinsiyet/yaş betimlemesi yok (KVKK; kod reddeder).
+  Kişiler yalnız sayı ve rolle: "~40 dinleyici", "1 konuşmacı";
+- görüntü aslında metin sayfasıysa `icerik: belge_sayfasi` (betimlenmez; `bidr next` transcribe önerir).
+→ `bidr describe apply -w WS --model <ajan adı>`. `work/describe/GECERSIZ.md`'deki paketleri
+yeniden yap. Betimleme belgenin metni olur ve başında "GÖRSEL BETİMLEME" işareti taşır: karar
+paketlerinde alıntı bu betimlemeden gelir; kanıtı abartma (bir fotoğraf tesisin varlığını
+gösterir, kullanım sıklığını ya da iyileştirmeyi göstermez).
+
 ## Denetim (audit): OD, eksikler, inceleme tablosu
 
 1. `bidr audit -w WS --profile <profil>` (`next` tam komutu verir). Çıktı: `review.xlsx`,
