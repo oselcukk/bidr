@@ -1,0 +1,18 @@
+# Kurum geneli düzenleme türleri (kanıt ilkesi `kurum_geneli_duzenleme`).
+# Komisyon kararı: kurum (üniversite) geneli düzenleme tek başına OD2'dir (planla).
+#
+# Bir belge kurum geneli sayılır, eğer
+#   - ince kararda model `kurum_geneli: true` dediyse (metni okuyan model: politika
+#     belgesi, usul-esas gibi tür tablosunun kaçırdığı düzenlemeleri yakalar), YA DA
+#   - identify'ın `doc_type`'ı (documents.jsonl, yalnız metinden) bu listedeyse.
+# İkisinden biri yeter (OD'yi şişirmek en ağır hata; tavan yalnız aşağı çeker). Kod
+# o belgenin kabul edilen her eşleşmesini OD2 ile sınırlar ve "uygulama_kaniti_eksik"
+# işareti koyar; bölümün uyguladığını gösteren kanıt ayrı belgeden gelir.
+#
+# Listeye yalnız doğası gereği kural/süreç tanımı olan türler girer (bölüme özgü
+# yönerge de tek başına plandır). Senato/kurul kararları girmez: bölüme özgü bir
+# işin onayı (ör. müfredat değişikliği) uygulama kanıtı olabilir; onları model ayırır.
+# Tür adları bidr/data/doc_types.yaml kataloğundandır.
+kurum_geneli_turler:
+  - yonetmelik
+  - yonerge                  # yönerge / usul ve esaslar

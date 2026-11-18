@@ -7,10 +7,41 @@ def _common(args):
                 k=args.k, max_aday=args.max_aday)
 
 
-def _stats(st: dict) -> str:
-    return (f"ok={st['ok']} (kaba={st['kaba']} ince={st['ince']}) atlandi={st['atlandi']} hata={st['hata']}; "
-            f"olcut_var={st['olcut_var']} olcut_yok={st['olcut_yok']} kanit_degil={st['kanit_degil']}; "
-            f"eşleşme kabul={st['kabul_eslesme']} red={st['reddedilen_eslesme']}")
+def _stats(st: dict, stage: str | None = None) -> str:
+    """Belge sayaçları. Kaba aşamada kaba seçimin sonucu, ince aşamada ince kararın
+    sonucu gösterilir (kaba kayıtta ince sayaçları tanımsızdır, 0 değil)."""
+    kk = st["kaba_karar"]
+    s = (f"ok={st['ok']} (kaba={st['kaba']} ince={st['ince']}) atlandi={st['atlandi']} hata={st['hata']}"
+         + (f" bekliyor={st['bekliyor']}" if st.get("bekliyor") else "")
+         + (f" devralan={st['devralan']}" if st.get("devralan") else "")
+         + (f" yeniden={st['yeniden']}" if st.get("yeniden") else ""))
+    s += (f"; kaba karar: olcut_var={kk.get('olcut_var', 0)} olcut_yok={kk.get('olcut_yok', 0)} "
+          f"kanit_degil={kk.get('kanit_degil', 0)}")
+    if stage != "coarse":
+        s += (f"; ince karar (ince aşamadaki {st['ince']} belge): olcut_var={st['olcut_var']} "
+              f"olcut_yok={st['olcut_yok']} kanit_degil={st['kanit_degil']}; "
+              f"eşleşme kabul={st['kabul_eslesme']} red={st['reddedilen_eslesme']}"
+              + (f" od2_tavanı={st['od_tavan']}" if st.get("od_tavan") else ""))
+    return s
+
+
+def _only_ids(args, ws):
+    """--only / --from-file → doc_id listesi (None: süzgeç yok)."""
+    import re
+    raw: list[str] = []
+    if getattr(args, "only", None):
+        raw += [x for x in re.split(r"[,\s]+", args.only) if x]
+    if getattr(args, "from_file", None):
+        from pathlib import Path
+        for ln in Path(args.from_file).read_text(encoding="utf-8").splitlines():
+            raw += [x for x in re.split(r"[,\s]+", ln.split("#", 1)[0]) if x]
+    if not raw and not getattr(args, "only", None) and not getattr(args, "from_file", None):
+        return None, []
+    from .run import resolve_ids
+    ids, errs = resolve_ids(ws, raw)
+    if not ids and not errs:
+        errs = ["boş belge listesi"]
+    return ids, errs
 
 
 def _decide(args) -> int:
@@ -28,19 +59,40 @@ def _decide(args) -> int:
         print(f"text/ yok: {ws.text_dir}")
         return 2
     if args.action == "prepare":
-        st = R.prepare(ws.root, args.stage, redo=args.redo, **_common(args))
+        only, errs = _only_ids(args, ws)
+        if errs:
+            print("belge kimliği hatası: " + "; ".join(errs))
+            return 2
+        st = R.prepare(ws.root, args.stage, redo=args.redo, only=only, yes=args.yes, **_common(args))
         print(f"{st['paket']} paket ({st['yeni']} yeni/değişen), bekleyen {st['bekleyen']} → {st['klasor']}")
         print(f"atlandi={st['atlandi']} zaten_tamam={st['zaten_tamam']} kaba_yok={st['kaba_yok']} "
-              f"aday_yok={st['aday_yok']}")
+              f"aday_yok={st['aday_yok']}"
+              + (f" seçmeli={st['secmeli']}" if only is not None else "")
+              + (f"; mükerrer metin: {st['mukerrer']} belge temsilciyi bekliyor, {st['devralindi']} devraldı"
+                 + (f", {st['ayrildi']} ayrıldı (kendisi paketlendi)" if st["ayrildi"] else "")
+                 if st["mukerrer"] or st["devralindi"] else ""))
+        if st["onay_gerekli"]:
+            from collections import Counter
+            why = Counter(st["eski"].values())
+            print(f"ONAY GEREKLİ: yeniden işlenecek {len(st['eski'])} belge "
+                  f"({', '.join(f'{k}={v}' for k, v in sorted(why.items()))}) — işlenmiş kararları "
+                  f"görevin eski sürümü ya da eski istemiyle. Yeniden işlemek pahalı: ~{st['eski_cagri']} "
+                  f"model cevabı, ~{st['eski_token']} istem token'ı. Kullanıcı onaylarsa aynı komutu "
+                  f"--yes ile çalıştır; onaylanmazsa eski kararlar kullanılmaya devam eder.")
         print(f"Ajan: {st['klasor']}/README.md")
         return 0
     if args.action == "apply":
         st = R.apply(ws.root, args.stage, model=args.model)
-        print(f"işlenen={st['islenen']} bekleyen={len(st['bekleyen'])} geçersiz={len(st['gecersiz'])} "
-              f"alıntısı tutmayan belge={len(st['alinti_tutmayan'])} eski sürüm={len(st['eski_surum'])}")
+        print(f"işlenen={st['islenen']} değişmeyen={st['degismedi']} bekleyen={len(st['bekleyen'])} "
+              f"geçersiz={len(st['gecersiz'])} alıntısı tutmayan belge={len(st['alinti_tutmayan'])} "
+              f"eski sürüm paketi={len(st['eski_surum'])}"
+              + (f" devralan={st['devralindi']}" if st["devralindi"] else ""))
         for did, errs in st["gecersiz"].items():
             print(f"  geçersiz {did}: {'; '.join(errs)}")
-        print(_stats(st["durum"]))
+        if st["ayrildi"]:
+            print(f"  {len(st['ayrildi'])} mükerrer belge temsilcinin kararını devralamadı (alıntı kendi "
+                  f"metninde tutmuyor): yeniden prepare ile kendisi paketlenir")
+        print(_stats(st["durum"], args.stage))
         return 1 if st["gecersiz"] else 0
     out, st = R.run(ws.root, log=(lambda m: None) if args.quiet else print, **_common(args))
     print(f"{st['belge']} belge → {out}")
@@ -93,7 +145,16 @@ def register(sub):
     act = p.add_subparsers(dest="action", required=True)
     a = act.add_parser("prepare", help="ajan modu: iş paketleri work/<aşama>/<doc_id>.json")
     _sel(a, True)
-    a.add_argument("--redo", action="store_true", help="işlenmiş belgeleri de yeniden paketle")
+    a.add_argument("--redo", action="store_true",
+                   help="işlenmiş belgeleri de yeniden paketle (istem aynıysa var olan cevap korunur)")
+    a.add_argument("--only", metavar="DOC_ID[,…]",
+                   help="yalnız bu belgeleri (işlenmiş olsalar da) yeniden paketle; ötekiler korunur. "
+                        "Tam doc_id ya da en az 6 haneli tek anlamlı önek")
+    a.add_argument("--from-file", metavar="DOSYA",
+                   help="--only gibi; kimlikler dosyadan (virgül/boşluk/satır ayrılmış, # sonrası yorum)")
+    a.add_argument("--yes", action="store_true",
+                   help="görev sürümü ya da istem değişmiş işlenmiş belgeleri yeniden işlemeyi onayla "
+                        "(önce --yes olmadan çalıştırıp özeti kullanıcıya göster)")
     a.set_defaults(func=_decide)
     a = act.add_parser("apply", help="ajan modu: <doc_id>.out.json cevaplarını doğrula ve işle")
     a.add_argument("--workspace", "-w", required=True)
