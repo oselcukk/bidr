@@ -152,7 +152,6 @@ varsa rapora girmez (uyarı). Gerekçe: şablonun "Sorumlu Birimler" bölümü d
 eksiği gibi okunur. `karar_gerekli`: metin yoksa kırmızı "[kapsam kararı gerekli]" işareti, rapor
 TASLAK, soru gaps.md'de (`<!-- bidr:kapsam -->` işaretleyicileri arasında; render yeniler,
 soru kalmayınca kaldırır).
-||||||| e57f164
 
 ### Beş zorunlu soru kapsamı (K29) → `soru_kapsami`, `soru-kapsami.json`
 FR-0833 her alt ölçüt açıklamasında beş soruyu ister (`bidr/verify/run.py` `SORULAR`; metinler
@@ -211,6 +210,52 @@ kalan hazırlayan yer tutucusu (`rapor.hazirlayanlar` boş); `karar_gerekli` öl
 `.bidr-render.json` girdilerin özetini tutar (`render_tamam`): şablon, metinler, `yonler/`,
 audit, kanıt dizini, hazırlayanlar ve kapsam görünümü.
 
+## denetle → `denetim.json` (biçim denetçisi; render'dan bağımsız)
+`bidr denetle -w WS [--docx yol] [--sablon FR-0833.docx] [--kanit klasör] [--index csv] [--out yol]
+[--paragraf-sonrasi NK]` üretilmiş docx'i (vars. `WS/report.docx`) salt okur; render kodunu çağırmaz,
+belgeyi kim üretmiş olursa olsun (render ya da elle düzenleme) aynı denetimi yapar (`bidr/check/`).
+Çıktı `denetim.json` (vars. `WS/denetim.json`: `ozet.kritik/uyari/yayima_hazir`, kod sayıları,
+`bulgular[{seviye, kod, yer, mesaj}]`, `kurallar`, `bilgi`) ve okunur tablo. Çıkış kodu: 0 kritik yok;
+**1 kritik var ("yayıma hazır değil")**; 2 girdi hatası. Şablon: `--sablon` > `rapor.sablon` >
+`.bidr-render.json` `sablon`.
+
+Kurallar (kılavuz "Yazım Kuralları", "Kanıt Gösterimi"; K31) ve düzeyleri:
+| denetim | düzey |
+|---|---|
+| 46 alt ölçüt bloğu, her birinde Açıklamalar/Kanıtlar hücresi; boş Açıklamalar | kritik |
+| şablon yönerge metni (Açıklamalar/Kanıtlar, A–D güçlü/gelişmeye açık yönler) | kritik |
+| kapak `[Birim Adı]` ve "Raporu Hazırlayanlar" `[Üye Unvan, …]` yer tutucuları | kritik |
+| gövde yazı tipi Times New Roman, 10 pt (etkin biçim: çalışma → stil → tablo stili → varsayılan) | kritik |
+| metindeki her `[n_ODk]` listede aynı numara ve OD ile; listede yinelenen numara | kritik |
+| üst/altbilgi form kimliği, revizyon, sayfa alanları şablonla aynı (alan sonucu yok sayılır; şablonsuz: varlık) | kritik |
+| TASLAK damgası, `[doğrulanmadı]` metni | kritik |
+| kanıt klasörü: listedeki kanıtın dosyası var ve adındaki OD aynı | kritik |
+| paragraf öncesi/sonrası aralık; başlıklar 12 pt kalın; alt başlık A.1.x.x.x numarası | uyarı |
+| şekil/tablo açıklaması: nesnenin üstünde, sağa dayalı, eğik, 10 pt; APA 7 metin içi gösterim (sezgisel) | uyarı |
+| atıf almayan liste kanıtı; numara 1..n sıralı değil; metin içinde `[n-ODk]` | uyarı |
+| kanıt dosya adı `[Ölçüt-sıra-ODk] Ad.uzantı`, klasör `A/A.1/A.1.1/`; listede olmayan dosya; evidence-index.csv ile fark | uyarı |
+| kanıtsız "bulunamamıştır" ifadeli ölçüt (insan kararı) | uyarı |
+
+Kapsam birimin doldurduğu bölgelerdir; şablonun kendi kılavuz metni biçim denetimine girmez. Başlık
+biçimi bulgusu şablonda da varsa "şablon kusuru" diye işaretlenir (FR-0833 R0'da B.2 kalın değil,
+A.3.1 11 pt, A.5.1 10 pt).
+
+**Paragraf sonrası aralık — kurumdan sorulacak.** Kılavuz metni "sonrası 0,6 nk" der; render 6 pt
+yazar (`docx_ops.SPACING_AFTER`, geçen yılın raporlarındaki değer). Denetim yapılandırılabilir,
+varsayılanı render'la aynı **6 nk**: config.yaml `rapor.denetim.paragraf_sonrasi_nk: 0.6` ya da
+`--paragraf-sonrasi 0.6`. Öteki anahtarlar: `yazi_tipi`, `govde_punto`, `baslik_punto`,
+`aciklama_punto`, `paragraf_oncesi_nk`.
+
+**Kanıt gösterimi — karar gerekli.** Kılavuzun örneği metin içinde `[1_OD3]`, ölçüt sonundaki
+listede `[1-OD3]. Uygulama Örnekleri.pdf` kullanır (`guide.yaml` `evidence_notation`). Render'ın
+varsayılanı (`--kanit-bicimi mat`) listeyi `1_OD3: ad` yazar (geçen yılın Matematik raporu usulü);
+denetçi bunu `kanit_gosterimi_karar` uyarısıyla raporlar, iki gösterim karışıksa
+`kanit_gosterimi_karisik`. Kurum kılavuz gösterimini isterse render `--kanit-bicimi kilavuz`.
+
+Hatta bağlama (öneri; bu değişiklikte yapılmadı): `pipeline.yaml`'a render'dan sonra `denetle`
+aşaması (katman D) ve `checks.py`'de `denetle_tamam` (denetim.json `docx` sha'sı güncel ve
+`yayima_hazir`); kritik bulgu yayımı durdurur, uyarılar insan onayına bırakılır.
+
 ## config.yaml `rapor:` bölümü (hepsi isteğe bağlı; kullanıcı yazar, `bidr init` korur)
 | anahtar | anlamı |
 |---|---|
@@ -223,3 +268,4 @@ audit, kanıt dizini, hazırlayanlar ve kapsam görünümü.
 | `kanit_adi_modeli` | `false`: `name` aşaması atlanır |
 | `hazirlayanlar` | kapaktaki "Raporu Hazırlayanlar": `[{unvan, ad_soyad, eposta, gorev}, …]` (`ad_soyad` gerekli; `bidr init` sorar ve yazar); boşsa rapor TASLAK |
 | `kapsam` | `{ölçüt: bolum\|ortak\|baska_birim\|karar_gerekli}`: kullanıcının kapsam kararı (profilin üstüne) |
+| `denetim` | biçim denetçisi kuralları (`paragraf_sonrasi_nk` vars. 6 — kılavuz 0,6 der, kurumdan doğrulanacak; `yazi_tipi`, `govde_punto`, `baslik_punto`, `aciklama_punto`, `paragraf_oncesi_nk`) |

@@ -26,6 +26,7 @@ SUBCOMMAND_MODULES = [
     "bidr.verify.cli",
     "bidr.name.cli",
     "bidr.faaliyet.cli",
+    "bidr.check.cli",
 ]
 
 
