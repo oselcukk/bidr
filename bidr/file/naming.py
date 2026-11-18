@@ -21,7 +21,7 @@ _FORBIDDEN = re.compile(r'[\\/:*?"<>|\x00-\x1f\x7f]')
 _PERSON = re.compile(
     r"(?<![A-Za-zÇĞİÖŞÜçğıöşü])(?:prof|doç|doc|dr|öğr|ogr|arş|ars|gör|gor|sayın|sayin|"
     r"sn|uzm|okt)\.(?=\s|[A-ZÇĞİÖŞÜ]|$)|"
-    r"(?<![A-Za-zÇĞİÖŞÜçğıöşü])(?:sayın|sayin|öğretim üyesi|ogretim uyesi)(?![A-Za-zçğıöşü])|"
+    r"(?<![A-Za-zÇĞİÖŞÜçğıöşü])(?:sayın|sayin)(?![A-Za-zçğıöşü])|"   # "öğretim üyesi" tek başına rol adıdır, kişi değil
     r"[\w.+-]+@[\w-]+\.[\w.]+",
     re.IGNORECASE)
 _TR_LOWER = str.maketrans("Iİ", "ıi")

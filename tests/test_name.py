@@ -220,3 +220,10 @@ def test_cli_lists_name(env):
     ws, _ = env
     assert main(["name", "prepare", "-w", str(ws), "--only", "d_anket"]) == 0
     assert P2 and (ws / "work" / "name" / "d_anket.json").exists()
+
+
+def test_rol_adi_kisi_sayilmaz():
+    from bidr.name.check import check_name
+    ad, errs = check_name("Öğretim Üyesi Yayın Performansı Takip Tablosu")
+    assert ad and not errs
+    assert "kisi_unvan" in check_name("Dr. Öğr. Üyesi Ahmet Yılmaz Ders Notu")[1]
