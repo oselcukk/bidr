@@ -278,3 +278,39 @@ def test_belge_icerigi_aktaran_fiiller_kabul():
             "Öğrencilere düzenli çalışmaları tavsiye edilir [1_OD2]."]
     for s in kotu:
         assert check_sentence(s, index_nos={"1_OD2"}, od=2, komisyon=False), s
+
+
+# -- özel adlar ve kısaltmalar (kör test bulguları) --------------------------------------------------
+
+@pytest.mark.parametrize("sentence", [
+    "Ders izlenceleri GTÜ Yapay Zekâ Politikası doğrultusunda güncellenmiştir [1_OD2].",
+    "GTÜ Yapay Zekâ Politikası bölümde duyurulmuştur [1_OD2].",
+    "Bölüm, Sürdürülebilirlik Koordinatörlüğü ile ortak etkinlik düzenlemiştir [1_OD2].",
+    "Sürdürülebilirlik Koordinatörlüğü’nün çağrısı öğrencilere iletilmiştir [1_OD2].",
+    "Bölümde “Mükemmel Öğretim Ödülü” başvuruları alınmıştır [1_OD2].",
+    "Bölüm kurulu Sürdürülebilir Kalkınma Amaçları ile dersleri eşleştirmiştir [1_OD2].",
+])
+def test_names_exempt_from_banned_and_level_language(sentence):
+    assert T.check_sentence(sentence, index_nos={"1_OD2"}, od=2, komisyon=False) == []
+
+
+@pytest.mark.parametrize("sentence,kod", [
+    ("Bölümde sürdürülebilir bir yapı kurulmuştur [1_OD2].", "od_asimi"),
+    ("Sürdürülebilir bir yapı kurulmuştur [1_OD2].", "od_asimi"),            # cümle başı ad değildir
+    ("Bu metin yapay zekâ ile hazırlanmıştır [1_OD2].", "yasak_ifade"),
+    ("Yapay zekâ araçlarıyla taslak oluşturulmuştur [1_OD2].", "yasak_ifade"),
+    ("Mükemmel GTÜ ortamında dersler yürütülmüştür [1_OD2].", "yasak_ifade"),
+    ("GTÜ Yapay Zekâ Politikası mükemmel biçimde uygulanmaktadır [1_OD2].", "yasak_ifade"),
+])
+def test_real_usage_still_caught(sentence, kod):
+    assert kod in {x["kod"] for x in T.check_sentence(sentence, index_nos={"1_OD2"}, od=2, komisyon=False)}
+
+
+def test_split_sentences_turkish_abbreviations():
+    s = ("Öğrencilerin T.C. Kimlik Numarası kanıtlarda maskelenmiştir [1_OD2]. Prof. Dr. A. Yılmaz, Doç. Dr. "
+         "B. Kaya, Dr. Öğr. Üyesi C. Ak ve Arş. Gör. D. Er komisyonda görev almıştır [1_OD2]. Formlar (bkz. "
+         "s. 4, No. 7, örn. Ek 2 vb. Belgeler) arşivlenmiştir [1_OD2]. A.Ş. Ltd. Şti. ile protokol vardır [1_OD2].")
+    out = T.split_sentences(s)
+    assert len(out) == 4, out
+    assert out[0].startswith("Öğrencilerin T.C. Kimlik") and out[3].startswith("A.Ş.")
+    assert T.check_text([s], "", index_nos={"1_OD2"}, od=2) == []

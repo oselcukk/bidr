@@ -251,3 +251,42 @@ def test_naming():
     assert ad == "Yazı - Birim İç Değerlendirme Raporu hazırlanması hk"
     assert evidence_name({"baslik": "Müfredatı (tüm"}, "M")[0] == "Müfredatı (tüm)"
     assert file_name("B.1.1", 2, 4, "Ad", ".PDF") == "[B.1.1-2-OD4] Ad.pdf"
+
+
+# -- kanıt kodunun OD'si ve aynı kaynağın tek numarası (sentetik satırlar) -------------------------
+
+def test_evidence_od_reflects_code_drops():
+    from bidr.file.naming import evidence_od
+    # sayılan, güçlü satır: kanıtın gösterdiği düzey (ölçüt OD'sinin üstünde olabilir; kılavuz örneği)
+    assert evidence_od([{"od": 4, "sayilir": True, "od_kabul": 4}], criterion_od=2) == 4
+    # kurum geneli: audit etkin aşamayı planla'ya düşürmüş (od 2); modelin ham od_kabul'ü 3 kullanılmaz
+    kg = {"od": 2, "sayilir": True, "od_kabul": 3, "flags": ["kurum_geneli", "uygulama_kaniti_eksik"]}
+    assert evidence_od([kg], criterion_od=3) == 2
+    # dönem kuralı: sayılmayan (geçmiş olay) kanıt ölçüt OD'sinin üstünde düzey göstermez
+    gecmis = {"od": 3, "sayilir": False, "od_kabul": 3, "flags": ["gecmis_kanit"]}
+    assert evidence_od([gecmis], criterion_od=2) == 2
+    # düşük güven (incelemede onaylanmamış) da sayılmaz; onaylanınca sayılır
+    zayif = {"od": 4, "sayilir": True, "zayif": True, "karar": ""}
+    assert evidence_od([zayif], criterion_od=3) == 3
+    assert evidence_od([{**zayif, "karar": "kabul"}], criterion_od=3) == 4
+    # sayılanla sayılmayan birlikte: sayılan belirler
+    assert evidence_od([gecmis | {"od": 4}, {"od": 2, "sayilir": True}], criterion_od=2) == 2
+    assert evidence_od([{"od": None, "od_kabul": 3, "sayilir": False}], criterion_od=2) is None
+
+
+def test_same_source_gets_one_number():
+    from bidr.file.naming import file_name, number_sources, source_key
+    docs = {"y2022": {"surum_grubu": "g1"}, "y2023": {"surum_grubu": "g1"}, "y2024": {"surum_grubu": "g1"},
+            "y2025": {"surum_grubu": "g1"}, "plan": {}, "tutanak": {"surum_grubu": "g2"}}
+    items = [("plan", 2), ("y2022", 2), ("tutanak", 3), ("y2023", 2), ("y2024", 3), ("y2025", 2)]
+    out = number_sources(items, key=lambda it: source_key(it[0], docs), od=lambda it: it[1])
+    nos = {it[0]: (sira, od) for sira, od, it in out}
+    assert {nos[d] for d in ("y2022", "y2023", "y2024", "y2025")} == {(2, 3)}   # yönerge 4 kez değil, tek numara
+    assert nos["plan"] == (1, 2) and nos["tutanak"] == (3, 3)
+    assert [it[0] for _, _, it in out] == ["plan", "y2022", "y2023", "y2024", "y2025", "tutanak"]
+    assert sorted({s for s, _, _ in out}) == [1, 2, 3]                          # boşluksuz sıra
+    # aynı numara tek OD taşır: dosya adındaki kod ile dizindeki kanit_no çelişmez
+    names = {file_name("B.1.1", s, od, f"Yönerge ({it[0]})", ".pdf") for s, od, it in out if it[0].startswith("y")}
+    assert all(n.startswith("[B.1.1-2-OD3] ") for n in names) and len(names) == 4
+    # sürüm grubu yoksa sha (doc_id) ayırır
+    assert source_key("a", {}) != source_key("b", {}) and source_key("a", None) == source_key("a", {})
