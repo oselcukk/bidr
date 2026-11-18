@@ -253,6 +253,22 @@ def _task_version() -> str:
     return str(raw["version"])
 
 
+def source_file(src_root: Path, row: dict, ws_root: Path) -> Path | None:
+    """Envanter satırının diskteki dosyası. Düz dosya `kaynak/rel_path`; arşiv/e-posta üyesi
+    (`a.zip!/b.pdf`) çalışma klasöründeki açılmış kopya (`arsiv/<doc_id><ext>`; içerik
+    kimliğiyle, yani varsa doğrudur), yoksa `containers.source_path` kaynaktan yeniden açar.
+    Bulunamazsa None. describe, transcribe ve file bunu kullanır (üyenin kendisi; arşiv değil)."""
+    from bidr.ingest.containers import SEP, cache_path, source_path
+    rel = row.get("rel_path") or ""
+    if not rel:
+        return None
+    if SEP in rel and row.get("doc_id"):
+        c = cache_path(ws_root, row["doc_id"], (row.get("ext") or "").lower())
+        if c.is_file():
+            return c
+    return source_path(Path(src_root), rel, Path(ws_root))
+
+
 def resolve_source(ws: Workspace, source: Path | str | None) -> Path:
     if source:
         return Path(source).expanduser().resolve()
@@ -304,8 +320,8 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, all_low_quality: bo
             if not redo and is_done(ws, did, log):
                 st["zaten_tamam"] += 1
                 continue
-            path = src_root / row["rel_path"]
-            if not path.is_file():
+            path = source_file(src_root, row, ws.root)
+            if path is None or not path.is_file():
                 raise Skip("kaynak_dosya_yok")
             if row.get("sha256") and sha256_file(path) != row["sha256"]:
                 raise Skip("kaynak_degisti")

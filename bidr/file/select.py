@@ -73,6 +73,7 @@ SURUM_NEDEN = {
     "farkli_donem": "farklı dönem verisi",
     "farkli_yil": "farklı yıl",
     "bos_form_dolu_form": "boş şablon / dolu form",
+    "parca_grubu": "aynı belgenin parçaları (tek kaynak)",
 }
 
 
@@ -237,7 +238,12 @@ class Version:
 
 
 def relation(a: Version, b: Version) -> tuple[str, str]:
-    """(ayni | ayri | belirsiz, neden). `ayri` dışı → tek kanıt."""
+    """(ayni | ayri | belirsiz, neden). `ayri` dışı → tek kanıt. Aynı parça grubundaki belgeler
+    (ingest `parca_grubu`: tek belgenin bölünmüş parçaları) tek kaynaktır: dönem/tarih/sayı ve boş
+    form karşılaştırması atlanır (parçaların tarihi ve sayıları doğal olarak farklıdır)."""
+    pa, pb = a.doc.get("parca_grubu"), b.doc.get("parca_grubu")
+    if pa and pa == pb:
+        return "ayni", "parca_grubu"
     if (_top(a.stages) == 2) != (_top(b.stages) == 2) or _blank(a.text) != _blank(b.text):
         return "ayri", "bos_form_dolu_form"
     ma, mb = a.marks, b.marks

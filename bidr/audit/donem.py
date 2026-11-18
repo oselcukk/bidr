@@ -5,8 +5,9 @@ yapı  → rapor yılında yürürlükte mi: dönem içi tam sayılır; aksi/bil
         `guncellik_dogrulanmali`.
         Tarihi rapor yılından sonra: `donem_sonrasi` (sayılmaz) ya da revizyon kanıtı varsa
         sayılır + `revizyon_donem_sonrasi`. Sürüm grubunda yürürlükteki sürüm seçilir.
-olay  → rapor yılında mı gerçekleşti: önceki yıl hiçbir halka sayılmaz (`gecmis_kanit`;
-        `onceki_olay_plani_sayilir: true` ile planla yapı gibi); sonraki yıl `donem_sonrasi`,
+olay  → rapor yılında mı gerçekleşti: önceki yıl U/K/Ö/Z sayılmaz (`gecmis_kanit`); planla
+        hâlâ yürürlükteki usul/karar olarak yapı gibi sayılır (`onceki_olay_plani_sayilir`,
+        vars. true; false ile planla da sayılmaz); sonraki yıl `donem_sonrasi`,
         tarihsiz ya da olay tarihi belirsiz `tarih_dogrulanmali`: sayılmaz, satır görünür.
 karma → aşama belirler: planla yapı, üstü olay.
 Döngü: ölçütte sayılan bir eşleşmenin alıntısı döngü tanımlıyorsa (her N yılda vb.) son N
@@ -54,7 +55,7 @@ class Rule:
     cycle_max: int
     cycle_patterns: tuple[re.Pattern, ...]
     cycle_criteria: dict[str, str]         # ölçüt → öneri metni
-    onceki_olay_plani: bool = False        # önceki yıl olayının planla eşleşmesi sayılır mı
+    onceki_olay_plani: bool = True         # önceki yıl olayının planla eşleşmesi sayılır mı
     en_gec_turler: frozenset = frozenset()  # olay tarihi belgedeki en geç tarih (duyuru)
     revizyon_etiketleri: tuple[str, ...] = ("revizyon", "degisiklik", "guncelleme")
 
@@ -99,7 +100,7 @@ def _load(path: str, mtime: float) -> Rule:
     return Rule(classes, int(d.get("varsayilan_yil", 4)), int(d.get("en_cok_yil", 6)),
                 tuple(re.compile(p) for p in d.get("desenler") or []),
                 {k: " ".join(str(v).split()) for k, v in (d.get("olcutler") or {}).items()},
-                bool(raw.get("onceki_olay_plani_sayilir", False)),
+                bool(raw.get("onceki_olay_plani_sayilir", True)),
                 frozenset(t.get("olay_tarihi_en_gec") or ()),
                 tuple(str(x) for x in t.get("revizyon_etiketleri") or ("revizyon", "degisiklik", "guncelleme")))
 
@@ -301,16 +302,29 @@ def version_status(docs: dict[str, dict], rule: Rule, inventory: dict[str, str] 
         if g and rule.classes.get(d.get("doc_type") or "") == YAPI:
             groups.setdefault(g, []).append(did)
     out: dict[str, str] = {}
-    for g, mem in groups.items():
+    units_all: dict[str, list[str]] = {}
+    for g, mem_docs in groups.items():
+        # Tek belgenin bölünmüş parçaları (ingest `parca_grubu`; identify sürüm grubuna katar)
+        # birbirinin sürümü değildir: parça grubu tek üye sayılır, yılı tarihli ilk parçanın yılı;
+        # durum bütün parçalara geçer.
+        units: dict[str, list[str]] = {}
+        for m in mem_docs:
+            units.setdefault(docs[m].get("parca_grubu") or m, []).append(m)
+        units_all.update(units)
+        mem = list(units)
         if len(mem) < 2:
             continue
-        period = next((docs[m].get("donem") for m in mem if docs[m].get("donem") is not None), None)
+        period = next((docs[m].get("donem") for m in mem_docs if docs[m].get("donem") is not None), None)
         if period is None:
             continue
         yrs = {}
-        for m in mem:
-            t = doc_time(docs[m], inventory.get(m))
-            yrs[m] = t["yil"] if t["zaman"] != BILINMIYOR else None
+        for u, parts in units.items():
+            yrs[u] = None
+            for m in sorted(parts, key=lambda x: (docs[x].get("parca_sira") or 0, x)):
+                t = doc_time(docs[m], inventory.get(m))
+                if t["zaman"] != BILINMIYOR:
+                    yrs[u] = t["yil"]
+                    break
         dated = {m: y for m, y in yrs.items() if y is not None}
         undated = [m for m in mem if m not in dated]
         le = {m: y for m, y in dated.items() if y <= period}
@@ -329,6 +343,11 @@ def version_status(docs: dict[str, dict], rule: Rule, inventory: dict[str, str] 
         elif undated:
             for m in undated:
                 out[m] = "surum_dogrulanmali"
+    for u, parts in units_all.items():          # parça grubu kimliği → parçaların her biri
+        if u not in docs and u in out:
+            st = out.pop(u)
+            for m in parts:
+                out[m] = st
     return out
 
 

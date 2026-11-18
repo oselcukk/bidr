@@ -111,12 +111,14 @@ def test_build_od_and_flags(ws):
     assert b23["od"] == 2 and b23["kurum_geneli_yalniz"]
     r = a.by_key["d_yon|B.2.3/2"]
     assert r["etkin_asama"] == "planla" and "uygulama_kaniti_eksik" in r["flags"]
-    # dönem dışı (önceki yıl) olay belgesi hiçbir halkayı kanıtlamaz: uygulaması da planı da
-    # (2026-11-19; `onceki_olay_plani_sayilir: false`)
+    # dönem dışı (önceki yıl) olay belgesi: uygulama halkasını kanıtlamaz (geçmiş kanıt), ama hâlâ
+    # yürürlükteki usul/karar olarak plan halkasını kanıtlar (`onceki_olay_plani_sayilir: true`,
+    # kullanıcı kararı: "belgeler hâlâ uygulamada; her yıl müfredat değişmez")
     a11 = _crit(a, "A.1.1")
-    assert a11["od"] == 1 and not a.by_key["d_eski|A.1.1/2"]["sayilir"]
-    assert not a.by_key["d_eski|A.1.1/1"]["sayilir"]
-    assert a11["eksik_kanit_notu"]["durum"] == "neredeyse_kanitsiz"
+    u = a.by_key["d_eski|A.1.1/2"]
+    assert a11["od"] == 2 and not u["sayilir"] and "gecmis_kanit" in u["flags"]
+    p = a.by_key["d_eski|A.1.1/1"]
+    assert p["sayilir"] and "guncellik_dogrulanmali" in p["flags"] and "gecmis_kanit" not in p["flags"]
     # boş ölçüt OD1, eksik yuvaları listeli
     a12 = _crit(a, "A.1.2")
     assert a12["od"] == 1 and a12["yuva_dolu"] == 0 and a12["bos_yuvalar"]

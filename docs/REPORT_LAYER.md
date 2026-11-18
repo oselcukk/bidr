@@ -52,7 +52,18 @@ Sözleşme sütunları: `kanit_no` (ölçüt içinde sıra + OD, kılavuz göste
 Ek sütunlar: `inceleme`, `kopyalar`, `kaynak`, `isaretler`, `ad_kaynagi` (insan|model|kural),
 `baglanti` (raporda kanıt adının adresi; boş olabilir), `baglanti_kaynagi`
 (insan|belge_metni|klasor|boş).
-Bir belge bir ölçütte bir kez numaralanır; farklı ölçütlerde ayrı numara alır. `kopyalar`:
+Bir belge bir ölçütte bir kez numaralanır; farklı ölçütlerde ayrı numara alır. **Numara ve kod
+OD'si** (`bidr/file/naming.py`): kod OD'si `evidence_od(audit satırları, ölçüt OD'si)` — kodun
+düşüşleri yansır (kurum geneli → planla → OD2; `od_kabul` düşüşü), ölçüt OD'sine sayılmayan kanıt
+(dönem kuralı, düşük güven) ölçütün önerilen OD'sinin üstünü göstermez, modelin ham OD'si
+kullanılmaz. Aynı kaynak (aynı içerik ya da aynı `surum_grubu`; parça grupları dahil) bir ölçütte
+seçimde ayrı tutulsa da (farklı dönem verisi) tek numara ve tek OD alır (`number_sources`): satırlar
+aynı `kanit_no`, aynı `ad` (grubun ilk üyesinin) ve aynı `baglanti`yı (öncelik insan > belge metni >
+klasör) taşır — write'ın kanıt listesi ve render'ın (ölçüt, kanit_no) bağlantı haritası tek değer
+görür — ama her üye ayrı dosyadır (`[Ölçüt-n-ODk] Ad (tarih).uzantı`, işaret
+`ayni_kaynak_tek_numara`; biçim denetçisi `kanit_dosyasi_yineleniyor` uyarısı verir). Dosya adı
+klasörde büyük/küçük harf duyarsız tekildir: çakışmada kısa kimlik eklenir, hiçbir belge ötekinin
+üstüne yazılmaz. Arşiv/e-posta üyesi kanıtlanırken üyenin kendisi kopyalanır. `kopyalar`:
 bu satırın temsil ettiği öteki belgeler (mükerrer metin ve tek kanıt sayılan sürümler).
 Ek dosya `evidence-secim.json`: seçilenler (neden), elenenler (neden), sürüm birleştirmeleri,
 metin atıflarının belge eşlemesi ve ayarlar.
@@ -69,7 +80,8 @@ belgenin sürümleri listeyi şişirir. Ölçüt ölçüt iki adım:
    Ayrı kalır: farklı döneme ait veri (baş bölgedeki çeyrek, ay-yıl, "YYYY yılı" işaretleri ya da
    `akademik_donem` ayrık; işaret yoksa tarihleri farklı yıllarda) ve boş şablon ↔ dolu form
    (kanıt ilkesi `bos_form_zinciri`: yalnız planla olan ↔ uygula/üstü olan, ya da boşluklu
-   ↔ dolu metin). Dönem işareti yok, tarih aynı değil ve sayısal içerik farklıysa emin
+   ↔ dolu metin). Aynı parça grubundaki (ingest `parca_grubu`) belgelerde bu kıyas atlanır: tek
+   kaynaktır (neden `parca_grubu`). Dönem işareti yok, tarih aynı değil ve sayısal içerik farklıysa emin
    olunamaz: tek sayılır, satır `surum_belirsiz` işaretlenir, gaps.md "Sürümü doğrulanacak
    belgeler"de listelenir; komisyon üyenin satırını `duzelt` ederse (yuva aynı kalabilir) ayrı
    kanıt kalır. Temsilci satırı `surum_temsilcisi` işareti alır.

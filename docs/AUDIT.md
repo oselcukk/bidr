@@ -97,7 +97,7 @@ bu bir tanıma kuralı değil komisyon/kurum politikasıdır (`kurum_geneli.yaml
 | Sınıf | Türler (örnek) | Rapor yılı | Önceki yıl | Tarih yok | Sonraki yıl |
 |---|---|---|---|---|---|
 | **yapı** | müfredat, ders kataloğu (bilgi paketi), ders bilgi formu, yönerge/yönetmelik, görev dağılımı, iş akışı, stratejik plan | sayılır | sayılır + `guncellik_dogrulanmali` | sayılır + `guncellik_dogrulanmali` | sayılmaz: `donem_sonrasi`; revizyon kanıtı varsa sayılır + `revizyon_donem_sonrasi` |
-| **olay** | kurul/komisyon kararı, tutanak, anket sonucu, faaliyet/değerlendirme raporu, yazışma, dönemlik ders kayıtları (ders programı, izlence, açılan dersler) | sayılır | hiçbir halka sayılmaz: `gecmis_kanit` | sayılmaz: `tarih_dogrulanmali` | sayılmaz: `donem_sonrasi` |
+| **olay** | kurul/komisyon kararı, tutanak, anket sonucu, faaliyet/değerlendirme raporu, yazışma, dönemlik ders kayıtları (ders programı, izlence, açılan dersler) | sayılır | planla sayılır + `guncellik_dogrulanmali`; U/K/Ö/Z sayılmaz: `gecmis_kanit` | sayılmaz: `tarih_dogrulanmali` | sayılmaz: `donem_sonrasi` |
 | **karma** | web sayfası, ekran görüntüsü, form, anket formu; katalog dışı tür | aşama belirler: planla → yapı, U/K/Ö/Z → olay | | | |
 
 - **Yapı:** önemli olan rapor yılında yürürlükte olmasıdır. Yürürlükten kalktığı biliniyorsa
@@ -120,10 +120,12 @@ bu bir tanıma kuralı değil komisyon/kurum politikasıdır (`kurum_geneli.yaml
   sürüm dönemin bir kısmında yürürlükteydi: sayılır. Tarihsiz sürüm varsa hangisinin yürürlükte
   olduğu belirlenemez: `surum_dogrulanmali` (tarihli aday sayılır, tarihsiz üye sayılmaz;
   tarihli aday yoksa tarihsizler sayılır); gaps.md "Sürümü doğrulanacak düzenlemeler".
-- **Olay, önceki yıl** (eski olay belgesi): hiçbir halkayı kanıtlamaz, planla dahil (kör test
-  2026-11-19: 2024'ten eski 26 satırın 20'si OD'ye girmişti; `donem_kurali.yaml`
-  `onceki_olay_plani_sayilir: false`; `true` 2026-11-18 kararındaki "usul tanımlayan eski karar
-  yapı gibi" davranışına döner). gaps.md "Geçmiş kanıtlar (süreklilik)" bölümünde ayrı
+- **Olay, önceki yıl** (eski olay belgesi): uygulama/izleme/önlem/özgün halkalarını kanıtlamaz
+  (kör test 2026-11-19: 2024'ten eski 26 satırın 20'si OD'ye girmişti). Plan halkası ise sayılır:
+  dönemden önce alınmış ama hâlâ yürürlükte olan usul/karar belgesi (kullanıcı kararı 2026-11-19:
+  "belgeler hâlâ uygulamada; her yıl müfredat değişmez"; `donem_kurali.yaml`
+  `onceki_olay_plani_sayilir: true`, satır `guncellik_dogrulanmali`; `false` planla dahil hiçbir
+  halkayı saymaz). Sayılmayan satırlar gaps.md "Geçmiş kanıtlar (süreklilik)" bölümünde ayrı
   listelenir: OD5'in istediği sistematikliğin ve "bir önceki yıla göre ne değişti" sorusunun
   kanıtı. Yayımlanan kanıt listesinde ölçüt başına en çok `kanit_secimi.yaml`
   `gecmis_kanit_en_fazla` (vars. 1).
@@ -207,9 +209,19 @@ okur): `null` ya da `{"durum", "nedenler", "metin"}`.
   listeler; ölçüt notlarına "neredeyse kanıtsız: …" eklenir. Ölçüt ayrıca `donem_sonrasi`
   listesini taşır (`satir`, `belge`, `yuva`, `asama`, `yil`, `isaret`).
 
-`bidr file`'ın işaretli bölümleri audit yeniden yazarken korunur: "Kanıt seçimi"
-(`<!-- bidr:kanit-secimi -->`: elenen kurum geneli belgeler, listeye alınmayan diğer belgeler,
-tek kanıt sayılan sürümler, sürümü doğrulanacak belgeler) ve "Bağlantısı olmayan kanıtlar".
+Öteki aşamaların işaretli bölümleri (`<!-- bidr:<ad> -->` … `<!-- /bidr:<ad> -->`) audit yeniden
+yazarken belgedeki sırasıyla korunur (`report.compose_gaps`): ingest (`bidr:ingest`), kanıt seçimi
+(`bidr:kanit-secimi`: elenen kurum geneli belgeler, listeye alınmayan diğer belgeler, tek kanıt
+sayılan sürümler, sürümü doğrulanacak belgeler), "Bağlantısı olmayan kanıtlar"
+(`bidr:baglanti-yok`), kapsam kararı (`bidr:kapsam`) ve sonradan eklenecek her işaretli bölüm.
+
+**Kanıtla cevaplanmayan sorular** (`<!-- bidr:sorular -->`, audit yazar): verify'ın
+`soru-kapsami.json`'undan (çalışma alanı kökü; yoksa bölüm yazılmaz) `kanitla_cevaplanmayan`
+(ölçüt · soru — cevapsız / uydurma şüphesi (yerler): gerekçe) ve `denetlenmedi` listesi
+("Soru kapsamı denetlenmeyen ölçütler"); kullanıcının `cikar` dediği metin listelenmez. verify
+audit'ten sonra çalıştığından bölüm `bidr audit`/`audit apply` yeniden çalışınca güncellenir;
+yalnız bu bölümü yenilemek için `bidr.audit.report.update_soru_gaps(gaps.md, ws)` (gövdeye dokunmaz;
+verify/render şeridi çağırabilir).
 
 ## review.xlsx
 
