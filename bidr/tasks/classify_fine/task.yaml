@@ -15,6 +15,9 @@ description: >-
   fakulte_geneli | kurum_geneli | baska_birim | belirsiz. Kod: fakülte/kurum geneli OD2 tavanı,
   baska_birim eşleşmeleri reddedilir (kanit_degil), belirsiz kabul + işaret. Eski kayıt: alan
   yoksa `kurum_geneli: true` → kurum_geneli, değilse kendi.
+  v8 açıklama (sürüm değişmedi, şema aynı): `birim_iliskisi` yalnız belge metninden çıkarılır
+  (kişiyi tanıyarak ya da dış bilgiyle birim atanmaz); `kanit_adi` yasaklı karakterleri istemde
+  yazılı; kod / \ | : karakterlerini "-" yapar (bidr/name/check.py, kayıtta not).
 inputs:
   adaylar: "aday alt ölçütler: başlık, rubrik 1-5, yuvalar `[aşama → OD]` etiketiyle"
   belge_bilgisi: "documents.jsonl içerik alanları (tür tahmini, tarih, sayfa); yol/ad yok"

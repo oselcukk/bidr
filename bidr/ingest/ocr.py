@@ -22,6 +22,42 @@ class OcrUnavailable(RuntimeError):
     pass
 
 
+def _decode(b: bytes | str | None) -> str:
+    """Araç çıktısını çöz: tesseract/leptonica stderr'i UTF-8 olmayabilir (yerel kod sayfası,
+    bozuk dosya adı); çözülemeyen baytlar yer tutucuyla değişir, çökme olmaz."""
+    if b is None:
+        return ""
+    if isinstance(b, str):
+        return b
+    return b.decode("utf-8", errors="replace")
+
+
+def temp_root() -> str | None:
+    """Geçici dosyaların kökü: her çağrıda TMPDIR'e bakar (süreç içinde sonradan ayarlansa da).
+    Sandbox'lı ajan ortamında TMPDIR çalışma klasörüne alınırsa tesseract dosyaya erişebilir."""
+    d = os.environ.get("TMPDIR")
+    if d and os.path.isdir(d):
+        return d
+    return None
+
+
+def _tempdir(prefix: str) -> tempfile.TemporaryDirectory:
+    return tempfile.TemporaryDirectory(prefix=prefix, dir=temp_root())
+
+
+_CANT_OPEN = re.compile(r"(?i)(can'?not|can't|could not|unable to|failed to) (open|read)|"
+                        r"no such file|permission denied|operation not permitted|pixRead|fopenReadStream")
+
+
+def _tool_error(tool: str, rc: int, err: str, tmp: str) -> RuntimeError:
+    msg = f"{tool} hata {rc}: {err.strip()[:200]}"
+    if _CANT_OPEN.search(err):
+        msg += (f" — {tool} geçici dosyayı açamadı ({tmp}). Sandbox'lı ortamda sistem geçici klasörü "
+                "(/tmp, /var/folders) araçlara kapalı olabilir: TMPDIR'i yazılabilir bir çalışma "
+                "klasörüne alın (ör. `mkdir -p .tmp && export TMPDIR=\"$PWD/.tmp\"`) ve yeniden çalıştırın.")
+    return RuntimeError(msg)
+
+
 def _env() -> dict:
     env = dict(os.environ)
     # Paralel dosya işlerken tesseract'ın kendi iş parçacıkları çekirdekleri boğmasın.
@@ -34,8 +70,8 @@ def available_langs() -> frozenset[str]:
     exe = shutil.which("tesseract")
     if not exe:
         return frozenset()
-    r = subprocess.run([exe, "--list-langs"], capture_output=True, text=True)
-    out = (r.stdout or "") + (r.stderr or "")
+    r = subprocess.run([exe, "--list-langs"], capture_output=True)
+    out = _decode(r.stdout) + _decode(r.stderr)
     return frozenset(line.strip() for line in out.splitlines()[1:] if line.strip())
 
 
@@ -85,16 +121,18 @@ def ocr_image_q(path: Path) -> OcrResult:
     """Tek görseli OCR'la; metin ve güven birlikte (tek tesseract çağrısı: txt + tsv)."""
     if not ocr_available():
         raise OcrUnavailable(f"tesseract veya '{OCR_LANGS}' dil verisi yok")
-    with tempfile.TemporaryDirectory(prefix="bidr-tess-") as td:
+    with _tempdir("bidr-tess-") as td:
         base = Path(td) / "o"
         with _SLOTS:
+            # Bayt olarak oku: stderr UTF-8 olmayabilir (text=True UnicodeDecodeError ile çöker).
             r = subprocess.run(
                 ["tesseract", str(path), str(base), "-l", OCR_LANGS, "--psm", _psm(), "txt", "tsv"],
-                capture_output=True, text=True, timeout=OCR_TIMEOUT, env=_env(),
+                capture_output=True, timeout=OCR_TIMEOUT, env=_env(),
             )
-        if r.returncode != 0:
-            raise RuntimeError(f"tesseract hata {r.returncode}: {r.stderr.strip()[:200]}")
-        text = base.with_suffix(".txt").read_text(encoding="utf-8", errors="replace")
+        txt_p = base.with_suffix(".txt")
+        if r.returncode != 0 or not txt_p.exists():
+            raise _tool_error("tesseract", r.returncode, _decode(r.stderr), str(path))
+        text = txt_p.read_text(encoding="utf-8", errors="replace")
         tsv_p = base.with_suffix(".tsv")
         tsv = tsv_p.read_text(encoding="utf-8", errors="replace") if tsv_p.exists() else ""
     conf, n = _tsv_conf(tsv)
@@ -110,16 +148,16 @@ def ocr_pdf_page(pdf: Path, page: int) -> OcrResult:
     """PDF'nin 1 tabanlı `page` sayfasını görüntüye çevirip OCR'la."""
     if not shutil.which("pdftoppm"):
         raise OcrUnavailable("pdftoppm yok")
-    with tempfile.TemporaryDirectory(prefix="bidr-ocr-") as td:
+    with _tempdir("bidr-ocr-") as td:
         prefix = Path(td) / "p"
         r = subprocess.run(
             ["pdftoppm", "-r", str(OCR_DPI), "-gray", "-png", "-f", str(page),
              "-l", str(page), "-singlefile", str(pdf), str(prefix)],
-            capture_output=True, text=True, timeout=OCR_TIMEOUT,
+            capture_output=True, timeout=OCR_TIMEOUT, env=_env(),
         )
         img = prefix.with_suffix(".png")
         if r.returncode != 0 or not img.exists():
-            raise RuntimeError(f"pdftoppm hata {r.returncode}: {r.stderr.strip()[:200]}")
+            raise _tool_error("pdftoppm", r.returncode, _decode(r.stderr), str(img))
         return ocr_image_q(img)
 
 

@@ -16,6 +16,25 @@ _HITAP = re.compile(r"(?<![A-Za-zÇĞİÖŞÜçğıöşü])(?:bey|beyefendi|han�
                     r"(?![A-Za-zçğıöşü])", re.IGNORECASE)
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
 _BAD = re.compile(r'[\\/:*?"<>|\x00-\x1f\x7f]')
+# Güvenle dönüştürülebilen dosya sistemi karakterleri: reddedilmez, "-" olur (kayıtta not).
+# "2024/2025" → "2024-2025", "Lisans / Yüksek Lisans" → "Lisans - Yüksek Lisans",
+# "Senato Kararı: Ders Planı" → "Senato Kararı - Ders Planı". Kalan yasaklılar (* ? " < > ve
+# denetim karakterleri) reddedilir. İstemler (classify_fine, name_evidence) bu listeyi yazar.
+_SLASH = re.compile(r"[\\/|]")
+_COLON = re.compile(r"\s*:\s*")
+YASAKLI_GOSTERIM = '/ \\ : * ? " < > |'
+
+
+def normalize(s: str) -> tuple[str, list[str]]:
+    """Güvenli dönüşümler: (yeni ad, notlar). Not yoksa ad değişmemiştir."""
+    t = clean(s)
+    notes = []
+    u = _COLON.sub(" - ", _SLASH.sub("-", t))
+    u = re.sub(r"\s+", " ", u).strip(" -")
+    if u != t:
+        found = sorted(set(_SLASH.findall(t)) | ({":"} if ":" in t else set()))
+        notes.append(f"karakter_donusumu: {' '.join(found)} → '-' ({t!r} → {u!r})")
+    return u, notes
 
 
 def clean(s: str) -> str:
@@ -25,13 +44,20 @@ def clean(s: str) -> str:
 
 
 def check_name(s) -> tuple[str | None, list[str]]:
-    """(temiz ad, hatalar). Hata varsa ad None."""
+    """(temiz ad, hatalar). Hata varsa ad None. Güvenli karakterler (/ \\ | :) reddedilmez,
+    "-" ile değiştirilir; dönüşüm notu için `check_name_noted`."""
+    ad, errs, _ = check_name_noted(s)
+    return ad, errs
+
+
+def check_name_noted(s) -> tuple[str | None, list[str], list[str]]:
+    """(temiz ad, hatalar, notlar). Notlar güvenli karakter dönüşümlerini kaydeder."""
     if not isinstance(s, str):
-        return None, ["bos"]
-    t = clean(s)
+        return None, ["bos"], []
+    t, notes = normalize(s)
     errs: list[str] = []
     if not t:
-        return None, ["bos"]
+        return None, ["bos"], notes
     if _EMAIL.search(t):
         errs.append("eposta")
     if has_person(t) or _HITAP.search(t):
@@ -44,4 +70,4 @@ def check_name(s) -> tuple[str | None, list[str]]:
     letters = sum(c.isalpha() for c in t)
     if letters < 3 or letters / len(t) < 0.5:
         errs.append("bozuk")
-    return (None, errs) if errs else (t, [])
+    return (None, errs, notes) if errs else (t, [], notes)

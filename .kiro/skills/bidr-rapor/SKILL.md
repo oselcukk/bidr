@@ -79,9 +79,18 @@ klasöründeki görüntülere kendin bak ve `<doc_id>.out.json` yaz:
 - görüntüde yazmayan tarih/yer/kişi adı yok (kod, görünen yazılarda geçmeyen yılı reddeder);
 - kimseyi tanımaya çalışma; yüz/saç/kıyafet/cinsiyet/yaş betimlemesi yok (KVKK; kod reddeder).
   Kişiler yalnız sayı ve rolle: "~40 dinleyici", "1 konuşmacı";
-- görüntü aslında metin sayfasıysa `icerik: belge_sayfasi` (betimlenmez; `bidr next` transcribe önerir).
+- görüntü aslında metin sayfasıysa `icerik: belge_sayfasi` (betimlenmez; aşağıya bak).
 → `bidr describe apply -w WS --model <ajan adı>`. `work/describe/GECERSIZ.md`'deki paketleri
-yeniden yap. Betimleme belgenin metni olur ve başında "GÖRSEL BETİMLEME" işareti taşır: karar
+yeniden yap.
+
+**'Metin sayfası' sonucu (`icerik: belge_sayfasi`) engel değil, uyarıdır:** `bidr next` describe
+aşamasını bitti sayar ve `Uyarı: N belgeyi ajan 'metin sayfası' saydı … bidr transcribe prepare
+… --only <doc_id>` satırını gösterir; hat bu yüzden durmaz. Yine de bu, atlanmaması gereken
+önerilen iştir: o belgenin metni OCR çöpü olarak kalır ve yazıya geçirilmedikçe kanıt olarak
+değerlendirilemez. Uyarıdaki komutu çalıştırıp transcribe paketini cevapla (yukarıdaki
+"Görsel okuma"); yapmadıysan bitirirken kullanıcıya hangi belgelerin metinsiz kaldığını söyle.
+
+Betimleme belgenin metni olur ve başında "GÖRSEL BETİMLEME" işareti taşır: karar
 paketlerinde alıntı bu betimlemeden gelir; kanıtı abartma (bir fotoğraf tesisin varlığını
 gösterir, kullanım sıklığını ya da iyileştirmeyi göstermez).
 
@@ -91,10 +100,27 @@ gösterir, kullanım sıklığını ya da iyileştirmeyi göstermez).
    `gaps.md`, `audit-olcutler.json`. Komutun yazdığı OD dağılımını ve öncelikli eksikleri
    kullanıcıya özetle (sayıları çıktıdan al).
 2. DUR: `review.xlsx`'teki KARAR sütununu (kabul/ret/duzelt) **kullanıcı** doldurur. Kararı sen
-   verme, tabloyu sen doldurma. Kullanıcı isterse satırları birlikte gözden geçir: önce turuncu
+   verme, tabloyu sen doldurma (tek istisna aşağıdaki yetki devri). Kullanıcı isterse satırları birlikte gözden geçir: önce turuncu
    (OD4/OD5'e yükselten, özellikle "ÖNERİ etiket") ve sarı (düşük güven) satırlar. Önerin
    olabilir ama karar ve yazım kullanıcının.
-3. Kullanıcı "bitti" deyince `bidr audit apply -w WS`. Çıkış 1: geçersiz kararlar listelenir;
+   **Yetki devri.** Kullanıcı açıkça "inceleme tablosunda karar vermeyeceğim, sen devam et" (ya
+   da aynı anlamda bir söz) derse — sessizlik, "devam et" ya da "hızlı bitir" yetki devri değildir —
+   kararları kullanıcı yetkisiyle sen verirsin:
+   - Önce kullanıcıya ne yapacağını bir kez söyle (kural aşağıda; rapor TASLAK kalacak).
+   - Tabloyu bidr ortamının Python'u ve openpyxl ile doldur (yalnız KARAR ve NOT hücreleri;
+     sütun/sayfa yapısını bozma). Her satırın KARAR'ını yaz ve aynı satırın NOT'una `ajan (kullanıcı yetkisiyle)` yaz
+     (gerekçe varsa ardına: `ajan (kullanıcı yetkisiyle): <kısa gerekçe>`).
+   - Güveni düşük (`güven: dusuk`, sarı) eşleşmeler `ret`. Diğerlerinde alıntı yuvayı açıkça
+     karşılıyorsa `kabul`, karşılamıyorsa `ret`; emin olmadığın satır `ret`. `duzelt`, kanıt adı ve
+     bağlantı düzeltmesi yapma; OD'yi yükseltmek için karar verme.
+   - Yetki yalnız review.xlsx kararlarını kapsar; hakem cevapları ve `bidr verify karar` için
+     ayrıca açık söz gerekir.
+   - Rapor TASLAK kalır: render'ın TASLAK damgası yalnız doğrulanmamış metne bakar, bu yüzden
+     raporu sen TASLAK diye bildirirsin. Bitirirken ve her özetinde "kararlar ajan tarafından,
+     kullanıcı yetkisiyle verildi; rapor kullanıcı tabloyu gözden geçirene kadar TASLAK" de;
+     ajanın verdiği kabul/ret sayılarını söyle. Kullanıcı sonra tabloyu düzeltirse `bidr audit
+     apply`'dan yeniden yürür.
+3. Kullanıcı "bitti" deyince (yetki devrinde sen bitirince) `bidr audit apply -w WS`. Çıkış 1: geçersiz kararlar listelenir;
    kullanıcıya göster, düzeltmesini iste.
 4. `slot-tags-oneri.yaml` oluştuysa kullanıcıya söyle: yuva etiketi önerileridir; paket
    verisine (`bidr/data/criteria/`) sen işleme.
@@ -156,6 +182,10 @@ Alt ajan açamıyorsan dur ve kullanıcıya söyle; aynı bağlamda doğrulama y
 Doğrulanmamış metin varsa belge TASLAK damgalıdır; bunu kullanıcıya söyle.
 
 ## Bitirirken
+
+Çalışma günlüğü tutuyorsan (ör. kullanıcıya ya da bir dosyaya zaman damgalı adımlar) saati her
+seferinde sistem saatinden al (`date '+%Y-%m-%d %H:%M'`; Windows `Get-Date -Format "yyyy-MM-dd HH:mm"`);
+saat tahmin etme, önceki satırdan türetme.
 
 Kullanıcıya kısa özet: biten aşamalar, bekleyen aşama ve neden, uyarılar (OCR'sız belgeler,
 reddedilen eşleşmeler), insan kararı gereken şey. Sayıları `bidr status -w WS`'den al; uydurma.

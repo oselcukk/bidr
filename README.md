@@ -37,9 +37,26 @@ Aşamalar (`bidr/data/pipeline.yaml`, ayrıntı `docs/ARCHITECTURE.md`):
    (geçmiş yıl etiketiyle farklar, kullanıcı karar verir) → name (kanıt adı önerisi).
 3. **İnceleme:** audit → `review.xlsx` (her satıra kullanıcı KARAR yazar: kabul/ret/duzelt;
    kanıt adı ve bağlantı düzeltilebilir), `gaps.md` (eksik kanıtlar), ölçüt OD önerisi.
+   Kullanıcı açıkça "karar vermeyeceğim, sen devam et" derse ajan kararları kullanıcı yetkisiyle
+   verir: her satırın NOT'una "ajan (kullanıcı yetkisiyle)" yazar, güveni düşük eşleşmeleri ret
+   sayar, rapor TASLAK kalır (bkz. `bidr-rapor` skill'i).
 4. **Rapor:** file (kanıt klasörü `evidence/`, `evidence-index.csv`) → write (ölçüt metni) →
    verify (kod + metni yazmamış, taze bir ajan; reddedilen metin gerekçesiyle yeniden yazılır,
    2 turdan sonra kullanıcı karar verir) → render (`report.docx`, FR-0833 şablonu).
+
+**Sandbox'lı ajan ortamı** (Codex, Claude Code sandbox gibi; yalnız çalışma klasörüne yazılabilir):
+paket yöneticisi önbelleği ve geçici klasör çalışma klasörüne alınır, yoksa kurulum ya da OCR
+(`tesseract` geçici PNG'yi `/tmp` altında açamaz) başarısız olur:
+
+```
+mkdir -p _tmp/uv-cache _tmp/pip-cache _tmp/tmp                 # _tmp/ git dışıdır
+export UV_CACHE_DIR="$PWD/_tmp/uv-cache" PIP_CACHE_DIR="$PWD/_tmp/pip-cache" TMPDIR="$PWD/_tmp/tmp"
+uv venv && uv pip install -e '.[dev]'                          # bidr komutlarını da aynı TMPDIR ile çalıştırın
+```
+
+**Boş FR-0833 şablonu** (`rapor.sablon`, render için gerekli): kurulumda kullanıcıdan istenir.
+Kurum profili (`bidr/data/institutions/<kurum>.yaml`) `sablon_adresi` taşıyorsa ajan şablonu
+oradan çalışma alanına indirir; adres boşsa (gtu profilinde şimdilik boş) kullanıcıya sorulur.
 
 Önkoşulu bitmemiş aşamanın komutu çıkış kodu 3 ile durur. Çalışma alanı repo ve kaynak
 klasör dışında olmalıdır; kaynak salt okunurdur.

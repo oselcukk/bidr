@@ -8,6 +8,10 @@ kurum: gtu
 ad: Gebze Teknik Üniversitesi
 # Kanıt bağlantısı: belge metnindeki bu alan adlarındaki adresler yayın adresi sayılır.
 yayin_alan_adlari: [gtu.edu.tr]
+# Boş BİDR rapor şablonunun (FR-0833 .docx) indirme adresi. Doluysa kurulumda ajan şablonu
+# buradan indirir (config.yaml `rapor.sablon`); boşsa kullanıcıdan şablon dosyası istenir.
+# Doğrulanmış resmî adres bilinmiyor: boş bırakıldı.
+sablon_adresi:
 # Kod biçimi: iki harfli önek + 4 hane. Önekler Türkçe harfsiz (katlanmış) yazılır.
 onekler:
   fr: FR   # form

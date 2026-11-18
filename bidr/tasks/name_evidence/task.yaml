@@ -3,7 +3,8 @@ description: >-
   Kanıt adı (ucuz, sonradan). Zaten karara bağlanmış bir belge için kısa bağlam (belge
   metninin başı ve eşleştiği ölçütlerden alıntılar) + tür + tarih → kanıt dosyasının okur adı
   `kanit_adi` (3-7 sözcük, Türkçe, kurumsal; kişi adı/unvan yok). Kod kişi/unvan/e-posta
-  içeren adı reddeder (bidr/name/check.py). Çıktı `kanit-adlari.jsonl` (kaynak: model).
+  içeren adı reddeder (bidr/name/check.py). Yasaklı dosya adı karakterleri istemde yazılı;
+  / \ | : reddedilmez, "-" olur (kayıtta `not`, `oneri`). Çıktı `kanit-adlari.jsonl` (kaynak: model).
 inputs:
   belge_bilgisi: "documents.jsonl içerik alanları (tür tahmini, tarih, akademik dönem, sayfa); yol/ad yok"
   baslik: "identify'ın metinden çıkardığı başlık (kural tabanlı; yanılabilir)"

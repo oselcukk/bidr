@@ -18,6 +18,23 @@ Cevap uydurma: bilmediğin her alanı kullanıcıya sor.
     (Windows: `py -3 -m venv .venv` ve `.venv\Scripts\pip install -e .[dev]`)
   - Denetim: `.venv/bin/bidr --help` ve `.venv/bin/pytest -q` geçmeli.
 
+### Sandbox'lı ajan ortamı
+
+Yalnız çalışma klasörüne yazabildiğin bir sandbox'taysan (ev dizinindeki paket önbelleği ve
+`/tmp` kapalı) önbelleği ve geçici klasörü repo içindeki git dışı `_tmp/`'ye al; aynı
+`TMPDIR`'i sonraki bütün `bidr` komutlarında da kullan (OCR'da `tesseract` geçici PNG'yi
+`TMPDIR` altında açar; açamazsa hata mesajı bunu söyler):
+
+```
+mkdir -p _tmp/uv-cache _tmp/pip-cache _tmp/tmp
+export UV_CACHE_DIR="$PWD/_tmp/uv-cache" PIP_CACHE_DIR="$PWD/_tmp/pip-cache" TMPDIR="$PWD/_tmp/tmp"
+uv venv && uv pip install -e '.[dev]'
+```
+
+uv yoksa `python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'` aynı ortam
+değişkenleriyle. Windows PowerShell: `$env:UV_CACHE_DIR="$PWD\_tmp\uv-cache"` vb.
+Sandbox ağ erişimini kapatıyorsa kurulumu kullanıcıdan izin isteyerek ya da sandbox dışında yaptır.
+
 ## 2. Dış araçlar (metin çıkarma ve OCR)
 
 `pdftotext`, `pdftoppm` (poppler) ve `tesseract` + Türkçe dil verisi (`tesseract --list-langs`
@@ -46,6 +63,17 @@ Tesseract (UB Mannheim) kurulup PATH'e eklenir. OCR olmadan taranmış belgeler
 
 Cevapları `<calisma_alani>/answers.yaml` dosyasına yaz (klasörü aç), kullanıcıya göster,
 sonra: `bidr init --answers <calisma_alani>/answers.yaml`.
+
+### Boş rapor şablonu (FR-0833)
+
+Rapor (`bidr render`) boş FR-0833 .docx şablonunu ister (`config.yaml` `rapor.sablon`). Kurulumda edin:
+1. Kurum profilinde (`bidr/data/institutions/<kurum>.yaml`) `sablon_adresi` doluysa şablonu o
+   adresten çalışma alanına indir (ör. `<calisma_alani>/sablon/FR-0833.docx`), dosyanın gerçekten
+   .docx olduğunu denetle ve kullanıcıya hangi adresten indirdiğini söyle.
+2. Adres boşsa ya da indirme başarısızsa kullanıcıdan boş şablon dosyasını iste (kurumun kalite
+   birimi sayfasından ya da bölüm sekreterliğinden edinilir). Adres ya da dosya uydurma.
+3. Dosya yolunu `config.yaml` `rapor.sablon`'a yazdır (kullanıcıya göstererek). Şablon şimdi
+   yoksa sorun değil: render'a kadar `bidr next` yeniden ister.
 
 ## 4. Çıkış kodları
 

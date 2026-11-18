@@ -31,7 +31,8 @@ from test_file import P2, _index, env  # noqa: F401  (env: fixture)
     ("ali.veli@gtu.edu.tr Yazışması", False),
     ("Yönerge", False),                                     # tek sözcük
     (" ".join(["Çok"] * 12), False),                        # uzun
-    ("Rapor: 2025/1", False),                               # dosya sisteminde yasaklı karakter
+    ("Rapor * Taslak <Sürüm>", False),                      # dosya sisteminde yasaklı karakter
+    ("2024/2025 Güz Ders Programı", True),                  # "/" → "-" (reddedilmez)
 ])
 def test_check_name(s, ok):
     ad, errs = check_name(s)
@@ -53,6 +54,31 @@ def test_fine_decision_records_name_and_rejects_person():
     sch = json.loads((DR.TASKS_DIR / DR.FINE / "output.schema.json").read_text(encoding="utf-8"))
     assert "kanit_adi" in sch["required"] and DR.task_version(DR.FINE) == "8"
     assert '"kanit_adi"' in (DR.TASKS_DIR / DR.FINE / "prompt.md").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("s,ad", [
+    ("2024/2025 Güz Ders Programı", "2024-2025 Güz Ders Programı"),
+    ("Lisans / Yüksek Lisans Programları", "Lisans - Yüksek Lisans Programları"),
+    ("Senato Kararı: Ders Planı Değişikliği", "Senato Kararı - Ders Planı Değişikliği"),
+    ("Ölçme\\Değerlendirme | Komisyon Raporu", "Ölçme-Değerlendirme - Komisyon Raporu"),
+])
+def test_safe_chars_converted_with_note(s, ad):
+    from bidr.name.check import check_name_noted
+    got, errs, notes = check_name_noted(s)
+    assert got == ad and errs == [] and notes and "karakter_donusumu" in notes[0]
+    assert check_name(s) == (ad, [])
+    assert check_name_noted("Bölüm Toplantı Tutanakları")[2] == []
+    # karar kaydı: öneri özgün, ad dönüştürülmüş
+    rec = DR.evidence_name_of({"kanit_adi": s})
+    assert rec["durum"] == "kabul" and rec["ad"] == ad and rec["oneri"] == s
+
+
+def test_prompts_list_forbidden_chars_and_unit_rule():
+    fine = (DR.TASKS_DIR / DR.FINE / "prompt.md").read_text(encoding="utf-8")
+    name = (DR.TASKS_DIR / "name_evidence" / "prompt.md").read_text(encoding="utf-8")
+    for p in (fine, name):
+        assert '/ \\ : * ? " < > |' in p
+    assert "YALNIZ belge metninden" in fine and "kişileri tanıyarak" in fine and "dış bilgiyle" in fine
 
 
 # -- öncelik --------------------------------------------------------------------------------
@@ -95,16 +121,23 @@ def test_name_prepare_apply(env, capsys):
         {"kanit_adi": "Öğrenci Ders Memnuniyet Anketi Sonuçları", "gerekce": "başlık"}), encoding="utf-8")
     (d / "d_kom.out.json").write_text(json.dumps(
         {"kanit_adi": "Prof. Dr. Deneme Kişi Görevlendirmesi", "gerekce": "x"}), encoding="utf-8")
+    (d / "d_karar.out.json").write_text(json.dumps(
+        {"kanit_adi": "Bölüm Kurulu Kararları 2024/2025", "gerekce": "x"}), encoding="utf-8")
     assert main(["name", "apply", "-w", str(ws), "--model", "test"]) == 1          # kişi adı: reddedildi
     out = capsys.readouterr().out
-    assert "reddedildi d_kom" in out and "bekleyen=1" in out
-    assert "d_kom" in (d / "GECERSIZ.md").read_text(encoding="utf-8")
-    recs = list(read_jsonl(ws / NAMES))
-    assert [(r["doc_id"], r["ad"], r["kaynak"], r["model"]) for r in recs] == [
-        ("d_anket", "Öğrenci Ders Memnuniyet Anketi Sonuçları", "model", "test")]
+    assert "reddedildi d_kom" in out and "bekleyen=0" in out
+    g = (d / "GECERSIZ.md").read_text(encoding="utf-8")
+    assert "d_kom" in g and "d_karar" not in g and '/ \\ : * ? " < > |' in g
+    recs = {r["doc_id"]: r for r in read_jsonl(ws / NAMES)}
+    assert [(k, r["ad"], r["kaynak"], r["model"]) for k, r in sorted(recs.items())] == [
+        ("d_anket", "Öğrenci Ders Memnuniyet Anketi Sonuçları", "model", "test"),
+        ("d_karar", "Bölüm Kurulu Kararları 2024-2025", "model", "test")]
+    # "/" reddedilmedi, "-" oldu; kayıtta öneri ve not
+    assert recs["d_karar"]["oneri"] == "Bölüm Kurulu Kararları 2024/2025"
+    assert "karakter_donusumu" in recs["d_karar"]["not"][0] and "not" not in recs["d_anket"]
     # ikinci apply değişmez; prepare model adı olanı yeniden paketlemez
-    assert NR.apply(ws, model="test")["degismedi"] == 1
-    assert NR.prepare(ws)["zaten_adli"] == 1
+    assert NR.apply(ws, model="test")["degismedi"] == 2
+    assert NR.prepare(ws)["zaten_adli"] == 2
     st = NR.prepare(ws, only=["d_anket", "d_kopya"])
     assert st["paket"] == 1 and st["uygun_degil"] == ["d_kopya"]
 

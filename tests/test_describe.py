@@ -210,6 +210,41 @@ def test_apply_rejects_person_and_inference(tmp_path, bad, msg):
     assert did in (ws / "work" / "describe" / "GECERSIZ.md").read_text(encoding="utf-8")
 
 
+@pytest.mark.parametrize("text", [
+    "Tabloda 17-36 numaralı satırlar görünüyor.",
+    "0-50 ölçekli bir çubuk grafik.",
+    "01-03 numaralı kutular rafta.",
+    "2000 kişilik konferans salonu.",
+    "0-2000 ölçekli eksenli grafik.",
+    "Saat 14.30 yazılı pano yok; bölüm 1.2.3 başlığı.",
+    "1999-2500 arası değerler tabloda.",
+])
+def test_number_ranges_are_not_dates(text):
+    """Sayı aralıkları, sayımlar ve ölçüler tarih/yıl sayılmaz (kör testteki yanlış alarmlar)."""
+    assert R.check_item(_item(betimleme=text)) == []
+
+
+@pytest.mark.parametrize("text, msg", [
+    ("2024 mezuniyet töreni.", "2024"),
+    ("1998 yılında kurulan laboratuvar.", "1998"),
+    ("2022-2023 akademik yılı açılışı.", "2022"),
+    ("12.05.2023 tarihli seminer.", "12.05.2023"),
+    ("12-05-2023 günü çekilmiş.", "12-05-2023"),
+    ("17.03 tarihli toplantı.", "17.03"),
+    ("12 Mart 2023 tarihinde yapılan tören.", "12 mart 2023"),
+])
+def test_real_dates_still_rejected(text, msg):
+    errs = R.check_item(_item(betimleme=text))
+    assert errs and msg in errs[0] and "tarih/yıl" in errs[0]
+
+
+def test_real_date_allowed_when_visible():
+    it = _item(betimleme="12 Mart 2023 tarihli afiş; 12.05.2023 yazılı pano.",
+               gorunen_yazilar=[{"yer": "afiş", "metin": "12 MART 2023"},
+                                {"yer": "pano", "metin": "12.05.2023"}])
+    assert R.check_item(it) == []
+
+
 def test_year_allowed_when_visible(tmp_path):
     ws, src, ids = _ws(tmp_path, {"foto": (".png", GARBAGE, 1)})
     did = ids["foto"]

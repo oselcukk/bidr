@@ -389,8 +389,79 @@ _PERSON = re.compile(
     r"bayan\w*|bay|kiz|kizlar\w*|oglan\w*|adam|adamlar\w*|gulumse\w*|gulen|yuzu|yuzleri|yuz ifade\w*|"
     r"kiyafet\w*|giyinmis|giymis|takim elbise\w*|ceket\w*|kravat\w*|etek\w*|ten rengi|"
     r"taniniyor|tanindig\w*)\b")
-_YEAR = re.compile(r"(?<!\d)(?:19|20)\d{2}(?!\d)")
-_DATE = re.compile(r"(?<!\d)\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?(?!\d)")
+# Tarih/yıl çıkarımı denetimi yalnız gerçek tarih biçimlerine bakar. Sayı aralıkları
+# ("17-36 numaralı satırlar", "0-50 ölçekli grafik", "01-03 numaralı kutular"), sayımlar
+# ("2000 kişilik salon") ve ölçüler tarih sayılmaz.
+_YEAR_MIN = 1950
+_YEAR = re.compile(r"(?<![\d.,])((?:19|20)\d{2})(?![\d]|[.,]\d)")
+# tam sayısal tarih: gg.aa.yyyy, gg/aa/yy, gg-aa-yyyy (gün 1-31, ay 1-12)
+_DATE = re.compile(r"(?<![\d.,/-])(\d{1,2})([./-])(\d{1,2})\2(\d{4}|\d{2})(?![\d]|[.,/-]\d)")
+# yılsız gg.aa / gg/aa: yalnız ardından "tarih" bağlamı gelirse ("17.03 tarihli")
+_DATE_SHORT = re.compile(r"(?<![\d.,/-])(\d{1,2})[./](\d{1,2})(?![\d]|[.,/-]\d)(?=\s*(?:'|’)?\s*tarih)",
+                         re.IGNORECASE)
+_MONTHS = ("ocak|subat|mart|nisan|mayis|haziran|temmuz|agustos|eylul|ekim|kasim|aralik|"
+           "january|february|march|april|may|june|july|august|september|october|november|december")
+# gün + ay adı (katlanmış metinde): "12 mart", "12 mart 2023"
+_DATE_NAMED = re.compile(rf"(?<![\d.,])(\d{{1,2}})\s+({_MONTHS})\b(?:\s+(\d{{4}}))?")
+# yıl sayılmayan bağlam: ardından sayım/ölçü birimi ya da numara sözcüğü (katlanmış metinde)
+_NOT_YEAR_AFTER = re.compile(
+    r"\s*(?:kisi\w*|adet\w*|numara\w*|nolu|no\b|sayfa\w*|satir\w*|olcek\w*|birim\w*|"
+    r"tl\b|lira\w*|dolar\w*|euro\w*|m2|m²|m\b|metre\w*|km\b|cm\b|mm\b|kg\b|gr\b|"
+    r"watt|w\b|kw\b|px|piksel\w*|%|°|x\s*\d|×|puan\w*|ogrenci\w*|katilimci\w*|dinleyici\w*|"
+    r"bilgisayar\w*|kitap\w*|cilt\w*|koltuk\w*|sandalye\w*|masa\w*)")
+_RANGE_SEP = r"\s*[-–—]\s*"
+
+
+def _plausible_year(y: int) -> bool:
+    import datetime
+    return _YEAR_MIN <= y <= datetime.date.today().year + 1
+
+
+def _year_hits(f: str) -> set[str]:
+    """Metindeki gerçek yıl biçimleri (19xx/20xx, makul aralıkta, bağlamı sayım/ölçü/numara
+    aralığı olmayan). `f` katlanmış (küçük, aksansız) metindir."""
+    out = set()
+    for m in _YEAR.finditer(f):
+        y = m.group(1)
+        if not _plausible_year(int(y)):
+            continue
+        after, before = f[m.end():], f[:m.start()]
+        # aralık: öbür ucu yıl değilse ("0-2000 ölçekli", "1999-2500 arası") aralık sayıdır
+        ra = re.match(_RANGE_SEP + r"(\d+)(?![\d])", after)
+        rb = re.search(r"(?<![\d.,])(\d+)" + _RANGE_SEP + r"$", before)
+        other = ra.group(1) if ra else (rb.group(1) if rb else None)
+        if other is not None:
+            if not (len(other) == 4 and _plausible_year(int(other))) and not (
+                    ra and len(other) == 2):  # "2022-23" akademik yılı
+                continue
+            tail = after[ra.end():] if ra else after
+            if _NOT_YEAR_AFTER.match(tail):
+                continue
+        elif _NOT_YEAR_AFTER.match(after):
+            continue
+        out.add(y)
+    return out
+
+
+def _date_hits(f: str) -> list[tuple[str, str]]:
+    """(görünen biçim, karşılaştırma anahtarı) çiftleri: sayısal tarihlerde rakamlar,
+    ay adlı tarihlerde katlanmış metin. `f` katlanmış metindir."""
+    out = []
+    for m in _DATE.finditer(f):
+        d, mo, y = int(m.group(1)), int(m.group(3)), m.group(4)
+        if not (1 <= d <= 31 and 1 <= mo <= 12):
+            continue
+        if len(y) == 4 and not _plausible_year(int(y)):
+            continue
+        out.append((m.group(0), "#" + _digits(m.group(0))))
+    for m in _DATE_SHORT.finditer(f):
+        d, mo = int(m.group(1)), int(m.group(2))
+        if 1 <= d <= 31 and 1 <= mo <= 12:
+            out.append((m.group(0), "#" + _digits(m.group(0))))
+    for m in _DATE_NAMED.finditer(f):
+        if 1 <= int(m.group(1)) <= 31:
+            out.append((m.group(0), " ".join(m.group(0).split())))
+    return out
 
 
 def _fold(s: str) -> str:
@@ -403,7 +474,9 @@ def _digits(s: str) -> str:
 
 
 def check_item(it: dict) -> list[str]:
-    """Kod kuralları (şemanın ötesi): kişi betimlemesi yok; görüntüde yazmayan tarih/yıl yok."""
+    """Kod kuralları (şemanın ötesi): kişi betimlemesi yok; görüntüde yazmayan tarih/yıl yok.
+    Tarih/yıl yalnız gerçek biçimlerde aranır (`_year_hits`, `_date_hits`): sayı aralıkları,
+    sayımlar ve ölçüler tarih sayılmaz."""
     errs = []
     k = it["gorsel"]
     free = [it["betimleme"], it["sahne"], it["etkinlik"]] + [o["ad"] for o in it["nesneler"]]
@@ -413,15 +486,18 @@ def check_item(it: dict) -> list[str]:
                     f"sayı ve rolle an (\"~40 dinleyici\", \"1 konuşmacı\")")
     seen = " ".join(_digits(y["metin"]) for y in it["gorunen_yazilar"])
     seen_f = " ".join(_fold(y["metin"]) for y in it["gorunen_yazilar"])
+    seen_ws = " ".join(seen_f.split())
     bad = set()
     for f in free:
-        for m in _YEAR.finditer(f):
-            if m.group(0) not in seen_f:
-                bad.add(m.group(0))
-        for m in _DATE.finditer(f):
-            dg = _digits(m.group(0))
-            if len(dg) >= 3 and dg not in seen:
-                bad.add(m.group(0))
+        ff = _fold(f)
+        dates = _date_hits(ff)
+        for shown, key in dates:
+            if not (key[1:] in seen if key.startswith("#") else key in seen_ws):
+                bad.add(shown)
+        in_date = {y for shown, _ in dates for y in _year_hits(shown)}
+        for y in _year_hits(ff) - in_date:
+            if y not in seen_f:
+                bad.add(y)
     if bad:
         errs.append(f"görsel {k}: görüntüde yazmayan tarih/yıl çıkarımı: {', '.join(sorted(bad))} "
                     f"(yalnız görünen yazılarda geçebilir)")

@@ -23,7 +23,7 @@ from pathlib import Path
 from bidr.common import Workspace, read_jsonl
 from bidr.decide import prompt as P
 
-from .check import check_name
+from .check import YASAKLI_GOSTERIM, check_name_noted
 from .resolve import NAMES, decision_name, load_names, upsert
 
 TASK = "name_evidence"
@@ -195,13 +195,16 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", only: list[str] |
         if out is None:
             st["gecersiz"][did] = errs[:5]
             continue
-        ad, errs = check_name(out.get("kanit_adi"))
+        ad, errs, notes = check_name_noted(out.get("kanit_adi"))
         if errs:
             st["reddedilen"][did] = {"oneri": out.get("kanit_adi"), "neden": errs}
             continue
         rec = {"doc_id": did, "ad": ad, "kaynak": "model", "model": model, "gorev": {TASK: ver},
                "istem_sha": pkg["istem_sha"], "cevap_sha": _sha(raw)[:16],
                "gerekce": out.get("gerekce", "")}
+        if notes:
+            rec["oneri"] = out.get("kanit_adi")
+            rec["not"] = notes
         prev = (have.get(did) or {}).get("model")
         if prev and {k: v for k, v in prev.items() if k != "zaman"} == rec:
             st["degismedi"] += 1
@@ -216,7 +219,7 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", only: list[str] |
     for did, x in st["reddedilen"].items():
         lines.append(f"- `{did}.json` — ad reddedildi ({', '.join(x['neden'])}): "
                      + json.dumps(x["oneri"], ensure_ascii=False)
-                     + ". Kişi adı/unvan/e-posta yok; 3-7 sözcük.")
+                     + f". Kişi adı/unvan/e-posta yok; 3-7 sözcük; yasaklı karakter yok ({YASAKLI_GOSTERIM}).")
     if d.exists():
         g = d / "GECERSIZ.md"
         if len(lines) > 2:
