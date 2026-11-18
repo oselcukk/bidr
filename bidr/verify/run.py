@@ -220,6 +220,10 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
     save_log(ws, log)
     st["bekleyen"] = K.write_readme(d, task=TASK, version=W.task_version(TASK), cmd="verify", rule=RULE)
     st["klasor"] = str(d)
+    # alan düzeyi Güçlü / Gelişmeye Açık Yönler (bidr/write/yonler.py) aynı akışla doğrulanır
+    if not only:
+        from bidr.write import yonler as Y
+        st["yonler"] = Y.verify_prepare(ws_root, redo=redo, backend=backend)
     return st
 
 
@@ -291,4 +295,6 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", backend: W.Backen
             st["reddedildi"][c] = why
     save_log(ws, log)
     K.write_invalid(d, TASK, st["gecersiz"])
+    from bidr.write import yonler as Y
+    st["yonler"] = Y.verify_apply(ws_root, model=model, backend=backend)
     return st

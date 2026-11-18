@@ -253,3 +253,24 @@ def save_preserving(doc, template: Path, out: Path) -> list[str]:
             z.writestr(n, nb)
     tmp.replace(out)
     return changed
+
+
+def replace_cell(tc, paragraphs: list) -> None:
+    """Hücredeki bütün paragrafları `paragraphs` ile değiştirir (tcPr ve hücre özellikleri korunur).
+    Boş liste verilirse hücrede bir boş paragraf kalır (OOXML: hücrede en az bir paragraf)."""
+    for p in tc.findall(W + "p"):
+        tc.remove(p)
+    if not paragraphs:
+        paragraphs = [OxmlElement("w:p")]
+    for p in paragraphs:
+        tc.append(p)
+
+
+def is_blank_paragraph(p) -> bool:
+    """Metni, çizimi, alanı ve bölüm sonu olmayan paragraf (kapak boşluğu)."""
+    if _ptext(p).strip():
+        return False
+    for tag in ("drawing", "pict", "object", "fldSimple", "fldChar", "sectPr", "br"):
+        if p.find(".//" + qn("w:" + tag)) is not None:
+            return False
+    return True

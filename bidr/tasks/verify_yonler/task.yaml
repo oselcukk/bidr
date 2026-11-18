@@ -1,0 +1,9 @@
+version: 1
+description: >-
+  Bağımsız doğrulama: alan düzeyindeki güçlü / gelişmeye açık yön maddeleri, atıf yaptıkları
+  alt ölçütlerin doğrulanmış metni ve audit bulgularıyla karşılaştırılır → madde başına
+  destekleniyor | kismen | desteklenmiyor + gerekçe. Yazarın gerekçesi verilmez.
+inputs:
+  alan: "alan kodu ve başlığı"
+  maddeler: "denetlenecek maddeler: yer (g: güçlü, a: gelişmeye açık), metin"
+  olcutler: "maddelerin atıf yaptığı alt ölçütler: OD, PUKÖ zinciri, doğrulanmış metin, bulgular"

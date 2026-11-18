@@ -28,13 +28,64 @@ def _merged_row(table, text_lines: list[str]):
     return cell
 
 
-def make_template(path: Path, ids=(("A.1.1", "Yönetişim modeli"), ("A.1.2", "Liderlik"))) -> Path:
+FORM = "Form No:FR-0000 Yayın Tarihi:01.01.2000 Değ.No:0 Değ.Tarihi:-"
+PH = "…………………….[Üye Unvan, Adı Soyadı, eposta adresi, Görevi]"
+YONERGE_G = "Biriminizin bu ana ölçüt ve alt ölçütleri açışından güçlü yönlerini değerlendiriniz."
+YONERGE_A = "Biriminizin bu ana ölçüt ve alt ölçütleri açışından gelişmeye açık yönlerini değerlendiriniz."
+ALAN_BASLIK = (("A", "LİDELİK, YÖNETİŞİM VE KALİTE"), ("B", "EĞİTİM VE ÖĞRETİM"), ("C", "ARAŞTIRMA VE GELİŞTİRME"),
+               ("D", "TOPLUMSAL KATKI"))
+
+
+def _footer(sec) -> None:
+    """Sentetik altbilgi: form kimliği + PAGE alanı (sayfa numarası)."""
+    from docx.oxml import OxmlElement
+    for f in (sec.footer, sec.first_page_footer):
+        f.is_linked_to_previous = False
+        f.paragraphs[0].text = FORM
+        p = f.add_paragraph()
+        fld = OxmlElement("w:fldSimple")
+        fld.set(qn("w:instr"), " PAGE   \\* MERGEFORMAT ")
+        r = OxmlElement("w:r")
+        t = OxmlElement("w:t")
+        t.text = "1"
+        r.append(t)
+        fld.append(r)
+        p._p.append(fld)
+
+
+def _yonler_table(d) -> None:
+    t = d.add_table(rows=0, cols=2)
+    t.style = "Table Grid"
+    for _, head in ALAN_BASLIK:
+        r = t.add_row()
+        c = r.cells[0].merge(r.cells[1])
+        c.paragraphs[0].text = head
+        r = t.add_row()
+        r.cells[0].text, r.cells[1].text = "Güçlü Yönler", "Gelişmeye Açık Yönler"
+        r = t.add_row()
+        for cell, txt in zip(r.cells, (YONERGE_G, YONERGE_A)):
+            cell.paragraphs[0].text = ""
+            cell.add_paragraph(txt)
+            cell.add_paragraph("")
+
+
+def make_template(path: Path, ids=(("A.1.1", "Yönetişim modeli"), ("A.1.2", "Liderlik")), full: bool = False) -> Path:
+    """`full`: kapakta "Raporu Hazırlayanlar" yer tutucuları, altbilgide form kimliği ve sayfa
+    numarası alanı, sonda Güçlü / Gelişmeye Açık Yönler tablosu (FR-0833 düzeni, sentetik)."""
     d = docx.Document()
     sec = d.sections[0]
     sec.header.paragraphs[0].text = "ŞABLON ÜSTBİLGİSİ"
     sec.different_first_page_header_footer = True
     d.add_paragraph("BİRİM İÇ DEĞERLENDİRME RAPORU")
     d.add_paragraph("…………………….[Birim Adı]")
+    if full:
+        _footer(sec)
+        d.add_paragraph("")
+        d.add_paragraph("Raporu Hazırlayanlar")
+        for _ in range(3):
+            d.add_paragraph(PH)
+        for _ in range(3):
+            d.add_paragraph("")
     d.add_paragraph("2025")
     d.add_paragraph("Yazım kuralları örneği 2547 sayılı kanun")
     d.add_paragraph("ÖLÇÜTLER VE KANITLAR")
@@ -53,6 +104,8 @@ def make_template(path: Path, ids=(("A.1.1", "Yönetişim modeli"), ("A.1.2", "L
         _merged_row(t, ["Açıklamalar:", PLACEHOLDER_A, "", ""])
         _merged_row(t, ["Kanıtlar:", PLACEHOLDER_K, ""])
         d.add_paragraph("")
+    if full:
+        _yonler_table(d)
     d.add_paragraph("SON BÖLÜM")
     d.save(str(path))
     return path
@@ -263,3 +316,183 @@ def test_cli(ws, tmp_path, capsys):
     assert "TASLAK" in out and "report:" in out
     rc = main(["render", "-w", str(ws), "--sablon", str(tmp_path / "yok.docx")])
     assert rc == 2
+
+
+# -- K24/K16: sorumlu birim kapsamı ---------------------------------------------------------------
+
+def test_scope_states(ws, tmp_path):
+    from bidr.render.run import KAPSAM_DISI, KAPSAM_KARARI
+    make_template(tmp_path / "sablon.docx", ids=(("A.1.1", "Bir"), ("A.1.2", "İki"), ("A.1.3", "Üç"),
+                                                  ("A.1.4", "Dört")))
+    write_audit(ws, {"A.1.1": 1, "A.1.2": 1, "A.1.3": 1, "A.1.4": 1})
+    kapsam = {"A.1.1": "bolum", "A.1.2": "ortak", "A.1.3": "baska_birim", "A.1.4": "karar_gerekli"}
+    res, d, blocks = _run(ws, tmp_path, kapsam=kapsam)
+    # kanıt yokluğu yalnız bolum/ortak ölçütlerde
+    for c in ("A.1.1", "A.1.2"):
+        assert BOS_IFADE in _lines(blocks[c].aciklama_tc) and _lines(blocks[c].kanit_tc) == ["Kanıtlar:", BOS_KANIT]
+    assert _lines(blocks["A.1.3"].aciklama_tc) == ["Açıklamalar:", KAPSAM_DISI]
+    assert _lines(blocks["A.1.3"].kanit_tc) == ["Kanıtlar:"]
+    assert _lines(blocks["A.1.4"].aciklama_tc) == ["Açıklamalar:", KAPSAM_KARARI]
+    assert _lines(blocks["A.1.4"].kanit_tc) == ["Kanıtlar:"]
+    assert _bold_cols(blocks["A.1.3"]) == [] and _bold_cols(blocks["A.1.4"]) == []   # OD işaretlenmez
+    assert _bold_cols(blocks["A.1.1"]) == [1]
+    assert res.kapsam_disi == ["A.1.3"] and res.karar_gerekli == ["A.1.4"]
+    assert res.taslak and any("kapsam kararı" in n for n in res.taslak_nedenleri)
+    # kapsam dışı ölçütün metni rapora girmez, taslak da saymaz
+    write_text(ws / "texts", "A.1.3", durum="taslak")
+    res, d, blocks = _run(ws, tmp_path, kapsam={**kapsam, "A.1.4": "bolum"}, opts=Options(kapsam_disi=""))
+    assert _lines(blocks["A.1.3"].aciklama_tc) == ["Açıklamalar:"]
+    assert any("A.1.3: kapsam baska_birim" in u for u in res.uyarilar) and not res.taslak
+
+
+def test_scope_from_profile_and_config(tmp_path, monkeypatch):
+    from bidr.render.kapsam import profile_scope, workspace_scope
+    k, uy = profile_scope("akademik_bolum")
+    assert k["A.1.1"] == "bolum" and k["A.3.1"] == "baska_birim" and k["A.3.3"] == "karar_gerekli" and not uy
+    assert profile_scope(None)[0]["A.3.1"] == "bolum"                      # profil yoksa eski davranış
+    prof = tmp_path / "profiller"
+    prof.mkdir()
+    (prof / "deneme.yaml").write_text(
+        "ad: deneme\ndahil: [TÜM AKADEMİK BİRİMLER]\nkapsam:\n  A.3.3: ortak\n  A.1.1: yanlis\n", encoding="utf-8")
+    monkeypatch.setenv("BIDR_PROFILES_DIR", str(prof))
+    k, uy = profile_scope("deneme")
+    assert k["A.3.3"] == "ortak" and k["A.1.1"] == "bolum" and any("yanlis" in u for u in uy)
+    from bidr.criteria.profiles import load_profile
+    assert load_profile("deneme").decide("A.1.1", "TÜM AKADEMİK BİRİMLER").verdict == "dahil"   # geri uyumlu
+    ws = tmp_path / "w"
+    ws.mkdir()
+    (ws / "config.yaml").write_text("rapor:\n  kapsam:\n    A.3.1: ortak\n    Z.9.9: bolum\n", encoding="utf-8")
+    k, uy = workspace_scope(ws)
+    assert k["A.3.1"] == "ortak" and any("Z.9.9" in u for u in uy)
+
+
+# -- K30: Güçlü / Gelişmeye Açık Yönler -------------------------------------------------------------
+
+def _yon(d: Path, alan: str, durum: str = "dogrulandi", guclu=None, gelisme=None) -> None:
+    d.mkdir(parents=True, exist_ok=True)
+    g = guclu if guclu is not None else [f"Bölümümüzde sentetik uygulama yürütülmektedir ({alan}.1.1)."]
+    a = gelisme if gelisme is not None else [f"Sentetik izleme kanıtı bulunmamaktadır ({alan}.1.2)."]
+    (d / f"{alan}.json").write_text(json.dumps({
+        "alan": alan, "durum": durum, "guclu": [{"metin": x} for x in g], "gelisme": [{"metin": x} for x in a]},
+        ensure_ascii=False), encoding="utf-8")
+
+
+def _yon_cells(doc) -> dict[str, list[str]]:
+    from bidr.render.template import find_yonler
+    cells, warn = find_yonler(doc)
+    assert not warn
+    return {f"{a} {k}": [t for t in _lines(tc) if t] for a, c in cells.items()
+            for k, tc in (("g", c.guclu_tc), ("a", c.gelisme_tc))}
+
+
+PEOPLE = [{"unvan": "Dr. Öğr. Üyesi", "ad_soyad": "Örnek Kişi", "eposta": "ornek@example.edu",
+           "gorev": "Komisyon Başkanı"},
+          {"unvan": "Arş. Gör.", "ad_soyad": "Deneme Ad", "eposta": "deneme@example.edu", "gorev": "Üye"}]
+
+
+def test_strengths_cells(ws, tmp_path):
+    make_template(tmp_path / "sablon.docx", full=True)
+    write_text(ws / "texts", "A.1.1")
+    yd = ws / "yonler"
+    for a in "ABCD":
+        _yon(yd, a)
+    res, d, _ = _run(ws, tmp_path, yonler_dir=yd, hazirlayanlar=PEOPLE)
+    cells = _yon_cells(d)
+    assert cells["A g"] == ["• Bölümümüzde sentetik uygulama yürütülmektedir (A.1.1)."]
+    assert cells["D a"] == ["• Sentetik izleme kanıtı bulunmamaktadır (D.1.2)."]
+    assert YONERGE_G not in d.element.body.xml and not res.taslak, res.taslak_nedenleri
+    assert set(res.yonler.values()) == {"dolu"} and len(res.yonler) == 8
+    # boş liste, doğrulanmamış, reddedilmiş ve eksik alan → hücre yönergeyle kalır / işaretli; TASLAK
+    _yon(yd, "A", guclu=[])
+    _yon(yd, "B", durum="taslak")
+    _yon(yd, "C", durum="reddedildi")
+    (yd / "D.json").unlink()
+    res, d, _ = _run(ws, tmp_path, yonler_dir=yd, hazirlayanlar=PEOPLE)
+    cells = _yon_cells(d)
+    assert cells["A g"] == [YONERGE_G] and cells["A a"][0].startswith("• ")
+    assert cells["B g"][0].startswith(DOGRULANMADI)
+    assert cells["C g"] == [YONERGE_G] and cells["D a"] == [YONERGE_A]
+    assert res.taslak
+    why = " | ".join(res.taslak_nedenleri)
+    assert "A Güçlü Yönler" in why and "C Gelişmeye Açık Yönler" in why and "D Güçlü Yönler" in why
+    assert "doğrulanmamış güçlü/gelişmeye açık yön maddeleri: B" in why
+    sec = d.sections[0]
+    assert TASLAK_METNI in [p.text for p in sec.header.paragraphs]
+
+
+# -- K32: kapak, hazırlayanlar; altbilgi bozulmaz ---------------------------------------------------
+
+def _cover(doc) -> list[str]:
+    from bidr.render.run import cover_paragraphs
+    return [_ptext(p) for p in cover_paragraphs(doc)]
+
+
+def test_cover_preparers_and_footer_intact(ws, tmp_path):
+    import zipfile
+    tpl = make_template(tmp_path / "sablon.docx", full=True)
+    yd = ws / "yonler"
+    for a in "ABCD":
+        _yon(yd, a)
+    write_text(ws / "texts", "A.1.1")
+    n0 = len(_cover(docx.Document(str(tpl))))
+    # iki kişi: üç yer tutucudan biri boş paragraf olur; kapak paragraf sayısı değişmez
+    res, d, _ = _run(ws, tmp_path, yonler_dir=yd, hazirlayanlar=PEOPLE, birim="Sentetik Bölüm", yil=2026)
+    cov = _cover(d)
+    assert len(cov) == n0 and not res.taslak and res.hazirlayan == 2
+    i = cov.index("Raporu Hazırlayanlar")
+    assert cov[i + 1:i + 4] == ["Dr. Öğr. Üyesi Örnek Kişi, ornek@example.edu, Komisyon Başkanı",
+                                "Arş. Gör. Deneme Ad, deneme@example.edu, Üye", ""]
+    assert "Sentetik Bölüm" in cov and "2026" in cov
+    # altbilgi (form no, yayın/değişiklik bilgisi, sayfa numarası alanı) ve bölüm özellikleri aynı
+    zt, zo = zipfile.ZipFile(tpl), zipfile.ZipFile(ws / "report.docx")
+    footers = [n for n in zt.namelist() if n.startswith("word/footer")]
+    assert footers and not set(footers) & set(res.degisen_parcalar)
+    for n in footers:
+        assert zt.read(n) == zo.read(n)
+    assert any(b"PAGE" in zo.read(n) for n in footers) and any(FORM.encode() in zo.read(n) for n in footers)
+    t_sect = docx.Document(str(tpl)).element.body.find(W + "sectPr")
+    assert etree.tostring(d.element.body.find(W + "sectPr")) == etree.tostring(t_sect)
+    assert d.sections[0].footer.paragraphs[0].text == FORM
+    # beş kişi: iki satır eklenir, ardındaki boş paragraflardan ikisi düşer (kapak taşmaz)
+    five = [{**PEOPLE[0], "ad_soyad": f"Örnek Kişi {k}"} for k in range(5)]
+    res, d, _ = _run(ws, tmp_path, yonler_dir=yd, hazirlayanlar=five)
+    cov = _cover(d)
+    assert len(cov) == n0 and sum("Örnek Kişi" in x for x in cov) == 5 and res.hazirlayan == 5
+    # liste boş: yer tutucular kalır, TASLAK
+    res, d, _ = _run(ws, tmp_path, yonler_dir=yd, hazirlayanlar=[])
+    assert sum("[Üye Unvan" in x for x in _cover(d)) == 3 and res.taslak
+    assert any("Raporu Hazırlayanlar" in n for n in res.taslak_nedenleri)
+    assert any("hazirlayanlar boş" in u for u in res.uyarilar)
+
+
+def test_cli_workspace_inputs(ws, tmp_path, capsys):
+    """CLI: hazırlayanlar ve kapsam config.yaml'dan; kapsam sorusu gaps.md'de; girdiler değişince rapor eskir."""
+    import yaml as Y
+    from bidr.render.run import KAPSAM_BEGIN, load_manifest, workspace_sha
+    make_template(tmp_path / "sablon.docx", full=True)
+    write_audit(ws, {"A.1.1": 2, "A.1.2": 2})
+    (ws / "gaps.md").write_text("# Eksik kanıt raporu\n", encoding="utf-8")
+    cfg = {"rapor": {"sablon": str(tmp_path / "sablon.docx"), "hazirlayanlar": PEOPLE[:1],
+                     "kapsam": {"A.1.2": "karar_gerekli"}}}
+    (ws / "config.yaml").write_text(Y.safe_dump(cfg, allow_unicode=True), encoding="utf-8")
+    assert main(["render", "-w", str(ws)]) == 0
+    out = capsys.readouterr().out
+    assert "kapsam kararı gerekli" in out and "TASLAK" in out
+    gaps = (ws / "gaps.md").read_text(encoding="utf-8")
+    assert gaps.startswith("# Eksik kanıt raporu") and KAPSAM_BEGIN in gaps and "**A.1.2**" in gaps
+    d = docx.Document(str(ws / "report.docx"))
+    assert "Dr. Öğr. Üyesi Örnek Kişi, ornek@example.edu, Komisyon Başkanı" in _cover(d)
+    m = load_manifest(ws)
+    tpl = tmp_path / "sablon.docx"
+    sha = lambda: workspace_sha(ws, tpl, ws / "texts", ws / "audit-olcutler.json", ws / "evidence-index.csv")  # noqa: E731
+    assert m["girdi_sha"] == sha() and m["karar_gerekli"] == ["A.1.2"]
+    cfg["rapor"]["kapsam"] = {"A.1.2": "baska_birim"}           # kullanıcının kararı
+    (ws / "config.yaml").write_text(Y.safe_dump(cfg, allow_unicode=True), encoding="utf-8")
+    assert m["girdi_sha"] != sha()                              # rapor eskidi
+    assert main(["render", "-w", str(ws)]) == 0
+    assert KAPSAM_BEGIN not in (ws / "gaps.md").read_text(encoding="utf-8")
+    cfg["rapor"]["hazirlayanlar"] = [{"ad_soyad": "Örnek Kişi", "eposta": "bozuk"}]
+    (ws / "config.yaml").write_text(Y.safe_dump(cfg, allow_unicode=True), encoding="utf-8")
+    capsys.readouterr()
+    assert main(["render", "-w", str(ws)]) == 0
+    assert "e-posta biçimi geçersiz" in capsys.readouterr().out

@@ -43,6 +43,7 @@ Tesseract (UB Mannheim) kurulup PATH'e eklenir. OCR olmadan taranmış belgeler
 | 7 | Kaynakta geçen yılın BİDR raporu ve ölçüt adlı kanıt klasörleri var mı? | `gecmis_etiket` | evet ise model kararları onlarla karşılaştırılır ve hakem soruları çıkar |
 | 8 | (7 evetse) Etiketlerdeki birim adı | `etiket_birim` | boş = `birim` |
 | 9 | Model işini kim yapacak? | `ajan` | kendi adın, ör. `claude-code:sonnet`; kayda geçer |
+| 10 | Raporu kimler hazırlıyor? Her kişi için unvan, ad soyad, e-posta, görev | `hazirlayanlar` | Liste: `- {unvan: …, ad_soyad: …, eposta: …, gorev: …}`; raporun kapağına yazılır (`config.yaml` `rapor.hazirlayanlar`). Kişileri uydurma; kullanıcı henüz bilmiyorsa `[]` bırak (rapor TASLAK kalır), sonra aynı soruyla `bidr init` yeniden |
 
 Cevapları `<calisma_alani>/answers.yaml` dosyasına yaz (klasörü aç), kullanıcıya göster,
 sonra: `bidr init --answers <calisma_alani>/answers.yaml`.

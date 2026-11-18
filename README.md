@@ -39,7 +39,9 @@ Aşamalar (`bidr/data/pipeline.yaml`, ayrıntı `docs/ARCHITECTURE.md`):
    kanıt adı ve bağlantı düzeltilebilir), `gaps.md` (eksik kanıtlar), ölçüt OD önerisi.
 4. **Rapor:** file (kanıt klasörü `evidence/`, `evidence-index.csv`) → write (ölçüt metni) →
    verify (kod + metni yazmamış, taze bir ajan; reddedilen metin gerekçesiyle yeniden yazılır,
-   2 turdan sonra kullanıcı karar verir) → render (`report.docx`, FR-0833 şablonu).
+   2 turdan sonra kullanıcı karar verir) → yonler (alan düzeyi Güçlü / Gelişmeye Açık Yönler;
+   yalnız doğrulanmış metin ve audit bulgusundan, aynı bağımsız doğrulamayla) → render
+   (`report.docx`, FR-0833 şablonu; kapak hazırlayanları, ölçüt kapsamı).
 
 Önkoşulu bitmemiş aşamanın komutu çıkış kodu 3 ile durur. Çalışma alanı repo ve kaynak
 klasör dışında olmalıdır; kaynak salt okunurdur.

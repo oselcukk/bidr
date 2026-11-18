@@ -299,18 +299,44 @@ asamalar:
     onay: yok
     skill: bidr-rapor
 
+  - id: yonler
+    ad: Güçlü / Gelişmeye Açık Yönler (alan düzeyi; model işi ajanda, doğrulama verify akışında)
+    uygulandi: true
+    katman: M
+    onkosul: [verify]
+    girdi: [texts/ (doğrulanmış metinler), audit-olcutler.json, evidence-index.csv, profil/config.yaml rapor.kapsam]
+    cikti: [work/yonler/<alan>.json, yonler/<alan>.json, work/verify/yonler/<alan>.json, verify-yonler.jsonl]
+    komut:
+      - "bidr yonler prepare -w {ws}"
+      - "(ajan) work/yonler/README.md'ye göre her paket için <alan>.out.json yaz"
+      - "bidr yonler apply -w {ws} --model {ajan}"
+      - "bidr verify prepare -w {ws}   # (taze, maddeleri yazmamış ajan) work/verify/yonler/ → bidr verify apply"
+    sart:
+      denetim: yonler_tamam
+      metin: >-
+        Birimin doldurduğu ölçütü olan her alanın (A, B, C, D) yonler/<alan>.json maddeleri var, girdileri (doğrulanmış
+        ölçüt metinleri, audit bulguları) güncel ve bağımsız doğrulama kaydı oturmuş (dogrulandi ya da reddedildi).
+        Her madde ölçüt koduna atıf yapar; güçlü yön yalnız doğrulanmış metinden, gelişmeye açık yön yalnız audit
+        bulgusundan çıkar (kod denetler). Reddedilen alan `bidr yonler prepare --reddedilenler` ile yeniden yazılır;
+        rapor.yeniden_yazim_siniri turdan sonra hücreler şablon yönergesiyle kalır (rapor TASLAK, uyarı).
+    onay: yok
+    skill: bidr-rapor
+
   - id: render
     ad: Rapor üretimi (report.docx; kanıt adları bağlantılı)
     uygulandi: true
     katman: D
-    onkosul: [verify]
-    girdi: [config.yaml rapor.sablon (boş FR-0833 .docx, salt okunur), texts/, audit-olcutler.json, evidence-index.csv]
-    cikti: [report.docx, .bidr-render.json, gaps.md (bağlantı yok bölümü)]
+    onkosul: [yonler]
+    girdi: [config.yaml rapor.sablon (boş FR-0833 .docx, salt okunur), texts/, yonler/, audit-olcutler.json,
+            evidence-index.csv, config.yaml rapor.hazirlayanlar ve rapor.kapsam]
+    cikti: [report.docx, .bidr-render.json, gaps.md (bağlantı yok ve kapsam kararı bölümleri)]
     komut: ["bidr render -w {ws}"]
     sart:
       denetim: render_tamam
       metin: >-
-        report.docx güncel girdilerden (şablon, metinler, audit, kanıt dizini) üretilmiş. Doğrulanmamış metin
-        varsa belge TASLAK damgalıdır (uyarı). Şablon yolu bilinmiyorsa kullanıcıdan alınır.
+        report.docx güncel girdilerden (şablon, metinler, alan maddeleri, audit, kanıt dizini, hazırlayanlar,
+        kapsam) üretilmiş. Belge şu durumlarda TASLAK damgalıdır (uyarı): doğrulanmamış metin, boş ya da şablon
+        yönergesi kalan güçlü/gelişmeye açık yön hücresi, boş `rapor.hazirlayanlar` (kapak yer tutucuları kalır),
+        kapsam kararı gereken ölçüt (gaps.md'de soru). Şablon yolu bilinmiyorsa kullanıcıdan alınır.
     onay: yok
     skill: bidr-rapor

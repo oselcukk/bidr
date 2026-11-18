@@ -1,8 +1,8 @@
-# Rapor katmanı (name → file → write → verify → render) — arayüz sözleşmesi
+# Rapor katmanı (name → file → write → verify → yonler → render) — arayüz sözleşmesi
 
 Sahibi: şef. Aşamalar `bidr/data/pipeline.yaml`'da; tamamlanma denetimleri
 `bidr/pipeline/checks.py`'de (`name_tamam`, `file_tamam`, `write_tamam`, `verify_tamam`,
-`render_tamam`). Her komut önkoşulu bitmeden çıkış kodu 3 ile durur.
+`yonler_tamam`, `render_tamam`). Her komut önkoşulu bitmeden çıkış kodu 3 ile durur.
 
 ## Girdi: onaylı eşleşmeler
 `decisions.jsonl` içindeki kabul edilmiş eşleşmeler; varsa `review-decisions.jsonl`
@@ -74,13 +74,62 @@ paket yazar; istemin sonuna doğrulayıcının cümle bazlı gerekçesi ve redde
 kullanıcı `bidr verify karar -w WS <ölçüt> cikar|tekrar` ile karar verir (`verify-insan.jsonl`;
 `cikar` metni rapordan çıkarır, `tekrar` bir tur ekler).
 
+## yonler → `yonler/<alan>.json` (Güçlü / Gelişmeye Açık Yönler)
+FR-0833'ün son tablosu: A, B, C, D alanlarının her birinde "Güçlü Yönler" ve "Gelişmeye Açık
+Yönler" hücresi (8 hücre). `bidr yonler prepare|apply` (ajan modu, görev `write_yonler`,
+`bidr/write/yonler.py`). Dayanak YALNIZ o alanın birimce doldurulan (kapsam `bolum`/`ortak`)
+alt ölçütleridir: güçlü yön → doğrulanmış açıklama metni (`durum: dogrulandi`, `cikar`
+edilmemiş); gelişmeye açık yön → audit bulgusu (önerilen OD ≤ 2, eksik PUKÖ halkası, yalnız kurum
+geneli düzenleme, kanıtsız ölçüt).
+```json
+{"alan": "B", "baslik": "B Eğitim ve Öğretim", "durum": "taslak|dogrulandi|reddedildi", "tur": 0,
+ "girdi_sha": "…", "guclu": [{"metin": "… yürütülmektedir (B.1.1).", "olcutler": ["B.1.1"]}],
+ "gelisme": [{"metin": "… kanıt bulunmamaktadır (B.1.2).", "olcutler": ["B.1.2"]}],
+ "kaynak": {"model": "…", "gorev_surumu": "…", "istem_sha": "…"}}
+```
+Kod denetimi (apply ve verify prepare): her cümle ölçüt kodu taşır; kod alana ait ve listenin
+dayanağı olan ölçütlerden (güçlü: doğrulanmış metni olan; gelişme: bulgusu olan); kanıt numarası
+(`[1_OD3]`) yok; write'taki yasak ifade (abartı, koçluk, `-malıdır`), gelecek vaadi ve OD aşımı
+kuralları; ayrıca "önerilir/gerekmektedir" öğüt dili yok. `girdi_sha`: alanın ölçütleri, doğrulanmış
+metin özetleri, OD ve bulgular; değişirse maddeler eskir.
+Bağımsız doğrulama `bidr verify prepare|apply` akışına katılır: `work/verify/yonler/<alan>.json`
+(görev `verify_yonler`; doğrulayıcıya yalnız maddeler ve atıf yapılan ölçütlerin metni/bulgusu
+verilir) → `verify-yonler.jsonl`. Her madde "destekleniyor" ise `dogrulandi`. Reddedilen alan
+`bidr yonler prepare --reddedilenler` (gerekçeli; `rapor.yeniden_yazim_siniri`); sınırdan sonra
+hücreler şablon yönergesiyle kalır ve rapor TASLAK olur (insan görür).
+
+## Sorumlu birim kapsamı (`bidr/render/kapsam.py`)
+Her alt ölçüt için `bolum` (birim doldurur) | `ortak` (başka birimlerle birlikte) |
+`baska_birim` (birimin doldurma sorumluluğunda değil) | `karar_gerekli`. Öncelik: config.yaml
+`rapor.kapsam: {ölçüt: durum}` (kullanıcının kararı) > profil YAML'ı `kapsam:` > profilin
+`dahil`/`belirsiz`/`kararlar` kuralı (geri uyumlu: dahil → bolum, belirsiz → karar_gerekli,
+haric → baska_birim). Profil bilinmiyorsa hepsi `bolum`. Render: kanıt yokluğu ("Bu ölçüt için bu
+dönemde kanıt bulunamamıştır.") yalnız `bolum`/`ortak` ölçütte yazılır. `baska_birim` ölçütün
+Açıklamalar hücresine kısa kapsam ifadesi ("Bu ölçüt birimin doldurma sorumluluğunda
+değildir."; `--kapsam-disi ''` ile boş), Kanıtlar hücresi yalnız etiket, OD işaretlenmez, metni
+varsa rapora girmez (uyarı). Gerekçe: şablonun "Sorumlu Birimler" bölümü doldurma sorumluluğunu
+ölçüt tablosundaki "DOLDURACAK BİRİMLER"e bağlar; boş hücre unutulmuş, "kanıt bulunamadı" birimin
+eksiği gibi okunur. `karar_gerekli`: metin yoksa kırmızı "[kapsam kararı gerekli]" işareti, rapor
+TASLAK, soru gaps.md'de (`<!-- bidr:kapsam -->` işaretleyicileri arasında; render yeniler,
+soru kalmayınca kaldırır).
+
 ## render → `report.docx`
 FR-0833 şablonunun (config.yaml `rapor.sablon` ya da `--sablon`; salt okunur) ölçüt
 bloklarında "Açıklamalar" ve "Kanıtlar" hücreleri doldurulur; biçim kılavuza uygun. Kanıtlar
 hücresinde kanıt adı `evidence-index.csv` `baglanti` adresine tıklanabilir bağlantıdır
-(Word köprüsü). `[komisyon]` işareti metinden temizlenir. `dogrulandi` olmayan metin varsa
-belge "TASLAK" damgalı üretilir; kullanıcının `cikar` dediği reddedilmiş metin rapora girmez ve
-taslak saymaz. `.bidr-render.json` girdilerin özetini tutar (`render_tamam`).
+(Word köprüsü). `[komisyon]` işareti metinden temizlenir. Son tablodaki 8 hücreye
+`yonler/<alan>.json` maddeleri ("• " ile) yazılır. Kapakta "[Birim Adı]", yıl ve "Raporu
+Hazırlayanlar" yer tutucuları (`[Üye Unvan, Adı Soyadı, eposta adresi, Görevi]`) doldurulur:
+satır "Unvan Ad Soyad, eposta, Görev"; kişi yer tutucudan çoksa satır eklenir ve ardındaki boş
+paragraf düşer (kapak sayfası taşmaz), azsa artan yer tutucu boş paragraf olur. Altbilgi (form
+no, yayın/değişiklik bilgisi, sayfa numarası alanı) ve bölüm özellikleri değişmez (parça bayt
+düzeyinde korunur; test edilir).
+Belge "TASLAK" damgalıdır (`taslak_nedenleri`): `dogrulandi` olmayan metin (kullanıcının
+`cikar` dediği ve `baska_birim` ölçütün metni sayılmaz); boş ya da şablon yönergesi
+("…değerlendiriniz.") kalan güçlü/gelişmeye açık yön hücresi ya da doğrulanmamış madde; kapakta
+kalan hazırlayan yer tutucusu (`rapor.hazirlayanlar` boş); `karar_gerekli` ölçüt.
+`.bidr-render.json` girdilerin özetini tutar (`render_tamam`): şablon, metinler, `yonler/`,
+audit, kanıt dizini, hazırlayanlar ve kapsam görünümü.
 
 ## config.yaml `rapor:` bölümü (hepsi isteğe bağlı; kullanıcı yazar, `bidr init` korur)
 | anahtar | anlamı |
@@ -91,3 +140,5 @@ taslak saymaz. `.bidr-render.json` girdilerin özetini tutar (`render_tamam`).
 | `yayin_alan_adlari` | gövde URL'sinin yayın adresi sayılacağı alan adları (ör. `[gtu.edu.tr]`) |
 | `yeniden_yazim_siniri` | reddedilen metin için en çok yeniden yazım turu (vars. 2) |
 | `kanit_adi_modeli` | `false`: `name` aşaması atlanır |
+| `hazirlayanlar` | kapaktaki "Raporu Hazırlayanlar": `[{unvan, ad_soyad, eposta, gorev}, …]` (`ad_soyad` gerekli; `bidr init` sorar ve yazar); boşsa rapor TASLAK |
+| `kapsam` | `{ölçüt: bolum\|ortak\|baska_birim\|karar_gerekli}`: kullanıcının kapsam kararı (profilin üstüne) |

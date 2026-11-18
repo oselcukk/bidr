@@ -34,9 +34,13 @@ def now() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
-def pkg_paths(d: Path) -> list[Path]:
-    """Paketler: `<ölçüt>.json` (A.1.1 gibi); cevaplar ve yardımcı dosyalar hariç."""
-    return sorted(p for p in d.glob("*.json") if re.fullmatch(r"[A-E]\.\d+\.\d+", p.stem))
+OLCUT_KEY = r"[A-E]\.\d+\.\d+"
+ALAN_KEY = r"[A-E]"
+
+
+def pkg_paths(d: Path, pattern: str = OLCUT_KEY) -> list[Path]:
+    """Paketler: `<ölçüt>.json` (A.1.1 gibi; `pattern` ile alan: A); cevaplar ve yardımcı dosyalar hariç."""
+    return sorted(p for p in d.glob("*.json") if re.fullmatch(pattern, p.stem))
 
 
 def write_pkg(d: Path, key: str, rendered: dict, meta: dict, *, force: bool = False) -> bool:
@@ -59,10 +63,13 @@ def write_pkg(d: Path, key: str, rendered: dict, meta: dict, *, force: bool = Fa
     return True
 
 
-def write_readme(d: Path, *, task: str, version: str, cmd: str, rule: str) -> int:
-    n = sum(1 for p in pkg_paths(d) if not (d / f"{p.stem}.out.json").exists())
-    (d / "README.md").write_text(README.format(task=task, version=version, cmd=cmd, rule=rule, n=n),
-                                 encoding="utf-8")
+def write_readme(d: Path, *, task: str, version: str, cmd: str, rule: str, pattern: str = OLCUT_KEY,
+                 key: str = "ölçüt") -> int:
+    n = sum(1 for p in pkg_paths(d, pattern) if not (d / f"{p.stem}.out.json").exists())
+    text = README.format(task=task, version=version, cmd=cmd, rule=rule, n=n)
+    if key != "ölçüt":
+        text = text.replace("<ölçüt>", f"<{key}>")
+    (d / "README.md").write_text(text, encoding="utf-8")
     return n
 
 

@@ -1,0 +1,13 @@
+version: 1
+description: >-
+  Alan düzeyinde "Güçlü Yönler" ve "Gelişmeye Açık Yönler" maddeleri (FR-0833 son tablosu).
+  Girdi: alanın birimce doldurulan alt ölçütlerinin doğrulanmış açıklama metinleri ve audit
+  bulguları (önerilen OD, PUKÖ zinciri, eksik halkalar, kanıtsız ölçüt). Her madde ilgili
+  ölçüt koduna atıf yapar: "(B.1.1)". Kod denetimi: bidr/write/yonler.py (ölçüt atfı,
+  dayanak, OD aşımı, yasak ifade ve vaat dili bidr/write/text.py'den).
+inputs:
+  hitap: "kurumsal özne (ör. Bölümümüzde)"
+  alan: "alan kodu ve başlığı (ör. B Eğitim ve Öğretim)"
+  olcutler: "alanın birimce doldurulan alt ölçütleri: OD, PUKÖ zinciri, doğrulanmış metin, bulgular"
+  guclu_olcutler: "güçlü yön maddesinin atıf yapabileceği ölçütler (doğrulanmış metni olanlar)"
+  gelisme_olcutler: "gelişmeye açık yön maddesinin atıf yapabileceği ölçütler (audit bulgusu olanlar)"
