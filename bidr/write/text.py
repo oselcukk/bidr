@@ -97,7 +97,11 @@ _YASAK = [(re.compile(p), t) for p, t in YASAK]
 
 GELECEK = re.compile(r"\b\w+(acaktır|ecektir|acağız|eceğiz)\b|\bplanlanmaktadır\b|"
                      r"\bhedeflenmektedir\b|\böngörülmektedir\b|\bdüşünülmektedir\b")
-DUZENLEME = re.compile(r"yönerge|yönetmeli|iş akış|usul|esaslar|mevzuat|kanun|karar(ı|ında|da)\b|form\b")
+DUZENLEME = re.compile(r"yönerge|yönetmeli|iş akış|usul|esaslar|mevzuat|kanun|karar(ı|ında|da)\b|form\b|"
+                       r"rehber|kılavuz|misyon|vizyon|politika|strateji|plan(ı|ında|da)\b|sayfa(sı|sında|da)\b|belge(si|sinde|de)\b")
+# Belge içeriğini aktaran fiiller: atıflı ve bir düzenleme/belge metnine bağlanan cümlede belgeye
+# aittir (mevzuat dili), bölümün vaadi ya da öğüdü değildir.
+BELGE_FIIL = {"öngörülmektedir", "hedeflenmektedir", "planlanmaktadır"}
 # Önerilen OD'nin üstündeki düzeyin rubrik dili (olumlu kullanımda OD aşımı).
 UST_DUZEY = {
     4: re.compile(r"sistematik (olarak|biçimde|şekilde) (izlen|değerlendiril|iyileştiril)|"
@@ -132,12 +136,15 @@ def check_sentence(s: str, *, index_nos: set[str], od: int, komisyon: bool) -> l
     low = tr_lower(ATIF.sub(" ", s).replace(KOMISYON, " "))
     for rx, kind in _YASAK:
         m = rx.search(low)
+        if m and kind == "koçluk" and m.group(0).startswith("tavsiye") and "tavsiye edil" in low \
+                and cites and DUZENLEME.search(low):
+            continue   # "yönergede … tavsiye edilmektedir": belgenin içeriği, öğüt değil
         if m:
             issues.append({"kod": "yasak_ifade", "ayrinti": f"{kind}: “{m.group(0)}”"})
     g = GELECEK.search(low)
     # Mevzuat dili: "yönergede … öngörülmektedir" gelecek vaadi değil, "hükme bağlanmıştır"
     # anlamındadır; atıflı ve bir düzenleme belgesini anlatan cümlede kabul edilir.
-    if g and g.group(0).strip() == "öngörülmektedir" and cites and DUZENLEME.search(low):
+    if g and g.group(0).strip() in BELGE_FIIL and cites and DUZENLEME.search(low):
         g = None
     if g and not kom:
         issues.append({"kod": "gelecek_vaat", "ayrinti": f"“{g.group(0).strip()}”: gelecek/plan ifadesi "

@@ -265,3 +265,16 @@ def test_ongorulmektedir_mevzuat_dili_kabul():
     assert not [i for i in check_sentence(s, index_nos={"1_OD2"}, od=2, komisyon=False) if i["kod"] == "gelecek_vaat"]
     s2 = "Bölümde yeni bir anket uygulanması öngörülmektedir [1_OD2]."
     assert [i for i in check_sentence(s2, index_nos={"1_OD2"}, od=2, komisyon=False) if i["kod"] == "gelecek_vaat"]
+
+
+def test_belge_icerigi_aktaran_fiiller_kabul():
+    from bidr.write.text import check_sentence
+    ok = ["Misyon ifadesinde araştırma yapılması hedeflenmektedir [1_OD2].",
+          "Yönergede öğrencilerin 30 AKTS almaları tavsiye edilmektedir [1_OD2].",
+          "Rehberde tez önerisinin savunulması öngörülmektedir [1_OD2]."]
+    for s in ok:
+        assert not check_sentence(s, index_nos={"1_OD2"}, od=2, komisyon=False), s
+    kotu = ["Bölümde yeni bir anket yapılması hedeflenmektedir [1_OD2].",
+            "Öğrencilere düzenli çalışmaları tavsiye edilir [1_OD2]."]
+    for s in kotu:
+        assert check_sentence(s, index_nos={"1_OD2"}, od=2, komisyon=False), s
