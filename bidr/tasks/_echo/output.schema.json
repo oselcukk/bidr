@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "alinti": {"type": "string", "minLength": 1},
+    "sozcuk_sayisi": {"type": "integer", "minimum": 0},
+    "dil": {"type": "string", "pattern": "^[a-z]{2}$"}
+  },
+  "required": ["alinti", "sozcuk_sayisi", "dil"],
+  "additionalProperties": false
+}
