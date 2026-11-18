@@ -1,0 +1,468 @@
+# Belge türü kataloğu (kurumdan bağımsız, genel kalıplar).
+#
+# Belgenin türü yalnız İÇERİKTEN anlaşılır; dosya adı/klasör girdi değildir.
+# Kurum özel form kodları ayrı profillerde: bidr/data/institutions/*.yaml
+#
+# Desen kuralları (bidr/identify/catalog.py derler):
+#   - Desenler küçük harfle yazılır. Metin ve desen Türkçe harflerden arındırılarak
+#     eşlenir (ı/i/İ/I -> i, ş -> s, ğ -> g, ü -> u, ö -> o, ç -> c), böylece OCR'ın
+#     düşürdüğü işaretler eşleşmeyi bozmaz.
+#   - Desendeki boşluk "\s*" olur (OCR bitişik/ayrık yazımına dayanıklı).
+#   - Desen bir düzenli ifadedir; kaçış dizileri (\d, \b ...) olduğu gibi çalışır.
+# Bölgeler: ust = ilk 300 karakter (başlık yeri), bas = ilk 1500, son = son 800,
+#           tum = bütün metin.
+# Puan: her imza eşleşirse bir kez `agirlik` kadar puan verir. `en_az` verilirse
+#       desen en az o kadar kez geçmelidir (yapı ipucu). Negatif ağırlık ceza verir.
+# Karar: en yüksek puan >= esik ise tür atanır; değilse "bilinmiyor".
+# Eşitlikte katalog sırası kazanır (daha özel türler önce yazılır).
+surum: 1
+esik: 4
+bolgeler:
+  ust: 300
+  bas: 1500
+  son: 800
+# Tarih seçerken etiket bulunmazsa sırayla denenen genel etiketler.
+genel_tarih_etiketleri:
+  - 'toplanti tarihi'
+  - 'oturum tarihi'
+  - 'evrak tarih ve sayisi'
+  - 'tarih ve saat'
+  - '\btarih\b'
+# Bu etiketlerin hemen ardındaki tarih içerik tarihi sayılmaz (form künyesi vb.).
+haric_tarih_etiketleri:
+  - 'yayin tarihi'
+  - 'deg\.? ?tarihi'
+  - 'degisiklik tarihi'
+  - 'revizyon tarihi'
+  - 'resmi gazete tarihi'
+  - 'dogum tarihi'
+  - 'date of birth'
+  - 'son guncelleme'
+
+turler:
+  # ------------------------------------------------------------ öz değerlendirme
+  - ad: bidr_sablonu
+    etiket: BİDR Şablonu (boş)
+    aciklama: Doldurulmamış Birim İç Değerlendirme Raporu şablonu; birim adı ve hazırlayanlar yer tutucu.
+    imzalar:
+      - {id: baslik_bidr, bolge: ust, desen: 'birim ic degerlendirme raporu', agirlik: 3}
+      - {id: yer_tutucu_birim, bolge: bas, desen: '\[birim adi\]', agirlik: 4}
+      - {id: yer_tutucu_uye, bolge: bas, desen: '\[uye unvan', agirlik: 2}
+
+  - ad: bidr_raporu
+    etiket: Birim İç Değerlendirme Raporu
+    aciklama: Doldurulmuş BİDR (birim öz değerlendirme raporu); ölçüt başlıkları, açıklamalar ve kanıt atıfları içerir.
+    imzalar:
+      - {id: baslik_bidr, bolge: ust, desen: 'birim ic degerlendirme raporu', agirlik: 5}
+      - {id: hazirlayanlar, bolge: bas, desen: 'raporu hazirlayanlar', agirlik: 2}
+      - {id: sablon_degil, bolge: bas, desen: '\[birim adi\]', agirlik: -10}
+      - {id: kanit_atiflari, bolge: tum, desen: '\[[a-e]\.\d\.\d-\s?\d+-od\d\]', en_az: 10, agirlik: 2}
+
+  - ad: olcut_aciklama_taslagi
+    etiket: Ölçüt Açıklama Taslağı
+    aciklama: Bir BİDR alt ölçütü için yazılmış açıklama metni ve kanıt listesi (rapor bölümü taslağı).
+    imzalar:
+      - {id: aciklamalar_basi, bolge: ust, desen: '^\W{0,3}aciklamalar\s*:', agirlik: 4}
+      - {id: guclu_yonler, bolge: ust, desen: 'guclu yonler\s*:', agirlik: 3}
+      - {id: kanitlar_basligi, bolge: tum, desen: 'kanitlar\s*:', agirlik: 1}
+      - {id: kanit_atiflari, bolge: tum, desen: '\[[a-e]\.\d\.\d-\s?\d+-od\d\]', en_az: 2, agirlik: 2}
+
+  - ad: kanit_listesi
+    etiket: Kanıt Listesi / Çalışma Notu
+    aciklama: Ölçüt kodlarına göre sıralanmış kanıt ya da yapılacaklar listesi.
+    imzalar:
+      - {id: sunulabilecek_kanitlar, bolge: bas, desen: '(sunabilecegimiz|sunulabilecek|mevcut) kanitlar', agirlik: 4}
+      - {id: olcut_kodlari, bolge: tum, desen: '\b[a-e]\.\d\.\d\b', en_az: 6, agirlik: 2}
+
+  - ad: oz_degerlendirme_raporu
+    etiket: Öz Değerlendirme / Akreditasyon Raporu
+    aciklama: Program akreditasyonu (FEDEK, MÜDEK vb.) ya da kurum düzeyi öz değerlendirme raporu.
+    imzalar:
+      - {id: baslik_ozd, bolge: ust, desen: '(oz ?degerlendirme|self[- ]?assessment|self[- ]?study) raporu?', agirlik: 4}
+      - {id: akreditasyon_kurulu, bolge: bas, desen: '\b(fedek|mudek|stardef|epdad|tepdad|ilad|akreditasyon)\b', agirlik: 2}
+      - {id: programa_iliskin, bolge: bas, desen: 'programa iliskin genel bilgiler', agirlik: 2}
+
+  # ------------------------------------------------------------ strateji / izleme
+  - ad: stratejik_plan
+    etiket: Stratejik Plan
+    aciklama: Kurumun çok yıllı stratejik planı veya plan hazırlık belgesi.
+    imzalar:
+      - {id: baslik_sp, bolge: bas, desen: '20\d\d ?- ?20\d\d (yili )?stratejik plani?', agirlik: 5}
+      - {id: stratejik_amac, bolge: tum, desen: 'stratejik (amac|hedef)', agirlik: 1}
+      - {id: izleme_degil, bolge: ust, desen: 'izleme', agirlik: -3}
+
+  - ad: stratejik_plan_izleme
+    etiket: Stratejik Plan İzleme / Performans Takibi
+    aciklama: Stratejik plan hedef ve performans göstergelerinin dönemsel izleme raporu ya da tablosu.
+    imzalar:
+      - {id: baslik_izleme, bolge: bas, desen: 'stratejik plan izleme', agirlik: 5}
+      - {id: izleme_tablosu, bolge: bas, desen: 'izleme ?/ ?degerlendirme tablosu', agirlik: 3}
+      - {id: performans_gostergesi, bolge: tum, desen: 'performans gostergesi', agirlik: 1}
+      - {id: uc_aylik, bolge: bas, desen: '(\d\. )?uc aylik toplam', agirlik: 3}
+      - {id: gosterge_tanimi, bolge: bas, desen: 'ogretim uyesi basina dusen', agirlik: 2}
+
+  # ------------------------------------------------------------ kurul / toplantı
+  - ad: senato_karari
+    etiket: Senato Kararı
+    aciklama: Üniversite senatosu karar metni veya karar örneği.
+    tarih_etiketleri: ['oturum tarihi', 'toplanti tarihi']
+    imzalar:
+      - {id: baslik_senato, bolge: bas, desen: 'senato kararlari?', agirlik: 6}
+      - {id: karar_no, bolge: tum, desen: 'karar ?: ?\d+-\d+', agirlik: 1}
+
+  - ad: fakulte_kurulu_karari
+    etiket: Fakülte Kurulu Kararı
+    aciklama: Fakülte kurulu karar metni veya karar örneği.
+    tarih_etiketleri: ['toplanti tarihi', 'oturum tarihi']
+    imzalar:
+      - {id: baslik_fk, bolge: bas, desen: 'fakulte kurulu karar', agirlik: 6}
+      - {id: karar_no, bolge: tum, desen: 'karar ?- ?\d\d/\d\d', agirlik: 1}
+
+  - ad: yonetim_kurulu_karari
+    etiket: Yönetim Kurulu Kararı
+    aciklama: Fakülte/üniversite yönetim kurulu karar metni.
+    tarih_etiketleri: ['toplanti tarihi', 'oturum tarihi']
+    imzalar:
+      - {id: baslik_yk, bolge: bas, desen: 'yonetim ?kurulu kararlari?', agirlik: 6}
+      - {id: karar_no, bolge: tum, desen: 'karar ?- ?\d\d/\d\d', agirlik: 1}
+
+  - ad: bolum_kurulu_karari
+    etiket: Bölüm Kurulu Kararı
+    aciklama: Bölüm kurulu toplantısında alınan kararlar.
+    tarih_etiketleri: ['toplanti tarihi', 'oturum tarihi']
+    imzalar:
+      - {id: baslik_bk, bolge: bas, desen: 'bol.{0,4}m kurulu karar', agirlik: 6}
+      - {id: toplantida_bulunanlar, bolge: bas, desen: 'toplanti(da|ya) (bulunanlar|katilanlar)', agirlik: 1}
+
+  - ad: anabilim_dali_kurulu_karari
+    etiket: Anabilim Dalı Kurulu Kararı
+    aciklama: Anabilim dalı kurulu karar metni.
+    tarih_etiketleri: ['toplanti tarihi', 'oturum tarihi']
+    imzalar:
+      - {id: baslik_abd, bolge: bas, desen: 'anab\S{0,4}m dal\S? kuru\S? karar', agirlik: 6}
+
+  - ad: danisma_kurulu_tutanagi
+    etiket: Danışma Kurulu Toplantı Tutanağı
+    aciklama: Dış paydaşların katıldığı danışma kurulu toplantısının tutanağı.
+    tarih_etiketleri: ['toplanti tarihi']
+    imzalar:
+      - {id: baslik_dk, bolge: bas, desen: 'danisma kurulu (toplantisi|toplanti tutanagi)', agirlik: 6}
+      - {id: gundem, bolge: bas, desen: 'gundem', agirlik: 1}
+
+  - ad: komisyon_tutanagi
+    etiket: Komisyon Toplantı Tutanağı / Kararı
+    aciklama: Bir komisyonun (anket, müfredat, ders içeriği, ÇAP/yandal vb.) toplantı tutanağı veya karar yazısı.
+    tarih_etiketleri: ['toplanti tarihi']
+    imzalar:
+      - {id: baslik_komisyon_tutanak, bolge: bas, desen: 'komisyonu? (toplanti )?tutana\S{0,2}\b', agirlik: 6}
+      - {id: komisyon_kararlari, bolge: bas, desen: 'komisyonu? (toplantisinda alinan )?karar', agirlik: 5}
+      - {id: komisyon_toplantisi, bolge: bas, desen: 'komisyonu? toplantisi', agirlik: 2}
+      - {id: komisyon_baslik, bolge: ust, desen: 'komisyonu?\b', agirlik: 1}
+      - {id: komisyon_koordinatoru, bolge: bas, desen: 'komisyon koordinatoru', agirlik: 4}
+
+  - ad: toplanti_tutanagi
+    etiket: Toplantı Tutanağı
+    aciklama: Genel toplantı tutanağı formu (yer, tarih, katılımcı onayı, alınan kararlar).
+    tarih_etiketleri: ['toplanti tarihi']
+    imzalar:
+      - {id: baslik_tutanak, bolge: bas, desen: 'toplanti tutana\S{0,2}\b', agirlik: 5}
+      - {id: katilim_orani, bolge: bas, desen: 'katilim orani', agirlik: 2}
+      - {id: toplanti_turu, bolge: bas, desen: 'toplanti turu', agirlik: 1}
+      - {id: alinan_kararlar, bolge: tum, desen: 'toplantida alinan kararlar', agirlik: 1}
+      - {id: katilimci_onayi, bolge: tum, desen: 'katilimci onayi', agirlik: 1}
+
+  - ad: katilim_listesi
+    etiket: Katılım / İmza Listesi
+    aciklama: Toplantı veya etkinliğe katılanların imza listesi.
+    imzalar:
+      - {id: baslik_katilim, bolge: bas, desen: '(katilim|imza|yoklama) listesi', agirlik: 5}
+      - {id: unvan_ad_imza, bolge: bas, desen: 'unvan ad soyad imza', agirlik: 2}
+
+  # ------------------------------------------------------------ yazışma
+  - ad: resmi_yazi
+    etiket: Resmi Yazı (EBYS)
+    aciklama: Elektronik belge yönetim sisteminden çıkan, sayı ve konu satırı olan resmi yazışma.
+    tarih_etiketleri: ['evrak tarih ve sayisi']
+    imzalar:
+      - {id: evrak_tarih_sayi, bolge: ust, desen: 'evrak tarih ve sayisi', agirlik: 4}
+      - {id: sayi_satiri, bolge: bas, desen: 'sayi ?: ?e?-?\d{6,}', agirlik: 3}
+      - {id: konu_satiri, bolge: bas, desen: '\bkonu ?:', agirlik: 1}
+      - {id: e_imza, bolge: son, desen: 'guvenli elektronik imza', agirlik: 2}
+      - {id: hitap, bolge: bas, desen: '(dagitim yerlerine|makamina|baskanligina|dekanligina|mudurlugune|koordinatorlugune)', agirlik: 1}
+
+  - ad: e_posta
+    etiket: E-posta
+    aciklama: E-posta iletisi (yazdırılmış ya da ekran görüntüsü).
+    tarih_etiketleri: ['gonderildi', 'gonderme tarihi', '\btarih\b']
+    imzalar:
+      - {id: kimden_kime, bolge: bas, desen: 'kimden\b.{0,300}\bkime\b', agirlik: 4}
+      - {id: gonderen_gonderildi, bolge: bas, desen: 'gonderen ?:.{0,200}gonderildi ?:', agirlik: 4}
+      - {id: kimden_tarih, bolge: bas, desen: 'kimden\b.{0,200}\btarih\b', agirlik: 3}
+      - {id: kime_satiri, bolge: bas, desen: '\bkime ?:', agirlik: 2}
+      - {id: outlook, bolge: bas, desen: '\boutlook\b', agirlik: 1}
+      - {id: eposta_adresi, bolge: bas, desen: '[a-z0-9._-]+ ?@ ?[a-z0-9-]+\.[a-z.]+', agirlik: 1}
+      - {id: yanitla, bolge: tum, desen: '(yanitla|tumunu yanitla|disclaimer: this email)', agirlik: 1}
+
+  - ad: dilekce_basvuru
+    etiket: Dilekçe / Başvuru
+    aciklama: Kişisel dilekçe, itiraz ya da kamu başvuru sistemi (CİMER vb.) çıktısı.
+    imzalar:
+      - {id: dilekce, bolge: bas, desen: 'dilekce', agirlik: 2}
+      - {id: ogrencisiyim, bolge: bas, desen: 'ogrencisiyim', agirlik: 3}
+      - {id: basvuru_metni, bolge: bas, desen: 'basvuru (sayisi|metni)', agirlik: 3}
+      - {id: cimer, bolge: tum, desen: '(cumhurbaskanligi iletisim merkezi|\bcimer\b)', agirlik: 2}
+      - {id: itiraz, bolge: bas, desen: 'sinav(i|ina)? .{0,40}itiraz', agirlik: 2}
+
+  - ad: talep_kaydi
+    etiket: Talep / İş Takip Kaydı
+    aciklama: Kurum içi talep yönetim sistemi kaydı.
+    tarih_etiketleri: ['talep tarihi']
+    imzalar:
+      - {id: talep_sistemi, bolge: bas, desen: 'talep yonetim sistemi', agirlik: 4}
+      - {id: takip_no, bolge: bas, desen: 'takip no', agirlik: 2}
+      - {id: talep_tipi, bolge: bas, desen: 'talep tipi', agirlik: 2}
+
+  - ad: evrak_kayit_cizelgesi
+    etiket: Evrak / Yazışma Kayıt Çizelgesi
+    aciklama: Gelen-giden yazıların tablo halinde kaydı.
+    imzalar:
+      - {id: yazi_no, bolge: bas, desen: 'yazi no', agirlik: 2}
+      - {id: gittigi_yer, bolge: bas, desen: 'gittigi yer', agirlik: 3}
+
+  # ------------------------------------------------------------ mevzuat / süreç
+  - ad: yonetmelik
+    etiket: Yönetmelik
+    tarih_etiketleri: ['revizyon tarihi', 'yayin tarihi']
+    aciklama: Kurum veya ulusal yönetmelik metni (maddeler halinde).
+    imzalar:
+      - {id: baslik_yonetmelik, bolge: bas, desen: 'yonetmeligi\b', agirlik: 4}
+      - {id: maddeler, bolge: tum, desen: '\bmadde \d+', en_az: 5, agirlik: 2}
+      - {id: resmi_gazete, bolge: bas, desen: 'resmi gazete', agirlik: 1}
+
+  - ad: yonerge
+    etiket: Yönerge / Usul ve Esaslar
+    tarih_etiketleri: ['revizyon tarihi', 'yayin tarihi']
+    aciklama: Kurum yönergesi veya usul-esaslar metni (maddeler halinde).
+    imzalar:
+      - {id: baslik_yonerge, bolge: bas, desen: '(yonergesi|yonerge\b|usul ve esaslar)', agirlik: 4}
+      - {id: maddeler, bolge: tum, desen: '\bmadde \d+', en_az: 5, agirlik: 2}
+      - {id: amac_kapsam, bolge: bas, desen: 'amac,? kapsam', agirlik: 1}
+
+  - ad: is_akisi
+    etiket: İş Akışı
+    tarih_etiketleri: ['deg\. tarihi', 'yayin tarihi']
+    aciklama: Bir sürecin adım adım iş akışı şeması.
+    imzalar:
+      - {id: is_akis_no, bolge: bas, desen: 'is akis (no|adi)', agirlik: 6}
+      - {id: baslik_is_akisi, bolge: bas, desen: 'is akisi', agirlik: 3}
+      - {id: baslama_bitis, bolge: tum, desen: '\bbaslama\b', agirlik: 1}
+
+  # ------------------------------------------------------------ eğitim-öğretim
+  - ad: ders_bilgi_formu
+    etiket: Ders Bilgi Formu
+    aciklama: Tek bir dersin bilgi paketi/AKTS formu (öğrenme çıktıları, içerik, iş yükü).
+    imzalar:
+      - {id: baslik_dbf, bolge: bas, desen: '(ders bilgi formu|ders tanitim formu|course (information|description) form)', agirlik: 5}
+      - {id: course_unit, bolge: bas, desen: 'course unit (code|title)', agirlik: 4}
+      - {id: ders_kodu, bolge: bas, desen: 'ders (kodu|adi) ?:', agirlik: 1}
+      - {id: is_yuku, bolge: tum, desen: '(toplam is ?yuku|total workload)', agirlik: 1}
+      - {id: ogrenme_ciktilari, bolge: tum, desen: '(ogrenme ciktilari|learning outcomes)', agirlik: 1}
+
+  - ad: akts_bilgi_paketi
+    etiket: AKTS / Program Bilgi Paketi
+    aciklama: Program düzeyi bilgi paketi sayfası (ders kataloğu, program çıktıları, ders-çıktı matrisi, diploma eki).
+    imzalar:
+      - {id: bilgi_paketi, bolge: bas, desen: 'akts-? ?tyyc bilgi paketi', agirlik: 3}
+      - {id: ders_katalogu, bolge: bas, desen: 'ders katalogu', agirlik: 1}
+      - {id: ciktilar_matrisi, bolge: bas, desen: 'program ciktilari matrisi', agirlik: 1}
+      - {id: program_ciktilari, bolge: bas, desen: 'program ogrenme ciktilari', agirlik: 1}
+      - {id: diploma_eki, bolge: bas, desen: '(diploma eki|diploma supplement)', agirlik: 1}
+
+  - ad: mufredat
+    etiket: Müfredat / Öğretim Planı
+    aciklama: Programın yarıyıllara göre ders planı.
+    imzalar:
+      - {id: baslik_mufredat, bolge: bas, desen: '(mufredat|ogretim plani|ders plani|egitim programi|undergraduate program|curriculum)', agirlik: 3}
+      - {id: yariyil_satiri, bolge: tum, desen: '(\d\. ?yil ?/ ?(guz|bahar)|(first|second) semester|\d\. yariyil)', agirlik: 2}
+      - {id: kredi_akts, bolge: bas, desen: '(akts|ects)', agirlik: 1}
+      - {id: on_kosul, bolge: tum, desen: '(on ?kosul|prereq)', agirlik: 1}
+
+  - ad: ders_programi
+    etiket: Haftalık Ders Programı
+    aciklama: Gün ve saatlere göre ders/sınıf çizelgesi.
+    imzalar:
+      - {id: baslik_dp, bolge: ust, desen: '(haftalik ders programi|course schedule|ders programi)', agirlik: 4}
+      - {id: gunler, bolge: bas, desen: '(pazartesi ?sali ?carsamba|monday ?tuesday ?wednesday)', agirlik: 2}
+      - {id: saat_dilimleri, bolge: tum, desen: '\d\d[:.]\d\d ?- ?\d\d[:.]\d\d', en_az: 6, agirlik: 2}
+
+  - ad: acilan_dersler
+    etiket: Açılan / Okutulacak Dersler Listesi
+    aciklama: Bir dönem açılacak dersler, öğretim elemanları ve kontenjanlar.
+    imzalar:
+      - {id: baslik_acilan, bolge: bas, desen: '(acilacak|okutulacak|acilan) (lisans |secmeli |teknik secmeli )?dersler', agirlik: 5}
+      - {id: kontenjan, bolge: bas, desen: 'kontenjan', agirlik: 1}
+      - {id: hoca_kontenjan, bolge: bas, desen: 'ogretim elemani.{0,20}kontenjan', agirlik: 2}
+      - {id: ogretim_elemani, bolge: bas, desen: 'ogretim elemani', agirlik: 1}
+      - {id: donem_basligi, bolge: ust, desen: '20\d\d ?- ?20\d\d .{0,40}(guz|bahar|yaz)', agirlik: 1}
+
+  - ad: ders_izlencesi
+    etiket: Ders İzlencesi (Syllabus)
+    aciklama: Dersin dönemlik izlencesi; öğretim elemanı, haftalık konu, değerlendirme.
+    imzalar:
+      - {id: baslik_syllabus, bolge: ust, desen: '(syllabus|ders izlencesi)', agirlik: 5}
+      - {id: office_hours, bolge: bas, desen: '(office hours|gorusme saatleri)', agirlik: 1}
+      - {id: grading, bolge: tum, desen: '(grading|degerlendirme olcutleri)', agirlik: 1}
+      - {id: textbook, bolge: tum, desen: '(textbook|ders kitabi)', agirlik: 1}
+      - {id: anket_degil, bolge: bas, desen: '(strongly disagree|kesinlikle katilmiyorum|\byanit)', agirlik: -4}
+
+  - ad: sinav_kagidi
+    etiket: Sınav Kâğıdı / Soru Seti
+    aciklama: Ara sınav, final veya quiz soru kâğıdı.
+    imzalar:
+      - {id: sinav_turu, bolge: ust, desen: '(midterm|final|quiz) (exam|examination)?|ara sinav|final sinavi', agirlik: 2}
+      - {id: ogrenci_no, bolge: ust, desen: '(student no|ogrenci no)', agirlik: 2}
+      - {id: ad_soyad, bolge: ust, desen: '(name ?surname|adi ?soyadi)', agirlik: 1}
+      - {id: puanlar, bolge: tum, desen: '\(\s?\d+ ?(pts?|points|puan)\)', en_az: 2, agirlik: 2}
+
+  - ad: staj_belgesi
+    etiket: Staj Belgesi / Staj Formu
+    aciklama: Staj defteri, zorunluluk belgesi, değerlendirme formları veya staj sonuç yazısı.
+    imzalar:
+      - {id: baslik_staj, bolge: bas, desen: 'staj (defteri|zorunluluk belgesi|degerlendirme|basvuru formu|kabul formu|formlari)', agirlik: 5}
+      - {id: staj_tekrari, bolge: tum, desen: '\bstaj', en_az: 4, agirlik: 2}
+
+  - ad: ogrenim_anlasmasi
+    etiket: Öğrenim / Hareketlilik Anlaşması
+    aciklama: Değişim programı öğrenim anlaşması (learning agreement).
+    imzalar:
+      - {id: learning_agreement, bolge: bas, desen: '(learning agreement|ogrenim anlasmasi)', agirlik: 6}
+
+  - ad: form_belgesi
+    etiket: Kurum Formu
+    aciklama: Kurumun numaralı formu (talep, beyan, takip çizelgesi vb.); doldurulmuş ya da boş.
+    imzalar:
+      - {id: baslik_form, bolge: ust, desen: '(talep formu|basvuru formu|bilgi formu|beyan formu|takip cizelgesi|degerlendirme formu|\bformu\b|cizelgesi\b)', agirlik: 3}
+      - {id: beyan, bolge: tum, desen: 'beyan ederim', agirlik: 1}
+      - {id: imza_alani, bolge: tum, desen: 'adi ?soyadi.{0,60}imza', agirlik: 1}
+
+  # ------------------------------------------------------------ anket
+  - ad: anket_sonucu
+    etiket: Anket Sonucu / Analizi
+    aciklama: Anket yanıtlarının özeti, istatistiği veya ham yanıt dökümü.
+    imzalar:
+      - {id: yanit_ozeti, bolge: bas, desen: '(yanitlara genel bakis|\d+ yanit\b|grafigi kopyala|responses?\b.{0,20}\d)', agirlik: 3}
+      - {id: form_sonucu, bolge: ust, desen: 'degerlendirme form(u)? sonucu', agirlik: 5}
+      - {id: sonuc_basligi, bolge: bas, desen: 'anket(i)? (degerlendirme )?sonuc', agirlik: 4}
+      - {id: ham_doku, bolge: ust, desen: '(baslangic saati.{0,40}tamamlama saati|\bid\b.{0,10}(asagidaki|baslangic))', agirlik: 4}
+      - {id: yuzdeler, bolge: tum, desen: '(\(%\d|%\s?\d|\d %)', en_az: 5, agirlik: 1}
+      - {id: ortalama, bolge: tum, desen: '(ortalama|average|mean)', agirlik: 1}
+      - {id: anket_bulgusu, bolge: ust, desen: '(anket(ine|i|in) gore|saglanma duzeyi|katilim orani)', agirlik: 3}
+
+  - ad: anket_formu
+    etiket: Anket Formu
+    aciklama: Doldurulacak anket/soru formu (Likert ölçekli; çevrim içi form çıktısı dahil).
+    imzalar:
+      - {id: likert, bolge: tum, desen: '(kesinlikle katilmiyorum|strongly disagree|cok zayif)', agirlik: 2}
+      - {id: form_uyarisi, bolge: tum, desen: '(bu formu gonderdiginizde|zorunlu soruyu belirtir|yanitinizi girin|\* ?gerekli)', agirlik: 3}
+      - {id: form_platformu, bolge: tum, desen: '(microsoft forms|docs\.google\.com/forms|google forms)', agirlik: 1}
+      - {id: baslik_anket, bolge: ust, desen: '(anket|survey|bilgi formu)', agirlik: 2}
+
+  # ------------------------------------------------------------ rapor / faaliyet
+  - ad: faaliyet_raporu
+    etiket: Faaliyet / Etkinlik Raporu
+    aciklama: Gerçekleştirilmiş bir etkinlik ya da faaliyetin raporu.
+    tarih_etiketleri: ['tarih ve saat']
+    imzalar:
+      - {id: baslik_faaliyet, bolge: bas, desen: 'faaliyet raporu', agirlik: 5}
+      - {id: etkinlik_detaylari, bolge: bas, desen: 'giris ve etkinlik detaylari', agirlik: 4}
+      - {id: etkinlik_adi, bolge: bas, desen: 'etkinlik adi ?:', agirlik: 1}
+
+  - ad: degerlendirme_raporu
+    etiket: Değerlendirme Raporu
+    aciklama: Bir dersin, sürecin veya anket sonuçlarının değerlendirildiği rapor.
+    imzalar:
+      - {id: baslik_degerlendirme, bolge: ust, desen: 'degerlendirme raporu', agirlik: 5}
+      - {id: hazirlayan, bolge: bas, desen: 'hazirlayan ?:', agirlik: 1}
+      - {id: giris, bolge: bas, desen: '\b1\. ?giris\b', agirlik: 1}
+
+  - ad: etkinlik_duyurusu
+    etiket: Etkinlik / Seminer Duyurusu
+    aciklama: Seminer, konferans, etkinlik ya da toplantı duyurusu, afiş veya davet.
+    tarih_etiketleri: ['tarih ve saat', '\btarih\b']
+    imzalar:
+      - {id: etkinlik_detay, bolge: bas, desen: 'etkinlik detay', agirlik: 4}
+      - {id: etkinlik_tipi, bolge: bas, desen: 'etkinlik (tipi|adi)', agirlik: 2}
+      - {id: seminer, bolge: bas, desen: '(seminer|konferans|kongre|symposium|panel|bulusmasi|soylesi|bilgilendirme toplantisi)', agirlik: 1}
+      - {id: davet, bolge: bas, desen: '(davetlidir|katiliminizi|katiliminizdan memnuniyet|konuklarimiz|konusmaci)', agirlik: 3}
+      - {id: eposta_degil, bolge: bas, desen: 'kimden\b.{0,300}\bkime\b', agirlik: -3}
+      - {id: rapor_degil, bolge: bas, desen: '(giris ve etkinlik detaylari|faaliyet raporu)', agirlik: -4}
+
+  - ad: sertifika
+    etiket: Sertifika / Katılım Belgesi
+    aciklama: Katılım, başarı veya teşekkür belgesi.
+    imzalar:
+      - {id: baslik_sertifika, bolge: ust, desen: '(certificate|sertifika|katilim belgesi|tesekkur belgesi|basari belgesi)', agirlik: 5}
+      - {id: presented_to, bolge: bas, desen: '(presented to|in recognition|verilmistir)', agirlik: 2}
+
+  - ad: web_sayfasi
+    etiket: Web Sayfası Çıktısı
+    aciklama: Kurum web sitesinden alınmış sayfa (duyuru, haber, hakkında, misyon-vizyon vb.).
+    imzalar:
+      - {id: cerez, bolge: tum, desen: '(cerez politikamiza|kabul ediyorum)', agirlik: 3}
+      - {id: site_menusu, bolge: bas, desen: '(mygtu|s\.s\.s\.|hakkinda akademik egitim arastirma)', agirlik: 3}
+      - {id: sayfa_adresi, bolge: tum, desen: 'https?://\S+/(kategori|icerik)/\S+display\.aspx', agirlik: 2}
+      - {id: detay_sayfasi, bolge: bas, desen: '(duyuru detay|haber detay|duyurular\b)', agirlik: 2}
+
+  - ad: ekran_goruntusu
+    etiket: Sistem Ekran Görüntüsü
+    aciklama: Bilgi sistemi, öğrenme platformu veya mesajlaşma uygulamasından ekran görüntüsü.
+    imzalar:
+      - {id: ekran_goruntusu, bolge: bas, desen: 'ekran (goruntusu|alintisi)', agirlik: 4}
+      - {id: teams_arayuzu, bolge: bas, desen: '(tum ekipler|ekipler\b.{0,80}(odevler|gonderiler|dosyalar)|aramanizi iletiler)', agirlik: 4}
+      - {id: giris_ekrani, bolge: bas, desen: '(ogrenci girisi|akademisyen girisi)', agirlik: 4}
+
+  # ------------------------------------------------------------ liste / tablo
+  - ad: yayin_listesi
+    etiket: Yayın Listesi / Bibliyometri
+    aciklama: Bilimsel yayın listesi veya atıf/yayın veritabanı çıktısı.
+    imzalar:
+      - {id: veritabani, bolge: bas, desen: '(web of science|scival|scopus|publication metrics)', agirlik: 4}
+      - {id: baslik_yayin, bolge: bas, desen: '(yayinlari|yayin listesi|yayin sayilari|bildiriler|publications)', agirlik: 3}
+      - {id: cilt_sayi, bolge: tum, desen: '\b(19|20)\d\d,? \d+ ?\(\d+\)', en_az: 3, agirlik: 2}
+
+  - ad: proje_listesi
+    etiket: Proje Listesi
+    aciklama: Araştırma projeleri (no, yürütücü, tarih, bütçe) listesi.
+    imzalar:
+      - {id: proje_sutunlari, bolge: bas, desen: 'proje (no|yurutucusu|adi).{0,80}(baslangic|bitis|baslama|tarihi)', agirlik: 4}
+      - {id: baslik_projeler, bolge: ust, desen: '(projeleri|projeler)\b', agirlik: 4}
+      - {id: proje_tekrari, bolge: tum, desen: '\bproje', en_az: 4, agirlik: 1}
+
+  - ad: gorev_dagilimi
+    etiket: Görev Dağılımı / Komisyon Listesi
+    aciklama: Komisyon üyeleri, görev tanımları, sorumluluk ya da danışman ofis saatleri listesi.
+    imzalar:
+      - {id: komisyonlar, bolge: ust, desen: '(komisyonlari|komisyon uyeleri|gorev tanimi|gorev dagilimi)', agirlik: 5}
+      - {id: ofis_saatleri, bolge: ust, desen: '(ofis saatleri|office hours)', agirlik: 4}
+
+  - ad: altyapi_listesi
+    etiket: Altyapı / Donanım Listesi
+    aciklama: Laboratuvar, derslik ve donanım envanteri veya fiziksel alan listesi.
+    imzalar:
+      - {id: malzeme_sutunlari, bolge: bas, desen: '(malzemenin cinsi|markasi ve modeli|\boda no\b)', agirlik: 4}
+      - {id: alt_yapi, bolge: ust, desen: '(alt ?yapi|donanim)', agirlik: 2}
+      - {id: mekan_adlari, bolge: tum, desen: '(laboratuvari|dersligi|anfisi|amfi|kantini|tuvaleti|dinlenme alani|sosyal alan)', en_az: 4, agirlik: 4}
+
+  - ad: istatistik_tablosu
+    etiket: Öğrenci / Mezun İstatistiği
+    aciklama: Kayıt, mezun ve öğrenci sayılarına ilişkin tablo.
+    imzalar:
+      - {id: ogrenci_sayisi, bolge: bas, desen: '(kayit olan|mezun olan|kayitli) ogrenci sayisi', agirlik: 5}
+      - {id: mezunlari, bolge: tum, desen: 'mezunlari', agirlik: 1}
+
+  - ad: mali_belge
+    etiket: Bütçe / Mali Belge
+    aciklama: Bütçe ödenek cetveli, ödeme emri veya harcama dökümü.
+    imzalar:
+      - {id: butce_basligi, bolge: bas, desen: '(odenek cetveli|odeme emri belgesi|butce tertibi|butce odenekleri|harcama talimati)', agirlik: 5}
+      - {id: tutarlar, bolge: tum, desen: '₺ ?[\d.]+,\d\d', en_az: 3, agirlik: 2}

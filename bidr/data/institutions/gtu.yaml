@@ -1,0 +1,44 @@
+# Kurum profili: Gebze Teknik Üniversitesi kalite yönetim sistemi doküman kodları.
+# Yalnız kurumun herkese açık doküman numaraları ve adları; kişi/belge içeriği yok.
+#
+# Kod, metinde künye bağlamında geçerse ("Form No: FR-0044", "Doküman No YÖ-0007",
+# "İŞ AKIŞ NO: İA-0346" ya da hemen ardından "Yayın Tarihi") güçlü tür kanıtıdır.
+# Gövdede yalnız anılan kod (ör. "FR-0820 numaralı form") tür kanıtı sayılmaz.
+kurum: gtu
+ad: Gebze Teknik Üniversitesi
+# Kod biçimi: iki harfli önek + 4 hane. Önekler Türkçe harfsiz (katlanmış) yazılır.
+onekler:
+  fr: FR   # form
+  yo: YÖ   # yönerge
+  yn: YN   # yönetmelik
+  ia: İA   # iş akışı
+  an: AN   # anket
+  pr: PR   # prosedür
+# Önek -> tür (kod tek tek listelenmemişse).
+onek_turleri:
+  YÖ: yonerge
+  YN: yonetmelik
+  İA: is_akisi
+  AN: anket_formu
+kod_agirligi: 6
+kodlar:
+  FR-0044: {tur: toplanti_tutanagi, ad: Toplantı Tutanağı}
+  FR-0274: {tur: katilim_listesi, ad: Toplantı Katılım Listesi}
+  FR-0833: {tur: bidr_raporu, ad: Birim İç Değerlendirme Raporu}
+  FR-0069: {tur: staj_belgesi, ad: Staj Defteri}
+  FR-0080: {tur: staj_belgesi, ad: Staj Değerlendirme Belgesi-Anketi}
+  FR-0185: {tur: staj_belgesi, ad: Stajı Değerlendirme Anketi}
+  FR-0186: {tur: staj_belgesi, ad: Stajyerin Kurumu Değerlendirme Anketi}
+  FR-0336: {tur: staj_belgesi, ad: Gönüllü Staj Belgesi}
+  FR-0338: {tur: staj_belgesi, ad: Staj Zorunluluk Belgesi}
+  FR-0356: {tur: yonerge, ad: Yönerge şablonu}
+  FR-0375: {tur: yonetmelik, ad: Yönetmelik şablonu}
+  FR-0138: {tur: is_akisi, ad: İş akışı şablonu}
+  FR-0208: {tur: dilekce_basvuru, ad: Sınav Sonucuna İtiraz Dilekçesi}
+  FR-0067: {ad: Diploma Talep Formu}
+  FR-0181: {ad: Araştırma Görevlileri Faaliyet Takip Çizelgesi}
+  FR-0428: {ad: Doktor Öğretim Üyesi Atama Yenileme Talep Formu}
+  FR-0518: {ad: Yenilenen Ders Planı Uygunluk Formu}
+  FR-0587: {ad: Bitirme Projesi Değerlendirme Formu}
+  FR-0754: {ad: Lisans Müşterek Jüri Raporu}
+  FR-0820: {ad: Yeni Ders Açma Öneri Formu}
