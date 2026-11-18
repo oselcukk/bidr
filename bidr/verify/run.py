@@ -1,0 +1,231 @@
+"""`bidr verify prepare|apply`: `texts/<ölçüt>.json` doğrulaması → `verify.jsonl`.
+
+İki katman:
+  1. Kod (prepare'de): bidr/write/text.py denetimi güncel kanıt listesi ve OD'yle yeniden
+     (atıf listede mi, her cümlede atıf, OD aşımı, yasak ifade) + atıf yapılan kanıtın
+     alıntıları belge metninde mi (verify_quote) + metnin OD'si güncel önerilen OD'yi aşıyor
+     mu. Geçemeyen metin model işine gitmeden `reddedildi`.
+  2. Bağımsız ajan: her cümle atıf yaptığı kanıtın alıntısı/bağlamıyla karşılaştırılır →
+     destekleniyor | kismen | desteklenmiyor + gerekçe (görev `verify_text`; yazarın paketi ve
+     gerekçesi verilmez). `apply`: her cümle "destekleniyor" ise `dogrulandi`; en az bir
+     "desteklenmiyor" ya da "kismen" varsa `reddedildi` (gerekçeli; kısmen desteklenen cümle
+     de düzeltilmeden rapora girmez).
+
+`verify.jsonl` ölçüt başına son doğrulama kaydını tutar; `texts/<ölçüt>.json` `durum` ve
+`dogrulama` alanı güncellenir. Metin sonradan değişirse (`metin_sha`) kayıt geçersizleşir.
+"""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from bidr.common import Workspace, read_jsonl, write_jsonl
+from bidr.criteria.model import id_key
+from bidr.write import packages as K
+from bidr.write import run as W
+from bidr.write import text as T
+
+TASK = "verify_text"
+STAGE = "verify"
+LOG = "verify.jsonl"
+FINAL = ("dogrulandi", "reddedildi")
+RULE = ("Her cümleyi yalnız atıf yaptığı kanıtın alıntısı ve bağlamıyla karşılaştır "
+        "(destekleniyor / kismen / desteklenmiyor + gerekçe); listedeki her cümleye bir karar ver.")
+
+
+def load_log(ws: Workspace) -> dict[str, dict]:
+    p = ws.root / LOG
+    return {r["olcut"]: r for r in read_jsonl(p)} if p.exists() else {}
+
+
+def save_log(ws: Workspace, recs: dict[str, dict]) -> Path:
+    p = ws.root / LOG
+    write_jsonl(p, [recs[k] for k in sorted(recs, key=id_key)])
+    return p
+
+
+def _texts(ws: Workspace, only: list[str] | None) -> list[dict]:
+    d = W.texts_dir(ws)
+    if not d.exists():
+        return []
+    out = []
+    for p in sorted(d.glob("*.json"), key=lambda p: id_key(p.stem)):
+        if only and p.stem not in only:
+            continue
+        out.append(json.loads(p.read_text(encoding="utf-8")))
+    return out
+
+
+def _paras(t: dict) -> tuple[list[str], str]:
+    return [p["metin"] for p in t.get("paragraflar") or []], t.get("onceki_yila_gore") or ""
+
+
+def code_check(src: W.Sources, t: dict) -> list[dict]:
+    """Kod denetimi (model yok) → sorun listesi [{yer, kod, ayrinti}]."""
+    c = t["olcut"]
+    od_now = src.od(c)
+    paras, onceki = _paras(t)
+    issues = T.check_text(paras, onceki, index_nos=src.index_nos(c), od=min(od_now, int(t.get("od_onerisi") or od_now)),
+                          komisyon=bool(src.notes.get(c)))
+    if int(t.get("od_onerisi") or 0) > od_now:
+        issues.append({"yer": "-", "metin": "", "kod": "od_asimi",
+                       "ayrinti": f"metin OD{t['od_onerisi']} için yazıldı; güncel önerilen OD{od_now}"})
+    cited = set(W._cited(paras, onceki))
+    for e in src.evidence(c, only=cited):
+        if src.doc_text(e["doc_id"]) is None:
+            issues.append({"yer": "-", "metin": "", "kod": "belge_metni_yok",
+                           "ayrinti": f"[{e['no']}] belge metni yok ({e['doc_id'] or 'doc_id boş'}); alıntı denetlenemedi"})
+            continue
+        if not e["alintilar"]:
+            issues.append({"yer": "-", "metin": "", "kod": "alintisiz_kanit", "ayrinti": f"[{e['no']}] alıntı yok"})
+        for q in e["alintilar"]:
+            if not q["alinti_belgede"]:
+                issues.append({"yer": "-", "metin": "", "kod": "alinti_belgede_yok",
+                               "ayrinti": f"[{e['no']}] «{q['alinti'][:80]}…» belge metninde bulunamadı"})
+    return issues
+
+
+def render_sentences(rows: list[dict]) -> str:
+    return "\n".join(f"{r['yer']}: {r['metin']}" for r in rows)
+
+
+def verify_inputs(src: W.Sources, t: dict) -> tuple[dict, dict]:
+    c = t["olcut"]
+    paras, onceki = _paras(t)
+    rows = T.sentence_rows(paras, onceki)
+    cited = set(W._cited(paras, onceki))
+    ev = src.evidence(c, only=cited)
+    inputs = {"olcut": W.render_criterion(src.cs, c, od=t.get("od_onerisi")),
+              "cumleler": render_sentences(rows),
+              "kanitlar": W.render_evidence(ev, src.cs),
+              "onceki_metin": src.previous_text(c) if any(r["bolum"] == "onceki_yila_gore" for r in rows) else "yok",
+              "komisyon_bilgisi": src.notes_text(c)}
+    meta = {"olcut": c, "metin_sha": W.text_sha(t),
+            "cumleler": [{"yer": r["yer"], "metin": r["metin"], "atiflar": T.citations(r["metin"])} for r in rows]}
+    return inputs, meta
+
+
+def _set_status(ws: Workspace, t: dict, durum: str, gerekce: list[str], model: str | None) -> None:
+    t = dict(t)
+    t["durum"] = durum
+    t["dogrulama"] = {"kayit": LOG, "model": model, "gerekce": gerekce, "zaman": K.now()}
+    (W.texts_dir(ws) / f"{t['olcut']}.json").write_text(json.dumps(t, ensure_ascii=False, indent=1),
+                                                         encoding="utf-8")
+
+
+def _sources(ws_root, index, audit, onceki, notes, backend) -> W.Sources:
+    sp = W.source_paths(ws_root, index=index, audit=audit, onceki=onceki, notes=notes)
+    return W.Sources(ws_root, index=sp["index"], audit=sp["audit"], onceki=sp["onceki"], notes=sp["notes"],
+                     verify=backend.verify_quote)
+
+
+def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False, index=None, audit=None,
+            onceki=None, notes=None, backend: W.Backend | None = None) -> dict:
+    backend = backend or W.Backend()
+    src = _sources(ws_root, index, audit, onceki, notes, backend)
+    ws = src.ws
+    log = load_log(ws)
+    d = W.work_dir(ws, STAGE)
+    d.mkdir(parents=True, exist_ok=True)
+    st = {"paket": 0, "yeni": 0, "zaten_tamam": 0, "kod_reddi": {}, "metin": 0}
+    for t in _texts(ws, only):
+        st["metin"] += 1
+        c = t["olcut"]
+        sha = W.text_sha(t)
+        prev = log.get(c)
+        if (not redo and not only and prev and prev.get("metin_sha") == sha and prev.get("durum") in FINAL
+                and t.get("durum") == prev["durum"]):
+            st["zaten_tamam"] += 1
+            continue
+        issues = code_check(src, t)
+        if issues:
+            why = [f"{i['yer']} {i['kod']}: {i['ayrinti']}" for i in issues]
+            log[c] = {"olcut": c, "durum": "reddedildi", "metin_sha": sha, "asama": "kod",
+                      "kod_denetimi": issues, "cumleler": [], "gerekce": why, "model": None,
+                      "gorev_surumu": None, "zaman": K.now()}
+            _set_status(ws, t, "reddedildi", why, None)
+            for f in (d / f"{c}.json", d / f"{c}.out.json"):
+                if f.exists():
+                    f.replace(f.with_name(f.name + ".eski"))
+            st["kod_reddi"][c] = why
+            continue
+        inputs, meta = verify_inputs(src, t)
+        r = backend.render_task(TASK, inputs)
+        st["paket"] += 1
+        st["yeni"] += K.write_pkg(d, c, r, meta, force=redo)
+        if t.get("durum") in FINAL:          # yeniden doğrulanacak: eski karar geçersiz
+            _set_status(ws, t, "taslak", [], None)
+    save_log(ws, log)
+    st["bekleyen"] = K.write_readme(d, task=TASK, version=W.task_version(TASK), cmd="verify", rule=RULE)
+    st["klasor"] = str(d)
+    return st
+
+
+def judge(meta: dict, out: dict) -> tuple[str | None, list[dict], list[str]]:
+    """(durum | None, cümle kararları, hatalar). Her cümleye tam bir karar gerekir."""
+    want = [c["yer"] for c in meta["cumleler"]]
+    got: dict[str, dict] = {}
+    errs = []
+    for x in out.get("cumleler") or []:
+        if x["yer"] in got:
+            errs.append(f"{x['yer']}: birden çok karar")
+        elif x["yer"] not in want:
+            errs.append(f"{x['yer']}: metinde böyle bir cümle yok")
+        got[x["yer"]] = x
+    miss = [y for y in want if y not in got]
+    if miss:
+        errs.append(f"kararı olmayan cümle: {', '.join(miss)}")
+    if errs:
+        return None, [], errs
+    rows = [{**c, "karar": got[c["yer"]]["karar"], "gerekce": got[c["yer"]]["gerekce"]} for c in meta["cumleler"]]
+    bad = [r for r in rows if r["karar"] != "destekleniyor"]
+    return ("reddedildi" if bad else "dogrulandi"), rows, []
+
+
+def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", backend: W.Backend | None = None) -> dict:
+    backend = backend or W.Backend()
+    ws = Workspace(Path(ws_root))
+    log = load_log(ws)
+    d = W.work_dir(ws, STAGE)
+    st = {"dogrulandi": [], "reddedildi": {}, "bekleyen": [], "gecersiz": {}, "eski": [], "degismedi": 0}
+    version = W.task_version(TASK)
+    for p in K.pkg_paths(d):
+        pkg = json.loads(p.read_text(encoding="utf-8"))
+        c, meta = pkg["olcut"], pkg["meta"]
+        outp = d / pkg["cikti_dosyasi"]
+        if not outp.exists():
+            st["bekleyen"].append(c)
+            continue
+        t = W.load_text(ws, c)
+        if str(pkg["surum"]) != version or not t or W.text_sha(t) != meta["metin_sha"]:
+            st["eski"].append(c)
+            continue
+        raw = outp.read_text(encoding="utf-8")
+        csha = K.sha(raw)
+        prev = log.get(c)
+        if (prev and prev.get("cevap_sha") == csha and prev.get("metin_sha") == meta["metin_sha"]
+                and t.get("durum") == prev.get("durum")):
+            st["degismedi"] += 1
+            continue
+        out, errs = backend.validate_output(TASK, raw)
+        if out is None:
+            st["gecersiz"][c] = errs[:5]
+            continue
+        durum, rows, errs = judge(meta, out)
+        if durum is None:
+            st["gecersiz"][c] = errs
+            continue
+        why = [f"{r['yer']} ({r['karar']}): {r['gerekce']} — «{r['metin']}»" for r in rows
+               if r["karar"] != "destekleniyor"]
+        log[c] = {"olcut": c, "durum": durum, "metin_sha": meta["metin_sha"], "asama": "model",
+                  "kod_denetimi": [], "cumleler": rows, "genel": out.get("genel", ""), "gerekce": why,
+                  "model": model, "gorev_surumu": str(pkg["surum"]), "istem_sha": pkg["istem_sha"],
+                  "cevap_sha": csha, "zaman": K.now()}
+        _set_status(ws, t, durum, why, model)
+        if durum == "dogrulandi":
+            st["dogrulandi"].append(c)
+        else:
+            st["reddedildi"][c] = why
+    save_log(ws, log)
+    K.write_invalid(d, TASK, st["gecersiz"])
+    return st

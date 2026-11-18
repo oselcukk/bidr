@@ -20,6 +20,8 @@ SUBCOMMAND_MODULES = [
     "bidr.init.cli",
     "bidr.pipeline.cli",
     "bidr.audit.cli",
+    "bidr.write.cli",
+    "bidr.verify.cli",
 ]
 
 

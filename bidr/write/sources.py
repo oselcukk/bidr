@@ -1,0 +1,183 @@
+"""Yazım girdileri: `evidence-index.csv`, `audit-olcutler.json`, önceki yılın metni,
+komisyon bilgisi. Hepsi salt okunur."""
+from __future__ import annotations
+
+import csv
+import json
+import re
+from pathlib import Path
+from typing import Callable
+
+import yaml
+
+INDEX = "evidence-index.csv"
+AUDIT = "audit-olcutler.json"
+NOTES = "rapor-notlari.yaml"       # isteğe bağlı: {ölçüt: [komisyonun verdiği bilgi, ...]}
+CONFIG_SECTION = "rapor"           # config.yaml: rapor: {onceki_rapor: <docx | klasör>}
+CTX = 350                          # alıntı çevresinde bağlam (karakter, her yan)
+MAX_QUOTES = 3
+
+
+def _list(v: str) -> list:
+    v = (v or "").strip()
+    if not v:
+        return []
+    if v.startswith("["):
+        try:
+            x = json.loads(v)
+            return x if isinstance(x, list) else [x]
+        except ValueError:
+            pass
+    return [x for x in re.split(r"[;,\s]+", v) if x]
+
+
+def _quotes(v: str) -> list[str]:
+    """`alintilar` sütunu: JSON liste (sözleşme); düz metin tek alıntı sayılır."""
+    v = (v or "").strip()
+    if v.startswith("["):
+        try:
+            x = json.loads(v)
+            if isinstance(x, list):
+                return [str(q) for q in x if str(q).strip()]
+        except ValueError:
+            pass
+    return [v] if v else []
+
+
+def load_index(path: Path) -> dict[str, list[dict]]:
+    """{ölçüt: [satır, …]} — satır alanları sözleşmedeki sütunlar; `alintilar`/`yuvalar` liste."""
+    out: dict[str, list[dict]] = {}
+    with open(path, encoding="utf-8", newline="") as f:
+        for r in csv.DictReader(f):
+            if not r.get("kanit_no") or not r.get("olcut"):
+                continue
+            r = {k: (v or "").strip() for k, v in r.items() if k}
+            r["alintilar"] = _quotes(r.get("alintilar", ""))
+            r["yuvalar"] = [str(x) for x in _list(r.get("yuvalar", ""))]
+            try:
+                r["od"] = int(r.get("od") or r["kanit_no"].rsplit("_OD", 1)[1])
+            except (ValueError, IndexError):
+                r["od"] = None
+            out.setdefault(r["olcut"], []).append(r)
+    for rows in out.values():
+        rows.sort(key=lambda r: int(r["kanit_no"].split("_")[0]) if r["kanit_no"].split("_")[0].isdigit() else 0)
+    return out
+
+
+def load_audit(path: Path) -> dict[str, dict]:
+    d = json.loads(Path(path).read_text(encoding="utf-8"))
+    rows = d.get("olcutler", d) if isinstance(d, dict) else d
+    return {r["olcut"]: r for r in rows}
+
+
+def load_notes(path: Path) -> dict[str, list[str]]:
+    if not path.exists():
+        return {}
+    d = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return {str(k): [str(x) for x in (v if isinstance(v, list) else [v]) if str(x).strip()]
+            for k, v in d.items() if v}
+
+
+def evidence_context(text: str | None, quotes: list[str], verify: Callable) -> list[dict]:
+    """Her alıntı için belgedeki konumu ve çevresi. Metin yoksa yalnız alıntı."""
+    out = []
+    for q in quotes[:MAX_QUOTES]:
+        item = {"alinti": q, "alinti_belgede": None, "baglam": ""}
+        if text:
+            ok, _score, span = verify(q, text)
+            item["alinti_belgede"] = bool(ok)
+            if ok and span:
+                a, b = span
+                item["baglam"] = " ".join(text[max(0, a - CTX):min(len(text), b + CTX)].split())
+        out.append(item)
+    return out
+
+
+# -- önceki yılın metni ---------------------------------------------------------------------
+
+_SUB = re.compile(r"^\s*([A-E]\.\d+\.\d+)\.?\s")
+_HEAD = re.compile(r"^\s*(Açıklamalar|Kanıtlar)\s*:?\s*", re.I)
+
+
+def _cells(table) -> list[str]:
+    seen: list = []                    # birleşik hücre aynı öğeyi döndürür; öğe tutulur (id yeniden kullanılır)
+    out = []
+    for row in table.rows:
+        for c in row.cells:
+            if any(c._tc is x for x in seen):
+                continue
+            seen.append(c._tc)
+            out.append(c.text)
+    return out
+
+
+def previous_from_docx(path: Path) -> dict[str, dict]:
+    """FR-0833 biçimli eski rapor → {ölçüt: {"aciklama": str, "kanitlar": str}}. Hücreler
+    tablo sırasıyla okunur; "B.1.1. Başlık" hücresi geçerli ölçütü belirler, ardından gelen
+    "Açıklamalar:" / "Kanıtlar:" hücreleri ona yazılır."""
+    import docx
+    d = docx.Document(str(path))
+    out: dict[str, dict] = {}
+    for t in d.tables:
+        cur = None
+        for cell in _cells(t):
+            m = _SUB.match(cell)
+            if m:
+                cur = m.group(1)
+                continue
+            h = _HEAD.match(cell)
+            if cur and h:
+                key = "aciklama" if h.group(1).lower().startswith("aç") else "kanitlar"
+                body = "\n".join(x.strip() for x in cell[h.end():].splitlines() if x.strip())
+                if body:
+                    out.setdefault(cur, {})[key] = body
+    return out
+
+
+def previous_from_dir(path: Path) -> dict[str, dict]:
+    """`<ölçüt>.txt` dosyaları ("Açıklamalar:" / "Kanıtlar:" bölümleri isteğe bağlı)."""
+    out = {}
+    for p in sorted(Path(path).glob("*.txt")):
+        if not re.fullmatch(r"[A-E]\.\d+\.\d+", p.stem):
+            continue
+        raw = p.read_text(encoding="utf-8", errors="replace")
+        parts = re.split(r"(?im)^\s*Kanıtlar\s*:\s*$", raw, maxsplit=1)
+        ac = _HEAD.sub("", parts[0].strip(), count=1).strip()
+        rec = {"aciklama": ac}
+        if len(parts) > 1 and parts[1].strip():
+            rec["kanitlar"] = parts[1].strip()
+        out[p.stem] = rec
+    return out
+
+
+def load_previous(path: Path | None) -> tuple[dict[str, dict], str | None]:
+    """(ölçüt → metin, kaynak adı). Yol yoksa boş."""
+    if not path:
+        return {}, None
+    p = Path(path).expanduser()
+    if p.is_dir():
+        return previous_from_dir(p), p.name
+    if p.suffix.lower() == ".docx" and p.exists():
+        return previous_from_docx(p), p.name
+    raise FileNotFoundError(f"önceki yıl metni bulunamadı ya da desteklenmiyor (docx ya da klasör): {p}")
+
+
+def configured_previous(ws_root: Path) -> str | None:
+    """config.yaml `rapor.onceki_rapor` (yoksa None)."""
+    p = Path(ws_root) / "config.yaml"
+    if not p.exists():
+        return None
+    try:
+        d = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError:
+        return None
+    sec = d.get(CONFIG_SECTION) or {}
+    v = sec.get("onceki_rapor") if isinstance(sec, dict) else None
+    return str(v) if v else None
+
+
+def unit_name(ws_root: Path) -> tuple[str | None, str | None]:
+    """(birim adı, profil) config.yaml `bidr:` bölümünden; yoksa (None, None)."""
+    from bidr.init.config import load_section
+    sec = load_section(Path(ws_root)) or {}
+    return sec.get("birim"), sec.get("profil")

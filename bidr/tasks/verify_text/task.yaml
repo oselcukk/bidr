@@ -1,0 +1,11 @@
+version: 1
+description: >-
+  Bağımsız metin doğrulama. Açıklama metninin her cümlesi, atıf yaptığı kanıtın
+  alıntısı ve belge bağlamıyla karşılaştırılır → cümle başına
+  destekleniyor | kismen | desteklenmiyor + gerekçe. Yazarın gerekçesi verilmez.
+inputs:
+  olcut: "ölçüt kimliği, başlığı, önerilen OD ve rubrik"
+  cumleler: "denetlenecek cümleler: yer kimliği, metin, atıflar"
+  kanitlar: "atıf yapılan kanıtlar: no, ad, alıntılar ve belge bağlamı"
+  onceki_metin: "geçen yılın aynı ölçüt metni (yalnız 'o.' cümleleri için; yoksa 'yok')"
+  komisyon_bilgisi: "komisyonun verdiği bilgi ([komisyon] cümleleri için; yoksa 'yok')"

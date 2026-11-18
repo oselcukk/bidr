@@ -1,0 +1,14 @@
+version: 1
+description: >-
+  Ölçüt açıklama metni. Ölçüt tanımı/rubrik, audit'in önerilen OD'si ve PUKÖ zinciri,
+  eksikler, ölçütün kanıtları (no, ad, alıntı, belge bağlamı), varsa geçen yılın aynı
+  ölçüt metni ve komisyon bilgisi → akademik, resmî Türkçe paragraflar; her cümle en az
+  bir [n_ODk] atfı taşır. Kod denetimi: bidr/write/text.py (atıf, OD aşımı, yasak ifade).
+inputs:
+  hitap: "kurumsal özne (ör. Bölümümüzde)"
+  olcut: "ölçüt kimliği, başlığı, tanımı, rubrik 1-5"
+  od_bilgisi: "önerilen OD, PUKÖ zinciri, eksik halkalar ve notlar (audit-olcutler.json)"
+  kanitlar: "ölçütün kanıtları: [n_ODk] no, ad, yuvalar, alıntı ve belge bağlamı"
+  onceki_metin: "geçen yılın aynı ölçüt metni ve kanıt listesi (yoksa 'yok')"
+  komisyon_bilgisi: "komisyonun bu ölçüt için verdiği bilgi (yoksa 'yok')"
+  yazim_sorulari: "kılavuzdaki 'Açıklama Metni Yazımı' soruları"
