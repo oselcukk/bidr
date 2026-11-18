@@ -69,6 +69,31 @@ ok, score, span = verify_quote(quote, text)   # Türkçe katlama, boşluk, OCR t
   (`render_unit(info, sabit)`); `apply_fine` modelin cevabındaki alanı insan değerine zorlar
   (`birim_iliskisi_kaynagi: insan`, modelin değeri `birim_iliskisi_model`), kurallar insan
   değeriyle uygulanır.
+- **Faaliyet kaydı (classify_fine v9).** İnce karar çıktısında isteğe bağlı belge düzeyi
+  `faaliyet`: `{"ad": 2-6 sözcük, "tarih": "YYYY-AA-GG" | "YYYY-AA" | null, "asama": duyuru |
+  plan | gerceklesme | katilim | degerlendirme | iyilestirme | duzenleme | diger}`; belge bir
+  toplantı/etkinliğe ait değilse `null`. İstem kuralı 11 kısa ve örneklidir ("duyuru
+  gerçekleşmenin kanıtı değildir"). Kayıt: `ince.faaliyet` (ad boşlukça düzeltilir); cevapta
+  alan yoksa kayda girmez. Mükerrer üye temsilcinin faaliyetini devralır (`rep_output`).
+  **Sürüm 8 → 9:** mevcut mekanizma değişmedi: v8 kayıtları "eski_surum" görünür, `bidr decide
+  prepare --stage fine` maliyet özeti verir, yeniden paketleme yalnız `--yes` ile; onaylanmazsa
+  eski kararlar geçerli kalır ve faaliyetsiz sayılır. İstem boyut sınırı (`test_prompt_size_budget`,
+  < 8000 token) için ince karar metin bütçesi `FINE_CHARS` 8000 → 7300 karakter.
+
+  `bidr faaliyet -w WS [--out DOSYA] [--json]` (`bidr/faaliyet/`, belirleyici, model yok):
+  `decisions.jsonl`'deki faaliyet alanlarını faaliyet kayıtlarında toplar → `faaliyetler.json`
+  (`ozet` + `faaliyetler[]`: `id` F001…, `ad`, `adlar`, `tarih` (olay günü), `tarih_araligi`,
+  `durum` gerceklesme_kanitli | gerceklesme_dolayli | gerceklesme_kanitsiz, `yalniz_duyuru`,
+  `asamalar` {aşama: [doc_id]}, `halkalar` (PUKÖ), `eksik` ("gerceklesme yok", "katilim yok",
+  "degerlendirme yok"; değerlendirme varsa "iyilestirme yok"), `belgeler` (doc_id, aşama, karar,
+  kanıt adı, birim ilişkisi, kabul edilmiş eşleşmeler), `notlar`) ve özet tablo basar.
+  Gruplama (`group.py`): ad benzerliği (Türkçe katlama, ek duyarlı sözcük öneki, Dice ≥ 0.6;
+  addaki toplantı no./yıl farklıysa ayrı) + tarih yakınlığı (çapa aşamalar gerceklesme/katilim
+  ±3 gün; öteki aşamalar olay gününe göre aşamaya özgü pencerede: duyuru 45 gün önce–3 gün
+  sonra, değerlendirme 90 gün, iyileştirme 365 gün sonrasına kadar; en yakın faaliyet).
+  Tarihsiz belge adı benzer tek faaliyete bağlanır, birden çok aday varsa ayrı kalır ve
+  işaretlenir. `baska_birim` belgeler alınmaz. Hat aşaması değildir (pipeline.yaml'a
+  girmedi); audit kullanımı tasarımı docs/AUDIT.md "Faaliyet kayıtları".
 - `bidr decide -w WS [--profile P] [--only-labeled] [--limit N]` →
   `decisions.jsonl`.
 - `bidr compare-labels -w WS` → geçmiş etiketle karşılaştırma: aynı / ekliyor /

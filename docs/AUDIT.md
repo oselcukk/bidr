@@ -240,3 +240,30 @@ geçerli kararı var; tablodaki her karar `review-decisions.jsonl`'de birebir; k
 bağlantı düzeltmeleri ve birim sayfası kararları da işlenmiş (`uygulanmamis_duzeltme` = 0);
 birim kararları tablodan sonra değiştiyse tablo yeniden üretilmiş. Aşama
 `onay: insan`: kararı ajan vermez.
+
+## Faaliyet kayıtları (tasarım; henüz uygulanmadı)
+
+Girdi: `faaliyetler.json` (`bidr faaliyet`, docs/MODEL_LAYER.md "Faaliyet kaydı"). Bugün audit
+bu dosyayı okumaz; eşleşmeler belge belge sayılır. Önerilen entegrasyon (audit şeridinin işi):
+
+1. **Zincir faaliyet üzerinden.** Bir ölçütün eşleşmeleri faaliyet kaydına bağlıysa (belge
+   `faaliyetler[].belgeler[].doc_id`), halka faaliyetin kanıtlı aşamalarından sayılır:
+   duyuru/plan/duzenleme → planla, gerceklesme/katilim → uygula, degerlendirme → kontrol_et,
+   iyilestirme → onlem_al (`bidr.faaliyet.group.PUKO`, kayıtta `halkalar`). Eşleşmenin model
+   aşaması bu eşlemeyle çelişirse düşük olan sayılır ve satır `faaliyet_asamasi_uyusmuyor`
+   işareti alır. Faaliyetsiz belgede kural bugünkü gibidir.
+2. **Yalnız duyurusu olan faaliyet uygula halkasını sağlamaz.** `yalniz_duyuru: true` ya da
+   `durum: gerceklesme_kanitsiz` kaydın belgelerinden gelen "uygula" (ve üstü) eşleşmesi
+   planla'ya iner, `gerceklesme_kaniti_yok` işaretlenir; gaps.md "Gerçekleşmesi kanıtlanmamış
+   faaliyetler" bölümü (ad, tarih, eksik aşamalar) açar. `gerceklesme_dolayli` (katılım ya da
+   değerlendirme var, tutanak/rapor yok) uygula sayılır, vurgu "gerçekleşme belgesi önerilir".
+3. **OD4 için aynı faaliyet tercih edilir.** K ve Ö halkaları aynı faaliyetten geliyorsa
+   (değerlendirme → iyileştirme) gaps.md "kapalı döngü" der; farklı faaliyetlerden geliyorsa
+   OD yine sayılır, not düşülür (iyileştirmenin hangi sonuca dayandığı doğrulanmalı).
+4. **Write paketine faaliyet özeti.** Ölçüte bağlı her faaliyet için `{ad, tarih, durum,
+   asamalar, eksik}` write girdisine girer; yazım kuralı: yalnız `gerceklesme_kanitli` ya da
+   `gerceklesme_dolayli` faaliyet için "düzenlenmiştir/gerçekleştirilmiştir" yazılır,
+   yalnız duyurulu olan için "planlanmıştır/duyurulmuştur". verify bu kuralı denetler.
+5. **Kimlik ve güncellik.** `F001…` kimlikleri bir çalıştırma içinde kararlıdır (tarih, ad
+   sırası); audit kayıtla bağı doc_id üzerinden kurar, `_meta`'ya `faaliyetler.json` özeti
+   (sha) girer: dosya değişirse tablo güncel sayılmaz.

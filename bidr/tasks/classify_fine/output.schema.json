@@ -8,6 +8,16 @@
     "karar": {"enum": ["olcut_var", "olcut_yok", "kanit_degil"]},
     "birim_iliskisi": {"enum": ["kendi", "ust_birim_bu_birim_hakkinda", "fakulte_geneli", "kurum_geneli", "baska_birim", "belirsiz"]},
     "kanit_adi": {"type": "string", "minLength": 3, "maxLength": 80},
+    "faaliyet": {
+      "type": ["object", "null"],
+      "required": ["ad", "tarih", "asama"],
+      "additionalProperties": false,
+      "properties": {
+        "ad": {"type": "string", "minLength": 3, "maxLength": 80},
+        "tarih": {"type": ["string", "null"], "pattern": "^[0-9]{4}-[0-9]{2}(-[0-9]{2})?$"},
+        "asama": {"enum": ["duyuru", "plan", "gerceklesme", "katilim", "degerlendirme", "iyilestirme", "duzenleme", "diger"]}
+      }
+    },
     "eslesmeler": {
       "type": "array",
       "maxItems": 8,

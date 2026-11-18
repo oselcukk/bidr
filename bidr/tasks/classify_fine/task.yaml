@@ -1,4 +1,4 @@
-version: 8
+version: 9
 description: >-
   İnce karar. Belge metni + aday alt ölçütlerin rubriği (1-5, birebir) ve kanıt
   yuvaları (PUKÖ aşaması / OD etiketiyle) → her uyan ölçüt için
@@ -18,6 +18,11 @@ description: >-
   v8 açıklama (sürüm değişmedi, şema aynı): `birim_iliskisi` yalnız belge metninden çıkarılır
   (kişiyi tanıyarak ya da dış bilgiyle birim atanmaz); `kanit_adi` yasaklı karakterleri istemde
   yazılı; kod / \ | : karakterlerini "-" yapar (bidr/name/check.py, kayıtta not).
+  v9: isteğe bağlı belge düzeyi `faaliyet` ({ad, tarih, asama} | null): belgenin ait olduğu
+  toplantı/etkinlik ve o faaliyetteki yeri (duyuru, plan, gerceklesme, katilim, degerlendirme,
+  iyilestirme, duzenleme, diger). Kod faaliyet kayıtlarını toplar (bidr/faaliyet, faaliyetler.json).
+  Alan isteğe bağlı: v8 kayıtları geçerli kalır, faaliyetsiz sayılır. Belge metni bütçesi
+  8000 → 7300 karakter (istem boyut sınırı).
 inputs:
   adaylar: "aday alt ölçütler: başlık, rubrik 1-5, yuvalar `[aşama → OD]` etiketiyle"
   belge_bilgisi: "documents.jsonl içerik alanları (tür tahmini, tarih, sayfa); yol/ad yok"

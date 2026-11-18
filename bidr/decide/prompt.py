@@ -20,7 +20,7 @@ CONTENT_FIELDS = ("doc_type", "doc_type_etiket", "tarih", "akademik_donem", "met
 UNKNOWN_TYPE = "bilinmeyen"
 
 COARSE_CHARS = 6000      # kaba seçimde belge metni bütçesi (karakter)
-FINE_CHARS = 8000        # ince kararda belge metni bütçesi
+FINE_CHARS = 7300        # ince kararda belge metni bütçesi (v9: faaliyet kuralına yer; istem < 8000 token)
 HEAD_SHARE = 0.5         # kısaltmada baştan alınan pay
 CHUNK = 600              # kısaltmada seçilen parça boyu
 GAP = " [...] "
