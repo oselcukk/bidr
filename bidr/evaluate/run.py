@@ -50,7 +50,7 @@ def _make(name: str, train_pool: list[Doc], test_pool: list[Doc], valid: set[str
     test = [d for d in lab if d.usable]
     skipped = [d for d in lab if not d.usable]
     keys = set().union(*(d.keys for d in lab)) if lab else set()
-    train = [d for d in train_pool if d.labeled and not (d.keys & keys)]
+    train = [d for d in train_pool if d.labeled and d.usable and not (d.keys & keys)]
     dropped = sum(1 for d in train_pool if d.labeled and (d.keys & keys))
     sp = Split(name, train, test, skipped, dropped)
     lk = sp.leakage()
