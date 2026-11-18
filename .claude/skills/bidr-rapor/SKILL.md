@@ -39,6 +39,7 @@ Model işini sen yaparsın; hiçbir API ya da `bidr decide run` / `bidr llm` kul
      karakter; kısaltma, "[...]", düzeltme, birleştirme yok. Metin satır kırımlıysa tek satırlık
      anlamlı bir parça yeterli (satır sonu ve boşluk farkını kod tolere eder). Bulamıyorsan o
      eşleşmeyi yazma;
+   - aynı (ölçüt, yuva) için tek eşleşme yaz; ikincisi "yinelenen" diye reddedilir;
    - emin değilsen `olcut_yok` ya da `kanit_degil` geçerli ve dürüst cevaptır.
    - ince pakette adayları kod seçer (kaba seçim ∪ belirleyici adaylar): kaba aşamada
      `kanit_degil` dediğin belge de ince pakete gelebilir. Bu bilinçlidir; belgeyi yeniden,
