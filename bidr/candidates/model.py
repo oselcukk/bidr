@@ -32,7 +32,7 @@ from .data import Doc
 from .text import bag
 
 SIGNALS = ("bm25", "yuva", "knn", "tur", "oncel")
-DEFAULT_COMBO = ("bm25", "knn", "tur", "oncel")
+DEFAULT_COMBO = ("bm25", "yuva", "knn", "tur", "oncel")
 DEFAULT_WEIGHTS = {"bm25": 1.0, "yuva": 1.0, "knn": 1.0, "tur": 0.5, "oncel": 0.05}
 
 

@@ -130,13 +130,13 @@ def test_candidates_yuva_profil_haric(tmp_path):
     assert ex["haric"] == "oz_referans_turu" and ex["adaylar"] == []
 
 
-def test_varsayilan_birlesik_degismedi(tmp_path):
-    """Yuva sinyali eklenince varsayılan birleşik sıralama eski dört sinyalle aynı kalır."""
+def test_varsayilan_birlesik_bes_sinyal(tmp_path):
+    """Varsayılan birleşik beş sinyalin tamamıdır (yuva dahil; şef kararı 2026-11-18)."""
     ws, docs = _ws(tmp_path)
     m = Model(CS).fit(load(ws))
     for d in load(ws):
         a, _ = m.rank(d)
-        b, _ = m.rank(d, ("bm25", "knn", "tur", "oncel"))
+        b, _ = m.rank(d, ("bm25", "yuva", "knn", "tur", "oncel"))
         assert [x[0] for x in a] == [x[0] for x in b]
 
 

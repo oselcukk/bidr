@@ -56,7 +56,7 @@ def test_cli_candidates_yazar(tmp_path):
     assert r["adaylar"][0]["olcut"] == "A.1.2"
     assert [a["sira"] for a in r["adaylar"]] == [1, 2, 3, 4, 5]
     assert set(r["adaylar"][0]["sinyaller"]) <= {"bm25", "yuva", "knn", "tur", "oncel"}
-    assert r["birlesik"] == ["bm25", "knn", "tur", "oncel"]
+    assert r["birlesik"] == ["bm25", "yuva", "knn", "tur", "oncel"]
     assert all("/" in y["yuva"] for y in r["en_iyi_yuvalar"])
     assert r["adaylar"][0]["kaynak"] in ("bm25", "knn")
     assert rows[docs[4]["id"]]["durum"] == "bos"

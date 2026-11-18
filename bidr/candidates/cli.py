@@ -41,6 +41,6 @@ def register(sub):
                    help="etiketli eğitim çalışma klasörü (tekrarlanabilir); aynı içerik kendine komşu olmaz")
     p.add_argument("--k", type=int, default=10, help="belge başına aday sayısı (varsayılan 10)")
     p.add_argument("--profile", help="birim profili (ör. akademik_bolum): doldurmayacağı ölçütler düşer")
-    p.add_argument("--signals", help="birleşik sinyaller, virgülle (vars. bm25,knn,tur,oncel; ör. yuva,knn,tur,oncel)")
+    p.add_argument("--signals", help="birleşik sinyaller, virgülle (vars. bm25,yuva,knn,tur,oncel; ör. yuva,knn,tur,oncel)")
     p.add_argument("--out", default="candidates.jsonl", help="çıktı dosya adı (WS içinde)")
     p.set_defaults(func=_run)
