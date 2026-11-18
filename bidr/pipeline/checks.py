@@ -259,6 +259,40 @@ def hakem_tamam(c: Ctx) -> Check:
     return Check(bitti=True, ilerleme=prog, neden=f"{len(qs)} soru cevaplandı, uzlaşı yazıldı")
 
 
+# -- audit ---------------------------------------------------------------------------------
+
+def audit_tamam(c: Ctx) -> Check:
+    from bidr.audit.run import FILES, review_state
+    ws = c.ws
+    run_cmd, apply_cmd = c.fmt(c.stage["komut"][0]), c.fmt(c.stage["komut"][2])
+    try:
+        st = review_state(ws.root)
+    except Exception as e:     # bozuk tablo: kullanıcı düzeltmeli
+        return Check(kim=INSAN, neden=f"{FILES['xlsx']} okunamadı: {e}")
+    if not st["tablo"]:
+        return Check(kim=KOMUT, komutlar=[run_cmd], neden="review.xlsx yok: denetim çalışmadı")
+    prog = {"satir": st["satir"], "kararli": st["kararli"], "gecersiz": st["gecersiz"],
+            "uygulanmamis": st["uygulanmamis"]}
+    if not st["guncel"]:
+        return Check(kim=KOMUT, komutlar=[run_cmd], ilerleme=prog,
+                     neden="review.xlsx eski kararlardan üretilmiş (decisions.jsonl değişti); yeniden üret "
+                           "(doldurulmuş kararlar yeni tabloya taşınır)")
+    acik = st["satir"] - st["kararli"]
+    if acik:
+        why = f"{acik}/{st['satir']} satır karar bekliyor"
+        if st["gecersiz"]:
+            why += f" ({st['gecersiz']} geçersiz karar)"
+        return Check(kim=INSAN, ilerleme=prog,
+                     komutlar=[f"(insan) {ws.root / FILES['xlsx']}: kullanıcı her satıra KARAR yazar "
+                               "(kabul/ret/duzelt); gaps.md eksikleri gösterir. Kararı ajan vermez.",
+                               apply_cmd],
+                     neden=why)
+    if st["uygulanmamis"]:
+        return Check(kim=KOMUT, komutlar=[apply_cmd], ilerleme=prog,
+                     neden=f"{st['uygulanmamis']} karar tabloda var ama işlenmemiş: apply")
+    return Check(bitti=True, ilerleme=prog, neden=f"{st['satir']} satır kararlı ve işlendi")
+
+
 def yok(c: Ctx) -> Check:
     return Check(neden="henüz uygulanmadı")
 
@@ -271,5 +305,6 @@ CHECKS: dict[str, Callable[[Ctx], Check]] = {
     "candidates_tamam": candidates_tamam,
     "karar_tamam": karar_tamam,
     "hakem_tamam": hakem_tamam,
+    "audit_tamam": audit_tamam,
     "yok": yok,
 }

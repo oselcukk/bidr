@@ -1,0 +1,202 @@
+"""bidr audit: ölçüt OD kuralı, gaps.md, review.xlsx ve apply (sentetik veri, model yok)."""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+import yaml
+from openpyxl import load_workbook
+
+from bidr.audit.rules import criterion_od, effective_stage
+from bidr.audit.run import FILES, apply, audit, build, review_state
+from bidr.audit.sheet import COLS, SHEET_ROWS
+from bidr.cli import main
+from bidr.common import read_jsonl, sha256_file
+from bidr.criteria.loader import criteria_dir
+from bidr.criteria.slots import TAGS_FILE
+
+ALL = {"planla", "uygula", "kontrol_et", "onlem_al", "ozgun"}
+
+
+# -- kural ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("present,od,eksik", [
+    (set(), 1, ["planla"]),
+    ({"planla"}, 2, ["uygula"]),
+    ({"planla", "uygula"}, 3, ["kontrol_et", "onlem_al"]),
+    ({"planla", "uygula", "kontrol_et"}, 3, ["onlem_al"]),          # önlem yok → OD4 değil
+    ({"planla", "uygula", "onlem_al"}, 3, ["kontrol_et"]),          # kontrol yok → OD4 değil
+    ({"planla", "uygula", "kontrol_et", "onlem_al"}, 4, ["ozgun"]),
+    ({"planla", "uygula", "kontrol_et", "onlem_al", "ozgun"}, 5, []),
+    ({"planla", "uygula", "ozgun"}, 3, ["kontrol_et", "onlem_al"]),  # özgün tek başına sıçratmaz
+    ({"uygula", "kontrol_et", "onlem_al"}, 2, ["planla"]),          # plan yok: örtük, OD2'de kalır
+])
+def test_chain(present, od, eksik):
+    r = criterion_od(present, ALL)
+    assert r.od == od and r.eksik == eksik
+
+
+def test_chain_slotless_links():
+    # A.1.2 gibi: plan/uygula yuvası yok → üst halka varsa aranmaz
+    has = {"kontrol_et", "onlem_al", "ozgun"}
+    assert criterion_od({"kontrol_et", "onlem_al"}, has).od == 4
+    assert criterion_od({"kontrol_et"}, has).od == 3
+    assert criterion_od(set(), has).od == 1
+    # B.2.3 gibi: kontrol/önlem yuvası yok → OD4 kendiliğinden gelmez
+    has = {"planla", "uygula", "ozgun"}
+    r = criterion_od({"planla", "uygula"}, has)
+    assert r.od == 3 and r.eksik == ["kontrol_et", "onlem_al"]
+
+
+def test_effective_stage():
+    assert effective_stage("kontrol_et", 4) == "kontrol_et"
+    assert effective_stage("onlem_al", 4) == "onlem_al"
+    assert effective_stage("kontrol_et", 3) == "uygula"
+    assert effective_stage("ozgun", 3) == "uygula"
+    assert effective_stage("uygula", None) is None
+
+
+# -- sentetik çalışma alanı ------------------------------------------------------------
+
+def _m(olcut, yuva, asama, od, guven="orta"):
+    return {"olcut": olcut, "yuva": yuva, "asama": asama, "od_onerisi": od, "alinti": "x" * 30,
+            "gerekce": "g", "guven": guven, "denetim": {"red": [], "isaret": []}, "od_kabul": od, "kabul": True}
+
+
+DOCS = {
+    # doc_id: (tür, dönem içi, eşleşmeler)
+    "d_plan": ("bolum_kurulu_karari", True, [_m("B.1.1", "B.1.1/1", "planla", 2)]),
+    "d_uyg": ("bolum_kurulu_karari", True, [_m("B.1.1", "B.1.1/3", "uygula", 3)]),
+    "d_kont": ("anket_sonucu", True, [_m("B.1.1", "B.1.1/6", "kontrol_et", 4)]),
+    "d_onlem": ("toplanti_tutanagi", True, [_m("B.1.1", "B.1.1/5", "onlem_al", 4, guven="dusuk")]),
+    "d_yon": ("yonerge", None, [_m("B.2.3", "B.2.3/2", "uygula", 3), _m("B.2.3", "B.2.3/1", "planla", 2)]),
+    "d_eski": ("bolum_kurulu_karari", False, [_m("A.1.1", "A.1.1/2", "uygula", 3),
+                                             _m("A.1.1", "A.1.1/1", "planla", 2)]),
+}
+
+
+@pytest.fixture
+def ws(tmp_path):
+    w = tmp_path / "ws"
+    w.mkdir()
+    with open(w / "decisions.jsonl", "w", encoding="utf-8") as f:
+        for did, (_, _, ms) in DOCS.items():
+            f.write(json.dumps({"doc_id": did, "durum": "ok", "asama": "ince", "karar": "olcut_var",
+                                "eslesmeler": ms + [{**_m("B.1.1", "B.1.1/7", "ozgun", 5), "kabul": False}]},
+                               ensure_ascii=False) + "\n")
+        f.write(json.dumps({"doc_id": "d_atla", "durum": "atlandi"}) + "\n")
+    with open(w / "documents.jsonl", "w", encoding="utf-8") as f:
+        for did, (t, ici, _) in DOCS.items():
+            f.write(json.dumps({"doc_id": did, "doc_type": t, "donem_ici": ici,
+                                "calisma_adi": f"2025_{did}"}) + "\n")
+    return w
+
+
+def _crit(a, cid):
+    return next(c for c in a.criteria if c["olcut"] == cid)
+
+
+def test_build_od_and_flags(ws):
+    a = build(ws)
+    assert len(a.rows) == 8                         # reddedilen (kabul: false) eşleşme yok
+    b11 = _crit(a, "B.1.1")
+    assert b11["od"] == 3 and b11["od_dusuk_dahil"] == 4   # önlem yalnız düşük güvenle
+    assert [e["halka"] for e in b11["eksik"]] == ["onlem_al"]
+    assert {y["yuva"] for y in b11["eksik"][0]["yuvalar"]} == {"B.1.1/5", "B.1.1/6"}
+    assert any("düşük güven" in n for n in b11["notlar"])
+    # kurum geneli yönerge "uygula" dese de planla sayılır → uygulama kanıtı eksik
+    b23 = _crit(a, "B.2.3")
+    assert b23["od"] == 2 and b23["kurum_geneli_yalniz"]
+    r = a.by_key["d_yon|B.2.3/2"]
+    assert r["etkin_asama"] == "planla" and "uygulama_kaniti_eksik" in r["flags"]
+    # dönem dışı uygulama kanıtı sayılmaz; planı sayılır
+    a11 = _crit(a, "A.1.1")
+    assert a11["od"] == 2 and not a.by_key["d_eski|A.1.1/2"]["sayilir"]
+    assert a.by_key["d_eski|A.1.1/1"]["sayilir"]
+    # boş ölçüt OD1, eksik yuvaları listeli
+    a12 = _crit(a, "A.1.2")
+    assert a12["od"] == 1 and a12["yuva_dolu"] == 0 and a12["bos_yuvalar"]
+    # OD4'e yükselten satır vurgulu; öneri etiket ayrıca belirtilir
+    assert "OD4" in a.by_key["d_kont|B.1.1/6"]["vurgu"] and "ÖNERİ" in a.by_key["d_kont|B.1.1/6"]["vurgu"]
+    assert "düşük güven" in a.by_key["d_onlem|B.1.1/5"]["vurgu"]
+
+
+def _fill(xlsx: Path, values: dict[str, dict]):
+    wb = load_workbook(xlsx)
+    sh = wb[SHEET_ROWS]
+    head = [c.value for c in sh[1]]
+    col = {k: head.index(h) + 1 for k, h, _, _ in COLS}
+    for r in range(2, sh.max_row + 1):
+        sid = sh.cell(row=r, column=col["satir"]).value
+        for k, v in values.get(sid, values.get("*", {})).items():
+            sh.cell(row=r, column=col[k], value=v)
+    wb.save(xlsx)
+
+
+def test_audit_files_and_apply_roundtrip(ws, tmp_path, capsys):
+    out = tmp_path / "out"
+    tag_file = criteria_dir() / TAGS_FILE
+    tag_sha = sha256_file(tag_file)
+    before = {p.name: p.read_bytes() for p in ws.iterdir()}
+    assert main(["audit", "-w", str(ws), "--out", str(out)]) == 0
+    assert "OD dağılımı" in capsys.readouterr().out
+    for k in ("xlsx", "gaps", "json"):
+        assert (out / FILES[k]).exists()
+    assert {p.name: p.read_bytes() for p in ws.iterdir()} == before      # WS salt okunur
+    gaps = (out / "gaps.md").read_text(encoding="utf-8")
+    assert "B.2.3" in gaps and "uygulama kanıtı eksik" in gaps and "Boş yuvalar" in gaps
+    wb = load_workbook(out / "review.xlsx")
+    assert wb.sheetnames[:2] == ["Eşleşmeler", "Ölçüt özeti"] and wb["_meta"].sheet_state == "hidden"
+    st = review_state(out, ws)
+    assert st["tablo"] and st["guncel"] and st["satir"] == 8 and st["kararli"] == 0
+
+    # geçersiz karar: apply 1 döner, kayda girmez
+    _fill(out / "review.xlsx", {"*": {"karar": "kabul"}, "d_uyg|B.1.1/3": {"karar": "belki"}})
+    assert main(["audit", "apply", "-w", str(ws), "--out", str(out)]) == 1
+    assert "d_uyg|B.1.1/3" not in {r["satir"] for r in read_jsonl(out / FILES["decisions"])}
+
+    # ret + düzelt + etiket kararları
+    _fill(out / "review.xlsx", {
+        "d_uyg|B.1.1/3": {"karar": "kabul"},
+        "d_onlem|B.1.1/5": {"karar": "düzelt", "duzelt_asama": "onlem_al",
+                            "etiket_karari": "duzelt", "etiket_yeni": "uygula, onlem_al", "not": "sınama"},
+        "d_kont|B.1.1/6": {"karar": "kabul", "etiket_karari": "onayla"},
+        "d_yon|B.2.3/2": {"karar": "ret"},
+    })
+    assert main(["audit", "apply", "-w", str(ws), "--out", str(out)]) == 0
+    decs = {r["satir"]: r for r in read_jsonl(out / FILES["decisions"])}
+    assert len(decs) == 8 and decs["d_yon|B.2.3/2"]["karar"] == "ret"
+    assert decs["d_onlem|B.1.1/5"]["duzelt"]["asama"] == "onlem_al"
+    js = json.loads((out / FILES["json"]).read_text(encoding="utf-8"))
+    b11 = next(c for c in js["olcutler"] if c["olcut"] == "B.1.1")
+    assert b11["od"] == 3          # düzeltilen satır hâlâ düşük güvenli: önerilen OD'ye katılmaz
+    oneri = yaml.safe_load((out / FILES["tag_oneri"]).read_text(encoding="utf-8"))
+    by = {o["yuva"]: o for o in oneri["oneriler"]}
+    assert by["B.1.1/5"]["oneri"] == {"asama": ["uygula", "onlem_al"], "od": [3, 4], "durum": "onayli"}
+    assert by["B.1.1/6"]["degisiklik"] == "yalniz_onay"
+    assert sha256_file(tag_file) == tag_sha                       # etiket dosyası değişmez
+    st = review_state(out, ws)
+    assert st["kararli"] == 8 and st["uygulanmamis"] == 0
+
+    # yeniden üretim: işlenmiş kararlar tabloya geri gelir; işlenmemiş karar taşınır
+    _fill(out / "review.xlsx", {"d_plan|B.1.1/1": {"not": "yeni not"}})
+    a, _ = audit(ws, out=out)
+    assert any("uygulanmamıştı" in u for u in a.uyarilar)
+    assert (out / "review.onceki.xlsx").exists()
+    xs = {r["satir"]: r for r in a.rows}
+    assert xs["d_yon|B.2.3/2"]["karar"] == "ret" and xs["d_plan|B.1.1/1"]["not"] == "yeni not"
+    assert not xs["d_yon|B.2.3/2"]["sayilir"]
+
+
+def test_decisions_change_makes_table_stale(ws, tmp_path):
+    out = tmp_path / "out"
+    audit(ws, out=out)
+    with open(ws / "decisions.jsonl", "a", encoding="utf-8") as f:
+        f.write(json.dumps({"doc_id": "d_yeni", "durum": "ok", "asama": "ince", "eslesmeler": []}) + "\n")
+    assert not review_state(out, ws)["guncel"]
+
+
+def test_apply_without_table(ws, tmp_path):
+    with pytest.raises(FileNotFoundError):
+        apply(ws, out=tmp_path / "yok")
