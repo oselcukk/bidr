@@ -10,6 +10,12 @@ prepare: kanıtı olan her ölçüt için `work/write/<ölçüt>.json` paketi. G
 apply: şema + kod denetimi (bidr/write/text.py: her cümlede atıf, atıf listede mi, OD aşımı,
 yasak ifade, uydurma gelecek vaadi). Geçemeyen cevap yazılmaz (GECERSIZ.md); geçen metin
 `texts/<ölçüt>.json` olur, `durum: taslak` (doğrulama `bidr verify`).
+
+Yeniden yazım döngüsü (`prepare --reddedilenler`): `bidr verify`'ın reddettiği her metin için
+yeni paket; istemin sonuna doğrulayıcının cümle bazlı gerekçesi ve reddedilen metin eklenir
+(doğrulayıcının paketi yazara verilmez, yalnız kararı ve gerekçesi). Tur sayısı metinde
+(`tur`) tutulur; `rapor.yeniden_yazim_siniri` (vars. 2) turdan sonra reddedilen ölçüt "insan
+gerekli" olur (`bidr verify karar … cikar|tekrar`, bkz. bidr/verify/run.py).
 """
 from __future__ import annotations
 
@@ -261,6 +267,101 @@ def load_text(ws: Workspace, olcut: str) -> dict | None:
     return json.loads(p.read_text(encoding="utf-8")) if p.exists() else None
 
 
+def girdi_sha(rows: list[dict], od: int) -> str:
+    """Metnin dayandığı girdilerin özeti: ölçütün kanıt listesi (no, doc_id) ve önerilen OD.
+    Değişirse metin eskir (write_tamam)."""
+    k = sorted((r["kanit_no"], r.get("doc_id", "")) for r in rows)
+    return K.sha(json.dumps({"k": k, "od": int(od)}, ensure_ascii=False))
+
+
+def inputs_sha(src: Sources, olcut: str) -> str:
+    return girdi_sha(src.index.get(olcut, []), src.od(olcut))
+
+
+DEFAULT_LIMIT = 2
+
+
+def rewrite_limit(ws_root: Path) -> int:
+    """config.yaml `rapor.yeniden_yazim_siniri` (vars. 2)."""
+    try:
+        return max(0, int(S.rapor_section(Path(ws_root)).get("yeniden_yazim_siniri", DEFAULT_LIMIT)))
+    except (TypeError, ValueError):
+        return DEFAULT_LIMIT
+
+
+def rejection_section(t: dict, rec: dict | None, tur: int, limit: int) -> str:
+    """Yeniden yazım paketinin istemine eklenen bölüm: doğrulayıcının cümle bazlı gerekçesi."""
+    rec = rec or {}
+    L = [f"DOĞRULAMADA REDDEDİLDİ — YENİDEN YAZIM (tur {tur}/{limit})",
+         "Bu ölçüt için daha önce yazılan metin bağımsız doğrulamada reddedildi. Metni yukarıdaki "
+         "kurallarla ve yalnız KANITLAR listesine dayanarak yeniden yaz:",
+         "- reddedilen cümleyi kanıtın gerçekten gösterdiği kadarına indir ya da çıkar; kanıtı olmayan "
+         "iddiayı başka sözcüklerle yeniden kurma;",
+         "- desteklendiği söylenen cümleleri koruyabilirsin; yeni iddia ekleme;",
+         "- doğrulayıcıyı ikna etmeye çalışan açıklama yazma; cevap biçimi aynı.", ""]
+    rows = [r for r in rec.get("cumleler") or [] if r.get("karar") != "destekleniyor"]
+    if rows:
+        L.append("Doğrulayıcının desteklemediği cümleler (yer, karar, gerekçe):")
+        for r in rows:
+            L.append(f"- {r['yer']} ({r['karar']}): «{r.get('metin', '')}» — {r.get('gerekce', '')}")
+    kod = rec.get("kod_denetimi") or []
+    if kod:
+        L.append("Kod denetiminin bulduğu sorunlar:")
+        for i in kod:
+            L.append(f"- {i.get('yer', '-')} {i.get('kod', '')}: {i.get('ayrinti', '')}")
+    if not rows and not kod:
+        L += [f"- {g}" for g in (t.get("dogrulama") or {}).get("gerekce") or []] or ["- (gerekçe kaydı yok)"]
+    if rec.get("genel"):
+        L.append(f"Doğrulayıcının genel notu: {rec['genel']}")
+    L += ["", "REDDEDİLEN METİN (yalnız düzeltme için; kanıt değildir)", "<<<"]
+    L += [p["metin"] for p in t.get("paragraflar") or []]
+    if (t.get("onceki_yila_gore") or "").strip():
+        L.append("onceki_yila_gore: " + t["onceki_yila_gore"].strip())
+    L.append(">>>")
+    return "\n".join(L)
+
+
+def prepare_rejected(ws_root: Path, *, only: list[str] | None = None, index: Path | None = None,
+                     audit: Path | None = None, onceki=None, notes: Path | None = None,
+                     hitap: str | None = None, backend: Backend | None = None) -> dict:
+    """Doğrulamada reddedilen metinler için yeniden yazım paketleri (bkz. modül belgesi)."""
+    from bidr.verify import run as V
+    backend = backend or Backend()
+    sp = source_paths(ws_root, index=index, audit=audit, onceki=onceki, notes=notes)
+    src = Sources(ws_root, index=sp["index"], audit=sp["audit"], onceki=sp["onceki"], notes=sp["notes"],
+                  verify=backend.verify_quote)
+    _, profile = S.unit_name(src.ws.root)
+    h = hitap_for(profile, hitap)
+    log = V.load_log(src.ws)
+    human = V.load_human(src.ws)
+    d = work_dir(src.ws)
+    d.mkdir(parents=True, exist_ok=True)
+    st = {"paket": 0, "yeni": 0, "insan_gerekli": [], "cikarildi": [], "kanitsiz": [], "tur": {}}
+    for c, t in V.rejected(src.ws, log, only=only).items():
+        if V.excluded(t, human):
+            st["cikarildi"].append(c)
+            continue
+        if c not in src.index:
+            st["kanitsiz"].append(c)
+            continue
+        tur, lim = int(t.get("tur") or 0), V.limit_for(src.ws, c, human)
+        if tur >= lim:
+            st["insan_gerekli"].append(c)
+            continue
+        inputs, meta = write_inputs(src, c, h)
+        r = backend.render_task(TASK, inputs)
+        base = K.sha(r["prompt"])
+        r = {**r, "prompt": r["prompt"] + "\n\n" + rejection_section(t, log.get(c), tur + 1, lim)}
+        meta.update({"tur": tur + 1, "temel_istem_sha": base, "girdi_sha": inputs_sha(src, c),
+                     "ret": (log.get(c) or {}).get("gerekce") or []})
+        st["paket"] += 1
+        st["yeni"] += K.write_pkg(d, c, r, meta)
+        st["tur"][c] = tur + 1
+    st["bekleyen"] = K.write_readme(d, task=TASK, version=task_version(), cmd="write", rule=RULE)
+    st["klasor"] = str(d)
+    return st
+
+
 def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
             index: Path | None = None, audit: Path | None = None, onceki=None, notes: Path | None = None,
             hitap: str | None = None, backend: Backend | None = None) -> dict:
@@ -281,10 +382,13 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
         inputs, meta = write_inputs(src, c, h)
         r = backend.render_task(TASK, inputs)
         t = load_text(src.ws, c)
-        if (t and not redo and not only and (t.get("kaynak") or {}).get("istem_sha") == K.sha(r["prompt"])
-                and str((t.get("kaynak") or {}).get("gorev_surumu")) == str(r["version"])):
+        kay = (t or {}).get("kaynak") or {}
+        if (t and not redo and not only and (kay.get("temel_istem_sha") or kay.get("istem_sha")) == K.sha(r["prompt"])
+                and str(kay.get("gorev_surumu")) == str(r["version"])):
             st["zaten_tamam"] += 1
             continue
+        meta.update({"tur": int((t or {}).get("tur") or 0), "temel_istem_sha": K.sha(r["prompt"]),
+                     "girdi_sha": inputs_sha(src, c)})
         st["paket"] += 1
         st["yeni"] += K.write_pkg(d, c, r, meta, force=bool(redo and t))
     st["bekleyen"] = K.write_readme(d, task=TASK, version=task_version(), cmd="write", rule=RULE)
@@ -348,10 +452,13 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", index: Path | Non
         cited = _cited(paras, onceki)
         byno = {k["no"]: k for k in meta["kanitlar"]}
         rec = {"olcut": c, "od_onerisi": meta["od_onerisi"], "durum": "taslak",
+               "tur": int(meta.get("tur") or 0), "girdi_sha": meta.get("girdi_sha") or inputs_sha(src, c),
                "paragraflar": [{"metin": m, "atiflar": _cited([m], "")} for m in paras],
                "kanitlar": [{"no": n, "ad": byno[n]["ad"], "dosya": byno[n]["dosya"]} for n in cited],
                "eksikler": meta["eksikler"], "onceki_yila_gore": onceki,
+               **({"onceki_ret": meta["ret"]} if meta.get("ret") else {}),
                "kaynak": {"model": model, "gorev_surumu": str(pkg["surum"]), "istem_sha": pkg["istem_sha"],
+                          "temel_istem_sha": meta.get("temel_istem_sha") or pkg["istem_sha"],
                           "cevap_sha": K.sha(raw), "onceki": meta.get("onceki"), "zaman": K.now()}}
         old = load_text(src.ws, c)
         if old and text_sha(old) == text_sha(rec) and (old.get("kaynak") or {}).get("istem_sha") == pkg["istem_sha"]:

@@ -11,6 +11,12 @@ def _cmd(args) -> int:
     from . import run as R
 
     try:
+        if args.action == "karar":
+            r = R.decide(args.workspace, args.olcut, args.karar, args.note or "")
+            print(f"{r['olcut']}: {r['karar']} kaydedildi (tur {r['tur']}, sınır {r['sinir']})")
+            if r["karar"] == "tekrar":
+                print("Sıradaki: bidr write prepare -w <ws> --reddedilenler")
+            return 0
         if args.action == "prepare":
             st = R.prepare(args.workspace, only=olcut_list(args.only), redo=args.redo, index=args.index,
                            audit=args.audit, onceki=args.onceki, notes=args.notlar)
@@ -24,7 +30,7 @@ def _cmd(args) -> int:
             print(f"Ajan (metni yazandan bağımsız olmalı): {st['klasor']}/README.md")
             return 1 if st["kod_reddi"] else 0
         st = R.apply(args.workspace, model=args.model)
-    except (FileNotFoundError, KeyError) as e:
+    except (FileNotFoundError, KeyError, ValueError) as e:
         print(f"HATA {e}")
         return 2
     print(f"dogrulandi={len(st['dogrulandi'])} reddedildi={len(st['reddedildi'])} değişmedi={st['degismedi']} "
@@ -51,6 +57,13 @@ def register(sub):
     a.add_argument("--audit", help="audit-olcutler.json (vars. son write prepare'in kullandığı)")
     a.add_argument("--onceki", help="geçen yılın raporu/klasörü (vars. son write prepare'in kullandığı)")
     a.add_argument("--notlar", help="komisyon bilgisi YAML'ı (vars. son write prepare'in kullandığı)")
+    a.set_defaults(func=_cmd)
+    a = act.add_parser("karar", help="KULLANICININ kararı, reddedilen metin için: cikar (rapora girmez) | "
+                                     "tekrar (bir yeniden yazım turu daha) → verify-insan.jsonl")
+    a.add_argument("--workspace", "-w", required=True)
+    a.add_argument("olcut")
+    a.add_argument("karar", choices=["cikar", "tekrar"])
+    a.add_argument("--not", dest="note", default="", help="kullanıcının gerekçesi (kayda geçer)")
     a.set_defaults(func=_cmd)
     a = act.add_parser("apply", help="<ölçüt>.out.json kararlarını işle: dogrulandi / reddedildi")
     a.add_argument("--workspace", "-w", required=True)

@@ -55,7 +55,9 @@ Tek yumuşatma (komisyon kararı, 2026-11-18): plan halkası eksik ama U/K/Ö va
    "tarih doğrulanmalı" (sayılmaz).
 4. **Düşük güven** (`guven: dusuk`): önerilen OD'ye katılmaz; ayrıca "OD (düşük güven
    dahil)" hesaplanır ve fark varsa not düşülür. Bu, OD'yi doğrulanmamış eşleşmeyle şişirmemek
-   içindir.
+   içindir. İnceleme kararı `kabul` ya da `duzelt` ise eşleşme doğrulanmış sayılır ve OD'ye
+   katılır (insan kararı kuralı aşar; `bidr file` aynı kuralı uygular). Vurgu "düşük güven
+   (incelemede onaylandı)" olur.
 5. **İnsan kararı** (`review-decisions.jsonl`): `ret` sayılmaz; `duzelt` kullanıcının
    ölçüt/yuva/aşamasını kullanır (kurum geneli ve dönem sınırları uygulanmaz: karar kullanıcının).
 
@@ -130,7 +132,13 @@ durumu (öneri/onaylı), vurgu, güven, işaretler, alıntı, gerekçe; kullanı
 (mavi): **KARAR** (kabul/ret/duzelt), düzelt: ölçüt/yuva/aşama, yuva etiketi kararı
 (onayla/duzelt) ve yeni aşama(lar), NOT; **kanıt adı** (belge sütununun yanında; öneriyle
 dolu, düzeltilebilir). Sonda salt okunur "kanıt adı (öneri)" ve "kanıt adı kaynağı"
-(insan/model/kural; öncelik insan > model > kural, `bidr/name/resolve.py`).
+(insan/model/kural; öncelik insan > model > kural, `bidr/name/resolve.py`). **bağlantı**
+(kullanıcı sütunu; öneriyle dolu): raporda kanıt adının bağlanacağı adres; öneri belge
+metnindeki yayın adresidir (web çıktısının üst/altbilgisi, `bidr/file/links.py`), yanında salt
+okunur "bağlantı (öneri)" ve "bağlantı kaynağı" (insan/belge_metni). "alıntı kaynağı":
+`belge` ya da `betimleme` — belge metni `bidr describe` başlığıyla başlıyor ve alıntı betimleme
+öncesi metinde (`text_pre_describe/`) yoksa alıntı ajanın görsel betimlemesindendir (sarı,
+işaret `betimleme_alintisi`, vurgu "alıntı görsel betimlemeden").
 
 Vurgular: OD4/OD5'e yükselten satırın OD/etiket hücreleri turuncu; yükselten etiket hâlâ
 öneri ise koyu turuncu ve "ÖNERİ etiket" yazar. Düşük güven sarı. Sayılmayan satırlar gri (ret, geçmiş kanıt, tarihsiz ya da dönem sonrası olay).
@@ -149,11 +157,16 @@ yuva, mevcut etiket, önerilen aşama/OD (`durum: onayli`), kaynak satırlar; ay
 çelişen öneriler `celiskiler`'e. "kanıt adı" hücresi öneriden farklıysa düzeltme
 `kanit-adlari.jsonl`'e (`--out` klasörü) `kaynak: insan` olarak yazılır; ad belgeye aittir
 (bir satırda değiştirmek yeter). Aynı belgenin satırlarında farklı adlar ya da kişi adı/unvan/
-e-posta içeren ad geçersizdir (`kanit_adi_gecersiz`, çıkış 1; öteki kararlar işlenir). Paket verisi (`bidr/data/criteria/`) değişmez; öneriyi
-işlemek kullanıcı onayıyla ayrı bir adımdır.
+e-posta içeren ad geçersizdir (`kanit_adi_gecersiz`, çıkış 1; öteki kararlar işlenir).
+"bağlantı" hücresi öneriden farklıysa `kanit-baglantilari.jsonl`'e `kaynak: insan` yazılır
+(belgeye ait; http(s) olmayan değer ya da bir belgede iki farklı adres geçersiz:
+`baglanti_gecersiz`, çıkış 1). Paket verisi (`bidr/data/criteria/`) değişmez; öneriyi
+işlemek kullanıcı onayıyla ayrı bir adımdır. gaps.md yeniden yazılırken `bidr file`/`render`'ın
+"Bağlantısı olmayan kanıtlar" bölümü korunur.
 
 ## Tamamlanma şartı (`audit_tamam`)
 
 review.xlsx var ve güncel `decisions.jsonl`'den üretilmiş (`_meta.kararlar_sha`); her satırın
-geçerli kararı var; tablodaki her karar `review-decisions.jsonl`'de birebir. Aşama
+geçerli kararı var; tablodaki her karar `review-decisions.jsonl`'de birebir; kanıt adı ve
+bağlantı düzeltmeleri de işlenmiş (`uygulanmamis_duzeltme` = 0). Aşama
 `onay: insan`: kararı ajan vermez.

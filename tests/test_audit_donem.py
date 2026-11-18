@@ -51,10 +51,18 @@ def _crit(a, cid):
 
 # -- veri ------------------------------------------------------------------------------
 
+# Sınıfı henüz donem_kurali.yaml'a işlenmemiş türler (profil verisi bu şeridin dışında; karar
+# sahibinin). Kodda karma sayılır: planla yapı, üstü olay. Liste yalnız küçülebilir.
+SINIFSIZ = {"fotograf"}
+
+
 def test_every_catalog_type_has_exactly_one_class():
     rule = D.load_rule()
     names = {t.name for t in load_catalog().types}
-    assert names <= set(rule.classes), sorted(names - set(rule.classes))
+    assert names - SINIFSIZ <= set(rule.classes), sorted(names - SINIFSIZ - set(rule.classes))
+    assert SINIFSIZ <= names
+    for t in SINIFSIZ - set(rule.classes):
+        assert rule.cls(t, "planla") == D.YAPI and rule.cls(t, "uygula") == D.OLAY
     assert set(rule.classes) <= names, sorted(set(rule.classes) - names)
     # komisyon kararındaki örnekler
     for t in ("mufredat", "ders_bilgi_formu", "akts_bilgi_paketi", "yonerge", "yonetmelik",

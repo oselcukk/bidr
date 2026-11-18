@@ -198,67 +198,119 @@ asamalar:
     onay: insan
     skill: bidr-hakem
 
+  - id: name
+    ad: Kanıt adları (model önerisi; isteğe bağlı, model işi ajanda)
+    uygulandi: true
+    istege_bagli: true
+    katman: M
+    onkosul: [karar_ince]
+    girdi: [decisions.jsonl (kabul edilmiş eşleşmeler), documents.jsonl, text/]
+    cikti: [work/name/<doc_id>.json, kanit-adlari.jsonl (kaynak: model)]
+    komut:
+      - "bidr name prepare -w {ws}"
+      - "(ajan) work/name/README.md'ye göre her paket için <doc_id>.out.json yaz"
+      - "bidr name apply -w {ws} --model {ajan}"
+    sart:
+      denetim: name_tamam
+      metin: >-
+        Kabul edilmiş eşleşmesi olan her belgenin (mükerrer kopyalar hariç) model ya da insan kanıt adı
+        var (kanit-adlari.jsonl ya da ince kararın kanit_adi'sı). config.yaml rapor.kanit_adi_modeli: false
+        ise ya da adlandırılacak belge yoksa atlanır; ad önceliği insan > model > kural.
+    onay: yok
+    skill: bidr-rapor
+
   - id: audit
     ad: Ölçüt OD'si, eksik kanıt raporu ve inceleme tablosu
     uygulandi: true
     katman: D
-    onkosul: [karar_ince, hakem]
-    girdi: [decisions.jsonl, documents.jsonl]
-    cikti: [review.xlsx, gaps.md, audit-olcutler.json, review-decisions.jsonl, slot-tags-oneri.yaml]
+    onkosul: [karar_ince, hakem, name]
+    girdi: [decisions.jsonl, documents.jsonl, kanit-adlari.jsonl]
+    cikti: [review.xlsx, gaps.md, audit-olcutler.json, review-decisions.jsonl, slot-tags-oneri.yaml,
+            kanit-adlari.jsonl (kaynak: insan), kanit-baglantilari.jsonl (kaynak: insan)]
     komut:
       - "bidr audit -w {ws} --profile {profil}"
-      - "(insan) review.xlsx: her satıra KARAR (kabul/ret/duzelt), isteğe bağlı yuva etiketi kararı ve not"
+      - "(insan) review.xlsx: her satıra KARAR (kabul/ret/duzelt); isteğe bağlı yuva etiketi kararı, kanıt adı, bağlantı ve not"
       - "bidr audit apply -w {ws}"
     sart:
       denetim: audit_tamam
       metin: >-
         review.xlsx güncel kararlardan (decisions.jsonl) üretilmiş; tablodaki her satırın geçerli
         bir kararı var (kabul/ret/duzelt) ve kararlar `bidr audit apply` ile
-        review-decisions.jsonl'e işlenmiş. Önerilen OD ve gaps.md bu kararlarla hesaplanır;
+        review-decisions.jsonl'e işlenmiş (kanıt adı/bağlantı düzeltmeleri de). Önerilen OD ve gaps.md bu
+        kararlarla hesaplanır; düşük güvenli eşleşme kabul/duzelt kararıyla OD'ye katılır;
         yuva etiketi düzeltmeleri yalnız slot-tags-oneri.yaml önerisi olur (etiket dosyası değişmez).
     onay: insan
     skill: bidr-rapor
 
   - id: file
-    ad: Kanıt dosyalama (evidence/A/A.1/…)
-    uygulandi: false
+    ad: Kanıt dosyalama (evidence/A/A.1/…, evidence-index.csv, bağlantılar)
+    uygulandi: true
     katman: D
     onkosul: [audit]
-    girdi: [onaylı kararlar]
-    cikti: [evidence/, evidence-index.csv]
-    komut: []
-    sart: {denetim: yok, metin: "Henüz uygulanmadı."}
+    girdi: [decisions.jsonl, review-decisions.jsonl, kanit-adlari.jsonl, kanit-baglantilari.jsonl, inventory.csv,
+            text/, kaynak klasör (salt okunur), config.yaml rapor.kanit_kok_baglanti]
+    cikti: [evidence/, evidence-index.csv (baglanti, baglanti_kaynagi), gaps.md (bağlantı yok bölümü)]
+    komut: ["bidr file -w {ws}"]
+    sart:
+      denetim: file_tamam
+      metin: >-
+        evidence-index.csv ve evidence/ güncel kararlardan, inceleme kararlarından, kanıt adlarından ve
+        bağlantılardan üretilmiş (özetler tutuyor). Kopyalanamayan dosya ve bağlantısız kanıt uyarıdır.
     onay: yok
+    skill: bidr-rapor
 
   - id: write
-    ad: Ölçüt açıklamalarının yazımı
-    uygulandi: false
+    ad: Ölçüt açıklamalarının yazımı (model işi ajanda)
+    uygulandi: true
     katman: M
     onkosul: [file]
-    girdi: [onaylı kanıtlar]
-    cikti: [texts/<ölçüt>.md]
-    komut: []
-    sart: {denetim: yok, metin: "Henüz uygulanmadı."}
+    girdi: [evidence-index.csv, audit-olcutler.json, text/, config.yaml rapor.onceki_rapor, rapor-notlari.yaml]
+    cikti: [work/write/<ölçüt>.json, texts/<ölçüt>.json (durum taslak)]
+    komut:
+      - "bidr write prepare -w {ws}"
+      - "(ajan) work/write/README.md'ye göre her paket için <ölçüt>.out.json yaz"
+      - "bidr write apply -w {ws} --model {ajan}"
+    sart:
+      denetim: write_tamam
+      metin: >-
+        Kanıtı olan her ölçütün texts/<ölçüt>.json metni var, kanıt listesi ve önerilen OD'si güncel ve
+        bekleyen (cevapsız, geçersiz ya da işlenmemiş) paket yok; yeniden yazım turu paketleri dahil.
     onay: yok
+    skill: bidr-rapor
 
   - id: verify
-    ad: Metin doğrulama
-    uygulandi: false
-    katman: D
+    ad: Metin doğrulama (kod + bağımsız ajan) ve yeniden yazım döngüsü
+    uygulandi: true
+    katman: M
     onkosul: [write]
-    girdi: [texts/]
-    cikti: [verify.jsonl]
-    komut: []
-    sart: {denetim: yok, metin: "Henüz uygulanmadı."}
-    onay: insan
+    girdi: [texts/, evidence-index.csv, audit-olcutler.json, text/]
+    cikti: [work/verify/<ölçüt>.json, verify.jsonl, texts/<ölçüt>.json (durum dogrulandi|reddedildi), verify-insan.jsonl]
+    komut:
+      - "bidr verify prepare -w {ws}"
+      - "(taze, metni yazmamış ajan) work/verify/README.md'ye göre her paket için <ölçüt>.out.json yaz"
+      - "bidr verify apply -w {ws} --model {ajan}"
+    sart:
+      denetim: verify_tamam
+      metin: >-
+        Her metnin güncel doğrulama kaydı var (dogrulandi ya da reddedildi). Reddedilen ölçüt
+        `bidr write prepare --reddedilenler` ile doğrulayıcının cümle bazlı gerekçesiyle yeniden yazılır ve
+        yeniden doğrulanır; config.yaml rapor.yeniden_yazim_siniri (vars. 2) turdan sonra hâlâ reddedilen ölçüt
+        için kullanıcı karar verir (bidr verify karar: cikar | tekrar).
+    onay: yok
+    skill: bidr-rapor
 
   - id: render
-    ad: Rapor üretimi (report.docx, gaps.md)
-    uygulandi: false
+    ad: Rapor üretimi (report.docx; kanıt adları bağlantılı)
+    uygulandi: true
     katman: D
     onkosul: [verify]
-    girdi: [texts/, evidence-index.csv]
-    cikti: [report.docx, gaps.md]
-    komut: []
-    sart: {denetim: yok, metin: "Henüz uygulanmadı."}
+    girdi: [config.yaml rapor.sablon (boş FR-0833 .docx, salt okunur), texts/, audit-olcutler.json, evidence-index.csv]
+    cikti: [report.docx, .bidr-render.json, gaps.md (bağlantı yok bölümü)]
+    komut: ["bidr render -w {ws}"]
+    sart:
+      denetim: render_tamam
+      metin: >-
+        report.docx güncel girdilerden (şablon, metinler, audit, kanıt dizini) üretilmiş. Doğrulanmamış metin
+        varsa belge TASLAK damgalıdır (uyarı). Şablon yolu bilinmiyorsa kullanıcıdan alınır.
     onay: yok
+    skill: bidr-rapor

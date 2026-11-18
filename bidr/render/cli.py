@@ -1,4 +1,7 @@
-"""`bidr render -w WS --sablon FR-0833.docx [--out report.docx] [--birim "…"] [--yil 2026]`."""
+"""`bidr render -w WS [--sablon FR-0833.docx] [--out report.docx] [--birim "…"] [--yil 2026]`.
+
+Şablon verilmezse config.yaml `rapor.sablon`. Kanıt bağlantıları `evidence-index.csv`'den
+(`baglanti` sütunu); bağlantısız kanıtlar gaps.md "bağlantı yok" bölümüne yazılır."""
 from __future__ import annotations
 
 import json
@@ -7,13 +10,25 @@ from pathlib import Path
 
 
 def _run(args) -> int:
-    from .run import Options, render
+    from bidr.pipeline.gate import check_gate
+    from bidr.write.sources import rapor_section
+
+    from .run import Options, inputs_sha, render, update_link_gaps, write_manifest
 
     ws = Path(args.workspace).expanduser().resolve()
+    if (rc := check_gate(ws, "render")) is not None:
+        return rc
+    sablon = args.sablon or rapor_section(ws).get("sablon")
+    if not sablon:
+        print("HATA şablon yok: --sablon verin ya da config.yaml `rapor: {sablon: <boş FR-0833 .docx>}` "
+              "yazın", file=sys.stderr)
+        return 2
+    sablon = Path(str(sablon)).expanduser()
     birim = args.birim
     if birim is None:
         from bidr.init.config import load_section
         birim = (load_section(ws) or {}).get("birim")
+    index = Path(args.index).expanduser() if args.index else ws / "evidence-index.csv"
     out = Path(args.out).expanduser() if args.out else ws / "report.docx"
     texts = Path(args.texts).expanduser() if args.texts else ws / "texts"
     audit = Path(args.audit).expanduser() if args.audit else ws / "audit-olcutler.json"
@@ -24,13 +39,18 @@ def _run(args) -> int:
     if args.bos_kanit:
         opts.bos_kanit = args.bos_kanit
     try:
-        res = render(Path(args.sablon), out, texts_dir=texts, audit_path=audit,
-                     birim=birim, yil=args.yil, opts=opts)
+        res = render(sablon, out, texts_dir=texts, audit_path=audit,
+                     birim=birim, yil=args.yil, opts=opts, index_path=index)
     except (FileNotFoundError, ValueError) as e:
         print(f"HATA {e}", file=sys.stderr)
         return 2
+    write_manifest(ws, res, inputs_sha(sablon, texts, audit, index), sablon, texts_dir=texts,
+                   audit_path=audit, index_path=index)
+    update_link_gaps(ws, index)
     for u in res.uyarilar:
         print(f"uyarı: {u}")
+    if res.baglantisiz:
+        print(f"uyarı: {len(res.baglantisiz)} kanıtın bağlantısı yok (gaps.md 'Bağlantısı olmayan kanıtlar')")
     print(json.dumps(res.ozet(), ensure_ascii=False, indent=1))
     if res.taslak:
         print("Belge TASLAK damgalı: doğrulanmamış metin var → "
@@ -43,7 +63,9 @@ def register(sub):
     p = sub.add_parser("render", help="FR-0833 şablonunun Açıklamalar/Kanıtlar hücrelerini "
                                       "texts/<ölçüt>.json'dan doldurur (report.docx; model yok)")
     p.add_argument("--workspace", "-w", required=True)
-    p.add_argument("--sablon", required=True, help="boş FR-0833 şablonu (.docx; salt okunur)")
+    p.add_argument("--sablon", default=None,
+                   help="boş FR-0833 şablonu (.docx; salt okunur; vars. config.yaml rapor.sablon)")
+    p.add_argument("--index", default=None, help="evidence-index.csv (vars.: WS/evidence-index.csv)")
     p.add_argument("--out", default=None, help="çıktı (vars.: WS/report.docx)")
     p.add_argument("--birim", default=None, help="kapaktaki birim adı (vars.: config.yaml birim)")
     p.add_argument("--yil", default=None, help="kapaktaki yıl (verilmezse şablondaki kalır)")

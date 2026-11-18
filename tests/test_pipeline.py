@@ -34,7 +34,7 @@ def _kim(ws, sid) -> str | None:
 def kurulum(tmp_path):
     src = tmp_path / "kaynak"
     files = {
-        "Kanıtlar/B.1.1/[B.1.1-1-OD3] Kurul Kararı.txt": DOCS["aynı"],
+        "Kanıtlar/B.1.1/[B.1.1-1-OD3] Kurul Kararı.txt": DOCS["aynı"] + "\nhttps://abl.ornek.edu.tr/kararlar/2025-1 1/1",
         "Kanıtlar/B.1.1/[B.1.1-2-OD3] Toplantı.txt": DOCS["uydurma"],
         "Kanıtlar/A.1.2/[A.1.2-1-OD3] Tutanak.txt": DOCS["ekle"],
         "Diğer/menü.txt": DOCS["degil"],
@@ -77,7 +77,13 @@ def test_spec_is_consistent():
             assert s["komut"] and s["skill"], s["id"]
         else:
             assert s["sart"]["denetim"] == "yok"
-    assert {s["id"] for s in spec["asamalar"] if not s["uygulandi"]} == {"file", "write", "verify", "render"}
+    assert not [s["id"] for s in spec["asamalar"] if not s["uygulandi"]]
+    by = {s["id"]: s for s in spec["asamalar"]}
+    assert by["file"]["onkosul"] == ["audit"] and by["write"]["onkosul"] == ["file"]
+    assert by["verify"]["onkosul"] == ["write"] and by["render"]["onkosul"] == ["verify"]
+    assert "name" in by["audit"]["onkosul"] and by["name"]["istege_bagli"]
+    for sid in ("file", "write", "verify", "render", "name"):
+        assert by[sid]["sart"]["denetim"] == f"{sid}_tamam"
 
 
 def test_full_pipeline_transitions_and_gates(kurulum, capsys):
@@ -85,7 +91,7 @@ def test_full_pipeline_transitions_and_gates(kurulum, capsys):
     # 0. kurulmamış: yalnız kurulum bekler, gerisi engelli; kapı yok (yönetilmeyen WS)
     d = _durum(ws)
     assert d["kurulum"] == "bekliyor" and d["ingest"] == "engelli" and d["audit"] == "engelli"
-    assert d["transcribe"] == "engelli" and d["file"] == "yok"
+    assert d["transcribe"] == "engelli" and d["file"] == "engelli" and d["render"] == "engelli"
     assert _kim(ws, "kurulum") == "insan"
     assert not ws.exists()  # status hiçbir şey yazmaz
 
@@ -203,11 +209,9 @@ def test_full_pipeline_transitions_and_gates(kurulum, capsys):
     assert evaluate(ws).get("audit").kim == "komut"       # kararlar var, işlenmemiş
     assert main(["audit", "apply", "-w", str(ws)]) == 0
     rep = evaluate(ws)
-    assert rep.get("audit").durum == "bitti"
-    assert rep.sonraki.id == "file" and rep.sonraki.durum == "yok"
-    capsys.readouterr()
-    main(["next", "-w", str(ws)])
-    assert "henüz yok" in capsys.readouterr().out
+    assert rep.get("audit").durum == "bitti" and rep.get("name").durum == "bitti"   # ince karar adları
+    assert rep.sonraki.id == "file" and rep.sonraki.kim == "komut"
+    _report_layer(ws, capsys)
 
     # kararlar yenilenirse (ör. yeni apply) hakem kuyruğu eskir
     import os
@@ -216,9 +220,160 @@ def test_full_pipeline_transitions_and_gates(kurulum, capsys):
     assert evaluate(ws).get("hakem").durum == "bekliyor"
 
     # kaynak salt okunur: hiçbir dosyası değişmedi, içine bir şey yazılmadı
-    assert sorted(p.relative_to(src).as_posix() for p in src.rglob("*") if p.is_file()) == sorted(
+    assert sorted(p.relative_to(src).as_posix() for p in src.rglob("*") if p.is_file()) == sorted(  # noqa: E501
         ["Kanıtlar/B.1.1/[B.1.1-1-OD3] Kurul Kararı.txt", "Kanıtlar/B.1.1/[B.1.1-2-OD3] Toplantı.txt",
          "Kanıtlar/A.1.2/[A.1.2-1-OD3] Tutanak.txt", "Diğer/menü.txt"])
+
+
+def _rapor_config(ws: Path, **kw) -> None:
+    """config.yaml `rapor:` bölümü (kullanıcının yazdığı; `bidr init` korur)."""
+    data = yaml.safe_load((ws / "config.yaml").read_text(encoding="utf-8"))
+    data.setdefault("rapor", {}).update(kw)
+    (ws / "config.yaml").write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+
+def _write_answers(ws: Path, index: dict) -> list[str]:
+    """Ajan taklidi: her yazım paketine kanıtın atfıyla kısa bir metin."""
+    done = []
+    for p in sorted((ws / "work" / "write").glob("*.json")):
+        if p.name.endswith(".out.json") or p.stem == "kaynaklar" or (ws / "work" / "write" / f"{p.stem}.out.json").exists():
+            continue
+        no = index[p.stem][0]["kanit_no"]
+        out = {"paragraflar": [{"metin": f"Bölümümüzde ilgili karar alınmıştır [{no}]."}], "onceki_yila_gore": ""}
+        (p.parent / f"{p.stem}.out.json").write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
+        done.append(p.stem)
+    return done
+
+
+def _verify_answers(ws: Path, reject: set[str] = frozenset()) -> None:
+    """Ajan taklidi (bağımsız doğrulayıcı): `reject`teki ölçütlerin ilk cümlesi desteklenmiyor."""
+    d = ws / "work" / "verify"
+    for p in sorted(d.glob("*.json")):
+        if p.name.endswith(".out.json") or (d / f"{p.stem}.out.json").exists():
+            continue
+        cs = json.loads(p.read_text(encoding="utf-8"))["meta"]["cumleler"]
+        out = {"cumleler": [{"yer": c["yer"], "karar": "desteklenmiyor" if p.stem in reject and i == 0
+                             else "destekleniyor", "gerekce": "alıntı kararı göstermiyor" if p.stem in reject
+                             and i == 0 else "alıntıda var"} for i, c in enumerate(cs)], "genel": ""}
+        (d / f"{p.stem}.out.json").write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
+
+
+def _report_layer(ws: Path, capsys) -> None:
+    """audit'ten sonra: file → write → verify (ret → yeniden yazım → sınır → insan) → render."""
+    import csv
+    from bidr.write.sources import load_index
+
+    from test_render import make_template
+    ev = lambda sid: evaluate(ws).get(sid)          # noqa: E731
+    # kapılar: file bitmeden write, verify bitmeden render
+    assert main(["write", "prepare", "-w", str(ws)]) == GATE_EXIT
+    assert main(["render", "-w", str(ws), "--sablon", str(ws / "yok.docx")]) == GATE_EXIT
+    assert ev("write").durum == "engelli" and ev("render").durum == "engelli"
+
+    # file: bağlantı — belge metnindeki yayın adresi; kök yoksa öteki kanıt bağlantısız
+    assert main(["file", "-w", str(ws)]) == 0
+    f = ev("file")
+    assert f.durum == "bitti" and any("bağlantısı yok" in u for u in f.uyarilar)
+    rows = list(csv.DictReader(open(ws / "evidence-index.csv", encoding="utf-8")))
+    by = {r["olcut"]: r for r in rows}
+    assert by["B.1.1"]["baglanti"] == "https://abl.ornek.edu.tr/kararlar/2025-1"
+    assert by["B.1.1"]["baglanti_kaynagi"] == "belge_metni" and by["B.2.3"]["baglanti"] == ""
+    assert "Bağlantısı olmayan kanıtlar" in (ws / "gaps.md").read_text(encoding="utf-8")
+    # kök bağlantı girilince dosyalama eskir; yeniden: klasör yolu bağlantısı
+    _rapor_config(ws, kanit_kok_baglanti="https://kanit.ornek.edu.tr/2025/", yeniden_yazim_siniri=1)
+    assert ev("file").durum == "bekliyor" and ev("file").kim == "komut"
+    assert main(["file", "-w", str(ws)]) == 0
+    rows = {r["olcut"]: r for r in csv.DictReader(open(ws / "evidence-index.csv", encoding="utf-8"))}
+    assert rows["B.2.3"]["baglanti_kaynagi"] == "klasor"
+    assert rows["B.2.3"]["baglanti"].startswith("https://kanit.ornek.edu.tr/2025/B/B.2/B.2.3/%5BB.2.3-1-OD")
+    assert ev("file").durum == "bitti" and not ev("file").uyarilar
+    gaps = (ws / "gaps.md").read_text(encoding="utf-8")
+    assert "Bütün kanıtların bağlantısı var" in gaps and "Eksik kanıt raporu" in gaps
+    assert main(["audit", "-w", str(ws)]) == 0                       # audit yeniden: bölüm korunur
+    assert "Bütün kanıtların bağlantısı var" in (ws / "gaps.md").read_text(encoding="utf-8")
+    assert ev("audit").durum == "bitti" and ev("file").durum == "bitti"
+
+    # write: prepare → ajan → apply
+    w = ev("write")
+    assert w.kim == "komut" and "write prepare" in w.komutlar[0]
+    assert main(["write", "prepare", "-w", str(ws)]) == 0
+    assert ev("write").kim == "ajan"
+    index = load_index(ws / "evidence-index.csv")
+    assert sorted(_write_answers(ws, index)) == ["B.1.1", "B.2.3"]
+    assert ev("write").kim == "komut"
+    assert main(["write", "apply", "-w", str(ws), "--model", "test-ajan"]) == 0
+    assert ev("write").durum == "bitti"
+
+    # verify: kod + ajan; B.1.1 reddedilir
+    assert ev("verify").kim == "komut"
+    assert main(["verify", "prepare", "-w", str(ws)]) == 0
+    v = ev("verify")
+    assert v.kim == "ajan" and "taze" in v.komutlar[0]
+    _verify_answers(ws, reject={"B.1.1"})
+    assert main(["verify", "apply", "-w", str(ws), "--model", "test-dogrulayici"]) == 1
+    v = ev("verify")
+    assert v.kim == "komut" and v.komutlar[0].endswith("write prepare -w " + str(ws) + " --reddedilenler")
+    assert "tur 1/1" in v.neden and "taze" in v.neden
+
+    # yeniden yazım turu 1: paket doğrulayıcının cümle gerekçesini taşır
+    assert main(["write", "prepare", "-w", str(ws), "--reddedilenler"]) == 0
+    pkg = json.loads((ws / "work/write/B.1.1.json").read_text(encoding="utf-8"))
+    assert pkg["meta"]["tur"] == 1 and "DOĞRULAMADA REDDEDİLDİ" in pkg["istem"]
+    assert "p1.1 (desteklenmiyor)" in pkg["istem"] and "alıntı kararı göstermiyor" in pkg["istem"]
+    w = ev("write")
+    assert w.durum == "bekliyor" and w.kim == "ajan" and "B.1.1 tur 1" in w.neden
+    assert ev("verify").durum == "engelli"
+    assert main(["write", "prepare", "-w", str(ws)]) == 0              # normal prepare turu bozmaz
+    assert json.loads((ws / "work/write/B.1.1.json").read_text(encoding="utf-8"))["meta"]["tur"] == 1
+    _write_answers(ws, index)
+    assert main(["write", "apply", "-w", str(ws), "--model", "test-ajan-2"]) == 0
+    t = json.loads((ws / "texts/B.1.1.json").read_text(encoding="utf-8"))
+    assert t["tur"] == 1 and t["durum"] == "taslak" and t["onceki_ret"]
+    assert ev("write").durum == "bitti" and ev("verify").kim == "komut"
+    assert main(["verify", "prepare", "-w", str(ws)]) == 0
+    _verify_answers(ws, reject={"B.1.1"})
+    assert main(["verify", "apply", "-w", str(ws), "--model", "test-dogrulayici-2"]) == 1
+    # sınır (1) doldu: insan gerekli
+    v = ev("verify")
+    assert v.kim == "insan" and "insan gerekli" in v.neden and "B.1.1" in v.neden
+    assert main(["write", "prepare", "-w", str(ws), "--reddedilenler"]) == 0
+    assert json.loads((ws / "work/write/B.1.1.json").read_text(encoding="utf-8"))["meta"]["tur"] == 1
+    capsys.readouterr()
+    main(["next", "-w", str(ws)])
+    out = capsys.readouterr().out
+    assert "KULLANICI gerekli" in out and "verify karar" in out
+    # kullanıcı: bir tur daha → yeniden komut; sonra rapordan çıkar
+    assert main(["verify", "karar", "-w", str(ws), "B.1.1", "tekrar", "--not", "sınama"]) == 0
+    assert ev("verify").kim == "komut" and "tur 2/2" in ev("verify").neden
+    assert main(["verify", "karar", "-w", str(ws), "B.1.2", "cikar"]) == 2
+    assert main(["verify", "karar", "-w", str(ws), "B.1.1", "cikar"]) == 0
+    v = ev("verify")
+    assert v.durum == "bitti" and any("rapora alınmayacak" in u for u in v.uyarilar)
+
+    # render: şablon yoksa kullanıcıdan alınır; sonra rapor, bağlantılı kanıt adları
+    r = ev("render")
+    assert r.kim == "insan" and "şablon" in r.neden
+    make_template(ws.parent / "sablon.docx", ids=(("B.1.1", "Programların tasarımı"), ("B.2.3", "Öğrenci iş yükü")))
+    _rapor_config(ws, sablon=str(ws.parent / "sablon.docx"))
+    assert ev("render").kim == "komut"
+    assert main(["render", "-w", str(ws)]) == 0
+    r = ev("render")
+    assert r.durum == "bitti" and not any("TASLAK" in u for u in r.uyarilar)
+    import zipfile
+    with zipfile.ZipFile(ws / "report.docx") as z:
+        rels = z.read("word/_rels/document.xml.rels").decode()
+        body = z.read("word/document.xml").decode()
+    assert "https://abl.ornek.edu.tr/kararlar/2025-1" not in rels        # B.1.1 çıkarıldı
+    assert "https://kanit.ornek.edu.tr/2025/B/B.2/B.2.3/" in rels and "<w:hyperlink" in body
+    assert "[komisyon]" not in body
+    capsys.readouterr()
+    main(["next", "-w", str(ws)])
+    assert "Bütün aşamalar bitti" in capsys.readouterr().out
+    # metin değişirse rapor eskir
+    t = json.loads((ws / "texts/B.2.3.json").read_text(encoding="utf-8"))
+    t["eksikler"] = ["değişti"]
+    (ws / "texts/B.2.3.json").write_text(json.dumps(t, ensure_ascii=False), encoding="utf-8")
+    assert ev("render").durum == "bekliyor"
 
 
 def test_status_and_next_json(kurulum, capsys):

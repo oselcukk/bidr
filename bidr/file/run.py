@@ -15,6 +15,7 @@ import hashlib
 import json
 import shutil
 import zipfile
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -29,9 +30,10 @@ ZIP = "evidence.zip"
 MANIFEST = ".bidr-evidence.json"
 NO_REVIEW = "INCELEME_YAPILMADI.txt"
 REVIEW = "review-decisions.jsonl"
+GAPS = "gaps.md"
 COLUMNS = ["kanit_no", "olcut", "od", "ad", "dosya", "doc_id", "sayfalar", "yuvalar", "alintilar",
            # sözleşme sütunlarından sonra ek bilgi
-           "inceleme", "kopyalar", "kaynak", "isaretler", "ad_kaynagi"]
+           "inceleme", "kopyalar", "kaynak", "isaretler", "ad_kaynagi", "baglanti", "baglanti_kaynagi"]
 PDF = ".pdf"
 
 
@@ -264,6 +266,9 @@ def run(ws_root: Path, *, out: Path | None = None, source: str | Path | None = N
     rdir = Path(review_dir).expanduser().resolve() if review_dir else ws.root
     resolver = Resolver.load(ws.root, rdir, docs=docs, labels=_type_labels())
     meta["adlar_sha"] = _names_sha(ws.root, rdir)
+    from .links import LinkResolver, gaps_block, links_sha, update_gaps
+    linker = LinkResolver.load(ws.root, rdir)
+    meta["baglantilar_sha"] = links_sha(ws.root, rdir)
     uyarilar: list[str] = []
     if not meta["inceleme"]:
         uyarilar.append("review-decisions.jsonl yok: inceleme yapılmadı; decisions'taki kabul edilmiş "
@@ -331,12 +336,14 @@ def run(ws_root: Path, *, out: Path | None = None, source: str | Path | None = N
                         shutil.copyfile(srcf, dst)
                         pages_txt = ""
                     rel_out = dst.relative_to(ev).as_posix()
+            link, link_src = linker.resolve(it.doc_id, rel_out, it.kopyalar)
             rows.append({
                 "kanit_no": f"{sira}_OD{it.od}", "olcut": olcut, "od": it.od, "ad": ad, "dosya": rel_out,
                 "doc_id": it.doc_id, "sayfalar": pages_txt, "yuvalar": "; ".join(it.yuvalar),
                 "alintilar": json.dumps(it.alintilar, ensure_ascii=False), "inceleme": it.inceleme,
                 "kopyalar": "; ".join(it.kopyalar), "kaynak": (inv_row or {}).get("rel_path", ""),
-                "isaretler": ", ".join(dict.fromkeys(flags)), "ad_kaynagi": names[it.doc_id][1]})
+                "isaretler": ", ".join(dict.fromkeys(flags)), "ad_kaynagi": names[it.doc_id][1],
+                "baglanti": link, "baglanti_kaynagi": link_src})
 
     idx = out / INDEX
     with open(idx, "w", encoding="utf-8", newline="") as f:
@@ -348,6 +355,7 @@ def run(ws_root: Path, *, out: Path | None = None, source: str | Path | None = N
             "İNCELEME YAPILMADI\n\nBu kanıt klasörü review-decisions.jsonl olmadan (bidr audit apply "
             "çalıştırılmadan) üretildi.\nDosyalar modelin kabul edilmiş eşleşmeleridir; insan onayı yoktur.\n",
             encoding="utf-8")
+    update_gaps(out / GAPS, gaps_block(rows))
     manifest = {"surum": SURUM, "calisma_alani": str(ws.root), **meta, "tum_belge": whole,
                 "kanit": len(rows), "index_sha": _sha(idx)}
     (ev / MANIFEST).write_text(json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -356,6 +364,8 @@ def run(ws_root: Path, *, out: Path | None = None, source: str | Path | None = N
         zpath = out / ZIP
         write_zip(ev, zpath)
     return {"kanit": len(rows), "olcut": len(by_c), "belge": len({r["doc_id"] for r in rows}),
+            "baglantili": sum(1 for r in rows if r["baglanti"]),
+            "baglanti_kaynagi": dict(sorted(Counter(r["baglanti_kaynagi"] or "yok" for r in rows).items())),
             "kesilen_pdf": n_cut, "eksik_dosya": n_missing, "inceleme": meta["inceleme"],
             "index": str(idx), "evidence": str(ev), "zip": str(zpath) if zpath else None,
             "uyarilar": list(dict.fromkeys(uyarilar))}
@@ -392,6 +402,11 @@ def write_zip(ev: Path, zpath: Path) -> None:
     tmp.replace(zpath)
 
 
+def _links_sha(ws_root: Path, review_dir: Path) -> str:
+    from .links import links_sha
+    return links_sha(ws_root, review_dir)
+
+
 def status(out: Path, ws_root: Path | None = None, review_dir: Path | None = None) -> dict:
     """Tamamlanma denetimi için salt okunur durum (şefin `file_tamam`'ı için)."""
     out = Path(out)
@@ -399,7 +414,7 @@ def status(out: Path, ws_root: Path | None = None, review_dir: Path | None = Non
     review_dir = Path(review_dir or ws_root)
     ev, idx = out / EVIDENCE, out / INDEX
     st = {"index": idx.exists(), "manifest": (ev / MANIFEST).exists(), "guncel": False,
-          "inceleme": False, "kanit": 0, "eksik_dosya": 0}
+          "inceleme": False, "kanit": 0, "eksik_dosya": 0, "baglantisiz": 0}
     if not (st["index"] and st["manifest"]):
         return st
     m = json.loads((ev / MANIFEST).read_text(encoding="utf-8"))
@@ -407,9 +422,11 @@ def status(out: Path, ws_root: Path | None = None, review_dir: Path | None = Non
     st["guncel"] = (m.get("kararlar_sha") == _sha(ws_root / "decisions.jsonl")
                     and m.get("inceleme_sha") == _sha(review_dir / REVIEW)
                     and m.get("index_sha") == _sha(idx)
-                    and m.get("adlar_sha", _names_sha(ws_root, review_dir)) == _names_sha(ws_root, review_dir))
+                    and m.get("adlar_sha", _names_sha(ws_root, review_dir)) == _names_sha(ws_root, review_dir)
+                    and m.get("baglantilar_sha") == _links_sha(ws_root, review_dir))
     with open(idx, encoding="utf-8", newline="") as f:
         rows = list(csv.DictReader(f))
     st["kanit"] = len(rows)
     st["eksik_dosya"] = sum(1 for r in rows if not r["dosya"] or not (ev / r["dosya"]).is_file())
+    st["baglantisiz"] = sum(1 for r in rows if not (r.get("baglanti") or "").strip())
     return st

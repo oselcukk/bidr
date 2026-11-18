@@ -15,6 +15,23 @@ def _cmd(args) -> int:
     from . import run as R
 
     try:
+        if args.action == "prepare" and args.reddedilenler:
+            if args.redo:
+                print("HATA --reddedilenler ile --redo birlikte kullanılmaz")
+                return 2
+            st = R.prepare_rejected(args.workspace, only=olcut_list(args.only), index=args.index,
+                                    audit=args.audit, onceki=args.onceki, notes=args.notlar, hitap=args.hitap)
+            print(f"yeniden yazım: {st['paket']} paket ({st['yeni']} yeni/değişen), bekleyen {st['bekleyen']} "
+                  f"→ {st['klasor']}")
+            for c, n in st["tur"].items():
+                print(f"  {c}: tur {n}")
+            if st["insan_gerekli"]:
+                print("yeniden yazım sınırına ulaşan (insan gerekli; `bidr verify karar`): "
+                      + ", ".join(st["insan_gerekli"]))
+            if st["cikarildi"]:
+                print("insan kararıyla rapordan çıkarılan: " + ", ".join(st["cikarildi"]))
+            print(f"Ajan (metni ilk yazandan ve doğrulayıcıdan ayrı, taze bir ajan): {st['klasor']}/README.md")
+            return 0
         if args.action == "prepare":
             st = R.prepare(args.workspace, only=olcut_list(args.only), redo=args.redo, index=args.index,
                            audit=args.audit, onceki=args.onceki, notes=args.notlar, hitap=args.hitap)
@@ -54,6 +71,9 @@ def register(sub):
     _src_args(a)
     a.add_argument("--only", metavar="OLCUT[,…]", help="yalnız bu ölçütler (yazılmış olsalar da)")
     a.add_argument("--redo", action="store_true", help="yazılmış metinleri de yeniden paketle")
+    a.add_argument("--reddedilenler", action="store_true",
+                   help="yeniden yazım turu: verify'ın reddettiği metinler için doğrulayıcının cümle bazlı "
+                        "gerekçesiyle yeni paket (tur sınırı: config.yaml rapor.yeniden_yazim_siniri, vars. 2)")
     a.add_argument("--onceki", help="geçen yılın raporu (FR-0833 docx) ya da <ölçüt>.txt klasörü "
                                     "(vars. config.yaml rapor.onceki_rapor)")
     a.add_argument("--notlar", help="komisyon bilgisi YAML'ı {ölçüt: [bilgi, …]} (vars. <ws>/rapor-notlari.yaml)")

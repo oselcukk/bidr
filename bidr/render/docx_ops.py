@@ -15,6 +15,7 @@ BODY_SZ = 20               # yarım punto: 10 pt gövde (kılavuz "Yazım Kurall
 SPACING_BEFORE = 0         # twip: "öncesi 0 nk"
 SPACING_AFTER = 120        # twip = 6 pt. Kılavuz "sonrası 0,6 nk" diyor; geçen yılki raporlarda uygulanan değer 6 pt (yazım hatası kabul edildi)
 TASLAK_RENK = "C00000"
+LINK_RENK = "0563C1"            # Word "Köprü" rengi
 
 # CT_RPr / CT_TcPr öğe sırası (ECMA-376, kısaltılmış: kullandıklarımız ve komşuları)
 RPR_ORDER = ["rStyle", "rFonts", "b", "bCs", "i", "iCs", "caps", "smallCaps", "strike", "dstrike",
@@ -89,14 +90,35 @@ def make_paragraph(segments, *, jc: str = "both"):
     ppr.append(_rpr())
     p.append(ppr)
     for text, fmt in segments:
+        fmt = dict(fmt)
+        rid = fmt.pop("rid", None)
+        if rid:                      # dış bağlantı: <w:hyperlink r:id> içinde mavi, altı çizili
+            fmt.setdefault("color", LINK_RENK)
         r = OxmlElement("w:r")
-        r.append(_rpr(**fmt))
+        rpr = _rpr(**fmt)
+        if rid:
+            u = OxmlElement("w:u")
+            u.set(qn("w:val"), "single")
+            rpr.append(u)          # sz/szCs'ten sonra: CT_RPr sırasında u, sz'den sonra gelir
+        r.append(rpr)
         t = OxmlElement("w:t")
         t.text = text
         t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
         r.append(t)
-        p.append(r)
+        if rid:
+            h = OxmlElement("w:hyperlink")
+            h.set(qn("r:id"), rid)
+            h.append(r)
+            p.append(h)
+        else:
+            p.append(r)
     return p
+
+
+def link_rid(part, url: str) -> str:
+    """Belge parçasında dış bağlantı ilişkisi (aynı adres için aynı kimlik)."""
+    from docx.opc.constants import RELATIONSHIP_TYPE as RT
+    return part.relate_to(url, RT.HYPERLINK, is_external=True)
 
 
 def set_paragraph_text(p, text: str) -> None:

@@ -11,8 +11,11 @@ def _ids(s: str | None) -> list[str] | None:
 
 def _cmd(args) -> int:
     from bidr.common import Workspace
+    from bidr.pipeline.gate import check_gate
 
     from . import run as R
+    if (rc := check_gate(args.workspace, "name")) is not None:
+        return rc
     ws = Workspace(args.workspace)
     only = _ids(args.only)
     if only is not None:

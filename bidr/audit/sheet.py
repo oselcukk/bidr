@@ -32,6 +32,7 @@ COLS = [
     ("vurgu", "vurgu", 26, False),
     ("guven", "güven", 8, False),
     ("isaretler", "işaretler", 30, False),
+    ("alinti_kaynagi", "alıntı kaynağı (belge/betimleme)", 10, False),
     ("alinti", "alıntı", 60, False),
     ("gerekce", "gerekçe", 50, False),
     ("karar", "KARAR (kabul/ret/duzelt)", 14, True),
@@ -44,6 +45,9 @@ COLS = [
     ("olcut_model", "ölçüt (model)", 8, False),
     ("kanit_adi_oneri", "kanıt adı (öneri)", 30, False),
     ("kanit_adi_kaynagi", "kanıt adı kaynağı", 10, False),
+    ("baglanti", "bağlantı (düzeltilebilir)", 40, True),
+    ("baglanti_oneri", "bağlantı (öneri)", 30, False),
+    ("baglanti_kaynagi", "bağlantı kaynağı", 10, False),
 ]
 HEAD = {h: k for k, h, _, _ in COLS}
 
@@ -65,7 +69,15 @@ HELP = [
     "'yeni aşama(lar)' sütununa virgülle yazın. Bunlar etiket dosyasını DEĞİŞTİRMEZ; "
     "`bidr audit apply` slot-tags-oneri.yaml önerisi üretir.",
     "Turuncu OD hücresi: ölçütü OD4/OD5'e yükselten eşleşme; koyu turuncu: yükselten etiket henüz öneri.",
-    "Sarı güven: düşük güven; bu eşleşme önerilen OD'ye katılmaz (yalnız 'OD düşük güven dahil').",
+    "Sarı güven: düşük güven; bu eşleşme önerilen OD'ye katılmaz (yalnız 'OD düşük güven dahil'). "
+    "KARAR kabul ya da duzelt verilirse insan kararı kuralı aşar: eşleşme önerilen OD'ye katılır.",
+    "Alıntı kaynağı 'betimleme' (sarı): alıntı belgenin kendi yazısından değil, ajanın görüntüden "
+    "yazdığı betimlemeden (bidr describe). Fotoğraf bir tesisin/etkinliğin varlığını gösterir; "
+    "kullanım sıklığını ya da iyileştirmeyi göstermez.",
+    "Bağlantı: raporda kanıt adı bu adrese bağlanır (öncelik: insan > belge metni > klasör). Öneri, "
+    "belge metnindeki yayın adresidir (web çıktısının üst/altbilgisi). Kamuya açık belgenin yayımlandığı "
+    "adresi 'bağlantı' hücresine yazın (https://…); ad gibi belgeye aittir. Yayımlanmamış belge için boş "
+    "bırakın: config.yaml `rapor.kanit_kok_baglanti` tanımlıysa kanıt klasöründeki yoluna bağlanır.",
     "Gri satır: sayılmayan eşleşme (ret; önceki yıl olayı = geçmiş kanıt; tarihi bilinmeyen ya da "
     "rapor yılından sonraki olay belgesi).",
     "Dönem kuralı (komisyon kararı): yapı belgesi (müfredat, ders kataloğu/bilgi formu, yönerge, iş akışı, "
@@ -120,7 +132,9 @@ def write_review(a, path: Path) -> None:
         if r["zayif"]:
             ws.cell(row=n, column=idx["guven"]).fill = F_LOW
             ws.cell(row=n, column=idx["vurgu"]).fill = F_LOW
-        for k in ("kanit_adi", "karar", "duzelt_olcut", "duzelt_yuva", "duzelt_asama", "etiket_karari", "etiket_yeni", "not"):
+        if r.get("alinti_kaynagi") == "betimleme":
+            ws.cell(row=n, column=idx["alinti_kaynagi"]).fill = F_LOW
+        for k in ("kanit_adi", "baglanti", "karar", "duzelt_olcut", "duzelt_yuva", "duzelt_asama", "etiket_karari", "etiket_yeni", "not"):
             ws.cell(row=n, column=idx[k]).fill = F_USER
     last = max(ws.max_row, 2)
     for key, opts in (("karar", "kabul,ret,duzelt"), ("etiket_karari", "onayla,duzelt"),

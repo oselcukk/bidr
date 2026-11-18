@@ -162,17 +162,26 @@ def load_previous(path: Path | None) -> tuple[dict[str, dict], str | None]:
     raise FileNotFoundError(f"önceki yıl metni bulunamadı ya da desteklenmiyor (docx ya da klasör): {p}")
 
 
-def configured_previous(ws_root: Path) -> str | None:
-    """config.yaml `rapor.onceki_rapor` (yoksa None)."""
+def rapor_section(ws_root: Path) -> dict:
+    """config.yaml `rapor:` bölümü (yoksa ya da bozuksa {}). Anahtarlar (hepsi isteğe bağlı):
+    `onceki_rapor` (geçen yılın FR-0833 docx'i ya da <ölçüt>.txt klasörü), `sablon` (boş FR-0833
+    şablonu, render), `kanit_kok_baglanti` (kanıt klasörünün yüklendiği kök adres),
+    `yayin_alan_adlari` (belge gövdesindeki URL'nin yayın adresi sayılacağı alan adları),
+    `yeniden_yazim_siniri` (reddedilen metin için en çok yeniden yazım turu; vars. 2)."""
     p = Path(ws_root) / "config.yaml"
     if not p.exists():
-        return None
+        return {}
     try:
         d = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
     except yaml.YAMLError:
-        return None
-    sec = d.get(CONFIG_SECTION) or {}
-    v = sec.get("onceki_rapor") if isinstance(sec, dict) else None
+        return {}
+    sec = d.get(CONFIG_SECTION) if isinstance(d, dict) else None
+    return sec if isinstance(sec, dict) else {}
+
+
+def configured_previous(ws_root: Path) -> str | None:
+    """config.yaml `rapor.onceki_rapor` (yoksa None)."""
+    v = rapor_section(ws_root).get("onceki_rapor")
     return str(v) if v else None
 
 

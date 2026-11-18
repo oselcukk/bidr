@@ -13,6 +13,13 @@
 
 `verify.jsonl` ölçüt başına son doğrulama kaydını tutar; `texts/<ölçüt>.json` `durum` ve
 `dogrulama` alanı güncellenir. Metin sonradan değişirse (`metin_sha`) kayıt geçersizleşir.
+
+Yeniden yazım döngüsü: reddedilen metin `bidr write prepare --reddedilenler` ile gerekçeli
+yeniden yazıma gider (tur sayısı metnin `tur` alanı). `limit_for` turdan (config.yaml
+`rapor.yeniden_yazim_siniri`, vars. 2; kullanıcının her `tekrar` kararı bir tur ekler) sonra
+hâlâ reddedilen ölçüt "insan gerekli"dir. Kullanıcının kararı `bidr verify karar`:
+`cikar` (metin rapora girmez; render "rapora alınmamıştır" yazar, belge bu yüzden taslak
+sayılmaz) ya da `tekrar` (bir yeniden yazım turu daha) → `verify-insan.jsonl`.
 """
 from __future__ import annotations
 
@@ -28,6 +35,8 @@ from bidr.write import text as T
 TASK = "verify_text"
 STAGE = "verify"
 LOG = "verify.jsonl"
+HUMAN = "verify-insan.jsonl"
+HUMAN_KARARLAR = ("cikar", "tekrar")
 FINAL = ("dogrulandi", "reddedildi")
 RULE = ("Her cümleyi yalnız atıf yaptığı kanıtın alıntısı ve bağlamıyla karşılaştır "
         "(destekleniyor / kismen / desteklenmiyor + gerekçe); listedeki her cümleye bir karar ver.")
@@ -42,6 +51,58 @@ def save_log(ws: Workspace, recs: dict[str, dict]) -> Path:
     p = ws.root / LOG
     write_jsonl(p, [recs[k] for k in sorted(recs, key=id_key)])
     return p
+
+
+def load_human(ws: Workspace) -> list[dict]:
+    p = ws.root / HUMAN
+    return [r for r in read_jsonl(p) if r.get("olcut") and r.get("karar") in HUMAN_KARARLAR] if p.exists() else []
+
+
+def limit_for(ws: Workspace, olcut: str, human: list[dict] | None = None) -> int:
+    """Ölçütün yeniden yazım tur sınırı: yapılandırma + kullanıcının `tekrar` kararları."""
+    human = load_human(ws) if human is None else human
+    return W.rewrite_limit(ws.root) + sum(1 for r in human if r["olcut"] == olcut and r["karar"] == "tekrar")
+
+
+def excluded(t: dict, human: list[dict]) -> bool:
+    """Kullanıcı bu metni (aynı içerik) rapordan çıkarmaya karar verdi mi."""
+    sha = W.text_sha(t)
+    return any(r["olcut"] == t["olcut"] and r["karar"] == "cikar" and r.get("metin_sha") == sha for r in human)
+
+
+def rejected(ws: Workspace, log: dict | None = None, only: list[str] | None = None) -> dict[str, dict]:
+    """Doğrulamada (kod ya da ajan) reddedilmiş, kaydı güncel metinler: {ölçüt: metin}."""
+    log = load_log(ws) if log is None else log
+    out = {}
+    for t in _texts(ws, only):
+        rec = log.get(t["olcut"])
+        if (t.get("durum") == "reddedildi" and rec and rec.get("durum") == "reddedildi"
+                and rec.get("metin_sha") == W.text_sha(t)):
+            out[t["olcut"]] = t
+    return out
+
+
+def decide(ws_root: Path, olcut: str, karar: str, note: str = "") -> dict:
+    """Kullanıcının reddedilen metin kararı → verify-insan.jsonl (ajan kendi kararını yazmaz)."""
+    ws = Workspace(Path(ws_root))
+    if karar not in HUMAN_KARARLAR:
+        raise ValueError(f"karar '{karar}' geçersiz ({' | '.join(HUMAN_KARARLAR)})")
+    t = W.load_text(ws, olcut)
+    if not t:
+        raise FileNotFoundError(f"texts/{olcut}.json yok")
+    log = load_log(ws)
+    if olcut not in rejected(ws, log, only=[olcut]):
+        raise ValueError(f"{olcut} doğrulamada reddedilmiş (güncel kayıtlı) bir metin değil (durum: {t.get('durum')})")
+    rec = {"olcut": olcut, "karar": karar, "metin_sha": W.text_sha(t), "tur": int(t.get("tur") or 0),
+           "not": note, "zaman": K.now()}
+    with open(ws.root / HUMAN, "a", encoding="utf-8") as f:
+        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    if karar == "cikar":
+        t = dict(t)
+        t["insan_karari"] = "cikar"
+        (W.texts_dir(ws) / f"{olcut}.json").write_text(json.dumps(t, ensure_ascii=False, indent=1),
+                                                         encoding="utf-8")
+    return {**rec, "sinir": limit_for(ws, olcut)}
 
 
 def _texts(ws: Workspace, only: list[str] | None) -> list[dict]:
@@ -141,6 +202,7 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
         if issues:
             why = [f"{i['yer']} {i['kod']}: {i['ayrinti']}" for i in issues]
             log[c] = {"olcut": c, "durum": "reddedildi", "metin_sha": sha, "asama": "kod",
+                      "tur": int(t.get("tur") or 0),
                       "kod_denetimi": issues, "cumleler": [], "gerekce": why, "model": None,
                       "gorev_surumu": None, "zaman": K.now()}
             _set_status(ws, t, "reddedildi", why, None)
@@ -218,6 +280,7 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", backend: W.Backen
         why = [f"{r['yer']} ({r['karar']}): {r['gerekce']} — «{r['metin']}»" for r in rows
                if r["karar"] != "destekleniyor"]
         log[c] = {"olcut": c, "durum": durum, "metin_sha": meta["metin_sha"], "asama": "model",
+                  "tur": int(t.get("tur") or 0),
                   "kod_denetimi": [], "cumleler": rows, "genel": out.get("genel", ""), "gerekce": why,
                   "model": model, "gorev_surumu": str(pkg["surum"]), "istem_sha": pkg["istem_sha"],
                   "cevap_sha": csha, "zaman": K.now()}

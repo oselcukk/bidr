@@ -1,6 +1,6 @@
 ---
 name: bidr-rapor
-description: Kurulu bir bidr çalışma alanında BİDR rapor hattını yürütür - `bidr next`'in söylediği adımı yapar, model aşamalarında iş paketlerini ajan olarak cevaplar, kapılara ve insan onayına uyar. Tetik - "raporu hazırla", "BİDR raporu", "devam et", "nerede kaldık", "sıradaki adım", "kanıtları eşle", "decide paketleri". Kullanma - kurulum veya config değişikliği (bidr-kur), hakem sorularını kullanıcıya sormak (bidr-hakem).
+description: Kurulu bir bidr çalışma alanında BİDR rapor hattını yürütür - `bidr next`'in söylediği adımı yapar, model aşamalarında iş paketlerini ajan olarak cevaplar (karar, kanıt adı, metin yazımı, doğrulama), yeniden yazım döngüsünü yürütür, kapılara ve insan onayına uyar. Tetik - "raporu hazırla", "BİDR raporu", "devam et", "nerede kaldık", "sıradaki adım", "kanıtları eşle", "decide paketleri", "metinleri yaz", "raporu üret". Kullanma - kurulum veya config değişikliği (bidr-kur), hakem sorularını kullanıcıya sormak (bidr-hakem).
 ---
 
 # bidr-rapor
@@ -17,8 +17,8 @@ yerine AGENTS.md'deki tam yolu kullan. WS = çalışma alanının yolu.
    - `(KULLANICI gerekli)` ya da `İnsan onayı: GEREKLİ` → DUR. Kullanıcıya hangi aşamada
      olduğunu, neyi beklediğini (`next`'in "Durum" satırı) ve sonra ne olacağını söyle.
      Hakem aşamasında kullanıcı isterse skill `bidr-hakem`.
-   - `henüz yok` → hat burada biter. DUR ve kullanıcıya bildir. Kanıt klasörü, rapor metni,
-     docx gibi henüz olmayan çıktıları elle üretme.
+   - "Bütün aşamalar bitti" → rapor hazır; bitirirken özetle. Kanıt klasörü, rapor metni,
+     docx, tablo gibi çıktıları hiçbir zaman elle üretme ya da düzenleme: her birinin komutu var.
 3. Her komuttan sonra 1'e dön. Aynı adım iki kez üst üste ilerlemiyorsa (ilerleme sayıları
    değişmiyor) dur ve kullanıcıya çıktıyı göster.
 
@@ -101,6 +101,59 @@ gösterir, kullanım sıklığını ya da iyileştirmeyi göstermez).
 5. OD önerisi ölçüt düzeyindedir (PUKÖ zinciri, `docs/AUDIT.md`); belgeye OD yazma, OD'yi
    yükseltmek için eşleşme uydurma. Eksik kanıt `gaps.md`'de: kullanıcıya hangi belgenin
    gerektiğini oradan söyle.
+
+## Kanıt adları (name, isteğe bağlı)
+
+`bidr name prepare -w WS` → `work/name/README.md`; her `<doc_id>.json` için kısa, resmî bir
+kanıt dosyası adı yaz (3-7 sözcük; belgenin ne olduğu; kişi adı, unvan, e-posta YOK) →
+`bidr name apply -w WS --model <ajan adı>`. Reddedilenler `work/name/GECERSIZ.md`'de. Ad
+önceliği insan > model > kural: kullanıcı review.xlsx'te değiştirebilir.
+
+## Dosyalama (file) ve bağlantılar
+
+`bidr file -w WS` onaylı kanıtları `evidence/<A>/<A.1>/<A.1.2>/[A.1.2-1-OD3] Ad.pdf` olarak
+kopyalar, `evidence-index.csv` yazar. Raporda kanıt adı tıklanabilir bağlantı olur:
+kamuya açık belge yayımlandığı adrese (belge metnindeki web adresi; kullanıcı review.xlsx
+"bağlantı" sütunuyla düzeltir), yayımlanmamış belge kanıt klasöründeki yoluna
+(`config.yaml` `rapor.kanit_kok_baglanti`; klasörü yüklemek kullanıcının işi). `bidr next`
+bağlantısız kanıt uyarısı verirse kullanıcıya gaps.md "Bağlantısı olmayan kanıtlar" listesini
+göster; adres uydurma, yükleme yapma, config'i kendin doldurma (kök adresi kullanıcı verir).
+
+## Metin yazımı (write)
+
+`bidr write prepare -w WS` → `work/write/README.md`. Her `<ölçüt>.json` paketinin `istem`i
+görevin tamamıdır: yalnız KANITLAR listesindekine dayan, her cümle `[n_ODk]` atfı, önerilen
+OD'nin üstünde olgunluk dili yok, gelecek vaadi yok (`[komisyon]` işareti yalnız komisyon
+bilgisi verilmişse; rapora girmez). Cevap `work/write/<ölçüt>.out.json` → `bidr write apply
+-w WS --model <ajan adı>`; geçersizler `work/write/GECERSIZ.md`'de.
+
+## Doğrulama (verify) ve yeniden yazım döngüsü
+
+**Kural: yazmak, doğrulamak ve yeniden yazmak ayrı, taze ajanların işidir.** Metni yazan ajan
+(ya da sen, yazdıysan) doğrulama paketini cevaplamaz; her doğrulama turu ve her yeniden yazım
+turu yeni bir alt ajana verilir (önceki turun bağlamı olmadan; yalnız paketin `istem`i).
+Alt ajan açamıyorsan dur ve kullanıcıya söyle; aynı bağlamda doğrulama yapma.
+
+1. `bidr verify prepare -w WS`: kod denetimi (atıf, alıntı belgede mi, OD aşımı); geçemeyen
+   metin model işine gitmeden reddedilir.
+2. Taze doğrulayıcı ajan `work/verify/README.md`'ye göre her cümle için
+   destekleniyor/kismen/desteklenmiyor + gerekçe yazar; yalnız atıf yapılan kanıtın alıntısına
+   ve bağlamına bakar, iyi niyetle tamamlamaz. → `bidr verify apply -w WS --model <ajan adı>`.
+3. Reddedilen ölçüt varsa `bidr next` şunu söyler: `bidr write prepare -w WS --reddedilenler`.
+   Bu, istemin sonuna doğrulayıcının cümle bazlı gerekçesini ve reddedilen metni ekleyen yeni
+   paket yazar. Taze bir yazar ajan yeniden yazar (desteklenmeyen cümleyi kanıtın gösterdiği
+   kadarına indirir ya da çıkarır; yeni iddia eklemez) → `bidr write apply` → 1'e dön.
+4. Tur sayısı metinde tutulur. `rapor.yeniden_yazim_siniri` (vars. 2) turdan sonra hâlâ
+   reddedilen ölçüt için `bidr next` "KULLANICI gerekli" der. DUR: reddedilen cümleleri ve
+   gerekçeleri kullanıcıya göster. Seçenekler kullanıcının: kanıt eklemek, komisyon bilgisi
+   vermek (`rapor-notlari.yaml`), ya da `bidr verify karar -w WS <ölçüt> cikar` (metin rapora
+   girmez) / `tekrar` (bir tur daha). Bu komutu yalnız kullanıcı söyleyince çalıştır.
+
+## Rapor (render)
+
+`bidr render -w WS` FR-0833 şablonunu (`config.yaml` `rapor.sablon`) doldurur → `report.docx`.
+Şablon yolu yoksa `bidr next` kullanıcıdan istenmesini söyler; yolu kullanıcıdan al, uydurma.
+Doğrulanmamış metin varsa belge TASLAK damgalıdır; bunu kullanıcıya söyle.
 
 ## Bitirirken
 

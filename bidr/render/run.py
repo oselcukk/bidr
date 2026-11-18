@@ -30,6 +30,17 @@ KANIT_BICIMLERI = ("mat", "kilavuz")
 RE_NO = re.compile(r"^(\d+)_OD([1-5])$")
 RE_ATIF = re.compile(r"\[(\d+_OD[1-5])\]")
 RE_YIL = re.compile(r"^(19|20)\d\d$")
+# `[komisyon]`: yazım/doğrulamada cümlenin komisyon bilgisine dayandığını gösteren iç işaret;
+# rapora girmez (atıf yerine geçer, okur için anlamı yok).
+RE_KOMISYON = re.compile(r"\s*\[komisyon\]")
+MANIFEST = ".bidr-render.json"
+
+
+def clean_text(m: str) -> str:
+    """Rapora girecek paragraf: iç işaretler temizlenir, noktalama önü boşluk düzeltilir."""
+    m = RE_KOMISYON.sub("", m)
+    m = re.sub(r"\s+([.,;:])", r"\1", m)
+    return " ".join(m.split())
 
 
 @dataclass
@@ -53,12 +64,15 @@ class Result:
     kapak: dict[str, str] = field(default_factory=dict)
     uyarilar: list[str] = field(default_factory=list)
     degisen_parcalar: list[str] = field(default_factory=list)
+    baglantili: int = 0
+    baglantisiz: list[str] = field(default_factory=list)
 
     def ozet(self) -> dict:
         return {"cikti": str(self.out), "dolu": len(self.dolu), "bos": len(self.bos),
                 "dogrulanmamis": self.dogrulanmamis, "reddedildi": self.reddedildi,
                 "od_isaretli": len(self.od), "taslak": self.taslak, "kapak": self.kapak,
-                "uyari": len(self.uyarilar),
+                "uyari": len(self.uyarilar), "baglantili_kanit": self.baglantili,
+                "baglantisiz_kanit": len(self.baglantisiz),
                 "degisen_parcalar": self.degisen_parcalar}
 
 
@@ -90,13 +104,32 @@ def load_audit(p: Path | None) -> tuple[dict[str, dict], list[str]]:
     return {c["olcut"]: c for c in js.get("olcutler") or []}, []
 
 
-def kanit_line(k: dict, bicim: str) -> str:
+def kanit_parts(k: dict, bicim: str) -> tuple[str, str]:
+    """(önek, ad): "1_OD3: " + ad (mat) ya da "[1-OD3]. " + ad (kılavuz)."""
     no, ad = str(k.get("no", "")).strip(), str(k.get("ad", "")).strip()
     if bicim == "kilavuz":
         m = RE_NO.match(no)
         if m:
-            return f"[{m.group(1)}-OD{m.group(2)}]. {ad}"
-    return f"{no}: {ad}"
+            return f"[{m.group(1)}-OD{m.group(2)}]. ", ad
+    return f"{no}: ", ad
+
+
+def kanit_line(k: dict, bicim: str) -> str:
+    return "".join(kanit_parts(k, bicim))
+
+
+def load_links(index: Path | None) -> dict[tuple[str, str], str]:
+    """evidence-index.csv → {(ölçüt, kanıt no): bağlantı}. Dosya ya da sütun yoksa boş."""
+    import csv
+    if index is None or not Path(index).exists():
+        return {}
+    out = {}
+    with open(index, encoding="utf-8", newline="") as f:
+        for r in csv.DictReader(f):
+            u = (r.get("baglanti") or "").strip()
+            if u and r.get("olcut") and r.get("kanit_no"):
+                out[(r["olcut"].strip(), r["kanit_no"].strip())] = u
+    return out
 
 
 def eksik_text(a: dict | None) -> str | None:
@@ -144,7 +177,7 @@ def fill_cover(doc, birim: str | None, yil: int | str | None) -> dict[str, str]:
 
 def render(template: Path, out: Path, *, texts_dir: Path, audit_path: Path | None,
            birim: str | None = None, yil: int | str | None = None,
-           opts: Options | None = None) -> Result:
+           opts: Options | None = None, index_path: Path | None = None) -> Result:
     import docx
 
     opts = opts or Options()
@@ -164,6 +197,9 @@ def render(template: Path, out: Path, *, texts_dir: Path, audit_path: Path | Non
     audit, uy = load_audit(audit_path)
     res.uyarilar += uy
 
+    links = load_links(index_path)
+    if index_path is not None and not Path(index_path).exists():
+        res.uyarilar.append(f"evidence-index.csv yok ({index_path}); kanıt adları bağlantısız")
     doc = docx.Document(str(template))
     blocks, uy = find_blocks(doc)
     res.uyarilar += uy
@@ -187,17 +223,26 @@ def render(template: Path, out: Path, *, texts_dir: Path, audit_path: Path | Non
                     {"italic": True, "color": ops.TASLAK_RENK})]))
             known = {str(k.get("no")) for k in t.get("kanitlar") or []}
             for p in t.get("paragraflar") or []:
-                m = (p.get("metin") or "").strip()
+                m = clean_text(p.get("metin") or "")
                 if not m:
                     continue
                 aciklama.append(ops.make_paragraph(m))
                 for no in RE_ATIF.findall(m):
                     if no not in known:
                         res.uyarilar.append(f"{cid}: metindeki [{no}] kanıt listesinde yok")
-            if (t.get("onceki_yila_gore") or "").strip():
-                aciklama.append(ops.make_paragraph(t["onceki_yila_gore"].strip()))
-            kanit = [ops.make_paragraph(kanit_line(k, opts.kanit_bicimi), jc="left")
-                     for k in t.get("kanitlar") or []]
+            if clean_text(t.get("onceki_yila_gore") or ""):
+                aciklama.append(ops.make_paragraph(clean_text(t["onceki_yila_gore"])))
+            kanit = []
+            for k in t.get("kanitlar") or []:
+                pre, ad = kanit_parts(k, opts.kanit_bicimi)
+                url = links.get((cid, str(k.get("no", "")).strip()))
+                if url:
+                    seg = [(pre, {}), (ad, {"rid": ops.link_rid(doc.part, url)})]
+                    res.baglantili += 1
+                else:
+                    seg = [(pre + ad, {})]
+                    res.baglantisiz.append(f"{cid} [{k.get('no')}] {ad}")
+                kanit.append(ops.make_paragraph(seg, jc="left"))
             if not kanit:
                 res.uyarilar.append(f"{cid}: metin var, kanıt listesi boş")
                 kanit = [ops.make_paragraph(opts.bos_kanit, jc="left")]
@@ -228,7 +273,11 @@ def render(template: Path, out: Path, *, texts_dir: Path, audit_path: Path | Non
         if od is not None and _mark_od(b, int(od), opts.puan_isareti):
             res.od[cid] = int(od)
 
-    res.taslak = any(t.get("durum") != "dogrulandi" for t in texts.values())
+    # Doğrulanmamış metin varsa TASLAK. İnsanın raporun dışında bıraktığı reddedilmiş metin
+    # (`bidr verify karar … cikar`) rapora girmez ve belgeyi taslak yapmaz.
+    res.taslak = any(t.get("durum") != "dogrulandi" and not (t.get("durum") == "reddedildi"
+                                                             and t.get("insan_karari") == "cikar")
+                     for t in texts.values())
     if res.taslak:
         ops.add_draft_mark(doc, TASLAK_METNI)
     res.kapak = fill_cover(doc, birim, yil)
@@ -239,3 +288,50 @@ def render(template: Path, out: Path, *, texts_dir: Path, audit_path: Path | Non
     out.parent.mkdir(parents=True, exist_ok=True)
     res.degisen_parcalar = ops.save_preserving(doc, template, out)
     return res
+
+
+# -- çalışma alanı kaydı (render_tamam) ---------------------------------------------------------
+
+def inputs_sha(template: Path, texts_dir: Path, audit_path: Path | None, index_path: Path | None) -> str:
+    """Raporun girdilerinin özeti: şablon, metinler, audit, kanıt dizini."""
+    import hashlib
+    h = hashlib.sha256()
+    for p in [Path(template), *(sorted(Path(texts_dir).glob("*.json")) if Path(texts_dir).is_dir() else []),
+              *(x for x in (audit_path, index_path) if x)]:
+        p = Path(p)
+        h.update(p.name.encode())
+        h.update(p.read_bytes() if p.exists() else b"-")
+    return h.hexdigest()[:16]
+
+
+def write_manifest(ws: Path, res: Result, sha: str, template: Path, *, texts_dir: Path,
+                   audit_path: Path | None, index_path: Path | None) -> Path:
+    import hashlib
+    p = Path(ws) / MANIFEST
+    rec = {"surum": 1, "cikti": str(res.out), "girdi_sha": sha, "sablon": str(template),
+           "girdiler": {"texts": str(texts_dir), "audit": str(audit_path) if audit_path else None,
+                        "index": str(index_path) if index_path else None},
+           "cikti_sha": hashlib.sha256(Path(res.out).read_bytes()).hexdigest()[:16],
+           **{k: v for k, v in res.ozet().items() if k != "cikti"}}
+    p.write_text(json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8")
+    return p
+
+
+def load_manifest(ws: Path) -> dict | None:
+    p = Path(ws) / MANIFEST
+    try:
+        return json.loads(p.read_text(encoding="utf-8")) if p.exists() else None
+    except (OSError, ValueError):
+        return None
+
+
+def update_link_gaps(ws: Path, index_path: Path | None) -> None:
+    """gaps.md "bağlantı yok" bölümünü kanıt dizininden yeniler (bkz. bidr/file/links.py)."""
+    import csv
+
+    from bidr.file.links import gaps_block, update_gaps
+    if index_path is None or not Path(index_path).exists():
+        return
+    with open(index_path, encoding="utf-8", newline="") as f:
+        rows = list(csv.DictReader(f))
+    update_gaps(Path(ws) / "gaps.md", gaps_block(rows))

@@ -28,7 +28,7 @@ def _merged_row(table, text_lines: list[str]):
     return cell
 
 
-def make_template(path: Path) -> Path:
+def make_template(path: Path, ids=(("A.1.1", "Yönetişim modeli"), ("A.1.2", "Liderlik"))) -> Path:
     d = docx.Document()
     sec = d.sections[0]
     sec.header.paragraphs[0].text = "ŞABLON ÜSTBİLGİSİ"
@@ -38,7 +38,7 @@ def make_template(path: Path) -> Path:
     d.add_paragraph("2025")
     d.add_paragraph("Yazım kuralları örneği 2547 sayılı kanun")
     d.add_paragraph("ÖLÇÜTLER VE KANITLAR")
-    for sid, title in (("A.1.1", "Yönetişim modeli"), ("A.1.2", "Liderlik")):
+    for sid, title in ids:
         t = d.add_table(rows=0, cols=5)
         t.style = "Table Grid"
         _merged_row(t, ["DOLDURACAK BİRİMLER: TÜM AKADEMİK BİRİMLER"])

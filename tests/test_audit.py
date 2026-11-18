@@ -171,7 +171,8 @@ def test_audit_files_and_apply_roundtrip(ws, tmp_path, capsys):
     assert decs["d_onlem|B.1.1/5"]["duzelt"]["asama"] == "onlem_al"
     js = json.loads((out / FILES["json"]).read_text(encoding="utf-8"))
     b11 = next(c for c in js["olcutler"] if c["olcut"] == "B.1.1")
-    assert b11["od"] == 3          # düzeltilen satır hâlâ düşük güvenli: önerilen OD'ye katılmaz
+    assert b11["od"] == 4          # düşük güvenli satır düzeltildi: insan kararı kuralı aşar, OD'ye katılır
+    assert not any("düşük güven" in n and "doğrulanırsa" in n for n in b11["notlar"])
     oneri = yaml.safe_load((out / FILES["tag_oneri"]).read_text(encoding="utf-8"))
     by = {o["yuva"]: o for o in oneri["oneriler"]}
     assert by["B.1.1/5"]["oneri"] == {"asama": ["uygula", "onlem_al"], "od": [3, 4], "durum": "onayli"}

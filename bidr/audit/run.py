@@ -27,6 +27,7 @@ FILES = {"xlsx": "review.xlsx", "gaps": "gaps.md", "json": "audit-olcutler.json"
 KARARLAR = ("kabul", "ret", "duzelt")
 ETIKET_KARARLARI = ("onayla", "duzelt")
 DEFAULT_PROFILE = "akademik_bolum"
+BETIMLEME_ISARETI = "[GÖRSEL BETİMLEME"       # bidr describe metin başlığı
 
 
 def file_sha(p: Path) -> str:
@@ -64,7 +65,8 @@ def _tag_text(t: SlotTag | None) -> str:
     return ", ".join(t.stages) + " → OD" + "/".join(str(x) for x in t.od)
 
 
-def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | None = None) -> dict:
+def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | None = None,
+         link: tuple | None = None, betimleme: bool = False) -> dict:
     did = rec["doc_id"]
     doc = docs.get(did) or {}
     key = f"{did}|{m['yuva']}"
@@ -105,12 +107,20 @@ def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | 
     if (tag and etkin and not tag.uncertain and etkin not in tag.stages
             and "uygulama_kaniti_eksik" not in flags):
         flags.append("asama_yuva_etiketine_uymuyor")
-    zayif = m.get("guven") == "dusuk"
+    # Düşük güvenli eşleşme önerilen OD'ye katılmaz; inceleme kararı (kabul/duzelt) bunu kaldırır:
+    # insan kararı kuralı aşar (file ile aynı kural).
+    dusuk = m.get("guven") == "dusuk"
+    zayif = dusuk and karar not in ("kabul", "duzelt")
     vurgu = []
     if od and od >= 4 and sayilir:
         vurgu.append(f"OD{od}'e yükselten" + (" (ÖNERİ etiket)" if tag and tag.state != "onayli" else ""))
     if zayif:
         vurgu.append("düşük güven")
+    elif dusuk:
+        vurgu.append("düşük güven (incelemede onaylandı)")
+    if betimleme:
+        flags.append("betimleme_alintisi")
+        vurgu.append("alıntı görsel betimlemeden")
     try:
         ymetin = cs.get_slot(yuva).text
     except KeyError:
@@ -119,6 +129,9 @@ def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | 
         "satir": key, "doc_id": did, "belge": doc.get("calisma_adi") or did, "belge_turu": dtype,
         "kanit_adi": (name or ("", ""))[0], "kanit_adi_oneri": (name or ("", ""))[0],
         "kanit_adi_kaynagi": (name or ("", ""))[1],
+        "baglanti": (link or ("", ""))[0], "baglanti_oneri": (link or ("", ""))[0],
+        "baglanti_kaynagi": (link or ("", ""))[1],
+        "alinti_kaynagi": "betimleme" if betimleme else "belge",
         "donem_ici": {True: "evet", False: "hayır"}.get(donem_ici, "?"),
         "donem_sinif": dz_["sinif"] if dz_ else "", "donem_zaman": dz_["zaman"] if dz_ else "",
         "donem_yil": dz_["yil"] if dz_ else None,
@@ -287,6 +300,46 @@ def _names(ws_root: Path, out: Path, docs: dict, recs: list[dict]):
     return get
 
 
+def _links(ws: Workspace, out: Path):
+    """doc_id → (bağlantı önerisi, kaynak: insan|belge_metni|""); bidr/file/links.py."""
+    from bidr.file.links import LinkResolver
+    res = LinkResolver.load(ws.root, out)
+    cache: dict[str, tuple[str, str]] = {}
+
+    def get(did: str) -> tuple[str, str]:
+        if did not in cache:
+            cache[did] = res.suggest(did)
+        return cache[did]
+    return get
+
+
+def _described(ws: Workspace):
+    """(doc_id, alıntı) → alıntı görsel betimlemeden mi geliyor. Belge metni `bidr describe`
+    başlığıyla başlıyorsa ve alıntı betimleme öncesi metinde (`text_pre_describe/`) yoksa evet."""
+    from bidr.describe.run import BASE_DIR
+    head: dict[str, bool] = {}
+    base: dict[str, str | None] = {}
+
+    def get(did: str, q: str) -> bool:
+        if did not in head:
+            p = ws.text_path(did)
+            try:
+                with open(p, encoding="utf-8", errors="replace") as f:
+                    head[did] = f.read(40).lstrip().startswith(BETIMLEME_ISARETI)
+            except OSError:
+                head[did] = False
+        if not head[did]:
+            return False
+        if did not in base:
+            bp = ws.root / BASE_DIR / f"{did}.txt"
+            base[did] = bp.read_text(encoding="utf-8", errors="replace") if bp.exists() else None
+        if not base[did] or not q:
+            return True
+        from bidr.llm import verify_quote
+        return not verify_quote(q, base[did])[0]
+    return get
+
+
 def priority_key(c: dict) -> tuple:
     return (c["oncelik_grubu"], -(c["yuva_toplam"] - c["yuva_dolu"]), id_key(c["olcut"]))
 
@@ -318,6 +371,8 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
     n_ince = 0
     recs = [r for r in read_jsonl(dpath) if r.get("doc_id")]
     names = _names(ws.root, out, docs, recs)
+    links = _links(ws, out)
+    desc = _described(ws)
     for rec in recs:
         if rec.get("durum") != "ok" or rec.get("asama") != "ince":
             continue
@@ -325,7 +380,8 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
         for m in rec.get("eslesmeler") or []:
             if m.get("kabul"):
                 rows.append(_row(cs, tags, docs, rec, m, review.get(f"{rec['doc_id']}|{m['yuva']}"), rule,
-                                 names(rec["doc_id"])))
+                                 names(rec["doc_id"]), links(rec["doc_id"]),
+                                 desc(rec["doc_id"], m.get("alinti") or "")))
     if not n_ince:
         uy.append("decisions.jsonl'de ince karar yok: tablo boş")
     rows.sort(key=lambda r: (id_key(r["olcut"]), r["yuva"], r["belge"]))
@@ -349,7 +405,10 @@ def write_outputs(a: Audit, *, xlsx: bool = True) -> dict[str, Path]:
     from . import report, sheet
     a.out.mkdir(parents=True, exist_ok=True)
     paths = {"gaps": a.out / FILES["gaps"], "json": a.out / FILES["json"]}
-    paths["gaps"].write_text(report.gaps_md(a), encoding="utf-8")
+    from bidr.file.links import extract_block
+    old = paths["gaps"].read_text(encoding="utf-8") if paths["gaps"].exists() else ""
+    keep = extract_block(old)            # `bidr file`/render'ın "bağlantı yok" bölümü korunur
+    paths["gaps"].write_text(report.gaps_md(a) + (("\n" + keep) if keep else ""), encoding="utf-8")
     js = {"surum": SURUM, "calisma_alani": str(a.ws.root), "profil": a.profile,
           "kararlar_sha": a.decisions_sha, "donem": a.donem, "od_dagilimi": od_distribution(a),
           "olcutler": a.criteria}
@@ -369,6 +428,7 @@ def audit(ws_root: Path, *, out: Path | None = None, profile: str | None = None)
     applied = load_review_decisions(outp)
     carry: dict[str, dict] = {}
     carry_names: dict[str, str] = {}
+    carry_links: dict[str, str] = {}
     old = outp / FILES["xlsx"]
     uy = []
     if old.exists():
@@ -382,6 +442,9 @@ def audit(ws_root: Path, *, out: Path | None = None, profile: str | None = None)
             if dec and applied.get(dec["satir"]) != dec:
                 carry[dec["satir"]] = dec
         carry_names = {sid: v for sid, v, _ in _name_edits(xrows)}
+        carry_links = {str(xr.get("satir")): str(xr.get("baglanti")).strip() for xr in xrows
+                       if str(xr.get("baglanti") or "").strip()
+                       and str(xr.get("baglanti")).strip() != str(xr.get("baglanti_oneri") or "").strip()}
         if carry:
             uy.append(f"{len(carry)} karar tabloda vardı ama uygulanmamıştı: yeni tabloya taşındı "
                       f"(OD'ye yansıması için `bidr audit apply`)")
@@ -396,6 +459,15 @@ def audit(ws_root: Path, *, out: Path | None = None, profile: str | None = None)
                 n += 1
         if n:
             uy.append(f"{n} satırda kanıt adı düzeltmesi uygulanmamıştı: yeni tabloya taşındı")
+    if carry_links:
+        n = 0
+        for r in a.rows:     # uygulanmamış bağlantı düzeltmesi: tabloda kalır
+            v = carry_links.get(r["satir"])
+            if v and v != r["baglanti_oneri"]:
+                r["baglanti"] = v
+                n += 1
+        if n:
+            uy.append(f"{n} satırda bağlantı düzeltmesi uygulanmamıştı: yeni tabloya taşındı")
     a.uyarilar.extend(uy)
     if carry:   # tabloda göster, OD hesabına katma (uygulanmadı)
         for r in a.rows:
@@ -491,6 +563,24 @@ def review_state(out: Path, ws_root: Path | None = None) -> dict:
             st["kararli"] += 1
             if applied.get(dec["satir"]) != dec:
                 st["uygulanmamis"] += 1
+    # kanıt adı / bağlantı düzeltmeleri: tabloda var ama `apply` ile kayda geçmemiş
+    from bidr.file.links import load_links
+    from bidr.name.check import clean
+    from bidr.name.resolve import load_names
+    names, links = load_names(out), load_links(out)
+    pend: set[str] = set()
+    for sid, v, _ in _name_edits(xrows):
+        did = sid.split("|", 1)[0]
+        if clean(((names.get(did) or {}).get("insan") or {}).get("ad") or "") != v:
+            pend.add(f"ad:{did}")
+    for xr in xrows:
+        sid = str(xr.get("satir") or "")
+        v = str(xr.get("baglanti") or "").strip()
+        if "|" in sid and v and v != str(xr.get("baglanti_oneri") or "").strip():
+            did = sid.split("|", 1)[0]
+            if (links.get(did) or {}).get("baglanti") != v:
+                pend.add(f"baglanti:{did}")
+    st["uygulanmamis_duzeltme"] = len(pend)
     return st
 
 
@@ -524,6 +614,10 @@ def apply(ws_root: Path, *, out: Path | None = None, profile: str | None = None)
     if adlar:
         from bidr.name.resolve import NAMES, upsert
         upsert(outp / NAMES, adlar)
+    from bidr.file.links import LINKS, parse_link_edits, upsert_links
+    baglar, bag_hata = parse_link_edits(xrows)
+    if baglar:
+        upsert_links(outp / LINKS, baglar)
     oneri = write_tag_proposals(outp, merged, cs)
     a = build(ws.root, out=outp, profile=profile, review=merged)
     write_outputs(a, xlsx=False)
@@ -531,7 +625,8 @@ def apply(ws_root: Path, *, out: Path | None = None, profile: str | None = None)
     return {"satir": len(xrows), "kararli": len(yeni), "bos": bos, "gecersiz": hatalar,
             "karar": dict(Counter(d["karar"] for d in yeni.values())),
             "etiket_onerisi": oneri, "od_dagilimi": od_distribution(a),
-            "kanit_adi": len(adlar), "kanit_adi_gecersiz": ad_hata}
+            "kanit_adi": len(adlar), "kanit_adi_gecersiz": ad_hata,
+            "baglanti": len(baglar), "baglanti_gecersiz": bag_hata}
 
 
 def _name_edits(xrows: list[dict]) -> list[tuple[str, str, str]]:

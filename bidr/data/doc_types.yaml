@@ -466,3 +466,14 @@ turler:
     imzalar:
       - {id: butce_basligi, bolge: bas, desen: '(odenek cetveli|odeme emri belgesi|butce tertibi|butce odenekleri|harcama talimati)', agirlik: 5}
       - {id: tutarlar, bolge: tum, desen: '₺ ?[\d.]+,\d\d', en_az: 3, agirlik: 2}
+
+  # ------------------------------------------------------------ görsel
+  # `bidr describe` metni olmayan görüntüyü (fotoğraf, afiş, tabela) ajanın betimlemesine çevirir;
+  # metin "[GÖRSEL BETİMLEME · bidr describe]" başlığıyla başlar. Belgenin kendi yazısı güçlü bir
+  # türe işaret ediyorsa (ör. betimlenmiş sayfaları olan bir tutanak) o tür kazanır; işaretin
+  # ağırlığı eşiğin hemen üstündedir. Alıntı betimlemeden geliyorsa audit ayrıca işaretler.
+  - ad: fotograf
+    etiket: Fotoğraf / Görsel (betimleme)
+    aciklama: Metni olmayan görüntü (laboratuvar, derslik, etkinlik, toplantı, tabela, ödül fotoğrafı, afiş); metni ajanın görsel betimlemesidir.
+    imzalar:
+      - {id: gorsel_betimleme, bolge: ust, desen: '^\s*\[gorsel betimleme', agirlik: 5}

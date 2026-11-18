@@ -20,23 +20,31 @@ kullanıcıya kalır (yerel, Claude, API).
 
 ## Aşamalar
 
-| # | Aşama | Katman | Çıktı (çalışma klasöründe) |
-|---|---|---|---|
-| 1 | ingest | D (+OCR) | `inventory.csv`, `text/<doc_id>.txt` |
-| 2 | identify | D (+M) | `documents.jsonl` (tür, içerik tarihi, sürüm grubu, çalışma adı) |
-| 3 | segment | D (+M) | `segments.jsonl` |
-| 4 | candidates | D | `candidates.jsonl` (tür tablosu + metin benzerliği) |
-| 5 | decide | M | `decisions.jsonl` (ölçüt, OD, alıntı) |
-| 6 | audit | D | `review.xlsx` |
-| 7 | — | İnsan | onay |
-| 8 | file | D | `evidence/A/A.1/A.1.2/…`, `evidence-index.csv` |
-| 9 | write | M | `texts/<ölçüt>.md` |
-| 10 | verify | D+M | `verify.jsonl` |
-| 11 | — | İnsan | onay |
-| 12 | render | D | `report.docx`, `gaps.md` |
+Sözleşme: `bidr/data/pipeline.yaml` (önkoşul, girdi/çıktı, komut, tamamlanma denetimi, insan
+onayı). Katman: D = belirleyici kod, M = model işi (ajan modu: `prepare` iş paketi yazar, ajan
+`*.out.json` yazar, `apply` şema + kod denetimi), I = insan kararı. `bidr status` / `bidr next`
+hepsini gösterir; önkoşulu bitmemiş aşamanın komutu çıkış kodu 3 ile durur.
 
-v0.1 kapsamı: iskelet, ölçüt şeması, ingest, etiketli veri, kural tabanlı tanı ve
-taban çizgisi ölçümü.
+| # | Aşama (id) | Katman | Önkoşul | Çıktı (çalışma alanında) |
+|---|---|---|---|---|
+| 0 | kurulum | I | — | `config.yaml` (`bidr:`), `AGENTS.md`, skill'ler |
+| 1 | ingest | D (+OCR) | kurulum | `inventory.csv`, `text/<doc_id>.txt` |
+| 2 | transcribe (isteğe bağlı) | M | ingest | düşük kaliteli taramaların görsel okuması → `text/` |
+| 3 | describe (isteğe bağlı) | M | ingest | metni seyrek fotoğraf/afişin betimlemesi → `text/` (`[GÖRSEL BETİMLEME` başlığı), `describe.jsonl` |
+| 4 | etiketler | D | kurulum | `labels.jsonl` (geçmiş yıl; yalnız karşılaştırma) |
+| 5 | identify | D | ingest, transcribe, describe | `documents.jsonl` (tür, içerik tarihi, dönem, sürüm, çalışma adı) |
+| 6 | candidates | D | identify | `candidates.jsonl` |
+| 7 | karar_kaba / karar_ince | M | candidates | `decisions.jsonl` (ölçüt, yuva, aşama, birebir alıntı, kanıt adı) |
+| 8 | hakem | I | karar_ince, etiketler | `consensus-labels.jsonl` |
+| 9 | name (isteğe bağlı) | M | karar_ince | `kanit-adlari.jsonl` (kaynak: model) |
+| 10 | audit | D + I | karar_ince, hakem, name | `review.xlsx`, `gaps.md`, `audit-olcutler.json`; apply: `review-decisions.jsonl`, insan adları/bağlantıları |
+| 11 | file | D | audit | `evidence/A/A.1/A.1.2/…`, `evidence-index.csv` (ad, bağlantı) |
+| 12 | write | M | file | `texts/<ölçüt>.json` |
+| 13 | verify | D + M (+I) | write | `verify.jsonl`; reddedilen → yeniden yazım döngüsü; sınırdan sonra insan kararı |
+| 14 | render | D | verify | `report.docx` (kanıt adları bağlantılı), `gaps.md` bağlantı bölümü |
+
+Rapor katmanının arayüzü: `docs/REPORT_LAYER.md`; denetim kuralları: `docs/AUDIT.md`;
+model katmanı: `docs/MODEL_LAYER.md`.
 
 ## Kimlikler
 
@@ -48,26 +56,20 @@ aynı kimliği alır; ad değişse de değişmez.
 Repo dışında tutulur (`bidr.common.Workspace`). Gerçek belge, metin, etiket
 yalnız orada durur.
 
-## Durum (v0.1, 2026-11-18)
+## Durum (2026-11-18)
 
-Biten: `criteria` (46 alt ölçüt, 273 kanıt yuvası, PUKÖ/OD etiketleri:
-23 onaylı, 250 öneri), `ingest` (OCR, gömülü görsel, bozuk metin katmanı
-tespiti, kalite işareti), `labels`, `identify` (49 tür, yalnız içerik),
-`candidates` (bm25, yuva, knn, tür, önsel), `evaluate` (birim dışarıda
-bırakmalı ve aktarım bölmeleri; doc_id, metin özeti ve yakın kopya ayıklama).
-Bağımsız doğrulama: sızıntı yok, ölçüm yeniden üretilebilir.
+Hat init'ten render'a kadar uygulanmış ve bağlı: her aşamanın kodla denetlenen tamamlanma
+şartı var; sentetik uçtan uca test (`tests/test_pipeline.py`) bütün geçişleri, kapıları,
+yeniden yazım döngüsünü ve bağlantılı raporu sınar. Model işi ajan modunda (ücretli API yok).
 
-Taban çizgisi (LLM yok, akademik bölüm profili, alt ölçüt R@1/R@5/R@10):
-fakülte verisiyle eğitilip Matematik'te sınanınca 0.22 / 0.67 / 0.77;
-ana ölçütte R@3 0.93.
+Ölçüm (v0.1 taban çizgisi, LLM yok, akademik bölüm profili): fakülte verisiyle eğitilip
+Matematik'te sınanınca alt ölçüt R@1/R@5/R@10 0.22 / 0.67 / 0.77; ana ölçütte R@3 0.93.
 
-## v0.2 planı
-
-1. Model katmanı: görev sözleşmeleri (`gorevler/`), sağlayıcılar
-   (openai-compatible, anthropic, claude-cli), iki adımlı karar
-   (46 başlıktan kaba seçim → rubrikli ince karar, birebir alıntı zorunlu).
-2. Ölçüt düzeyinde OD toplama (PUKÖ yuvaları üzerinden), yenilik işareti,
-   geçen yılla sürüm farkı.
-3. `audit` + `review.xlsx`: kullanılan yuva etiketi her satırda; OD4/OD5'e
-   yükselten etiketler işaretli; onaylar etiket dosyasına geri yazılır.
-4. Etiket tutarlılığı incelemesi (aynı içerik, farklı birimde farklı ölçüt).
+Kalan işler:
+1. `fotograf` türünün dönem sınıfı `bidr/data/profiles/donem_kurali.yaml`'a işlenmeli (şimdilik
+   kodda karma: planla yapı, üstü olay).
+2. Gerçek veriyle tam tur (mat2025): name → audit kararları → file → write → verify → render;
+   bağlantı önerilerinin isabeti (web çıktılarının üst/altbilgisi) gerçek belgelerle ölçülmeli.
+3. Etiket tutarlılığı incelemesi (aynı içerik, farklı birimde farklı ölçüt); yuva etiketi
+   önerilerinin (`slot-tags-oneri.yaml`) paket verisine işlenmesi kullanıcı onayıyla.
+4. Geçen yılla sürüm farkı ve yenilik işareti (önceki yıl metni yalnız yazımda kullanılıyor).
