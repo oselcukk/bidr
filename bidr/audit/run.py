@@ -17,7 +17,9 @@ from bidr.criteria.loader import load_criteria
 from bidr.criteria.model import CriteriaSet, id_key
 from bidr.criteria.profiles import load_profile
 from bidr.criteria.slots import STAGE_OD, SlotTag, load_tags
-from bidr.decide.run import BIRIM_BELIRSIZ, BIRIM_DISI, GENEL_ILISKI, record_unit_relation
+from bidr.decide.run import (BIRIM_BELIRSIZ, BIRIM_DISI, BIRIM_KARARLARI, GENEL_ILISKI, INSAN_ILISKILERI,
+                             load_unit_pins, needs_redecide, override_unit, pin_applied,
+                             record_unit_relation)
 
 from . import donem as D
 from .rules import (GEREKEN, KARAR_TURLERI, KISA, KURUM_GENELI_TURLER, LINKS, criterion_od,
@@ -25,7 +27,9 @@ from .rules import (GEREKEN, KARAR_TURLERI, KISA, KURUM_GENELI_TURLER, LINKS, cr
 
 SURUM = 1
 FILES = {"xlsx": "review.xlsx", "gaps": "gaps.md", "json": "audit-olcutler.json",
-         "decisions": "review-decisions.jsonl", "tag_oneri": "slot-tags-oneri.yaml"}
+         "decisions": "review-decisions.jsonl", "tag_oneri": "slot-tags-oneri.yaml",
+         "birim": BIRIM_KARARLARI}
+ALINTI_KISA = 160                              # birim sayfasında alıntı kısaltması
 KARARLAR = ("kabul", "ret", "duzelt")
 ETIKET_KARARLARI = ("onayla", "duzelt")
 DEFAULT_PROFILE = "akademik_bolum"
@@ -55,6 +59,10 @@ class Audit:
     donem: int | None = None                # rapor yılı (documents.jsonl `donem`)
     # birim aitliği: {"baska_birim": [...], "belirsiz": [...]} (belge başına bir kayıt)
     birim: dict = field(default_factory=lambda: {"baska_birim": [], "belirsiz": []})
+    # "Başka birime ait sayılanlar" sayfası: modelin başka birim dediği ya da insanın birim
+    # ilişkisine karar verdiği belgeler (belge başına bir satır)
+    birim_sayfa: list = field(default_factory=list)
+    birim_sha: str = ""                         # birim-kararlari.jsonl özeti (tablo güncelliği)
 
     @property
     def by_key(self) -> dict[str, dict]:
@@ -359,8 +367,41 @@ def priority_key(c: dict) -> tuple:
     return (c["oncelik_grubu"], -(c["yuva_toplam"] - c["yuva_dolu"]), id_key(c["olcut"]))
 
 
+def _short(q: str, n: int = ALINTI_KISA) -> str:
+    q = " ".join(str(q or "").split())
+    return q if len(q) <= n else q[:n].rsplit(" ", 1)[0] + " …"
+
+
+def _unit_row(rec: dict, eff: dict, pin: dict | None, docs: dict, name: str) -> dict:
+    """Birim sayfası satırı: modelin gerekçesi ve birim yüzünden reddedilen eşleşmeleri."""
+    did = rec["doc_id"]
+    ince = rec.get("ince") or {}
+    red = [m for m in rec.get("eslesmeler") or [] if BIRIM_DISI in ((m.get("denetim") or {}).get("red") or [])]
+    esl = "\n".join(f"{m.get('olcut')} {m.get('yuva')} · {m.get('asama') or '?'} · OD{m.get('od_onerisi') or '?'}"
+                    f": \"{_short(m.get('alinti'))}\"" for m in red)
+    rel = (pin or {}).get("birim_iliskisi") or ""
+    if not rel:
+        durum = "model: başka birim (kanıt sayılmadı)"
+    elif rel == BIRIM_DISI:
+        durum = "insan onayladı: başka birim"
+    elif pin_applied(rec, pin):
+        durum = "yeniden karar verildi (insan ilişkisiyle): eşleşmeler inceleme tablosunda"
+    elif record_unit_relation(eff) == rel and any(m.get("kabul") for m in eff.get("eslesmeler") or []) \
+            and record_unit_relation(rec) == BIRIM_DISI:
+        durum = "geri alındı: eşleşmeler inceleme tablosunda"
+    elif needs_redecide(rec, rel):
+        durum = "yeniden karar gerekli (eşleşme kaydı yok): bidr decide prepare --stage fine --only " + did
+    else:
+        durum = f"insan kararı: {rel}"
+    return {"doc_id": did, "belge": (docs.get(did) or {}).get("calisma_adi") or did, "kanit_adi": name,
+            "gerekce": ince.get("gerekce") or "", "eslesmeler": esl, "eslesme_sayisi": len(red),
+            "model_iliskisi": ince.get("birim_iliskisi_model") or record_unit_relation(rec),
+            "durum": durum, "insan_birim_iliskisi": rel, "not": (pin or {}).get("not") or ""}
+
+
 def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
-          criteria: CriteriaSet | None = None, review: dict[str, dict] | None = None) -> Audit:
+          criteria: CriteriaSet | None = None, review: dict[str, dict] | None = None,
+          pins: dict[str, dict] | None = None) -> Audit:
     ws = Workspace(ws_root)
     out = Path(out).expanduser().resolve() if out else ws.root
     dpath = ws.root / "decisions.jsonl"
@@ -374,6 +415,7 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
     allowed = set(load_profile(profile).allowed(cs)) if profile else {s.id for s in cs.sub_criteria}
     docs = {r["doc_id"]: r for r in read_jsonl(ws.documents)} if ws.documents.exists() else {}
     review = load_review_decisions(out) if review is None else review
+    pins = load_unit_pins(out) if pins is None else pins
     rows, uy = [], []
     rule, period = None, None
     if any("donem_ici" in d for d in docs.values()):
@@ -389,16 +431,23 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
     links = _links(ws, out)
     desc = _described(ws)
     birim: dict = {"baska_birim": [], "belirsiz": []}
-    for rec in recs:
-        if rec.get("durum") != "ok" or rec.get("asama") != "ince":
+    sayfa: list[dict] = []
+    for orig in recs:
+        if orig.get("durum") != "ok" or orig.get("asama") != "ince":
             continue
         n_ince += 1
+        pin = pins.get(orig["doc_id"])
+        # insan birim kararı (öncelik insan > model): kaydın görünümü değişir, dosya değişmez
+        rec = override_unit(orig, pin["birim_iliskisi"], tags) if pin else orig
+        if pin or record_unit_relation(orig) == BIRIM_DISI:
+            sayfa.append(_unit_row(orig, rec, pin, docs, names(orig["doc_id"])[0]))
         rel = record_unit_relation(rec)
         if rel in (BIRIM_DISI, BIRIM_BELIRSIZ):
             ince = rec.get("ince") or {}
             birim["baska_birim" if rel == BIRIM_DISI else "belirsiz"].append({
                 "doc_id": rec["doc_id"], "belge": (docs.get(rec["doc_id"]) or {}).get("calisma_adi") or rec["doc_id"],
                 "gerekce": ince.get("gerekce") or "",
+                **({"insan": True} if pin else {}),
                 "eslesme": sum(bool(m.get("kabul")) for m in rec.get("eslesmeler") or [])})
         for m in rec.get("eslesmeler") or []:
             if m.get("kabul"):
@@ -414,7 +463,9 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
     ids = sorted(allowed | set(by_c), key=id_key)
     cyc = {c: _cycle(rule, by_c.get(c, []), period) for c in ids}
     crits = [_criterion(cs, tags, c, by_c.get(c, []), allowed, rule, cyc[c]) for c in ids]
-    return Audit(ws, out, profile, cs, tags, rows, crits, file_sha(dpath), uy, period, birim)
+    sayfa.sort(key=lambda x: x["belge"])
+    return Audit(ws, out, profile, cs, tags, rows, crits, file_sha(dpath), uy, period, birim, sayfa,
+                 file_sha(out / FILES["birim"]))
 
 
 def od_distribution(a: Audit) -> dict[int, int]:
@@ -434,7 +485,9 @@ def write_outputs(a: Audit, *, xlsx: bool = True) -> dict[str, Path]:
     paths["gaps"].write_text(report.gaps_md(a) + (("\n" + keep) if keep else ""), encoding="utf-8")
     js = {"surum": SURUM, "calisma_alani": str(a.ws.root), "profil": a.profile,
           "kararlar_sha": a.decisions_sha, "donem": a.donem, "od_dagilimi": od_distribution(a),
-          "birim_aitligi": a.birim, "olcutler": a.criteria}
+          "birim_aitligi": {**a.birim, "insan_karari": [
+              {k: x[k] for k in ("doc_id", "model_iliskisi", "insan_birim_iliskisi", "durum")}
+              for x in a.birim_sayfa if x["insan_birim_iliskisi"]]}, "olcutler": a.criteria}
     paths["json"].write_text(json.dumps(js, ensure_ascii=False, indent=1), encoding="utf-8")
     if xlsx:
         paths["xlsx"] = a.out / FILES["xlsx"]
@@ -452,6 +505,7 @@ def audit(ws_root: Path, *, out: Path | None = None, profile: str | None = None)
     carry: dict[str, dict] = {}
     carry_names: dict[str, str] = {}
     carry_links: dict[str, str] = {}
+    carry_units: dict[str, tuple[str, str]] = {}
     old = outp / FILES["xlsx"]
     uy = []
     if old.exists():
@@ -468,6 +522,12 @@ def audit(ws_root: Path, *, out: Path | None = None, profile: str | None = None)
         carry_links = {str(xr.get("satir")): str(xr.get("baglanti")).strip() for xr in xrows
                        if str(xr.get("baglanti") or "").strip()
                        and str(xr.get("baglanti")).strip() != str(xr.get("baglanti_oneri") or "").strip()}
+        pins = load_unit_pins(outp)
+        for ur in sheet.read_unit_sheet(old) or []:
+            v, nt = _unit_cell(ur), str(ur.get("not") or "").strip()
+            p = pins.get(ur["doc_id"]) or {}
+            if (v, nt) != (p.get("birim_iliskisi") or "", p.get("not") or "") and (v or p):
+                carry_units[ur["doc_id"]] = (str(ur.get("insan_birim_iliskisi") or "").strip(), nt)
         if carry:
             uy.append(f"{len(carry)} karar tabloda vardı ama uygulanmamıştı: yeni tabloya taşındı "
                       f"(OD'ye yansıması için `bidr audit apply`)")
@@ -491,6 +551,14 @@ def audit(ws_root: Path, *, out: Path | None = None, profile: str | None = None)
                 n += 1
         if n:
             uy.append(f"{n} satırda bağlantı düzeltmesi uygulanmamıştı: yeni tabloya taşındı")
+    if carry_units:          # uygulanmamış birim kararı: sayfada kalır
+        n = 0
+        for x in a.birim_sayfa:
+            if x["doc_id"] in carry_units:
+                x["insan_birim_iliskisi"], x["not"] = carry_units[x["doc_id"]]
+                n += 1
+        if n:
+            uy.append(f"{n} belgede birim ilişkisi kararı uygulanmamıştı: yeni tabloya taşındı")
     a.uyarilar.extend(uy)
     if carry:   # tabloda göster, OD hesabına katma (uygulanmadı)
         for r in a.rows:
@@ -563,6 +631,49 @@ def parse_decision(xr: dict, cs: CriteriaSet) -> tuple[dict | None, str | None]:
     return rec, None
 
 
+def _unit_cell(ur: dict) -> str:
+    """Birim sayfası hücresi → normalleştirilmiş değer ('' boş; geçersizse ham metin)."""
+    raw = str(ur.get("insan_birim_iliskisi") or "").strip()
+    v = _norm(raw).replace(" ", "_").replace("-", "_")
+    return v if v in INSAN_ILISKILERI else raw
+
+
+def parse_units(urows: list[dict], prev: dict[str, dict], recs: dict[str, dict]
+                ) -> tuple[dict[str, dict], dict[str, str], dict]:
+    """Birim sayfası → yeni birim kararları (sayfadaki belgeler için sayfa esastır: boş hücre
+    kararı kaldırır; sayfada olmayan belgelerin kararı korunur). (kararlar, hatalar, özet)."""
+    import time
+    out = dict(prev)
+    errs: dict[str, str] = {}
+    oz = {"geri_alinan": [], "yeniden_karar": [], "baska_birim_onay": [], "kaldirilan": []}
+    for ur in urows:
+        did = str(ur.get("doc_id") or "").strip()
+        if not did:
+            continue
+        v = _unit_cell(ur)
+        nt = str(ur.get("not") or "").strip()
+        if not v:
+            if out.pop(did, None):
+                oz["kaldirilan"].append(did)
+            continue
+        if v not in INSAN_ILISKILERI:
+            errs[f"birim:{did}"] = (f"insan_birim_iliskisi '{v}' geçersiz ({', '.join(INSAN_ILISKILERI)})")
+            continue
+        rec = recs.get(did)
+        p = prev.get(did) or {}
+        r = {"doc_id": did, "birim_iliskisi": v, "kaynak": "insan",
+             "model_iliskisi": ((rec or {}).get("ince") or {}).get("birim_iliskisi_model")
+             or record_unit_relation(rec),
+             "yeniden_karar": needs_redecide(rec, v), "not": nt}
+        same = {k: p.get(k) for k in r} == r
+        r["zaman"] = p.get("zaman") if same and p.get("zaman") else time.strftime("%Y-%m-%dT%H:%M:%S")
+        out[did] = r
+        key = ("baska_birim_onay" if v == BIRIM_DISI else "yeniden_karar" if r["yeniden_karar"]
+               else "geri_alinan")
+        oz[key].append(did)
+    return out, errs, oz
+
+
 def review_state(out: Path, ws_root: Path | None = None) -> dict:
     """Tamamlanma denetimi için salt okunur durum."""
     from . import sheet
@@ -574,7 +685,9 @@ def review_state(out: Path, ws_root: Path | None = None) -> dict:
         return st
     meta, xrows = sheet.read_review(x)
     dsha = file_sha(Path(ws_root or out) / "decisions.jsonl")
-    st["guncel"] = meta.get("kararlar_sha") == dsha
+    # birim kararları değişince tablo da değişir (geri alınan eşleşmeler satır olur)
+    st["guncel"] = (meta.get("kararlar_sha") == dsha
+                    and (meta.get("birim_sha") or "") == file_sha(out / FILES["birim"]))
     applied = load_review_decisions(out)
     cs = load_criteria()
     st["satir"] = len(xrows)
@@ -603,6 +716,12 @@ def review_state(out: Path, ws_root: Path | None = None) -> dict:
             did = sid.split("|", 1)[0]
             if (links.get(did) or {}).get("baglanti") != v:
                 pend.add(f"baglanti:{did}")
+    pins = load_unit_pins(out)
+    for ur in sheet.read_unit_sheet(x) or []:
+        p = pins.get(ur["doc_id"]) or {}
+        if ((_unit_cell(ur), str(ur.get("not") or "").strip())
+                != (p.get("birim_iliskisi") or "", p.get("not") or "")) and (_unit_cell(ur) or p):
+            pend.add(f"birim:{ur['doc_id']}")
     st["uygulanmamis_duzeltme"] = len(pend)
     return st
 
@@ -642,14 +761,27 @@ def apply(ws_root: Path, *, out: Path | None = None, profile: str | None = None)
     if baglar:
         upsert_links(outp / LINKS, baglar)
     oneri = write_tag_proposals(outp, merged, cs)
-    a = build(ws.root, out=outp, profile=profile, review=merged)
+    urows = sheet.read_unit_sheet(x)          # None: eski tablo (sayfa yok), birim kararı değişmez
+    pins = load_unit_pins(outp)
+    birim_hata, birim_oz = {}, {}
+    if urows is not None:
+        recs = {r["doc_id"]: r for r in read_jsonl(ws.root / "decisions.jsonl") if r.get("doc_id")} \
+            if (ws.root / "decisions.jsonl").exists() else {}
+        pins, birim_hata, birim_oz = parse_units(urows, pins, recs)
+        bp = outp / FILES["birim"]
+        if pins:
+            write_jsonl(bp, [pins[k] for k in sorted(pins)])
+        elif bp.exists():
+            bp.unlink()
+    a = build(ws.root, out=outp, profile=profile, review=merged, pins=pins)
     write_outputs(a, xlsx=False)
     from collections import Counter
     return {"satir": len(xrows), "kararli": len(yeni), "bos": bos, "gecersiz": hatalar,
             "karar": dict(Counter(d["karar"] for d in yeni.values())),
             "etiket_onerisi": oneri, "od_dagilimi": od_distribution(a),
             "kanit_adi": len(adlar), "kanit_adi_gecersiz": ad_hata,
-            "baglanti": len(baglar), "baglanti_gecersiz": bag_hata}
+            "baglanti": len(baglar), "baglanti_gecersiz": bag_hata,
+            "birim": {k: v for k, v in birim_oz.items() if v}, "birim_gecersiz": birim_hata}
 
 
 def _name_edits(xrows: list[dict]) -> list[tuple[str, str, str]]:

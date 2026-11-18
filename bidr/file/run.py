@@ -183,6 +183,7 @@ def _canonical(recs: dict[str, dict]) -> dict[str, str]:
 def plan(ws_root: Path, *, review_dir: Path | None = None, profile: str | None = None
          ) -> tuple[list[Item], dict]:
     from bidr.audit.run import build
+    from bidr.decide.run import restorable
     ws = Workspace(ws_root)
     review_dir = Path(review_dir).expanduser().resolve() if review_dir else ws.root
     rpath = review_dir / REVIEW
@@ -193,7 +194,7 @@ def plan(ws_root: Path, *, review_dir: Path | None = None, profile: str | None =
     spans = {}
     for did, r in recs.items():
         for m in r.get("eslesmeler") or []:
-            if m.get("kabul"):
+            if m.get("kabul") or restorable(m):     # insan birim kararıyla geri alınabilen de
                 spans[(did, m["yuva"])] = (m.get("denetim") or {}).get("alinti_konum")
     can = _canonical(recs)
     groups: dict[tuple[str, str], list[dict]] = {}

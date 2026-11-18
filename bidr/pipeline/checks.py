@@ -163,7 +163,8 @@ def _gecersiz_ids(gfile: Path) -> set[str]:
 
 
 def karar_tamam(c: Ctx) -> Check:
-    from bidr.decide.run import COARSE, FINE, load_decisions, stage_done, stale_summary, task_version
+    from bidr.decide.run import (COARSE, FINE, load_decisions, load_unit_pins, pending_redecide, stage_done,
+                                 stale_summary, task_version)
     stage = c.stage["sart"]["asama"]
     task = COARSE if stage == "coarse" else FINE
     ws = c.ws
@@ -192,6 +193,15 @@ def karar_tamam(c: Ctx) -> Check:
         uy.append(f"yeniden işlenecek {len(eski)} belge (görev sürümü ya da istem değişti; eski kararlar "
                   f"kullanılıyor). Pahalı: önce `{prep}` maliyet özetini verir, kullanıcı onaylarsa "
                   f"`{prep} --yes`.")
+    redo = pending_redecide(recs, load_unit_pins(ws.root)) if stage == "fine" else []
+    if redo:
+        prog["birim_yeniden_karar"] = len(redo)
+        cmd = f"{prep} --only {','.join(redo)}"
+        if not missing:
+            return Check(kim=KOMUT, ilerleme=prog, uyarilar=uy, komutlar=[cmd],
+                         neden=f"{len(redo)} belgenin birim ilişkisini komisyon değiştirdi (review.xlsx), "
+                               f"eşleşme kaydı yok: yeniden ince karar gerekli (ilişki pakete sabit yazılır)")
+        uy.append(f"{len(redo)} belge birim ilişkisi kararıyla yeniden ince karar bekliyor: `{cmd}`")
     if not missing:
         return Check(bitti=True, ilerleme=prog, uyarilar=uy,
                      neden=f"{len(done)} belge {stage} tamam"

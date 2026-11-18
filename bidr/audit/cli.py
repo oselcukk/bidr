@@ -31,6 +31,20 @@ def _run(args) -> int:
                 print(f"HATA {len(st['baglanti_gecersiz'])} belgenin bağlantı düzeltmesi geçersiz "
                       "(yukarıda); öteki kararlar işlendi", file=sys.stderr)
                 return 1
+            if st["birim_gecersiz"]:
+                for k, v in st["birim_gecersiz"].items():
+                    print(f"  {k}: {v}", file=sys.stderr)
+                print(f"HATA {len(st['birim_gecersiz'])} belgenin birim ilişkisi kararı geçersiz; öteki "
+                      "kararlar işlendi", file=sys.stderr)
+                return 1
+            b = st.get("birim") or {}
+            if b.get("geri_alinan") or b.get("kaldirilan") or b.get("baska_birim_onay"):
+                print("Birim kararları değişti: tabloyu yenileyin (geri alınan eşleşmeler 'Eşleşmeler' "
+                      "sayfasında karar bekler): bidr audit -w " + str(ws) + (f" --out {args.out}" if args.out else ""))
+            if b.get("yeniden_karar"):
+                print(f"{len(b['yeniden_karar'])} belge yeniden ince karar bekliyor (eşleşme kaydı yok; birim "
+                      f"ilişkisi pakete sabit yazılır): bidr decide prepare -w {ws} --stage fine --only "
+                      + ",".join(b["yeniden_karar"]))
             if st["bos"]:
                 print(f"{st['bos']} satır karar bekliyor.")
             return 0

@@ -246,11 +246,17 @@ def unit_info(ws_root) -> dict:
     return {"birim": birim, "kurum": _institution_name(sec.get("kurum"))}
 
 
-def render_unit(info: dict) -> str:
+def render_unit(info: dict, sabit: str | None = None) -> str:
+    """`sabit`: komisyonun (insan) bu belge için verdiği birim ilişkisi (review.xlsx
+    "Başka birime ait sayılanlar" → birim-kararlari.jsonl); model değiştiremez."""
     if not info.get("birim"):
-        return ("Birim: (belirtilmedi). Belge açıkça başka bir bölüme/birime ait değilse "
-                "birim_iliskisi \"kendi\" ya da genel düzenlemeyse \"kurum_geneli\"/\"fakulte_geneli\".")
-    s = f"Birim: {info['birim']}"
-    if info.get("kurum"):
-        s += f"\nKurum: {info['kurum']}"
+        s = ("Birim: (belirtilmedi). Belge açıkça başka bir bölüme/birime ait değilse "
+             "birim_iliskisi \"kendi\" ya da genel düzenlemeyse \"kurum_geneli\"/\"fakulte_geneli\".")
+    else:
+        s = f"Birim: {info['birim']}"
+        if info.get("kurum"):
+            s += f"\nKurum: {info['kurum']}"
+    if sabit:
+        s += (f"\nSABİT BİLGİ (komisyon kararı): bu belgenin birim_iliskisi \"{sabit}\". Bu alanı "
+              f"değiştirme, aynen yaz; eşleşmeleri bu ilişkiye göre ver (kod alanı bu değere zorlar).")
     return s

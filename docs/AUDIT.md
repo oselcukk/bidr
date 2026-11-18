@@ -9,11 +9,12 @@ yalnız okur; çıktılar `--out` klasörüne (varsayılan çalışma alanı):
 
 | Dosya | İçerik |
 |---|---|
-| `review.xlsx` | Sayfa 1 "Eşleşmeler": satır = kabul edilmiş eşleşme; sayfa 2 "Ölçüt özeti"; "Açıklama"; gizli `_meta` |
+| `review.xlsx` | Sayfa 1 "Eşleşmeler": satır = kabul edilmiş eşleşme; sayfa 2 "Ölçüt özeti"; "Başka birime ait sayılanlar"; "Açıklama"; gizli `_meta` |
 | `gaps.md` | OD dağılımı, öncelikli eksikler, kurum geneli uyarıları, ölçüt ölçüt zincir ve boş yuvalar |
 | `audit-olcutler.json` | Ölçüt özetlerinin makine okunur hali (render aşaması için) |
 | `review-decisions.jsonl` | `apply`: kullanıcı kararları (satır başına bir kayıt) |
 | `slot-tags-oneri.yaml` | `apply`: yuva etiketi onay/düzeltme ÖNERİLERİ; etiket dosyasını değiştirmez |
+| `birim-kararlari.jsonl` | `apply`: insan birim ilişkisi kararları (belge başına; `bidr decide` çalışma alanındakini okur) |
 
 ## OD bir ölçüt özelliğidir
 
@@ -55,9 +56,10 @@ Tek yumuşatma (komisyon kararı, 2026-11-18): plan halkası eksik ama U/K/Ö va
    (`rules.KARAR_TURLERI`: senato kararı) sınırlanmaz: üst birimin bu birimi konu alan kararı
    birimin kanıtıdır (yönetmelik/yönerge türü yine planla).
 2a. **Birim aitliği** (`birim_iliskisi`, docs/MODEL_LAYER.md): `baska_birim` belgenin
-   eşleşmeleri decide'da reddedilir, tabloya gelmez; gaps.md "Başka birime ait sayılan
-   belgeler" bölümünde gerekçesiyle listelenir (yanlışsa `bidr decide prepare --stage fine
-   --only <doc_id>`). `belirsiz` belge sayılır, satır `birim_aitligi_dogrulanmali` işareti ve
+   eşleşmeleri decide'da reddedilir, "Eşleşmeler" sayfasına gelmez; review.xlsx "Başka birime
+   ait sayılanlar" sayfasında ve gaps.md "Başka birime ait sayılan belgeler" bölümünde
+   gerekçesiyle listelenir; komisyon kararı geri alabilir (aşağıda "Birim ilişkisini geri
+   alma"). `belirsiz` belge sayılır, satır `birim_aitligi_dogrulanmali` işareti ve
    "birim aitliği doğrulanmalı" vurgusu alır; gaps.md "Birim aitliği doğrulanmalı". Eski
    kayıtta alan yoksa `kendi` (eski `kurum_geneli` bayrağı varsa `kurum_geneli`).
 3. **Dönem kuralı** (belge türüne göre; aşağıda): yapı belgesi yürürlükteyse sayılır, olay
@@ -131,8 +133,10 @@ kanıt yuvaları; dipnotlar hariç). Öncelik sırası:
 Grup içinde boş yuva sayısı çok olan önce.
 
 Birim bölümleri (varsa): birim aitliği doğrulanmalı (`belirsiz`), başka birime ait sayılan
-belgeler (`baska_birim`, kanıt sayılmadı). `audit-olcutler.json` `birim_aitligi` aynı listeleri
-taşır.
+belgeler (`baska_birim`, kanıt sayılmadı; tablodaki birim sayfasına yönlendirir; insanın
+onayladığı "(insan onayladı)", geri aldığı listeden çıkar), birim ilişkisi komisyonca
+değiştirilen belgeler (model → insan değeri ve durum). `audit-olcutler.json` `birim_aitligi`
+aynı listeleri ve `insan_karari`'nı taşır.
 
 Dönem bölümleri (varsa): gözden geçirme döngüleri ve döngü önerileri, geçmiş kanıtlar
 (süreklilik), tarihi doğrulanacak olay belgeleri, güncelliği doğrulanacak belgeler.
@@ -163,6 +167,37 @@ Sütunlar başlık adıyla okunur; kullanıcı sütun ekleyip sırayı değişti
 yazılır; tabloda olup işlenmemiş kararlar da kaybolmaz (yeni tabloya taşınır, eski tablo
 `review.onceki.xlsx`).
 
+"Başka birime ait sayılanlar" (birim sayfası): ilk satır kısa açıklama, ikinci satır başlık;
+satır = modelin `baska_birim` dediği ya da insanın birim kararı verdiği belge. Sütunlar: belge
+kimliği, çalışma adı, kanıt adı, modelin gerekçesi, birim yüzünden reddedilen eşleşmeler
+(ölçüt yuva · aşama · OD önerisi: alıntı, 160 karaktere kısaltılmış), durum, kullanıcı
+sütunları **insan_birim_iliskisi** (açılır liste: kendi, ust_birim_bu_birim_hakkinda,
+fakulte_geneli, kurum_geneli, baska_birim; `belirsiz` seçilemez) ve not. Yeniden üretilen
+tabloda kayıtlı karar doludur; uygulanmamış birim kararı yeni tabloya taşınır.
+
+## Birim ilişkisini geri alma
+
+Öncelik insan > model (kanıt adı/bağlantıdaki düzenle aynı). `audit apply` birim sayfasını
+okur ve `birim-kararlari.jsonl`'e yazar (`kaynak: insan`, `model_iliskisi`, `yeniden_karar`,
+not, zaman). Sayfadaki belge için sayfa esastır: boş hücre insan kararını kaldırır; sayfada
+olmayan belgenin kararı korunur. Geçersiz değer `birim_gecersiz` (çıkış 1; öteki kararlar
+işlenir). `decisions.jsonl` değişmez: audit ve file kaydı insan kararıyla görür
+(`decide.run.override_unit`).
+
+- `baska_birim` dışı değer, modelin reddedilmiş eşleşmesi kayıtlıysa (red nedeni yalnız
+  `baska_birim`): eşleşmeler geri yüklenir, `od_kabul` yeniden hesaplanır ve yeni ilişkinin
+  kuralı uygulanır (fakülte/kurum geneli → OD2 tavanı, `uygulama_kaniti_eksik`, yalnız P;
+  kendi/üst birim → tavan yok); işaret `birim_iliskisi_insan`. Birim kararı değişince tablo
+  güncel sayılmaz (`_meta.birim_sha`): `bidr audit` yenilenince satırlar "Eşleşmeler"
+  sayfasına gelir ve öteki satırlar gibi kabul/ret/duzelt bekler.
+- Eşleşme kaydı yoksa (model kurala uyup eşleşme vermediyse) kayıt `yeniden_karar: true` olur;
+  `bidr status/next` ince karar aşamasını bekleyen iş gösterir (`bidr decide prepare --stage
+  fine --only <doc_id>`). Paketlenirken insan ilişkisi istemin BİRİM bölümüne "SABİT BİLGİ"
+  olarak yazılır; `apply` çıktıdaki alanı insan değerine zorlar (`ince.birim_iliskisi_kaynagi:
+  insan`, modelin dediği `birim_iliskisi_model`). Görev sürümü değişmez; insan kararı audit'te
+  uygulanan belge "istem değişti" sayılmaz.
+- `baska_birim` (onay): belge kanıt dışı kalır, gaps.md'de "(insan onayladı)".
+
 ## apply
 
 Tabloyu okur, her satırın kararını doğrular (geçersiz karar: çıkış 1, satır kayda girmez),
@@ -175,7 +210,8 @@ yuva, mevcut etiket, önerilen aşama/OD (`durum: onayli`), kaynak satırlar; ay
 e-posta içeren ad geçersizdir (`kanit_adi_gecersiz`, çıkış 1; öteki kararlar işlenir).
 "bağlantı" hücresi öneriden farklıysa `kanit-baglantilari.jsonl`'e `kaynak: insan` yazılır
 (belgeye ait; http(s) olmayan değer ya da bir belgede iki farklı adres geçersiz:
-`baglanti_gecersiz`, çıkış 1). Paket verisi (`bidr/data/criteria/`) değişmez; öneriyi
+`baglanti_gecersiz`, çıkış 1). Birim sayfası yukarıdaki gibi işlenir; sayfası olmayan eski
+tablo sorunsuz okunur (birim kararları değişmez). Paket verisi (`bidr/data/criteria/`) değişmez; öneriyi
 işlemek kullanıcı onayıyla ayrı bir adımdır. gaps.md yeniden yazılırken `bidr file`/`render`'ın
 "Bağlantısı olmayan kanıtlar" bölümü korunur.
 
@@ -183,5 +219,6 @@ işlemek kullanıcı onayıyla ayrı bir adımdır. gaps.md yeniden yazılırken
 
 review.xlsx var ve güncel `decisions.jsonl`'den üretilmiş (`_meta.kararlar_sha`); her satırın
 geçerli kararı var; tablodaki her karar `review-decisions.jsonl`'de birebir; kanıt adı ve
-bağlantı düzeltmeleri de işlenmiş (`uygulanmamis_duzeltme` = 0). Aşama
+bağlantı düzeltmeleri ve birim sayfası kararları da işlenmiş (`uygulanmamis_duzeltme` = 0);
+birim kararları tablodan sonra değiştiyse tablo yeniden üretilmiş. Aşama
 `onay: insan`: kararı ajan vermez.

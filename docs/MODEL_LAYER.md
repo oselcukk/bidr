@@ -59,11 +59,16 @@ ok, score, span = verify_quote(quote, text)   # Türkçe katlama, boşluk, OCR t
   | `belirsiz` | aitlik metinden anlaşılmıyor | kabul, `birim_aitligi_dogrulanmali` işareti; review.xlsx ve gaps.md'de listelenir |
 
   Kayıt: `ince.birim_iliskisi`, `ince.birim_iliskisi_kaynagi` (`model` | `eski_alan` |
-  `varsayilan`); `ince.kurum_geneli` (`model`/`tur`/`karar`) korunur, `model` artık
+  `varsayilan` | `insan`); `ince.kurum_geneli` (`model`/`tur`/`karar`) korunur, `model` artık
   `birim_iliskisi`'nden türer. **Geri uyumluluk:** alanı olmayan eski kayıt/cevap
   `kurum_geneli: true` ise `kurum_geneli`, değilse `kendi` sayılır (`belirsiz` değil;
   `record_unit_relation`). Sürüm 7 → 8: işlenmiş kayıtlar "eski_surum" olur; `bidr decide
   prepare --stage fine` özet verir, `--yes` ile birimli yeni istemle yeniden paketler.
+  **İnsan kararı** (`birim-kararlari.jsonl`, review.xlsx birim sayfası, docs/AUDIT.md "Birim
+  ilişkisini geri alma"): paketlenen belgenin `{{birim}}` girdisine "SABİT BİLGİ" satırı eklenir
+  (`render_unit(info, sabit)`); `apply_fine` modelin cevabındaki alanı insan değerine zorlar
+  (`birim_iliskisi_kaynagi: insan`, modelin değeri `birim_iliskisi_model`), kurallar insan
+  değeriyle uygulanır.
 - `bidr decide -w WS [--profile P] [--only-labeled] [--limit N]` →
   `decisions.jsonl`.
 - `bidr compare-labels -w WS` → geçmiş etiketle karşılaştırma: aynı / ekliyor /

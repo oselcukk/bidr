@@ -18,7 +18,8 @@ Akış (belge başına):
      Kurum/fakülte geneli belgenin (model `birim_iliskisi` ya da `kurum_geneli.yaml` türü)
      eşleşmeleri OD2 ile sınırlanır (`uygulama_kaniti_eksik`). Başka birime ait belgenin
      (`birim_iliskisi: baska_birim`) eşleşmeleri reddedilir; `belirsiz` kabul edilir,
-     `birim_aitligi_dogrulanmali` işaretlenir.
+     `birim_aitligi_dogrulanmali` işaretlenir. İnsan birim kararı (`birim-kararlari.jsonl`)
+     varsa pakete sabit bilgi olarak girer ve modelinkinin önüne geçer.
 
 Yeniden işleme: `prepare --only` yalnız verilen belgeleri yeniden paketler. Görev sürümü ya
 da istem değişen işlenmiş belgeler "eski" sayılır; `prepare` önce özet verir, `--yes` ile
@@ -96,6 +97,100 @@ BIRIM_ILISKILERI = ("kendi", "ust_birim_bu_birim_hakkinda", "fakulte_geneli", "k
 GENEL_ILISKI = frozenset({"fakulte_geneli", "kurum_geneli"})   # OD2 tavanı (kurum geneli kuralı)
 BIRIM_DISI = "baska_birim"                                       # bu birim için kanıt değil
 BIRIM_BELIRSIZ = "belirsiz"                                      # kabul; aitlik doğrulanmalı
+# İnsan (komisyon) birim kararı: review.xlsx "Başka birime ait sayılanlar" sayfası → `bidr audit
+# apply` → birim-kararlari.jsonl. İnsan `belirsiz` diyemez (karar vermek içindir).
+INSAN_ILISKILERI = tuple(x for x in BIRIM_ILISKILERI if x != BIRIM_BELIRSIZ)
+BIRIM_KARARLARI = "birim-kararlari.jsonl"
+
+
+def load_unit_pins(root: Path) -> dict[str, dict]:
+    """{doc_id: insan birim kararı} (`birim-kararlari.jsonl`; yoksa boş). Geçersiz değer atlanır."""
+    p = Path(root) / BIRIM_KARARLARI
+    if not p.exists():
+        return {}
+    return {r["doc_id"]: r for r in read_jsonl(p)
+            if r.get("doc_id") and r.get("birim_iliskisi") in INSAN_ILISKILERI}
+
+
+def restorable(m: dict) -> bool:
+    """Yalnız birim aitliği yüzünden reddedilmiş eşleşme (başka red nedeni yok): insan birim
+    ilişkisini değiştirirse geri yüklenebilir."""
+    red = (m.get("denetim") or {}).get("red") or []
+    return not m.get("kabul") and bool(red) and set(red) == {BIRIM_DISI}
+
+
+def pin_applied(rec: dict | None, pin: dict | None) -> bool:
+    """Kayıt bu insan kararıyla (paket sabit bilgisiyle) yeniden karara bağlanmış mı."""
+    ince = (rec or {}).get("ince") or {}
+    return bool(pin) and ince.get("birim_iliskisi_kaynagi") == "insan" \
+        and ince.get("birim_iliskisi") == pin.get("birim_iliskisi")
+
+
+def pending_redecide(recs: dict[str, dict], pins: dict[str, dict]) -> list[str]:
+    """İnsan birim ilişkisini değiştirdi ama geri yüklenecek eşleşme kaydı yoktu
+    (`yeniden_karar`): `prepare --stage fine --only` ile yeniden ince karar bekleyen belgeler."""
+    return sorted(d for d, p in pins.items()
+                  if p.get("yeniden_karar") and stage_done(recs.get(d), "fine")
+                  and not pin_applied(recs.get(d), p))
+
+
+def needs_redecide(rec: dict | None, rel: str) -> bool:
+    """İnsan kararı `rel` bu kayıtta yeniden ince karar gerektirir mi: model başka birim dedi,
+    insan başka bir ilişki verdi ve geri yüklenecek eşleşme yok."""
+    if rel == BIRIM_DISI or not rec or pin_applied(rec, {"birim_iliskisi": rel}):
+        return False
+    if record_unit_relation(rec) != BIRIM_DISI:
+        return False
+    return not any(restorable(m) for m in rec.get("eslesmeler") or [])
+
+
+def override_unit(rec: dict, rel: str, tags: dict) -> dict:
+    """Kaydın insan birim kararıyla görünümü (decisions.jsonl değişmez; audit/file bunu kullanır).
+    `baska_birim` → kabul edilmiş eşleşmeler birim nedeniyle reddedilir; başka bir değer →
+    yalnız birim yüzünden reddedilmiş eşleşmeler geri yüklenir ve yeni ilişkinin kuralı
+    uygulanır (fakülte/kurum geneli: OD2 tavanı; kendi/üst birim: tavan yok). Geri yüklenen
+    eşleşme `birim_iliskisi_insan` işareti taşır; kararı yine inceleme tablosunda insan verir."""
+    ince = dict(rec.get("ince") or {})
+    if ince.get("birim_iliskisi") == rel and ince.get("birim_iliskisi_kaynagi") == "insan":
+        return rec
+    old = record_unit_relation(rec)
+    new = {**rec, "ince": {**ince, "birim_iliskisi": rel, "birim_iliskisi_kaynagi": "insan",
+                           "birim_iliskisi_model": old}}
+    tur = bool((ince.get("kurum_geneli") or {}).get("tur")) if isinstance(ince.get("kurum_geneli"), dict) else False
+    kurum = rel in GENEL_ILISKI or tur
+    ms = []
+    for m in rec.get("eslesmeler") or []:
+        m = dict(m)
+        den = dict(m.get("denetim") or {})
+        if rel == BIRIM_DISI:
+            if m.get("kabul"):
+                den["red"] = [*(den.get("red") or []), BIRIM_DISI]
+                m.update(kabul=False, od_kabul=None, denetim=den)
+        elif restorable(m):
+            tag = tags.get(m.get("yuva"))
+            od_kod = _od_code(m.get("asama"), tag)
+            od_model = m.get("od_onerisi")
+            cands = [x for x in (od_model if isinstance(od_model, int) else None, od_kod) if x]
+            isaret = [x for x in den.get("isaret") or [] if x != "birim_aitligi_dogrulanmali"]
+            od = min(cands) if cands else None
+            if kurum and od is not None and od > KURUM_OD:
+                od = KURUM_OD
+                isaret.append("uygulama_kaniti_eksik")
+            isaret.append("birim_iliskisi_insan")
+            den.update(red=[], isaret=list(dict.fromkeys(isaret)))
+            m.update(kabul=od is not None, od_kabul=od, denetim=den)
+        ms.append(m)
+    new["eslesmeler"] = ms
+    return new
+
+
+def _od_code(asama, tag, slot_ok: bool = True):
+    """Kodun aşamadan verdiği OD: aşama yuva etiketine uymuyorsa yuvanın en düşük OD'si."""
+    if tag is not None:
+        if tag.uncertain or asama in tag.stages:
+            return STAGE_OD.get(asama)
+        return min(tag.od) if tag.od else None
+    return STAGE_OD.get(asama) if slot_ok else None
 
 
 def unit_relation(out: dict) -> tuple[str, str]:
@@ -211,18 +306,11 @@ def check_matches(out: dict, cands: list[str], cs: CriteriaSet, tags: dict, text
         tag = tags.get(yuva) if slot is not None else None
         asama = r.get("asama")
         od_model = r.get("od_onerisi")
-        od_kod = None
+        od_kod = _od_code(asama, tag, slot is not None)
         if tag is not None:
             r["yuva_etiketi"] = {"asama": list(tag.stages), "od": list(tag.od), "durum": tag.state}
-            if tag.uncertain:
-                od_kod = STAGE_OD.get(asama)
-            elif asama in tag.stages:
-                od_kod = STAGE_OD.get(asama)
-            else:
+            if not tag.uncertain and asama not in tag.stages:
                 isaret.append("asama_yuva_etiketine_uymuyor")
-                od_kod = min(tag.od) if tag.od else None
-        elif slot is not None:
-            od_kod = STAGE_OD.get(asama)
         if isinstance(od_model, int) and od_kod is not None and od_model != od_kod:
             isaret.append("od_asamayla_tutarsiz")
         cands_od = [x for x in (od_model if isinstance(od_model, int) else None, od_kod) if x]
@@ -265,10 +353,16 @@ class Context:
     k: int
     max_aday: int
     unit: dict = None          # {"birim", "kurum"}: config.yaml'dan, ince karar paketine girer
+    pins: dict = None          # {doc_id: insan birim kararı} (birim-kararlari.jsonl): sabit bilgi
 
     def __post_init__(self):
         if self.unit is None:
             self.unit = {"birim": None, "kurum": None}
+        if self.pins is None:
+            self.pins = {}
+
+    def pin(self, did: str) -> str | None:
+        return (self.pins.get(did) or {}).get("birim_iliskisi")
 
     @classmethod
     def load(cls, ws_root: Path, *, profile: str | None = "akademik_bolum", k: int = 5,
@@ -280,7 +374,7 @@ class Context:
         return cls(ws, cs, load_tags(cs), profile or None, allowed,
                    excluded_types() if exclude_types is None else exclude_types,
                    _documents(ws), _candidates(ws.root / candidates_name), k, max_aday,
-                   P.unit_info(ws.root))
+                   P.unit_info(ws.root), load_unit_pins(ws.root))
 
     def text(self, did: str) -> str:
         return self.ws.text_path(did).read_text(encoding="utf-8", errors="replace")
@@ -363,8 +457,9 @@ def apply_coarse(did: str, out: dict, meta: dict, model_id: str, extra: dict | N
                      "istem_token_tahmini": meta["istem_token_tahmini"], **(extra or {})}}
 
 
-def fine_inputs(ctx: Context, did: str, rec: dict) -> tuple[dict, dict] | None:
-    """Kaba kayıttan aday birleşimi; aday yoksa None."""
+def fine_inputs(ctx: Context, did: str, rec: dict, pin: bool = True) -> tuple[dict, dict] | None:
+    """Kaba kayıttan aday birleşimi; aday yoksa None. İnsan birim kararı varsa (`pin`) pakete
+    sabit bilgi olarak girer; model bunu değiştiremez (`apply_fine` alanı zorlar)."""
     cands, det, cut = merge_candidates(rec["kaba"]["secilen"], ctx.cand.get(did), set(ctx.allowed),
                                        ctx.k, ctx.max_aday)
     meta = {"adaylar": cands, "belirleyici_ilk_k": det, "adaylar_kesilen": cut}
@@ -373,8 +468,11 @@ def fine_inputs(ctx: Context, did: str, rec: dict) -> tuple[dict, dict] | None:
     body, ex = P.excerpt(ctx.text(did), P.FINE_CHARS, P.criteria_terms(ctx.cs, cands))
     inputs = {"adaylar": P.fine_list(ctx.cs, cands, ctx.tags),
               "belge_bilgisi": P.render_info(rec.get("belge_bilgisi") or {}), "belge_metni": body,
-              "kanit_ilkeleri": P.evidence_principles(), "birim": P.render_unit(ctx.unit)}
+              "kanit_ilkeleri": P.evidence_principles(),
+              "birim": P.render_unit(ctx.unit, ctx.pin(did) if pin else None)}
     meta.update(metin=ex, istem_token_tahmini=P.approx_tokens("".join(inputs.values())))
+    if pin and ctx.pin(did):
+        meta["birim_sabit"] = ctx.pin(did)
     return inputs, meta
 
 
@@ -399,8 +497,14 @@ def no_candidate(rec: dict, meta: dict) -> dict:
 def apply_fine(ctx: Context, did: str, rec: dict, out: dict, meta: dict, model_id: str,
                verify: Callable, extra: dict | None = None) -> dict:
     rec = _clear_pending(rec)
+    model_rel = unit_relation(out)[0]
+    pin = ctx.pin(did)
+    if pin:                                 # insan kararı modelinkinin önüne geçer
+        out = {**out, "birim_iliskisi": pin}
     kg = kurum_geneli(out, ctx.docs.get(did))
     rel, rel_src = unit_relation(out)
+    if pin:
+        rel_src = "insan"
     matches = check_matches(out, meta["adaylar"], ctx.cs, ctx.tags, ctx.text(did), verify, kg["karar"],
                             rel)
     rec["gorev"] = {**rec.get("gorev", {}), FINE: task_version(FINE)}
@@ -408,6 +512,7 @@ def apply_fine(ctx: Context, did: str, rec: dict, out: dict, meta: dict, model_i
                adaylar_kesilen=meta["adaylar_kesilen"])
     rec["ince"] = {"karar": out.get("karar"), "gerekce": out.get("gerekce", ""), "kurum_geneli": kg,
                    "birim_iliskisi": rel, "birim_iliskisi_kaynagi": rel_src,
+                   **({"birim_iliskisi_model": model_rel} if pin else {}),
                    "kanit_adi": evidence_name_of(out), "model": model_id,
                    "metin": meta["metin"], "istem_token_tahmini": meta["istem_token_tahmini"],
                    **(extra or {})}
@@ -509,7 +614,9 @@ def staleness(ctx: Context, did: str, rec: dict, stage: str, backend: Backend) -
     if stage == "coarse":
         inputs, _ = coarse_inputs(ctx, did)
     else:
-        inputs, _ = fine_inputs(ctx, did, rec)
+        # İnsan birim kararı audit'te uygulanır; yalnız kayıt onunla yeniden karara bağlandıysa
+        # istem karşılaştırmasına girer (karar değişmedikçe belge "istem değişti" sayılmaz).
+        inputs, _ = fine_inputs(ctx, did, rec, pin=_section(rec, "fine").get("birim_iliskisi_kaynagi") == "insan")
         if inputs is None:
             return None
     sha = _sha(backend.render_task(STAGES[stage], inputs)["prompt"])

@@ -86,11 +86,24 @@ def _birim_sections(a) -> list[str]:
         for x in b["belirsiz"]:
             L.append(f"- `{x['belge']}` ({x['eslesme']} eşleşme)" + (f": {x['gerekce']}" if x["gerekce"] else ""))
     if b.get("baska_birim"):
+        from .sheet import SHEET_UNIT
         L += ["", "## Başka birime ait sayılan belgeler (kanıt sayılmadı)", "",
-              "İnce karar bu belgeleri başka bir bölüm/birimin belgesi saydı; eşleşmeleri reddedildi. Yanlışsa: "
-              "`bidr decide prepare -w <çalışma alanı> --stage fine --only <doc_id>` ile yeniden karar.", ""]
+              "İnce karar bu belgeleri başka bir bölüm/birimin belgesi saydı; eşleşmeleri reddedildi. Yanlışsa "
+              f"review.xlsx \"{SHEET_UNIT}\" sayfasında `insan_birim_iliskisi` sütununu doldurup "
+              "`bidr audit apply` çalıştırın: reddedilen eşleşmeler geri gelir; eşleşme kaydı yoksa belge "
+              "`bidr decide prepare -w <çalışma alanı> --stage fine --only <doc_id>` ile yeniden karara gider "
+              "(ilişki sabit).", ""]
         for x in b["baska_birim"]:
-            L.append(f"- `{x['belge']}` (`{x['doc_id']}`)" + (f": {x['gerekce']}" if x["gerekce"] else ""))
+            L.append(f"- `{x['belge']}` (`{x['doc_id']}`)" + (" (insan onayladı)" if x.get("insan") else "")
+                     + (f": {x['gerekce']}" if x["gerekce"] else ""))
+    ins = [x for x in getattr(a, "birim_sayfa", None) or []
+           if x["insan_birim_iliskisi"] and x["insan_birim_iliskisi"] != "baska_birim"]
+    if ins:
+        L += ["", "## Birim ilişkisi komisyonca değiştirilen belgeler", "",
+              "İnsan kararı modelinkinin önüne geçti; belgeler yukarıdaki listeden çıktı.", ""]
+        for x in ins:
+            L.append(f"- `{x['belge']}` (`{x['doc_id']}`): {x['model_iliskisi']} → {x['insan_birim_iliskisi']}; "
+                     f"{x['durum']}")
     return L
 
 

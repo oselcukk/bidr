@@ -12,6 +12,28 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from .rules import LINKS
 
 SHEET_ROWS, SHEET_SUM, SHEET_META, SHEET_HELP = "Eşleşmeler", "Ölçüt özeti", "_meta", "Açıklama"
+SHEET_UNIT = "Başka birime ait sayılanlar"
+
+# Birim sayfası: (anahtar, başlık, genişlik, kullanıcı doldurur mu). Başlık satırı açıklamanın altında.
+UNIT_COLS = [
+    ("doc_id", "belge kimliği", 20, False),
+    ("belge", "belge (çalışma adı)", 36, False),
+    ("kanit_adi", "kanıt adı", 30, False),
+    ("gerekce", "modelin gerekçesi", 50, False),
+    ("eslesmeler", "reddedilen eşleşmeler (model önerisi: ölçüt yuva · aşama · OD: alıntı)", 70, False),
+    ("durum", "durum", 30, False),
+    ("insan_birim_iliskisi", "insan_birim_iliskisi", 22, True),
+    ("not", "not", 40, True),
+]
+UNIT_HEAD = {h: k for k, h, _, _ in UNIT_COLS}
+UNIT_NOTE = ("İnce karar bu belgeleri başka bir bölüm/birimin belgesi saydı; eşleşmeleri reddedildi, kanıt "
+             "sayılmadı. Yanlışsa 'insan_birim_iliskisi' sütununda doğru ilişkiyi seçin (kendi, "
+             "ust_birim_bu_birim_hakkinda, fakulte_geneli, kurum_geneli; başka birim olduğunu onaylamak için "
+             "baska_birim) ve `bidr audit apply` çalıştırın. İnsan kararı modelinkinin önüne geçer: reddedilen "
+             "eşleşmeler geri gelir (fakülte/kurum geneli yalnız P, OD2) ve `bidr audit` ile tabloyu "
+             "yenileyince 'Eşleşmeler' sayfasında karar bekler. Eşleşme kaydı yoksa belge yeniden karara "
+             "işaretlenir (`bidr decide prepare --stage fine --only <belge kimliği>`; ilişkiyi model "
+             "değiştiremez). Boş hücre: model kararı geçerli.")
 
 # (anahtar, başlık, genişlik, kullanıcı doldurur mu)
 COLS = [
@@ -83,7 +105,7 @@ HELP = [
     "fakülte yönetim kurulu/senato/rektörlüğün bu birimi konu alan kararı (OD tavanı yok); "
     "fakulte_geneli / kurum_geneli = bütün birimleri kapsayan düzenleme ya da faaliyet (yalnız P, OD2); "
     "belirsiz (sarı) = model aitliği anlayamadı: sayıldı ama birimin belgesi olduğunu doğrulayın, "
-    "değilse ret. Başka birime ait belgeler tabloya gelmez; gaps.md'de listelenir.",
+    "değilse ret. Başka birime ait belgeler bu sayfaya gelmez; ayrı sayfada listelenir ve oradan geri alınabilir.",
     "Gri satır: sayılmayan eşleşme (ret; önceki yıl olayı = geçmiş kanıt; tarihi bilinmeyen ya da "
     "rapor yılından sonraki olay belgesi).",
     "Dönem kuralı (komisyon kararı): yapı belgesi (müfredat, ders kataloğu/bilgi formu, yönerge, iş akışı, "
@@ -98,6 +120,8 @@ HELP = [
     "Düzeltmek için 'kanıt adı' hücresini değiştirin; ad belgeye aittir, belgenin bir satırında "
     "değiştirmek yeter (satırlarda farklı adlar geçersiz). Kişi adı, unvan, e-posta yazmayın. "
     "`bidr audit apply` düzeltmeyi kanit-adlari.jsonl'e (kaynak: insan) yazar.",
+    f"'{SHEET_UNIT}' sayfası: modelin başka birime ait saydığı belgeler. 'insan_birim_iliskisi' "
+    "doldurulursa insan kararı modelinkinin önüne geçer (ayrıntı sayfanın ilk satırında).",
     "Tabloyu doldurduktan sonra: bidr audit apply -w <çalışma alanı>",
 ]
 
@@ -188,6 +212,8 @@ def write_review(a, path: Path) -> None:
         s.cell(row=n, column=3).font = Font(bold=True)
     s.freeze_panes = "C2"
 
+    _write_units(wb, getattr(a, "birim_sayfa", None) or [])
+
     h = wb.create_sheet(SHEET_HELP)
     h.column_dimensions["A"].width = 120
     for t in HELP:
@@ -196,13 +222,71 @@ def write_review(a, path: Path) -> None:
 
     m = wb.create_sheet(SHEET_META)
     for k, v in (("surum", 1), ("kararlar_sha", a.decisions_sha), ("profil", a.profile or ""),
-                 ("calisma_alani", str(a.ws.root)), ("satir", len(a.rows))):
+                 ("calisma_alani", str(a.ws.root)), ("satir", len(a.rows)),
+                 ("birim_sha", getattr(a, "birim_sha", "") or "")):
         m.append([k, v])
     m.sheet_state = "hidden"
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
     wb.save(tmp)
     tmp.replace(path)
+
+
+def _write_units(wb, items: list[dict]) -> None:
+    from bidr.decide.run import INSAN_ILISKILERI
+    u = wb.create_sheet(SHEET_UNIT)
+    u.append([UNIT_NOTE])
+    u.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(UNIT_COLS))
+    u.cell(row=1, column=1).alignment = Alignment(wrap_text=True, vertical="top")
+    u.row_dimensions[1].height = 75
+    u.append([h for _, h, _, _ in UNIT_COLS])
+    for i, (_, _, w, user) in enumerate(UNIT_COLS, 1):
+        c = u.cell(row=2, column=i)
+        c.font = Font(bold=True)
+        c.fill = F_USER if user else F_HEAD
+        c.alignment = Alignment(wrap_text=True, vertical="top")
+        u.column_dimensions[get_column_letter(i)].width = w
+    idx = {k: i for i, (k, _, _, _) in enumerate(UNIT_COLS, 1)}
+    for x in items:
+        u.append([x.get(k, "") for k, _, _, _ in UNIT_COLS])
+        n = u.max_row
+        for i in range(1, len(UNIT_COLS) + 1):
+            u.cell(row=n, column=i).alignment = Alignment(wrap_text=True, vertical="top")
+        for k in ("insan_birim_iliskisi", "not"):
+            u.cell(row=n, column=idx[k]).fill = F_USER
+    last = max(u.max_row, 3)
+    dv = DataValidation(type="list", formula1=f'"{",".join(INSAN_ILISKILERI)}"', allow_blank=True)
+    col = get_column_letter(idx["insan_birim_iliskisi"])
+    dv.add(f"{col}3:{col}{last}")
+    u.add_data_validation(dv)
+    u.freeze_panes = "C3"
+
+
+def read_unit_sheet(path: Path) -> list[dict] | None:
+    """Birim sayfasının satırları (iç anahtarlarla); sayfa yoksa (eski tablo) None. Başlık satırı
+    'belge kimliği' hücresiyle bulunur (üstteki açıklama satırı atlanır)."""
+    wb = load_workbook(path, read_only=True, data_only=True)
+    try:
+        if SHEET_UNIT not in wb.sheetnames:
+            return None
+        keys, rows = None, []
+        for vals in wb[SHEET_UNIT].iter_rows(values_only=True):
+            if keys is None:
+                hs = [str(v).strip() if v is not None else "" for v in vals]
+                if "belge kimliği" in hs:
+                    keys = [UNIT_HEAD.get(h) for h in hs]
+                    if "insan_birim_iliskisi" not in keys:
+                        raise ValueError(f"'{SHEET_UNIT}' başlıkları bozuk: insan_birim_iliskisi yok")
+                continue
+            r = {k: ("" if v is None else v) for k, v in zip(keys, vals) if k}
+            if str(r.get("doc_id") or "").strip():
+                r["doc_id"] = str(r["doc_id"]).strip()
+                rows.append(r)
+        if keys is None:
+            raise ValueError(f"'{SHEET_UNIT}' sayfasında 'belge kimliği' başlığı yok")
+        return rows
+    finally:
+        wb.close()
 
 
 def read_review(path: Path) -> tuple[dict, list[dict]]:
