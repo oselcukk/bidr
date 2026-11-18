@@ -311,6 +311,11 @@ def _transcribe_tamam(c: Ctx) -> Check:
     return transcribe_tamam(c)
 
 
+def _describe_tamam(c: Ctx) -> Check:
+    from bidr.describe.check import describe_tamam
+    return describe_tamam(c)
+
+
 def yok(c: Ctx) -> Check:
     return Check(neden="henüz uygulanmadı")
 
@@ -325,5 +330,6 @@ CHECKS: dict[str, Callable[[Ctx], Check]] = {
     "hakem_tamam": hakem_tamam,
     "audit_tamam": audit_tamam,
     "transcribe_tamam": _transcribe_tamam,
+    "describe_tamam": _describe_tamam,
     "yok": yok,
 }
