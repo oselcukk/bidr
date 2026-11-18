@@ -136,12 +136,30 @@ def flatten_conversation(messages: list[dict]) -> str:
     return "".join(parts)
 
 
+# claude-cli alt sürecinin ortamından varsayılan olarak çıkarılan değişkenler:
+# bunlar varken CLI aboneliği değil faturalı API'yi (ya da Bedrock/Vertex/Foundry) kullanır.
+CLAUDE_CLI_BILLING_ENV = (
+    "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
+    "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY",
+    "AWS_BEARER_TOKEN_BEDROCK",
+)
+
+
 class ClaudeCLI(Provider):
     """`claude -p`: istem stdin'den, `--output-format json`, araçsız, oturum kaydı yok.
 
     Çalışma klasörü boş bir geçici klasördür (proje CLAUDE.md'si yüklenmesin).
-    Ek bayraklar `args` ile verilir.
+    Ek bayraklar `args` ile verilir. Faturalı API'ye düşmemek için
+    `CLAUDE_CLI_BILLING_ENV` değişkenleri alt sürecin ortamından çıkarılır
+    (`allow_api_key: true` ile açıkça izin verilmedikçe); CLI aboneliği kullanır.
     """
+
+    def child_env(self) -> dict:
+        env = dict(os.environ)
+        if not self.cfg.allow_api_key:
+            for k in CLAUDE_CLI_BILLING_ENV:
+                env.pop(k, None)
+        return env
 
     def build_argv(self, system: str) -> list[str]:
         cfg = self.cfg
@@ -163,7 +181,7 @@ class ClaudeCLI(Provider):
         with tempfile.TemporaryDirectory(prefix="bidr-llm-") as cwd:
             try:
                 p = subprocess.run(argv, input=prompt, capture_output=True, text=True,
-                                   timeout=cfg.timeout, cwd=cwd)
+                                   timeout=cfg.timeout, cwd=cwd, env=self.child_env())
             except subprocess.TimeoutExpired:
                 raise ProviderError(f"claude-cli zaman aşımı ({cfg.timeout} sn)", transient=True) from None
             except OSError as e:

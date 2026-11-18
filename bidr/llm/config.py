@@ -19,6 +19,7 @@ LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
 _KEYS = {
     "provider", "model", "base_url", "api_key_env", "temperature", "max_tokens",
     "timeout", "max_retries", "retry_backoff", "params", "command", "args", "responses",
+    "allow_api_key",
 }
 
 
@@ -48,6 +49,7 @@ class ModelConfig:
     params: dict[str, Any] = field(default_factory=dict)  # istek gövdesine eklenir (HTTP sağlayıcılar)
     command: str | None = None          # claude-cli: çalıştırılabilir (yoksa PATH'te `claude`)
     args: list[str] = field(default_factory=list)         # claude-cli: ek bayraklar
+    allow_api_key: bool = False         # claude-cli: API anahtarı ortam değişkenleri alt sürece geçsin mi
     responses: list[Any] | None = None  # fake: sırayla verilecek yanıtlar (str, dict ya da çağrılabilir)
     no_remote: bool = False
     role: str = "default"
@@ -101,7 +103,8 @@ class ModelConfig:
 
 
 def _ws_root(workspace) -> Path:
-    root = getattr(workspace, "root", workspace)
+    # bidr.common.Workspace ya da yol (dikkat: Path'in de `.root` özniteliği var, "/" döner)
+    root = workspace if isinstance(workspace, (str, Path)) else getattr(workspace, "root", workspace)
     return Path(root).expanduser().resolve()
 
 
