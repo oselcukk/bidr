@@ -333,13 +333,14 @@ def _invalid_keys(gfile: Path, pattern: str) -> set[str]:
 
 def name_tamam(c: Ctx) -> Check:
     from bidr.name.resolve import decision_name, load_names
-    from bidr.name.run import _pkgs, eligible, task_version, work_dir
+    from bidr.name.run import _pkgs, decisions_view, eligible, task_version, work_dir
     from bidr.write.sources import rapor_section
     ws = c.ws
     if rapor_section(ws.root).get("kanit_adi_modeli") is False:
         return Check(atlandi=True, neden="config.yaml rapor.kanit_adi_modeli: false (adlar kuraldan ve incelemeden)")
     p = ws.root / "decisions.jsonl"
     recs = {r["doc_id"]: r for r in read_jsonl(p) if r.get("doc_id")} if p.exists() else {}
+    recs = decisions_view(ws, recs)             # insan birim kararı (name prepare ile aynı görünüm)
     pool = set(eligible(recs))
     if not pool:
         return Check(atlandi=True, neden="kabul edilmiş eşleşmesi olan belge yok")

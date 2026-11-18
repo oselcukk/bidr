@@ -172,17 +172,19 @@ satır = modelin `baska_birim` dediği ya da insanın birim kararı verdiği bel
 kimliği, çalışma adı, kanıt adı, modelin gerekçesi, birim yüzünden reddedilen eşleşmeler
 (ölçüt yuva · aşama · OD önerisi: alıntı, 160 karaktere kısaltılmış), durum, kullanıcı
 sütunları **insan_birim_iliskisi** (açılır liste: kendi, ust_birim_bu_birim_hakkinda,
-fakulte_geneli, kurum_geneli, baska_birim; `belirsiz` seçilemez) ve not. Yeniden üretilen
+fakulte_geneli, kurum_geneli, baska_birim, model; `belirsiz` seçilemez) ve not. Yeniden üretilen
 tabloda kayıtlı karar doludur; uygulanmamış birim kararı yeni tabloya taşınır.
 
 ## Birim ilişkisini geri alma
 
 Öncelik insan > model (kanıt adı/bağlantıdaki düzenle aynı). `audit apply` birim sayfasını
 okur ve `birim-kararlari.jsonl`'e yazar (`kaynak: insan`, `model_iliskisi`, `yeniden_karar`,
-not, zaman). Sayfadaki belge için sayfa esastır: boş hücre insan kararını kaldırır; sayfada
-olmayan belgenin kararı korunur. Geçersiz değer `birim_gecersiz` (çıkış 1; öteki kararlar
-işlenir). `decisions.jsonl` değişmez: audit ve file kaydı insan kararıyla görür
-(`decide.run.override_unit`).
+not, zaman). Boş hücre önceki insan kararını korur ("Eşleşmeler"deki boş KARAR hücresi gibi);
+kararı kaldırıp modelin kararına dönmek için `model` seçilir (`kaldirilan`). Sayfada olmayan
+belgenin kararı korunur. Geçersiz değer `birim_gecersiz` (çıkış 1; öteki kararlar işlenir).
+`decisions.jsonl` değişmez: audit, file ve name kaydı insan kararıyla görür
+(`decide.run.unit_view`; name: geri alınan belge kanıt sayılır, ince kararın `kanit_adi`'sı
+varsa o kullanılır, yoksa `bidr name prepare` paketler).
 
 - `baska_birim` dışı değer, modelin reddedilmiş eşleşmesi kayıtlıysa (red nedeni yalnız
   `baska_birim`): eşleşmeler geri yüklenir, `od_kabul` yeniden hesaplanır ve yeni ilişkinin
@@ -197,6 +199,14 @@ işlenir). `decisions.jsonl` değişmez: audit ve file kaydı insan kararıyla g
   insan`, modelin dediği `birim_iliskisi_model`). Görev sürümü değişmez; insan kararı audit'te
   uygulanan belge "istem değişti" sayılmaz.
 - `baska_birim` (onay): belge kanıt dışı kalır, gaps.md'de "(insan onayladı)".
+- İlişki ikinci kez değişirse (ör. önce `fakulte_geneli` → yeniden karar, OD2 düşüşü kayda
+  yazılır; sonra `kendi`): eski düşüş kayıtta kalır, görünüm kaldıramaz. Kayıt önceki insan
+  ilişkisiyle karara bağlandığından `yeniden_karar: true` olur; `bidr status/next` yine
+  `bidr decide prepare --stage fine --only <doc_id>` gösterir.
+- Ayrı `--out` kullanılırsa sabit birim ilişkisi yeniden karar paketine girmez: `bidr decide`
+  (ve `bidr name`) yalnız çalışma alanındaki `birim-kararlari.jsonl`'i okur. Yeniden karar
+  gerekiyorsa dosyayı çalışma alanına kopyalayın ya da inceleme klasörü olarak çalışma alanını
+  kullanın.
 
 ## apply
 

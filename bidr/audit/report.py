@@ -97,7 +97,7 @@ def _birim_sections(a) -> list[str]:
             L.append(f"- `{x['belge']}` (`{x['doc_id']}`)" + (" (insan onayladı)" if x.get("insan") else "")
                      + (f": {x['gerekce']}" if x["gerekce"] else ""))
     ins = [x for x in getattr(a, "birim_sayfa", None) or []
-           if x["insan_birim_iliskisi"] and x["insan_birim_iliskisi"] != "baska_birim"]
+           if x["insan_birim_iliskisi"] and x["insan_birim_iliskisi"] not in ("baska_birim", "model")]
     if ins:
         L += ["", "## Birim ilişkisi komisyonca değiştirilen belgeler", "",
               "İnsan kararı modelinkinin önüne geçti; belgeler yukarıdaki listeden çıktı.", ""]

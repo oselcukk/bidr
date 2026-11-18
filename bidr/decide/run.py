@@ -135,13 +135,27 @@ def pending_redecide(recs: dict[str, dict], pins: dict[str, dict]) -> list[str]:
 
 
 def needs_redecide(rec: dict | None, rel: str) -> bool:
-    """İnsan kararı `rel` bu kayıtta yeniden ince karar gerektirir mi: model başka birim dedi,
-    insan başka bir ilişki verdi ve geri yüklenecek eşleşme yok."""
+    """İnsan kararı `rel` bu kayıtta yeniden ince karar gerektirir mi: (a) model başka birim dedi,
+    insan başka bir ilişki verdi ve geri yüklenecek eşleşme yok; (b) kayıt önceki bir insan
+    kararıyla (başka birim dışı bir ilişkiyle) yeniden karara bağlanmıştı ve insan ilişkiyi
+    değiştirdi: eşleşmeler eski ilişkinin kuralını taşır (ör. önce fakülte geneli → OD2 düşüşü,
+    sonra kendi: düşüş kayıtta kalır), görünüm bunu geri alamaz."""
     if rel == BIRIM_DISI or not rec or pin_applied(rec, {"birim_iliskisi": rel}):
         return False
+    if ((rec.get("ince") or {}).get("birim_iliskisi_kaynagi") == "insan"
+            and record_unit_relation(rec) != BIRIM_DISI):
+        return True
     if record_unit_relation(rec) != BIRIM_DISI:
         return False
     return not any(restorable(m) for m in rec.get("eslesmeler") or [])
+
+
+def unit_view(rec: dict, pins: dict[str, dict] | None, tags: dict) -> dict:
+    """Kaydın etkin görünümü (öncelik insan > model): `pins`te (`load_unit_pins`) insan birim
+    kararı varsa `override_unit`, yoksa kaydın kendisi. audit, file (audit üzerinden) ve name
+    aynı görünümü kullanır; decisions.jsonl değişmez."""
+    pin = (pins or {}).get(rec.get("doc_id"))
+    return override_unit(rec, pin["birim_iliskisi"], tags) if pin else rec
 
 
 def override_unit(rec: dict, rel: str, tags: dict) -> dict:

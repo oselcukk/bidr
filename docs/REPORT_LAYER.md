@@ -15,7 +15,9 @@ Sahibi: şef. Aşamalar `bidr/data/pipeline.yaml`'da; tamamlanma denetimleri
 - `insan`: review.xlsx "kanıt adı" düzeltmesi (`bidr audit apply` → `kanit-adlari.jsonl`,
   inceleme klasörüne).
 - `model`: `bidr name prepare|apply` (ajan; isteğe bağlı aşama `name`, audit'ten önce) ya da
-  ince kararın `kanit_adi`'sı (classify_fine v7).
+  ince kararın `kanit_adi`'sı (classify_fine v7). `name` uygunluğu insan birim kararıyla
+  belirlenir (`birim-kararlari.jsonl`, audit/file ile aynı görünüm): geri alınan belge kanıttır;
+  ince kararın kabul edilmiş `kanit_adi`'sı olan belge paketlenmez.
 - `kural`: identify başlığı, yoksa tür etiketi (`bidr/file/naming.py`).
 Her ad yeniden denetlenir (kişi adı/unvan/e-posta yok); tutmayan kaynak atlanır.
 config.yaml `rapor.kanit_adi_modeli: false` `name` aşamasını atlar.

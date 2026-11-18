@@ -33,7 +33,8 @@ UNIT_NOTE = ("İnce karar bu belgeleri başka bir bölüm/birimin belgesi saydı
              "eşleşmeler geri gelir (fakülte/kurum geneli yalnız P, OD2) ve `bidr audit` ile tabloyu "
              "yenileyince 'Eşleşmeler' sayfasında karar bekler. Eşleşme kaydı yoksa belge yeniden karara "
              "işaretlenir (`bidr decide prepare --stage fine --only <belge kimliği>`; ilişkiyi model "
-             "değiştiremez). Boş hücre: model kararı geçerli.")
+             "değiştiremez). Boş hücre: önceki insan kararı korunur (karar yoksa model kararı geçerli); "
+             "insan kararını kaldırıp modelin kararına dönmek için 'model' seçin.")
 
 # (anahtar, başlık, genişlik, kullanıcı doldurur mu)
 COLS = [
@@ -233,12 +234,12 @@ def write_review(a, path: Path) -> None:
 
 
 def _write_units(wb, items: list[dict]) -> None:
-    from bidr.decide.run import INSAN_ILISKILERI
+    from .run import BIRIM_SECENEKLERI
     u = wb.create_sheet(SHEET_UNIT)
     u.append([UNIT_NOTE])
     u.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(UNIT_COLS))
     u.cell(row=1, column=1).alignment = Alignment(wrap_text=True, vertical="top")
-    u.row_dimensions[1].height = 75
+    u.row_dimensions[1].height = 90
     u.append([h for _, h, _, _ in UNIT_COLS])
     for i, (_, _, w, user) in enumerate(UNIT_COLS, 1):
         c = u.cell(row=2, column=i)
@@ -255,7 +256,7 @@ def _write_units(wb, items: list[dict]) -> None:
         for k in ("insan_birim_iliskisi", "not"):
             u.cell(row=n, column=idx[k]).fill = F_USER
     last = max(u.max_row, 3)
-    dv = DataValidation(type="list", formula1=f'"{",".join(INSAN_ILISKILERI)}"', allow_blank=True)
+    dv = DataValidation(type="list", formula1=f'"{",".join(BIRIM_SECENEKLERI)}"', allow_blank=True)
     col = get_column_letter(idx["insan_birim_iliskisi"])
     dv.add(f"{col}3:{col}{last}")
     u.add_data_validation(dv)

@@ -4,7 +4,11 @@
            temsilcinindir) `work/name/<doc_id>.json` iş paketi yazar: belge metninin başı,
            içerik alanları (tür, tarih, akademik dönem), identify başlığı, eşleştiği ölçütler
            ve alıntılar. Yol/dosya adı/çalışma adı pakete girmez (decide ile aynı ilke).
-           Model adı zaten olan belge paketlenmez (`--redo` ya da `--only` ile yeniden).
+           Model adı zaten olan belge (`kanit-adlari.jsonl` model kaydı ya da ince kararın
+           kabul edilmiş `kanit_adi`'sı) paketlenmez (`--redo` ya da `--only` ile yeniden).
+           Uygunluk insan birim kararıyla (`birim-kararlari.jsonl`, insan > model) belirlenir:
+           başka birim sayılıp komisyonca geri alınan belgenin geri yüklenen eşleşmeleri kanıttır;
+           komisyonun başka birim onayladığı belgeninki değildir (audit/file ile aynı görünüm).
   apply    `<doc_id>.out.json` cevaplarını şemaya ve `check_name`'e göre doğrular,
            `kanit-adlari.jsonl`'e `kaynak: model` olarak yazar. Kişi adı/unvan/e-posta içeren
            ya da biçimsiz ad reddedilir (`GECERSIZ.md`), belge kural adında kalır.
@@ -20,7 +24,7 @@ from bidr.common import Workspace, read_jsonl
 from bidr.decide import prompt as P
 
 from .check import check_name
-from .resolve import NAMES, load_names, upsert
+from .resolve import NAMES, decision_name, load_names, upsert
 
 TASK = "name_evidence"
 NAME_CHARS = 2500        # belge metni bütçesi (baş ağırlıklı)
@@ -61,6 +65,22 @@ def _decisions(ws: Workspace) -> dict[str, dict]:
     return {r["doc_id"]: r for r in read_jsonl(p) if r.get("doc_id")}
 
 
+def decisions_view(ws: Workspace, recs: dict[str, dict] | None = None, cs=None) -> dict[str, dict]:
+    """Kararların insan birim kararıyla görünümü (`bidr.decide.run.unit_view`; insan > model).
+    Birim kararları decide gibi çalışma alanındaki `birim-kararlari.jsonl`'den okunur."""
+    from bidr.decide.run import load_unit_pins, unit_view
+    recs = _decisions(ws) if recs is None else recs
+    pins = load_unit_pins(ws.root)
+    if not pins:
+        return recs
+    from bidr.criteria.slots import load_tags
+    if cs is None:
+        from bidr.criteria.loader import load_criteria
+        cs = load_criteria()
+    tags = load_tags(cs)
+    return {d: unit_view(r, pins, tags) for d, r in recs.items()}
+
+
 def eligible(recs: dict[str, dict]) -> list[str]:
     """Kabul edilmiş eşleşmesi olan, kararı devralmamış (temsilci ya da tekil) belgeler."""
     out = []
@@ -99,8 +119,10 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
             render=None) -> dict:
     if render is None:
         from bidr.llm import render_task as render
+    from bidr.criteria.loader import load_criteria
     ws = Workspace(ws_root)
-    recs = _decisions(ws)
+    cs = load_criteria()
+    recs = decisions_view(ws, cs=cs)
     docs = {r["doc_id"]: r for r in read_jsonl(ws.documents)} if ws.documents.exists() else {}
     have = load_names(ws.root)
     d = work_dir(ws)
@@ -113,10 +135,8 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
         ids = [x for x in ids if x in pool]
     else:
         ids = pool
-    from bidr.criteria.loader import load_criteria
-    cs = load_criteria()
     for did in ids:
-        if only is None and not redo and "model" in (have.get(did) or {}):
+        if only is None and not redo and ("model" in (have.get(did) or {}) or decision_name(recs[did])):
             st["zaten_adli"] += 1
             continue
         r = render(TASK, inputs_of(ws, did, recs[did], docs.get(did), cs))

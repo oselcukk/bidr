@@ -18,8 +18,8 @@ from bidr.criteria.model import CriteriaSet, id_key
 from bidr.criteria.profiles import load_profile
 from bidr.criteria.slots import STAGE_OD, SlotTag, load_tags
 from bidr.decide.run import (BIRIM_BELIRSIZ, BIRIM_DISI, BIRIM_KARARLARI, GENEL_ILISKI, INSAN_ILISKILERI,
-                             load_unit_pins, needs_redecide, override_unit, pin_applied,
-                             record_unit_relation)
+                             load_unit_pins, needs_redecide, pin_applied, record_unit_relation,
+                             unit_view)
 
 from . import donem as D
 from .rules import (GEREKEN, KARAR_TURLERI, KISA, KURUM_GENELI_TURLER, LINKS, criterion_od,
@@ -438,7 +438,7 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
         n_ince += 1
         pin = pins.get(orig["doc_id"])
         # insan birim kararı (öncelik insan > model): kaydın görünümü değişir, dosya değişmez
-        rec = override_unit(orig, pin["birim_iliskisi"], tags) if pin else orig
+        rec = unit_view(orig, pins, tags)
         if pin or record_unit_relation(orig) == BIRIM_DISI:
             sayfa.append(_unit_row(orig, rec, pin, docs, names(orig["doc_id"])[0]))
         rel = record_unit_relation(rec)
@@ -524,10 +524,9 @@ def audit(ws_root: Path, *, out: Path | None = None, profile: str | None = None)
                        and str(xr.get("baglanti")).strip() != str(xr.get("baglanti_oneri") or "").strip()}
         pins = load_unit_pins(outp)
         for ur in sheet.read_unit_sheet(old) or []:
-            v, nt = _unit_cell(ur), str(ur.get("not") or "").strip()
-            p = pins.get(ur["doc_id"]) or {}
-            if (v, nt) != (p.get("birim_iliskisi") or "", p.get("not") or "") and (v or p):
-                carry_units[ur["doc_id"]] = (str(ur.get("insan_birim_iliskisi") or "").strip(), nt)
+            if _unit_pending(ur, pins.get(ur["doc_id"])):
+                carry_units[ur["doc_id"]] = (str(ur.get("insan_birim_iliskisi") or "").strip(),
+                                             str(ur.get("not") or "").strip())
         if carry:
             uy.append(f"{len(carry)} karar tabloda vardı ama uygulanmamıştı: yeni tabloya taşındı "
                       f"(OD'ye yansıması için `bidr audit apply`)")
@@ -631,17 +630,35 @@ def parse_decision(xr: dict, cs: CriteriaSet) -> tuple[dict | None, str | None]:
     return rec, None
 
 
+# Birim sayfası açılır listesindeki ek seçenek: insan kararını kaldır, modelin kararına dön.
+MODEL_DON = "model"
+BIRIM_SECENEKLERI = (*INSAN_ILISKILERI, MODEL_DON)
+
+
 def _unit_cell(ur: dict) -> str:
     """Birim sayfası hücresi → normalleştirilmiş değer ('' boş; geçersizse ham metin)."""
     raw = str(ur.get("insan_birim_iliskisi") or "").strip()
     v = _norm(raw).replace(" ", "_").replace("-", "_")
-    return v if v in INSAN_ILISKILERI else raw
+    return v if v in BIRIM_SECENEKLERI else raw
+
+
+def _unit_pending(ur: dict, pin: dict | None) -> bool:
+    """Sayfa satırı uygulanmamış bir değişiklik taşıyor mu. Boş hücre önceki kararı korur
+    (ana sayfadaki boş KARAR gibi): değişiklik değildir; `model` yalnız karar varsa değişikliktir."""
+    v = _unit_cell(ur)
+    if not v:
+        return False
+    if v == MODEL_DON:
+        return bool(pin)
+    p = pin or {}
+    return (v, str(ur.get("not") or "").strip()) != (p.get("birim_iliskisi") or "", p.get("not") or "")
 
 
 def parse_units(urows: list[dict], prev: dict[str, dict], recs: dict[str, dict]
                 ) -> tuple[dict[str, dict], dict[str, str], dict]:
-    """Birim sayfası → yeni birim kararları (sayfadaki belgeler için sayfa esastır: boş hücre
-    kararı kaldırır; sayfada olmayan belgelerin kararı korunur). (kararlar, hatalar, özet)."""
+    """Birim sayfası → yeni birim kararları. Boş hücre önceki insan kararını korur (ana sayfadaki
+    boş KARAR hücresi gibi); `model` kararı kaldırır (modelin kararına dönülür); sayfada olmayan
+    belgelerin kararı korunur. (kararlar, hatalar, özet)."""
     import time
     out = dict(prev)
     errs: dict[str, str] = {}
@@ -653,11 +670,14 @@ def parse_units(urows: list[dict], prev: dict[str, dict], recs: dict[str, dict]
         v = _unit_cell(ur)
         nt = str(ur.get("not") or "").strip()
         if not v:
+            continue
+        if v == MODEL_DON:
             if out.pop(did, None):
                 oz["kaldirilan"].append(did)
             continue
         if v not in INSAN_ILISKILERI:
-            errs[f"birim:{did}"] = (f"insan_birim_iliskisi '{v}' geçersiz ({', '.join(INSAN_ILISKILERI)})")
+            errs[f"birim:{did}"] = (f"insan_birim_iliskisi '{v}' geçersiz ({', '.join(BIRIM_SECENEKLERI)}; "
+                                    f"boş: önceki karar korunur)")
             continue
         rec = recs.get(did)
         p = prev.get(did) or {}
@@ -718,9 +738,7 @@ def review_state(out: Path, ws_root: Path | None = None) -> dict:
                 pend.add(f"baglanti:{did}")
     pins = load_unit_pins(out)
     for ur in sheet.read_unit_sheet(x) or []:
-        p = pins.get(ur["doc_id"]) or {}
-        if ((_unit_cell(ur), str(ur.get("not") or "").strip())
-                != (p.get("birim_iliskisi") or "", p.get("not") or "")) and (_unit_cell(ur) or p):
+        if _unit_pending(ur, pins.get(ur["doc_id"])):
             pend.add(f"birim:{ur['doc_id']}")
     st["uygulanmamis_duzeltme"] = len(pend)
     return st

@@ -75,6 +75,9 @@ def test_sheet_lists_other_unit_docs_with_rejected_matches(ws):
     assert rec["insan_birim_iliskisi"] is None and rec["gerekce"]
     dv = [d for d in sh.data_validations.dataValidation if "kendi" in (d.formula1 or "")]
     assert dv and "belirsiz" not in dv[0].formula1 and "baska_birim" in dv[0].formula1
+    assert dv[0].formula1.strip('"').split(",")[-1] == "model"                 # modelin kararına dön
+    note = str(sh.cell(row=1, column=1).value)
+    assert "'model'" in note and "Boş hücre: önceki insan kararı korunur" in note
     g = paths["gaps"].read_text(encoding="utf-8")
     assert "## Başka birime ait sayılan belgeler" in g and SHEET_UNIT in g and f"`{x}`" in g
 
@@ -114,11 +117,23 @@ def test_revert_with_matches_restores_rows_for_review(ws):
     pst = prepare(root, "fine", backend=Rel("baska_birim").backend())
     assert x not in pst["eski"]
     assert karar_tamam(_karar_ctx(root)).bitti
-    # boş hücre insan kararını kaldırır: model kararı geçerli
+    # boş hücre önceki insan kararını korur (ana sayfadaki boş KARAR gibi)
     _set_unit(paths["xlsx"], x, "")
+    assert review_state(root)["uygulanmamis_duzeltme"] == 0
+    st = audit_apply(root)
+    assert st["birim"] == {} and R.load_unit_pins(root)[x]["birim_iliskisi"] == "kendi"
+    assert f"{x}|B.2.3/2" in build(root).by_key
+    # `model`: insan kararını kaldırır, modelin kararına dönülür
+    _set_unit(paths["xlsx"], x, "model")
+    assert review_state(root)["uygulanmamis_duzeltme"] == 1
     st = audit_apply(root)
     assert st["birim"] == {"kaldirilan": [x]} and not (root / FILES["birim"]).exists()
     assert f"{x}|B.2.3/2" not in build(root).by_key
+    # karar yokken `model` değişiklik değildir
+    a, paths = audit(root)
+    _set_unit(paths["xlsx"], x, "model")
+    assert review_state(root)["uygulanmamis_duzeltme"] == 0
+    assert audit_apply(root)["birim"] == {}
 
 
 def test_revert_to_faculty_wide_caps_od2(ws):
@@ -259,3 +274,91 @@ def test_old_review_without_unit_sheet(ws):
     (root / FILES["birim"]).unlink()
     assert review_state(root)["guncel"]
     audit(root)                                       # eski tablodan yenisi sorunsuz üretilir
+
+
+# -- yeniden karar: önceki insan ilişkisinden kalan OD2 düşüşü -----------------------------------
+
+def _redecide(root, x, fake):
+    b = fake.backend()
+    prepare(root, "fine", backend=b, only=[x])
+    _agent(root, fake, "fine")
+    apply(root, "fine", backend=b)
+
+
+def test_faculty_then_own_needs_redecision(ws):
+    root, ids = ws
+    x = ids["ekle"]
+    _other_unit(root, drop_matches=True)
+    _, paths = audit(root)
+    _set_unit(paths["xlsx"], x, "fakulte_geneli")
+    assert audit_apply(root)["birim"] == {"yeniden_karar": [x]}
+    fake = Rel("baska_birim")
+    _redecide(root, x, fake)
+    assert _recs(root)[x]["eslesmeler"][0]["od_kabul"] == 2                    # fakülte geneli: OD2
+    a, paths = audit(root)
+    assert a.by_key[f"{x}|B.2.3/2"]["od"] == 2
+    # komisyon ilişkiyi `kendi` yapar: kayıttaki OD2 düşüşü görünümle kalkmaz → yeniden karar
+    _set_unit(paths["xlsx"], x, "kendi")
+    assert audit_apply(root)["birim"] == {"yeniden_karar": [x]}
+    ck = karar_tamam(_karar_ctx(root))
+    assert not ck.bitti and ck.komutlar == [f"bidr decide prepare --stage fine --only {x}"]
+    u = {r["doc_id"]: r for r in read_unit_sheet(audit(root)[1]["xlsx"])}
+    assert "yeniden karar gerekli" in u[x]["durum"]
+    _redecide(root, x, fake)
+    rec = _recs(root)[x]
+    assert rec["ince"]["birim_iliskisi"] == "kendi" and rec["eslesmeler"][0]["od_kabul"] == 3
+    assert karar_tamam(_karar_ctx(root)).bitti
+
+
+# -- name: insan birim kararı (insan > model) ---------------------------------------------------
+
+def _clear_decision_name(root, did):
+    recs = _recs(root)
+    recs[did]["ince"].pop("kanit_adi", None)
+    (root / "decisions.jsonl").write_text("".join(json.dumps(recs[k], ensure_ascii=False) + "\n"
+                                                  for k in sorted(recs)), encoding="utf-8")
+
+
+def test_name_sees_reverted_doc(ws):
+    from bidr.name import run as NR
+    from bidr.name.resolve import Resolver
+    root, ids = ws
+    x = ids["ekle"]
+    _other_unit(root)
+    _clear_decision_name(root, x)                      # ince kararda model adı yok
+    assert x not in NR.eligible(NR.decisions_view(Workspace(root)))
+    _, paths = audit(root)
+    _set_unit(paths["xlsx"], x, "kendi")
+    audit_apply(root)
+    # geri alınan belge kanıt: name paketine girer (geri yüklenen eşleşmeyle)
+    assert x in NR.eligible(NR.decisions_view(Workspace(root)))
+    st = NR.prepare(root)
+    pkg = json.loads((root / "work" / "name" / f"{x}.json").read_text(encoding="utf-8"))
+    assert "B.2.3" in pkg["istem"] and st["paket"] >= 1
+    from bidr.pipeline.checks import name_tamam
+    nst = {"komut": ["bidr name prepare", "(ajan)", "bidr name apply"]}
+    ck = name_tamam(Ctx(Workspace(root), {}, lambda t: t, nst))
+    assert not ck.bitti and ck.ilerleme["belge"] >= 1
+    # komisyon başka birim onaylarsa kanıt değildir
+    _, paths = audit(root)
+    _set_unit(paths["xlsx"], x, "baska_birim")
+    audit_apply(root)
+    assert x not in NR.eligible(NR.decisions_view(Workspace(root)))
+    assert Resolver.load(root).resolve(x)[1] == "kural"
+
+
+def test_name_uses_fine_decision_name_for_reverted_doc(ws):
+    from bidr.name import run as NR
+    from bidr.name.resolve import Resolver
+    root, ids = ws
+    x = ids["ekle"]
+    _other_unit(root)                                  # ince kararda kanit_adi var
+    _, paths = audit(root)
+    _set_unit(paths["xlsx"], x, "kendi")
+    audit_apply(root)
+    assert x in NR.eligible(NR.decisions_view(Workspace(root)))
+    st = NR.prepare(root)
+    assert not (root / "work" / "name" / f"{x}.json").exists() and st["zaten_adli"] >= 1
+    assert Resolver.load(root).resolve(x)[:2] == ("Bölüm Kurulu Kararı", "model")
+    a, _ = audit(root)
+    assert a.by_key[f"{x}|B.2.3/2"]["kanit_adi"] == "Bölüm Kurulu Kararı"
