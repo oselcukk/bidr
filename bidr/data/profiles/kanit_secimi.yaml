@@ -1,0 +1,33 @@
+# Kanıt seçimi: audit'in kabul ettiği eşleşmelerden hangilerinin yayımlanan kanıt listesine
+# (evidence-index.csv, evidence/) gireceği. Ayrıntı: docs/REPORT_LAYER.md "Kanıt seçimi".
+#
+# Audit OD'si bu seçimden etkilenmez: OD bütün kabul edilmiş eşleşmelerden hesaplanır.
+# Seçim yalnız yayımlanan listeyi ve dosyalamayı sınırlar; elenen her belge nedeniyle
+# gaps.md "Kanıt seçimi" bölümünde ve evidence-secim.json'da görünür.
+#
+# Kurum bu dosyayı BIDR_PROFILES_DIR ile, çalışma alanı config.yaml `rapor: kanit_secimi:`
+# altındaki anahtarlarla değiştirir (anahtar anahtar; yazılmayan buradan gelir).
+
+# Ölçüt başına atıfsız kanıt üst sınırı. Metinde atıf yapılan kanıtlar (write sonrası)
+# sınıra sayılmaz; insan onaylı (review.xlsx kabul/duzelt) ve OD zinciri için gereken kanıt
+# sınıra sayılır ama sınır yüzünden düşmez. null: sınır yok.
+olcut_basina_en_fazla: 6
+
+# Kurum/fakülte geneli düzenlemeler (yönetmelik, yönerge, kurum geneli ilişkili belge) bir
+# ölçütte en çok bu kadar; madde alıntısı olanlar önce. Kalanlar gaps.md "Elenen kurum geneli
+# belgeler".
+kurum_geneli_en_fazla: 2
+
+# Atıfsız kanıt için en düşük model güveni (yuksek | orta | dusuk).
+en_dusuk_guven: orta
+
+# Bu işaretlerden biri eşleşmenin belge türü/yuva bağının dolaylı olduğunu gösterir. Belgenin
+# o ölçütteki her sayılan eşleşmesi böyle işaretliyse belge atıfsız listeye girmez.
+dolayli_isaretler:
+  - asama_yuva_etiketine_uymuyor   # model aşaması yuva etiketine uymuyor
+  - asama_dusuruldu                # kod OD'yi düşürdü (aşama yuvaya ya da modele uymadı)
+  - birim_aitligi_dogrulanmali     # birim ilişkisi belirsiz
+
+# Aynı belgenin sürümleri (identify `surum_grubu`) bir ölçütte tek kanıt sayılır; farklı
+# döneme ait veri taşıyanlar ve boş şablon / dolu form ayrı kalır.
+surum_birlestir: true

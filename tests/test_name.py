@@ -189,11 +189,13 @@ def test_file_od_excludes_low_confidence_unless_reviewed(env, tmp_path):
     k = by[("B.1.1", "d_karar")]
     assert k["od"] == "2" and "dusuk_guven_od_disi" in k["isaretler"]            # eskiden OD3
     assert by[("B.1.1", "d_anket")]["od"] == "4"                                   # yüksek güvenli Ö
-    # yalnız düşük güvenli eşleşmesi olan: dosyalanır, OD sayılmadı diye işaretli
+    # yalnız düşük güvenli eşleşmesi olan: kanıt seçimi (K18) yayımlamaz; gaps.md'de nedeniyle görünür
     _set_guven(ws, "d_kom", "A.1.1/1", "dusuk")
-    FR.run(ws, out=out, source=src)
-    kom = next(r for r in _index(out) if r["doc_id"] == "d_kom")
-    assert {"dusuk_guven_od_disi", "od_sayilmadi"} <= set(kom["isaretler"].split(", "))
+    st = FR.run(ws, out=out, source=src)
+    assert not any(r["doc_id"] == "d_kom" for r in _index(out)) and st["elenen"] == 1
+    sec = json.loads((out / "evidence-secim.json").read_text(encoding="utf-8"))
+    assert [(d["doc_id"], d["neden"]) for d in sec["elenen"]] == [("d_kom", "dusuk_guven")]
+    assert "`d_kom`" in (out / "gaps.md").read_text(encoding="utf-8")
     # inceleme kabul ederse katılır
     (ws / FR.REVIEW).write_text(json.dumps(
         {"satir": "d_karar|B.1.1/3", "doc_id": "d_karar", "olcut": "B.1.1", "yuva": "B.1.1/3",

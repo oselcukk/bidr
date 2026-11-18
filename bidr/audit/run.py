@@ -480,8 +480,10 @@ def write_outputs(a: Audit, *, xlsx: bool = True) -> dict[str, Path]:
     a.out.mkdir(parents=True, exist_ok=True)
     paths = {"gaps": a.out / FILES["gaps"], "json": a.out / FILES["json"]}
     from bidr.file.links import extract_block
+    from bidr.file.select import GAPS_BEGIN, GAPS_END
     old = paths["gaps"].read_text(encoding="utf-8") if paths["gaps"].exists() else ""
-    keep = extract_block(old)            # `bidr file`/render'ın "bağlantı yok" bölümü korunur
+    # `bidr file`/render'ın "bağlantı yok" ve file'ın "kanıt seçimi" bölümleri korunur
+    keep = "\n".join(b for b in (extract_block(old, GAPS_BEGIN, GAPS_END), extract_block(old)) if b)
     paths["gaps"].write_text(report.gaps_md(a) + (("\n" + keep) if keep else ""), encoding="utf-8")
     js = {"surum": SURUM, "calisma_alani": str(a.ws.root), "profil": a.profile,
           "kararlar_sha": a.decisions_sha, "donem": a.donem, "od_dagilimi": od_distribution(a),

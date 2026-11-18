@@ -29,6 +29,10 @@ düzeyler (rubrik 2-5 ile, `slots.STAGE_OD` ile aynı):
 | OD5 | + ozgun (Z) |
 
 Önerilen OD = 2'den başlayarak **kesintisiz** sağlanan en yüksek düzey; hiçbiri yoksa OD1.
+OD bütün kabul edilmiş eşleşmelerden hesaplanır; `bidr file`'ın kanıt seçimi (ilgililik, kurum
+geneli sınırı, sürüm/kopya birleştirme; docs/REPORT_LAYER.md "Kanıt seçimi") yalnız
+yayımlanan kanıt listesini sınırlar, OD'yi değiştirmez; her sayılan halka listede en az bir
+kanıtla kalır.
 Zincir eksikse düşük düzey: P+U+K (Ö yok) → OD3; P+U+Z (K/Ö yok) → OD3.
 
 Bir düzey şu durumda sağlanır: o düzeyin her halkası kanıtlı ya da ölçütte o halkaya ait
@@ -141,6 +145,10 @@ aynı listeleri ve `insan_karari`'nı taşır.
 Dönem bölümleri (varsa): gözden geçirme döngüleri ve döngü önerileri, geçmiş kanıtlar
 (süreklilik), tarihi doğrulanacak olay belgeleri, güncelliği doğrulanacak belgeler.
 
+`bidr file`'ın işaretli bölümleri audit yeniden yazarken korunur: "Kanıt seçimi"
+(`<!-- bidr:kanit-secimi -->`: elenen kurum geneli belgeler, listeye alınmayan diğer belgeler,
+tek kanıt sayılan sürümler, sürümü doğrulanacak belgeler) ve "Bağlantısı olmayan kanıtlar".
+
 ## review.xlsx
 
 "Eşleşmeler" sütunları: satır kimliği (`<doc_id>|<yuva>`), belge çalışma adı, tür, birim ilişkisi
@@ -223,7 +231,7 @@ e-posta içeren ad geçersizdir (`kanit_adi_gecersiz`, çıkış 1; öteki karar
 `baglanti_gecersiz`, çıkış 1). Birim sayfası yukarıdaki gibi işlenir; sayfası olmayan eski
 tablo sorunsuz okunur (birim kararları değişmez). Paket verisi (`bidr/data/criteria/`) değişmez; öneriyi
 işlemek kullanıcı onayıyla ayrı bir adımdır. gaps.md yeniden yazılırken `bidr file`/`render`'ın
-"Bağlantısı olmayan kanıtlar" bölümü korunur.
+"Bağlantısı olmayan kanıtlar" ve `bidr file`'ın "Kanıt seçimi" bölümleri korunur.
 
 ## Tamamlanma şartı (`audit_tamam`)
 

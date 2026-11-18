@@ -264,18 +264,19 @@ def gaps_block(rows: list[dict]) -> str:
     return "\n".join(L) + "\n"
 
 
-def extract_block(text: str) -> str | None:
-    a, b = text.find(GAPS_BEGIN), text.find(GAPS_END)
+def extract_block(text: str, begin: str = GAPS_BEGIN, end: str = GAPS_END) -> str | None:
+    a, b = text.find(begin), text.find(end)
     if a < 0 or b < a:
         return None
-    return text[a:b + len(GAPS_END)] + "\n"
+    return text[a:b + len(end)] + "\n"
 
 
-def update_gaps(path: Path, block: str) -> None:
-    """gaps.md'deki bölümü değiştirir (yoksa sona ekler). gaps.md yoksa yalnız bölüm yazılır."""
+def update_gaps(path: Path, block: str, begin: str = GAPS_BEGIN, end: str = GAPS_END) -> None:
+    """gaps.md'deki işaretli bölümü değiştirir (yoksa sona ekler). gaps.md yoksa yalnız bölüm
+    yazılır. Varsayılan bölüm "bağlantı yok"; `bidr file` ayrıca "kanıt seçimi" bölümünü yazar."""
     path = Path(path)
     cur = path.read_text(encoding="utf-8") if path.exists() else ""
-    old = extract_block(cur)
+    old = extract_block(cur, begin, end)
     if old is not None:
         new = cur.replace(old, block)
     else:

@@ -4,7 +4,9 @@
 Girdi (salt okunur): `decisions.jsonl`, `documents.jsonl`, `inventory.csv`, `text/`
 (çalışma alanı); varsa `review-decisions.jsonl` (`review` klasörü, vars. çalışma alanı);
 kaynak klasör. Eşleşme kümesi ve sayılan aşama/OD `bidr.audit.run.build` ile aynı kurallarla
-hesaplanır (ret düşer, duzelt düzeltilmiş ölçüt/yuva/aşamayla girer).
+hesaplanır (ret düşer, duzelt düzeltilmiş ölçüt/yuva/aşamayla girer). Yayımlanan liste bu
+kümeden kanıt seçimiyle (`select.py`: sürüm/kopya birleştirme, ilgililik, üst sınırlar) seçilir;
+audit OD'si seçimden etkilenmez, elenenler `evidence-secim.json` ve gaps.md "Kanıt seçimi"nde.
 
 Kaynak dosyalara yalnız okumak için dokunulur; çıktı klasörü kaynağın içinde olamaz.
 """
@@ -13,6 +15,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import re
 import shutil
 import zipfile
 from collections import Counter
@@ -154,8 +157,20 @@ class Item:
     spans: list
     sayilir: bool
     inceleme: str
-    kopyalar: list[str] = field(default_factory=list)
+    kopyalar: list[str] = field(default_factory=list)          # mükerrer metin (decide `mukerrer`)
     isaretler: list[str] = field(default_factory=list)
+    # kanıt seçimi (bidr/file/select.py) için
+    asamalar: set[str] = field(default_factory=set)            # OD'ye sayılan (düşük güvenli olmayan) halkalar
+    asamalar_tum: set[str] = field(default_factory=set)        # bütün satırların etkin aşamaları
+    guven: str = ""                                            # sayılan satırların en yüksek güveni
+    insan: bool = False                                        # inceleme kararı duzelt (insan yerleştirdi)
+    onay: bool = False                                         # inceleme kararı kabul
+    kurum_geneli: bool = False
+    madde: bool = False                                        # alıntıda madde atfı
+    dolayli_isaretler: set[str] = field(default_factory=set)
+    dolayli: bool = False                                      # her sayılan satırı dolaylı işaretli
+    kopyalar_surum: list[str] = field(default_factory=list)    # tek kanıt sayılan sürümler
+    secim: str = ""                                            # neden yayımlandı (select.NEDEN)
 
 
 def _names_sha(ws_root: Path, review_dir: Path) -> str:
@@ -180,9 +195,23 @@ def _canonical(recs: dict[str, dict]) -> dict[str, str]:
     return can
 
 
-def plan(ws_root: Path, *, review_dir: Path | None = None, profile: str | None = None
-         ) -> tuple[list[Item], dict]:
+_MADDE = re.compile(r"\bmadde\b|\bmd\.\s*\d")
+_GUVEN = {"dusuk": 0, "orta": 1, "yuksek": 2}
+
+
+def _best_guven(rows: list[dict]) -> str:
+    gs = [r.get("guven") or "orta" for r in rows]        # eski kayıtta güven yok: orta
+    return max(gs, key=lambda g: _GUVEN.get(g, 1)) if gs else ""
+
+
+def plan(ws_root: Path, *, review_dir: Path | None = None, profile: str | None = None,
+         prev_index: Path | None = None, select: bool = True) -> tuple[list[Item], dict]:
+    """Eşleşme kümesi (audit'le aynı kurallar) → yayımlanacak kalemler. `select` kanıt
+    seçimini (bidr/file/select.py) uygular; elenenler `meta["secim"]`'de."""
     from bidr.audit.run import build
+    from bidr.identify.text import fold
+
+    from . import select as S
     from bidr.decide.run import restorable
     ws = Workspace(ws_root)
     review_dir = Path(review_dir).expanduser().resolve() if review_dir else ws.root
@@ -196,6 +225,7 @@ def plan(ws_root: Path, *, review_dir: Path | None = None, profile: str | None =
         for m in r.get("eslesmeler") or []:
             if m.get("kabul") or restorable(m):     # insan birim kararıyla geri alınabilen de
                 spans[(did, m["yuva"])] = (m.get("denetim") or {}).get("alinti_konum")
+    settings = S.load_settings(ws.root)
     can = _canonical(recs)
     groups: dict[tuple[str, str], list[dict]] = {}
     for row in a.rows:
@@ -224,17 +254,62 @@ def plan(ws_root: Path, *, review_dir: Path | None = None, profile: str | None =
             inc = ",".join(sorted(ks))
         else:
             inc = "yapilmadi"
+        alintilar = list(dict.fromkeys(r["alinti"] for r in own if r["alinti"]))
+        dol = [set(r["flags"]) & set(settings.dolayli) for r in (counted or rows)]
         items.append(Item(
             olcut=olcut, doc_id=rep, od=max(ods),
             yuvalar=sorted({r["yuva"] for r in rows}, key=lambda y: (y.split("/")[0], int(y.split("/")[1]))),
-            alintilar=list(dict.fromkeys(r["alinti"] for r in own if r["alinti"])),
+            alintilar=alintilar,
             spans=[spans.get((rep, r["yuva_model"])) for r in own],
             sayilir=bool(counted), inceleme=inc, kopyalar=[x for x in ids if x != rep],
-            isaretler=flags))
+            isaretler=flags,
+            asamalar={r["etkin_asama"] for r in counted},
+            asamalar_tum={r["etkin_asama"] for r in rows if r["etkin_asama"]},
+            guven=_best_guven(counted or rows),
+            insan=any(r["karar"] == "duzelt" for r in rows),
+            onay=any(r["karar"] == "kabul" for r in rows),
+            kurum_geneli=all("kurum_geneli" in r["flags"] for r in rows if r["karar"] != "duzelt")
+            and any(r["karar"] != "duzelt" for r in rows),
+            madde=any(_MADDE.search(fold(q)) for q in alintilar),
+            dolayli_isaretler=set().union(*dol) if dol else set(),
+            dolayli=bool(dol) and all(dol)))
     meta = {"inceleme": reviewed, "review": str(rpath) if reviewed else None,
             "kararlar_sha": _sha(ws.root / "decisions.jsonl"), "inceleme_sha": _sha(rpath),
-            "profil": a.profile}
+            "profil": a.profile, "secim_sha": settings.sha(), "secim": None}
+    if select:
+        items, meta["secim"] = _select(ws, items, settings, prev_index or ws.root / INDEX)
     return items, meta
+
+
+def _select(ws: Workspace, items: list[Item], settings, prev_index: Path) -> tuple[list[Item], dict]:
+    """Ölçüt ölçüt sürüm birleştirme (K20) ve ilgililik seçimi (K18); bkz. bidr/file/select.py."""
+    from . import select as S
+    docs = {r["doc_id"]: r for r in read_jsonl(ws.documents)} if ws.documents.exists() else {}
+    cited, atiflar, uy = S.cited_docs(ws.root, prev_index, prev_index.parent / S.SECIM)
+    texts: dict[str, str] = {}
+
+    def text_of(did: str) -> str:
+        if did not in texts:
+            p = ws.text_path(did)
+            texts[did] = p.read_text(encoding="utf-8", errors="replace") if p.exists() else ""
+        return texts[did]
+
+    by_c: dict[str, list[Item]] = {}
+    for it in items:
+        by_c.setdefault(it.olcut, []).append(it)
+    kept: list[Item] = []
+    dropped: list[dict] = []
+    merges: list[dict] = []
+    for olcut in sorted(by_c):
+        lst = by_c[olcut]
+        if settings.surum_birlestir:
+            lst, mg = S.merge_versions(lst, docs, text_of, cited.get(olcut, set()))
+            merges += mg
+        k, d = S.select(lst, settings, cited.get(olcut, set()), docs)
+        kept += k
+        dropped += d
+    return kept, {"settings": settings, "kept": kept, "dropped": dropped, "merges": merges,
+                  "uyarilar": uy, "atiflar": atiflar, "aday": len(items), "docs": docs}
 
 
 def _criterion_dir(olcut: str) -> Path:
@@ -260,7 +335,8 @@ def run(ws_root: Path, *, out: Path | None = None, source: str | Path | None = N
     if ev.exists() and any(ev.iterdir()) and not (ev / MANIFEST).exists():
         raise FileError(f"{ev} bidr'in üretmediği dosyalar içeriyor; taşıyın ya da başka --out verin")
 
-    items, meta = plan(ws.root, review_dir=review_dir, profile=profile)
+    items, meta = plan(ws.root, review_dir=review_dir, profile=profile, prev_index=out / INDEX)
+    secim = meta.pop("secim")
     inv = _inventory(ws)
     docs = {r["doc_id"]: r for r in read_jsonl(ws.documents)} if ws.documents.exists() else {}
     from bidr.name.resolve import Resolver
@@ -271,6 +347,7 @@ def run(ws_root: Path, *, out: Path | None = None, source: str | Path | None = N
     linker = LinkResolver.load(ws.root, rdir)
     meta["baglantilar_sha"] = links_sha(ws.root, rdir)
     uyarilar: list[str] = []
+    uyarilar.extend(secim["uyarilar"])
     if not meta["inceleme"]:
         uyarilar.append("review-decisions.jsonl yok: inceleme yapılmadı; decisions'taki kabul edilmiş "
                         "eşleşmeler dosyalandı, çıktı 'inceleme yapılmadı' diye işaretli")
@@ -342,7 +419,7 @@ def run(ws_root: Path, *, out: Path | None = None, source: str | Path | None = N
                 "kanit_no": f"{sira}_OD{it.od}", "olcut": olcut, "od": it.od, "ad": ad, "dosya": rel_out,
                 "doc_id": it.doc_id, "sayfalar": pages_txt, "yuvalar": "; ".join(it.yuvalar),
                 "alintilar": json.dumps(it.alintilar, ensure_ascii=False), "inceleme": it.inceleme,
-                "kopyalar": "; ".join(it.kopyalar), "kaynak": (inv_row or {}).get("rel_path", ""),
+                "kopyalar": "; ".join(dict.fromkeys([*it.kopyalar, *it.kopyalar_surum])), "kaynak": (inv_row or {}).get("rel_path", ""),
                 "isaretler": ", ".join(dict.fromkeys(flags)), "ad_kaynagi": names[it.doc_id][1],
                 "baglanti": link, "baglanti_kaynagi": link_src})
 
@@ -357,14 +434,22 @@ def run(ws_root: Path, *, out: Path | None = None, source: str | Path | None = N
             "çalıştırılmadan) üretildi.\nDosyalar modelin kabul edilmiş eşleşmeleridir; insan onayı yoktur.\n",
             encoding="utf-8")
     update_gaps(out / GAPS, gaps_block(rows))
-    manifest = {"surum": SURUM, "calisma_alani": str(ws.root), **meta, "tum_belge": whole,
+    from . import select as S
+    S.record(out / S.SECIM, secim["settings"], secim["kept"], secim["dropped"], secim["merges"],
+             secim["uyarilar"], secim["atiflar"])
+    update_gaps(out / GAPS, S.gaps_block(secim["settings"], secim["kept"], secim["dropped"], secim["merges"],
+                                         secim["docs"], secim["aday"]), S.GAPS_BEGIN, S.GAPS_END)
+    ozet = {"aday": secim["aday"], "elenen": len(secim["dropped"]),
+            "elenen_kurum_geneli": sum(1 for d in secim["dropped"] if d["kurum_geneli"]),
+            "surum_birlesen": sum(len(m["uyeler"]) for m in secim["merges"])}
+    manifest = {"surum": SURUM, "calisma_alani": str(ws.root), **meta, "secim": ozet, "tum_belge": whole,
                 "kanit": len(rows), "index_sha": _sha(idx)}
     (ev / MANIFEST).write_text(json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8")
     zpath = None
     if make_zip:
         zpath = out / ZIP
         write_zip(ev, zpath)
-    return {"kanit": len(rows), "olcut": len(by_c), "belge": len({r["doc_id"] for r in rows}),
+    return {"kanit": len(rows), "olcut": len(by_c), "belge": len({r["doc_id"] for r in rows}), **ozet,
             "baglantili": sum(1 for r in rows if r["baglanti"]),
             "baglanti_kaynagi": dict(sorted(Counter(r["baglanti_kaynagi"] or "yok" for r in rows).items())),
             "kesilen_pdf": n_cut, "eksik_dosya": n_missing, "inceleme": meta["inceleme"],
@@ -408,6 +493,14 @@ def _links_sha(ws_root: Path, review_dir: Path) -> str:
     return links_sha(ws_root, review_dir)
 
 
+def _secim_sha(ws_root: Path) -> str | None:
+    from . import select as S
+    try:
+        return S.load_settings(ws_root).sha()
+    except (S.SelectionError, OSError):
+        return None
+
+
 def status(out: Path, ws_root: Path | None = None, review_dir: Path | None = None) -> dict:
     """Tamamlanma denetimi için salt okunur durum (şefin `file_tamam`'ı için)."""
     out = Path(out)
@@ -424,7 +517,8 @@ def status(out: Path, ws_root: Path | None = None, review_dir: Path | None = Non
                     and m.get("inceleme_sha") == _sha(review_dir / REVIEW)
                     and m.get("index_sha") == _sha(idx)
                     and m.get("adlar_sha", _names_sha(ws_root, review_dir)) == _names_sha(ws_root, review_dir)
-                    and m.get("baglantilar_sha") == _links_sha(ws_root, review_dir))
+                    and m.get("baglantilar_sha") == _links_sha(ws_root, review_dir)
+                    and m.get("secim_sha") == _secim_sha(ws_root))
     with open(idx, encoding="utf-8", newline="") as f:
         rows = list(csv.DictReader(f))
     st["kanit"] = len(rows)
