@@ -17,8 +17,8 @@ yerine AGENTS.md'deki tam yolu kullan. WS = çalışma alanının yolu.
    - `(KULLANICI gerekli)` ya da `İnsan onayı: GEREKLİ` → DUR. Kullanıcıya hangi aşamada
      olduğunu, neyi beklediğini (`next`'in "Durum" satırı) ve sonra ne olacağını söyle.
      Hakem aşamasında kullanıcı isterse skill `bidr-hakem`.
-   - `henüz yok` → hat burada biter. DUR ve kullanıcıya bildir. Rapor metni, docx, inceleme
-     tablosu gibi henüz olmayan çıktıları elle üretme.
+   - `henüz yok` → hat burada biter. DUR ve kullanıcıya bildir. Kanıt klasörü, rapor metni,
+     docx gibi henüz olmayan çıktıları elle üretme.
 3. Her komuttan sonra 1'e dön. Aynı adım iki kez üst üste ilerlemiyorsa (ilerleme sayıları
    değişmiyor) dur ve kullanıcıya çıktıyı göster.
 
@@ -59,6 +59,31 @@ Model işini sen yaparsın; hiçbir API ya da `bidr decide run` / `bidr llm` kul
    - Kaba `apply` çıktısındaki `olcut_var/olcut_yok/kanit_degil/eşleşme` sayaçları ince aşamadan
      önce 0 görünür; bu normaldir (yalnız ince kararlar sayılır). Durumu `bidr next` belirler.
 7. `bidr next` ile devam.
+
+## Görsel okuma (transcribe)
+
+Düşük kaliteli (taranmış/görsel) belge yoksa aşama kendiliğinden "atlandi" olur. Varsa:
+`bidr transcribe prepare -w WS --all-low-quality` → `work/transcribe/README.md`'yi oku; her
+`<doc_id>/` klasöründeki görüntüleri kendin oku ve yalnız gördüğünü `<doc_id>.out.json`'a
+yaz (okunamayan yeri uydurma, README'nin işaretleme kuralına uy) → `bidr transcribe apply -w WS
+--model <ajan adı>`. `work/transcribe/GECERSIZ.md`'deki paketleri yeniden yap; `bidr next`.
+
+## Denetim (audit): OD, eksikler, inceleme tablosu
+
+1. `bidr audit -w WS --profile <profil>` (`next` tam komutu verir). Çıktı: `review.xlsx`,
+   `gaps.md`, `audit-olcutler.json`. Komutun yazdığı OD dağılımını ve öncelikli eksikleri
+   kullanıcıya özetle (sayıları çıktıdan al).
+2. DUR: `review.xlsx`'teki KARAR sütununu (kabul/ret/duzelt) **kullanıcı** doldurur. Kararı sen
+   verme, tabloyu sen doldurma. Kullanıcı isterse satırları birlikte gözden geçir: önce turuncu
+   (OD4/OD5'e yükselten, özellikle "ÖNERİ etiket") ve sarı (düşük güven) satırlar. Önerin
+   olabilir ama karar ve yazım kullanıcının.
+3. Kullanıcı "bitti" deyince `bidr audit apply -w WS`. Çıkış 1: geçersiz kararlar listelenir;
+   kullanıcıya göster, düzeltmesini iste.
+4. `slot-tags-oneri.yaml` oluştuysa kullanıcıya söyle: yuva etiketi önerileridir; paket
+   verisine (`bidr/data/criteria/`) sen işleme.
+5. OD önerisi ölçüt düzeyindedir (PUKÖ zinciri, `docs/AUDIT.md`); belgeye OD yazma, OD'yi
+   yükseltmek için eşleşme uydurma. Eksik kanıt `gaps.md`'de: kullanıcıya hangi belgenin
+   gerektiğini oradan söyle.
 
 ## Bitirirken
 

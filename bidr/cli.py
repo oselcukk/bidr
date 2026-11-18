@@ -18,6 +18,7 @@ SUBCOMMAND_MODULES = [
     "bidr.transcribe.cli",
     "bidr.init.cli",
     "bidr.pipeline.cli",
+    "bidr.audit.cli",
 ]
 
 

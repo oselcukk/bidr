@@ -34,6 +34,8 @@ def load_spec(path: str | None = None) -> dict:
                 raise ValueError(f"pipeline.yaml: {s['id']} önkoşulu {o} ondan önce tanımlı değil")
         if s["sart"]["denetim"] not in CHECKS:
             raise ValueError(f"pipeline.yaml: bilinmeyen denetim {s['sart']['denetim']}")
+        if not isinstance(s.get("istege_bagli", False), bool):
+            raise ValueError(f"pipeline.yaml: {s['id']} istege_bagli true|false olmalı")
         if s.get("onay") not in ("yok", "insan"):
             raise ValueError(f"pipeline.yaml: {s['id']} onay yok|insan olmalı")
         seen.add(s["id"])
@@ -128,7 +130,10 @@ def evaluate(ws_root: Path, *, until: str | None = None) -> Report:
                     katman=s["katman"], skill=s.get("skill"))
         default_cmds = [fmt(k) for k in s.get("komut") or []]
         blocked = [o for o in s.get("onkosul") or [] if states[o].durum not in DONE]
-        if not s.get("uygulandi", True):
+        if not s.get("uygulandi", True) and s.get("istege_bagli"):
+            st = StageState(**base, durum=ATLANDI, kim=None, komutlar=[],
+                            neden="isteğe bağlı aşama henüz uygulanmadı; hat atlayarak sürer")
+        elif not s.get("uygulandi", True):
             st = StageState(**base, durum=YOK, kim=None, komutlar=[],
                             neden="henüz uygulanmadı: hat bu aşamada biter")
         elif blocked:

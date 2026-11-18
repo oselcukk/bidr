@@ -77,14 +77,15 @@ def test_spec_is_consistent():
             assert s["komut"] and s["skill"], s["id"]
         else:
             assert s["sart"]["denetim"] == "yok"
-    assert {s["id"] for s in spec["asamalar"] if not s["uygulandi"]} == {"audit", "file", "write", "verify", "render"}
+    assert {s["id"] for s in spec["asamalar"] if not s["uygulandi"]} == {"file", "write", "verify", "render"}
 
 
 def test_full_pipeline_transitions_and_gates(kurulum, capsys):
     src, ws, ans = kurulum
     # 0. kurulmamış: yalnız kurulum bekler, gerisi engelli; kapı yok (yönetilmeyen WS)
     d = _durum(ws)
-    assert d["kurulum"] == "bekliyor" and d["ingest"] == "engelli" and d["audit"] == "yok"
+    assert d["kurulum"] == "bekliyor" and d["ingest"] == "engelli" and d["audit"] == "engelli"
+    assert d["transcribe"] == "engelli" and d["file"] == "yok"
     assert _kim(ws, "kurulum") == "insan"
     assert not ws.exists()  # status hiçbir şey yazmaz
 
@@ -109,6 +110,7 @@ def test_full_pipeline_transitions_and_gates(kurulum, capsys):
     assert main(["ingest", str(src), "-w", str(ws), "--no-ocr", "--workers", "1"]) == 0
     d = _durum(ws)
     assert d["ingest"] == "bitti" and d["identify"] == "bekliyor" and d["etiketler"] == "bekliyor"
+    assert d["transcribe"] == "atlandi"        # düşük kaliteli görsel/PDF yok
     # kaynağa yeni dosya → ingest yeniden bekler, identify engellenir
     extra = src / "Diğer" / "yeni.txt"
     extra.write_text("yeni belge " * 20, encoding="utf-8")
@@ -186,7 +188,23 @@ def test_full_pipeline_transitions_and_gates(kurulum, capsys):
     assert main(["compare-labels", "-w", str(ws), "--apply"]) == 0
     rep = evaluate(ws)
     assert rep.get("hakem").durum == "bitti"
-    assert rep.sonraki.id == "audit" and rep.sonraki.durum == "yok"
+    assert rep.sonraki.id == "audit" and rep.sonraki.durum == "bekliyor" and rep.sonraki.kim == "komut"
+    # 7. audit: tablo → insan kararı → apply (ayrıntı: tests/test_audit.py)
+    assert main(["audit", "-w", str(ws)]) == 0
+    a = evaluate(ws).get("audit")
+    assert a.kim == "insan" and a.ilerleme["kararli"] == 0 and a.ilerleme["satir"] > 0
+    from openpyxl import load_workbook
+    wb = load_workbook(ws / "review.xlsx")
+    sh = wb["Eşleşmeler"]
+    col = [c.value for c in sh[1]].index("KARAR (kabul/ret/duzelt)") + 1
+    for r in range(2, sh.max_row + 1):
+        sh.cell(row=r, column=col, value="kabul")
+    wb.save(ws / "review.xlsx")
+    assert evaluate(ws).get("audit").kim == "komut"       # kararlar var, işlenmemiş
+    assert main(["audit", "apply", "-w", str(ws)]) == 0
+    rep = evaluate(ws)
+    assert rep.get("audit").durum == "bitti"
+    assert rep.sonraki.id == "file" and rep.sonraki.durum == "yok"
     capsys.readouterr()
     main(["next", "-w", str(ws)])
     assert "henüz yok" in capsys.readouterr().out

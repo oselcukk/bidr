@@ -6,6 +6,8 @@
 #   id         aşama kimliği (kapılar ve CLI bunu kullanır)
 #   ad         okunur ad
 #   uygulandi  false: aşama henüz yazılmadı; `bidr next` hattın orada bittiğini söyler
+#   istege_bagli  true: aşama koşula bağlı (denetimi `atlandi` döndürebilir); uygulanmamışsa da
+#              hattı durdurmaz (atlandi görünür)
 #   katman     D (belirleyici kod) | M (model işi: ajan yapar) | I (insan)
 #   onkosul    bitmiş (ya da atlanmış) olması gereken aşamalar
 #   girdi/cikti  çalışma alanındaki dosyalar (bilgi amaçlı)
@@ -49,6 +51,26 @@ asamalar:
     onay: yok
     skill: bidr-rapor
 
+  - id: transcribe
+    ad: Görsel okuma (düşük kaliteli belgeler; model işi ajanda)
+    uygulandi: true
+    istege_bagli: true
+    katman: M
+    onkosul: [ingest]
+    girdi: [inventory.csv (low_quality), kaynak PDF/görseller (salt okunur)]
+    cikti: [work/transcribe/<doc_id>/, text/<doc_id>.txt (görsel okumayla)]
+    komut:
+      - "bidr transcribe prepare -w {ws} --all-low-quality"
+      - "(ajan) work/transcribe/README.md'ye göre her <doc_id>/ için görüntüleri okuyup <doc_id>.out.json yaz"
+      - "bidr transcribe apply -w {ws} --model {ajan}"
+    sart:
+      denetim: transcribe_tamam
+      metin: >-
+        Düşük kaliteli (görsel/PDF) belge yoksa atlanır. Varsa her biri ajanın görsel okumasıyla
+        yazıya geçirilmiş ve apply ile işlenmiş; geçersiz/şüpheli cevap yok.
+    onay: yok
+    skill: bidr-rapor
+
   - id: etiketler
     ad: Geçmiş etiketler (isteğe bağlı)
     uygulandi: true
@@ -69,7 +91,7 @@ asamalar:
     ad: Belge türü, tarih, sürüm
     uygulandi: true
     katman: D
-    onkosul: [ingest]
+    onkosul: [ingest, transcribe]
     girdi: [text/]
     cikti: [documents.jsonl, identify-report.md]
     komut: ["bidr identify -w {ws} --period {donem}{kurum_arg}"]
@@ -155,15 +177,25 @@ asamalar:
     skill: bidr-hakem
 
   - id: audit
-    ad: İnceleme tablosu (review.xlsx)
-    uygulandi: false
+    ad: Ölçüt OD'si, eksik kanıt raporu ve inceleme tablosu
+    uygulandi: true
     katman: D
     onkosul: [karar_ince, hakem]
-    girdi: [decisions.jsonl]
-    cikti: [review.xlsx]
-    komut: []
-    sart: {denetim: yok, metin: "Henüz uygulanmadı (v0.2 planı)."}
+    girdi: [decisions.jsonl, documents.jsonl]
+    cikti: [review.xlsx, gaps.md, audit-olcutler.json, review-decisions.jsonl, slot-tags-oneri.yaml]
+    komut:
+      - "bidr audit -w {ws} --profile {profil}"
+      - "(insan) review.xlsx: her satıra KARAR (kabul/ret/duzelt), isteğe bağlı yuva etiketi kararı ve not"
+      - "bidr audit apply -w {ws}"
+    sart:
+      denetim: audit_tamam
+      metin: >-
+        review.xlsx güncel kararlardan (decisions.jsonl) üretilmiş; tablodaki her satırın geçerli
+        bir kararı var (kabul/ret/duzelt) ve kararlar `bidr audit apply` ile
+        review-decisions.jsonl'e işlenmiş. Önerilen OD ve gaps.md bu kararlarla hesaplanır;
+        yuva etiketi düzeltmeleri yalnız slot-tags-oneri.yaml önerisi olur (etiket dosyası değişmez).
     onay: insan
+    skill: bidr-rapor
 
   - id: file
     ad: Kanıt dosyalama (evidence/A/A.1/…)
