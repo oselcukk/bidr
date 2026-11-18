@@ -1,0 +1,618 @@
+# Tuzak seti: beklenen sonuçlar. Biçim: evalsets/README.md "beklenen.yaml".
+#
+# Hayalî birim: Örnek Üniversitesi · Örnek Fakültesi · Örnek Bölümü (başka birim: Kıyas
+# Bölümü). Rapor yılı 2025. Gerçek kurum, kişi adı, e-posta yok.
+#
+# Belge alanları:
+#   kanit          evet | hayir | gecmis (önceki yıl olayı: süreklilik, bu yılın halkası değil)
+#                  | dogrulanmali (tarihsiz olay: tarih doğrulanmadan sayılmaz)
+#   en_yuksek_od   bu belgeye dayanarak RAPOR YILI için savunulabilecek en yüksek OD
+#                  (sayılan halkanın OD'si; kanıt değilse ya da sayılmıyorsa 1)
+#   eslesmeler     doğru çalışan bir ince kararın vermesi beklenen eşleşmeler (ideal)
+#   naif           tuzağa düşen bir modelin vereceği kayıt (kod tek başına yakalıyor mu?)
+#   bilinen_acik   naif kaydı kodun (audit) yakalayamadığının gerekçesi; testte xfail
+#   yazilmamali    bu belgeye dayanarak yazılmaması gereken iddialar; `anahtar` ifadelerden
+#                  biri, belgeye atıf yapan cümlede geçerse ihlal (atif_sart: false → hangi
+#                  atıfla olursa olsun); `haric` ifadelerden biri cümledeyse ihlal sayılmaz
+surum: 1
+set: tuzak
+birim: Örnek Bölümü
+kurum: Örnek Üniversitesi
+donem: 2025
+
+olcutler:
+  # Ölçüt OD'si: setteki bütün belgeler doğru işlendiğinde (ideal) beklenen düzey ve bir üst
+  # düzey için eksik halkalar.
+  A.4.2: {od: 4, eksik: [ozgun], gerekce: "boş form (P) + sonuçlar (U) + sonuca dayalı komisyon kararı (K+Ö)"}
+  A.4.3: {od: 3, eksik: [kontrol_et, onlem_al], not_icermeli: ["plan belgesi önerilir"],
+          gerekce: "yalnız iki (çelişkili) sonuç belgesi: uygulama; plan örtük"}
+  B.1.3: {od: 2, eksik: [uygula], gerekce: "inceleme kararı (P), web beyanı (P), komisyon incelemesi (K); ilişkilendirmenin uygulandığını gösteren belge yok"}
+  B.1.4: {od: 2, eksik: [uygula], gerekce: "2025 staj esasları (P); 2024 staj kararı geçmiş kanıt; fakülte raporu OD2 tavanı"}
+  B.1.5: {od: 3, eksik: [kontrol_et, onlem_al], gerekce: "FYK madde 2 (U); 2026 kararı dönem sonrası; tarihsiz tutanak sayılmaz"}
+  B.2.2: {od: 3, eksik: [kontrol_et, onlem_al], gerekce: "kurum yönergesi (P) + sınav takvimi (U, üç sürüm tek kanıt)"}
+  B.3.2: {od: 3, eksik: [kontrol_et, onlem_al], gerekce: "danışmanlık yönergesi ve duyurular (P) + danışman atama kararı (U)"}
+  B.3.5: {od: 3, eksik: [kontrol_et, onlem_al], gerekce: "duyuru (P) + sonuç raporu (U)"}
+  B.1.1: {od: 1, gerekce: "tek belge başka bölümün kararı"}
+  A.1.4: {od: 1, gerekce: "geçen yılın BİDR taslağı kanıt değildir"}
+  B.1.6: {od: 1, gerekce: "bilgi sistemi giriş ekranı kanıt değildir"}
+
+surum_gruplari:
+  - {ad: sinav-takvimi, belgeler: [t15-sinav-takvimi-taslak.md, t16-sinav-takvimi-15-ekim.md, t17-sinav-takvimi-kesin.md],
+     temsilci: t17-sinav-takvimi-kesin.md}
+
+celiskiler:
+  - {belgeler: [t07-mezun-anketi-komisyon-raporu.md, t08-faaliyet-raporu-ozeti.md],
+     konu: "mezun memnuniyeti: komisyon raporunda %78, faaliyet raporu özetinde %87"}
+
+belgeler:
+  - dosya: t01-kariyer-gunu-duyurusu.md
+    tuzak: yalniz_duyuru
+    belge_turu: etkinlik_duyurusu
+    tarih: "2025-03-03"
+    kanit: evet
+    birim_iliskisi: kendi
+    en_yuksek_od: 2
+    gerekce: >-
+      Etkinliğin planlandığını ve ilan edildiğini gösterir; gerçekleştiğine dair kayıt (tutanak,
+      katılım listesi, haber) yok. Uygulama halkası bu belgeyle kurulamaz.
+    eslesmeler:
+      - {olcut: B.3.2, yuva: B.3.2/5, asama: planla,
+         alinti: "Örnek Bölümü, lisans öğrencilerinin kariyer planlamasına destek olmak amacıyla 9 Nisan 2025 Çarşamba günü saat 13.30'da Bölüm Seminer Salonunda bir Kariyer Günü düzenleyecektir."}
+    naif:
+      eslesmeler:
+        - {olcut: B.3.2, yuva: B.3.2/6, asama: uygula,
+           alinti: "Etkinlikte bölüm mezunları sektördeki çalışma alanlarını anlatacak, öğrencilerin soruları yanıtlanacaktır."}
+    bilinen_acik: >-
+      Duyuru (olay türü, rapor yılında) uygula denince sayılır: audit gelecek zaman kipini ya da
+      gerçekleşme kaydının yokluğunu denetlemez.
+    yazilmamali:
+      - iddia: "Kariyer Günü gerçekleştirilmiştir / düzenlenmiştir."
+        olcut: B.3.2
+        anahtar: ["kariyer günü gerçekleştiril", "kariyer günü düzenlenmiştir", "kariyer günü yapılmıştır", "kariyer gününe katıl"]
+      - iddia: "Mezunlar etkinlikte deneyimlerini paylaşmıştır."
+        olcut: B.3.2
+        anahtar: ["mezunlar anlatmıştır", "deneyimlerini paylaşmıştır", "mezunlar katılmıştır"]
+
+  - dosya: t02-matematik-gunu-duyurusu.md
+    tuzak: yalniz_duyuru_yakin_metin
+    belge_turu: etkinlik_duyurusu
+    tarih: "2025-03-02"
+    kanit: evet
+    birim_iliskisi: kendi
+    en_yuksek_od: 2
+    gerekce: "Duyuru: planlama. Gerçekleşme t03'te; gerçekleşme cümlesi t03'e atıf yapmalı."
+    eslesmeler:
+      - {olcut: B.3.5, yuva: B.3.5/1, asama: planla,
+         alinti: "Örnek Bölümü öğrenci topluluğu ile birlikte 14 Mart 2025 Cuma günü Matematik Günü etkinliği düzenlenecektir."}
+    naif:
+      eslesmeler:
+        - {olcut: B.3.5, yuva: B.3.5/2, asama: uygula,
+           alinti: "Örnek Bölümü öğrenci topluluğu ile birlikte 14 Mart 2025 Cuma günü Matematik Günü etkinliği düzenlenecektir."}
+    bilinen_acik: "Duyuru uygula denince sayılır (gelecek zaman kipi denetlenmez)."
+    yazilmamali:
+      - iddia: "Matematik Günü gerçekleştirilmiştir (yalnız duyuruya atıfla)."
+        olcut: B.3.5
+        anahtar: ["gerçekleştirilmiştir", "düzenlenmiştir", "katılmıştır"]
+
+  - dosya: t03-matematik-gunu-faaliyet-raporu.md
+    tuzak: yok
+    belge_turu: faaliyet_raporu
+    tarih: "2025-05-20"
+    kanit: evet
+    birim_iliskisi: kendi
+    en_yuksek_od: 3
+    gerekce: "Gerçekleşme kaydı (uygula). Geri bildirim alınmadığını açıkça söyler: izleme yok."
+    eslesmeler:
+      - {olcut: B.3.5, yuva: B.3.5/2, asama: uygula,
+         alinti: "Matematik Günü etkinliği 14 Mart 2025 tarihinde bölüm öğrenci topluluğu ile birlikte gerçekleştirilmiş, etkinliğe 64 öğrenci katılmıştır."}
+    naif:
+      eslesmeler:
+        - {olcut: B.3.5, yuva: B.3.5/2, asama: uygula,
+           alinti: "Matematik Günü etkinliği 14 Mart 2025 tarihinde bölüm öğrenci topluluğu ile birlikte gerçekleştirilmiş, etkinliğe 64 öğrenci katılmıştır."}
+        - {olcut: B.3.5, yuva: B.3.5/5, asama: kontrol_et,
+           alinti: "Etkinlikte 11 öğrenci posteri sergilenmiştir."}
+    bilinen_acik: "Katılım sayısını izleme sayan model K halkası kurar; audit aşamayı modelden alır."
+    yazilmamali:
+      - iddia: "Etkinlik sonrası öğrenci geri bildirimi alınmış / memnuniyet ölçülmüştür."
+        olcut: B.3.5
+        anahtar: ["geri bildirim alınmış", "geri bildirimleri alınmış", "memnuniyet", "anket uygulanmış"]
+        haric: ["alınmamıştır", "alınmamış"]
+
+  - dosya: t04-ders-degerlendirme-anket-formu.md
+    tuzak: bos_anket
+    belge_turu: anket_formu
+    tarih: "2025-01-10"
+    kanit: evet
+    birim_iliskisi: kendi
+    en_yuksek_od: 2
+    gerekce: "Boş form: geri bildirim mekanizmasının tanımı (kanıt ilkesi bos_form_zinciri: planla)."
+    eslesmeler:
+      - {olcut: A.4.2, yuva: A.4.2/1, asama: planla,
+         alinti: "Bu anket, öğrencilerin aldıkları dersler hakkındaki görüşlerini almak için her yarıyıl sonunda uygulanır."}
+    naif:
+      eslesmeler:
+        - {olcut: A.4.2, yuva: A.4.2/2, asama: uygula,
+           alinti: "Bu anket, öğrencilerin aldıkları dersler hakkındaki görüşlerini almak için her yarıyıl sonunda uygulanır."}
+    bilinen_acik: >-
+      Boş form (karma tür) uygula denince olay sayılır ve OD3'e katılır: audit formun boş olup
+      olmadığını bilmez (ilke yalnız istemde; file yalnız sürüm ayrımında kullanır).
+    yazilmamali:
+      - iddia: "Anket uygulanmış ve sonuçları değerlendirilmiştir (yalnız forma atıfla)."
+        olcut: A.4.2
+        anahtar: ["sonuçları", "ortalama", "yanıt alınmıştır", "uygulanmıştır"]
+
+  - dosya: t05-egitim-ogretim-yonergesi.md
+    tuzak: kurum_geneli_yonerge
+    belge_turu: yonerge
+    tarih: "2023-06-01"
+    kanit: evet
+    birim_iliskisi: kurum_geneli
+    en_yuksek_od: 2
+    gerekce: "Kurum geneli yönerge: yalnız planla (kurum_geneli_duzenleme); bölüm uygulaması ayrı belge ister."
+    eslesmeler:
+      - {olcut: B.2.2, yuva: B.2.2/1, asama: planla,
+         alinti: "Her dersin ölçme ve değerlendirme yöntemleri ve bunların başarı notuna katkı oranları ders bilgi paketinde ilan edilir."}
+    naif:
+      birim_iliskisi: kendi
+      eslesmeler:
+        - {olcut: B.2.2, yuva: B.2.2/2, asama: uygula,
+           alinti: "proje, ödev ve sunum gibi etkinlikler yarıyıl içi etkinlik sayılır."}
+    yazilmamali:
+      - iddia: "Bölümde ölçme çeşitliliği uygulanmaktadır (yalnız yönergeye atıfla)."
+        olcut: B.2.2
+        anahtar: ["uygulanmaktadır", "kullanılmaktadır", "bölümümüzde", "bölümde"]
+
+  - dosya: t06-akademik-danismanlik-yonergesi.md
+    tuzak: kurum_geneli_yonerge
+    belge_turu: yonerge
+    tarih: "2024-02-14"
+    kanit: evet
+    birim_iliskisi: kurum_geneli
+    en_yuksek_od: 2
+    gerekce: "Kurum geneli yönerge (planla). Atamanın yapıldığı t21'de; 'gözden geçirilir' maddesi izleme kanıtı değildir."
+    eslesmeler:
+      - {olcut: B.3.2, yuva: B.3.2/1, asama: planla,
+         alinti: "Her öğrenciye kayıt yaptırdığı yarıyıldan başlayarak ilgili bölüm başkanlığınca bir akademik danışman atanır."}
+    naif:
+      birim_iliskisi: kendi
+      eslesmeler:
+        - {olcut: B.3.2, yuva: B.3.2/3, asama: uygula,
+           alinti: "Her öğrenciye kayıt yaptırdığı yarıyıldan başlayarak ilgili bölüm başkanlığınca bir akademik danışman atanır."}
+        - {olcut: B.3.2, yuva: B.3.2/8, asama: kontrol_et,
+           alinti: "Danışmanlık hizmetinin işleyişi her akademik yılın sonunda birimlerce gözden geçirilir."}
+    yazilmamali:
+      - iddia: "Danışmanlık hizmeti her yıl gözden geçirilmektedir / izlenmektedir (yönergeye atıfla)."
+        olcut: B.3.2
+        anahtar: ["gözden geçirilmektedir", "izlenmektedir", "gözden geçirilmiştir"]
+
+  - dosya: t07-mezun-anketi-komisyon-raporu.md
+    tuzak: celiskili_sonuc
+    belge_turu: degerlendirme_raporu
+    tarih: "2025-06-30"
+    kanit: evet
+    birim_iliskisi: kendi
+    en_yuksek_od: 3
+    gerekce: "Mezun anketi sonucu (uygula). Memnuniyet oranı t08 ile çelişiyor; sayı uzlaştırılmadan yazılmamalı."
+    eslesmeler:
+      - {olcut: A.4.3, yuva: A.4.3/4, asama: uygula,
+         alinti: "Mezun anketi Nisan–Mayıs 2025 döneminde son beş yılın mezunlarına çevrim içi olarak uygulanmıştır."}
+    yazilmamali:
+      - iddia: "Mezun memnuniyeti %78'dir (çelişki belirtilmeden)."
+        olcut: A.4.3
+        atif_sart: false
+        anahtar: ["%78", "yüzde 78"]
+        haric: ["%87", "çelişki", "farklı", "tutarsız"]
+
+  - dosya: t08-faaliyet-raporu-ozeti.md
+    tuzak: celiskili_sonuc
+    belge_turu: faaliyet_raporu
+    tarih: "2025-12-20"
+    kanit: evet
+    birim_iliskisi: kendi
+    en_yuksek_od: 3
+    gerekce: "Aynı anketin farklı oranla özeti (uygula). Kaynak komisyon raporu ile çelişiyor."
+    eslesmeler:
+      - {olcut: A.4.3, yuva: A.4.3/4, asama: uygula,
+         alinti: "2025 yılında mezunlara yönelik anket uygulanmış; mezun memnuniyeti %87 olarak ölçülmüştür."}
+    yazilmamali:
+      - iddia: "Mezun memnuniyeti %87'dir (çelişki belirtilmeden)."
+        olcut: A.4.3
+        atif_sart: false
+        anahtar: ["%87", "yüzde 87"]
+        haric: ["%78", "çelişki", "farklı", "tutarsız"]
+
+  - dosya: t09-kiyas-bolumu-kurul-karari.md
+    tuzak: baska_bolum
+    belge_turu: bolum_kurulu_karari
+    tarih: "2025-05-07"
+    kanit: hayir
+    birim_iliskisi: baska_birim
+    en_yuksek_od: 1
+    gerekce: "Kıyas Bölümünün kararı; Örnek Bölümü için kanıt değildir (birim_iliskisi: baska_birim)."
+    eslesmeler:
+      - {olcut: B.1.1, yuva: B.1.1/3, asama: uygula,
+         alinti: "Kıyas Bölümü lisans programında KIY 205 Uygulamalı İstatistik dersinin seçmeli dersten zorunlu derse dönüştürülmesine"}
+    naif:
+      birim_iliskisi: kendi
+      eslesmeler:
+        - {olcut: B.1.1, yuva: B.1.1/3, asama: uygula,
+           alinti: "Kıyas Bölümü lisans programında KIY 205 Uygulamalı İstatistik dersinin seçmeli dersten zorunlu derse dönüştürülmesine"}
+    bilinen_acik: >-
+      Birim aitliği yalnız modelin `birim_iliskisi` alanından gelir; model `kendi` derse audit
+      belgede başka birim adı geçtiğini denetlemez.
+    yazilmamali:
+      - iddia: "Öğretim planında Uygulamalı İstatistik dersi zorunlu yapılmıştır."
+        olcut: B.1.1
+        atif_sart: false
+        anahtar: ["KIY 205", "Uygulamalı İstatistik", "Kıyas Bölümü"]
+
+  - dosya: t10-fakulte-yonetim-kurulu-karari.md
+    tuzak: cok_maddeli_ust_birim_karari
+    belge_turu: yonetim_kurulu_karari
+    tarih: "2025-06-11"
+    kanit: evet
+    birim_iliskisi: ust_birim_bu_birim_hakkinda
+    en_yuksek_od: 3
+    gerekce: >-
+      Yalnız madde 2 Örnek Bölümünü konu alır (madde ilkesi). Madde 1 (Kıyas Bölümü
+      laboratuvarı) bu birimin kanıtı değildir.
+    eslesmeler:
+      - {olcut: B.1.5, yuva: B.1.5/2, asama: uygula,
+         alinti: "Örnek Bölümü lisans programında 2025-2026 güz yarıyılından başlayarak MAT 315 Kriptografiye Giriş seçmeli dersinin açılmasının uygun olduğuna oy birliğiyle karar verildi."}
+    naif:
+      eslesmeler:
+        - {olcut: B.1.5, yuva: B.1.5/2, asama: uygula,
+           alinti: "Örnek Bölümü lisans programında 2025-2026 güz yarıyılından başlayarak MAT 315 Kriptografiye Giriş seçmeli dersinin açılmasının uygun olduğuna oy birliğiyle karar verildi."}
+        - {olcut: B.3.3, yuva: B.3.3/5, asama: onlem_al,
+           alinti: "laboratuvarının yenilenmesi için hazırlanan ihtiyaç listesinin uygun olduğuna ve Dekanlığa sunulmasına oy birliğiyle karar verildi."}
+    bilinen_acik: >-
+      Madde ilkesi yalnız istemde: audit alıntının hangi maddeden (hangi birimi konu alan
+      maddeden) geldiğini denetlemez; başka bölümün maddesi OD4 halkası olarak sayılır.
+    yazilmamali:
+      - iddia: "Bölüm bilgisayar laboratuvarı yenilenmiştir."
+        atif_sart: false
+        anahtar: ["laboratuvar"]
+
+  - dosya: t11-bolum-kurulu-karari-2026.md
+    tuzak: donem_sonrasi
+    belge_turu: bolum_kurulu_karari
+    tarih: "2026-02-04"
+    kanit: hayir
+    birim_iliskisi: kendi
+    en_yuksek_od: 1
+    gerekce: "Rapor yılından (2025) sonraki olay: bu raporda sayılmaz (dönem kuralı: donem_sonrasi)."
+    eslesmeler:
+      - {olcut: B.1.5, yuva: B.1.5/5, asama: onlem_al,
+         alinti: "2026-2027 öğretim planında MAT 112 Ayrık Matematik dersinin kredisinin 4 AKTS'den 6 AKTS'ye çıkarılmasına"}
+    yazilmamali:
+      - iddia: "Ayrık Matematik dersinin kredisi artırılmıştır."
+        atif_sart: false
+        anahtar: ["MAT 112", "Ayrık Matematik", "6 AKTS'ye"]
+
+  - dosya: t12-bolum-kurulu-karari-2024-staj.md
+    tuzak: onceki_yil
+    belge_turu: bolum_kurulu_karari
+    tarih: "2024-11-20"
+    kanit: gecmis
+    birim_iliskisi: kendi
+    en_yuksek_od: 1
+    gerekce: "Önceki yıl olayı: süreklilik kanıtı (gaps.md 'Geçmiş kanıtlar'), 2025 uygulama halkası değil."
+    eslesmeler:
+      - {olcut: B.1.4, yuva: B.1.4/4, asama: uygula,
+         alinti: "2024 yaz dönemi staj dosyaları Staj Komisyonunca incelenmiş; 31 öğrencinin stajının kabulüne"}
+    yazilmamali:
+      - iddia: "2025 yılında 31 öğrencinin stajı kabul edilmiştir."
+        olcut: B.1.4
+        atif_sart: false
+        anahtar: ["31 öğrenci"]
+        haric: ["2024"]
+
+  - dosya: t13-staj-usul-esaslari-2019.md
+    tuzak: yururlukten_kalkmis
+    belge_turu: yonerge
+    tarih: "2019-03-12"
+    kanit: hayir
+    birim_iliskisi: kendi
+    en_yuksek_od: 1
+    gerekce: "t14 Madde 9 ile yürürlükten kalkmış (kanıt ilkesi yururlukten_kalkmis: kanit_degil)."
+    eslesmeler: []
+    naif:
+      eslesmeler:
+        - {olcut: B.1.4, yuva: B.1.4/2, asama: planla,
+           alinti: "Staj süresi 20 iş günüdür."}
+    bilinen_acik: >-
+      Kod yürürlüğü bilemez: yapı belgesi dönem dışı tarihle yalnız `guncellik_dogrulanmali`
+      işareti alır ve sayılır; yürürlükten kaldıran belge (t14) ile bağ kurulmaz.
+    yazilmamali:
+      - iddia: "Staj süresi 20 iş günüdür / staj kredisi 4 AKTS'dir."
+        atif_sart: false
+        anahtar: ["20 iş günü", "4 AKTS'dir"]
+
+  - dosya: t14-staj-usul-esaslari-2025.md
+    tuzak: yururlukten_kaldiran
+    belge_turu: yonerge
+    tarih: "2025-03-05"
+    kanit: evet
+    birim_iliskisi: kendi
+    en_yuksek_od: 2
+    gerekce: "Yürürlükteki bölüm usul ve esası (planla)."
+    eslesmeler:
+      - {olcut: B.1.4, yuva: B.1.4/2, asama: planla,
+         alinti: "Stajın öğrenci iş yükü 6 AKTS olarak kredilendirilir."}
+    yazilmamali:
+      - iddia: "Staj esasları uygulanmış ve izlenmiştir (yalnız esaslara atıfla)."
+        olcut: B.1.4
+        anahtar: ["izlenmektedir", "değerlendirilmiştir", "uygulanmıştır"]
+
+  - dosya: t15-sinav-takvimi-taslak.md
+    tuzak: cizelge_surumu
+    belge_turu: ders_programi
+    tarih: "2025-10-01"
+    kanit: evet
+    birim_iliskisi: kendi
+    en_yuksek_od: 3
+    surum_grubu: sinav-takvimi
+    gerekce: "Aynı takvimin taslak sürümü; üç sürüm tek kanıt (temsilci t17)."
+    eslesmeler:
+      - {olcut: B.2.2, yuva: B.2.2/2, asama: uygula,
+         alinti: "| MAT 305 Sayısal Analiz | proje sunumu | 7 Ocak 2026 | 10.00 |"}
+    yazilmamali: []
+
+  - dosya: t16-sinav-takvimi-15-ekim.md
+    tuzak: cizelge_surumu
+    belge_turu: ders_programi
+    tarih: "2025-10-15"
+    kanit: evet
+    birim_iliskisi: kendi
+    en_yuksek_od: 3
+    surum_grubu: sinav-takvimi
+    gerekce: "Ara sürüm; tek kanıt sayılmalı."
+    eslesmeler:
+      - {olcut: B.2.2, yuva: B.2.2/2, asama: uygula,
+         alinti: "| MAT 305 Sayısal Analiz | proje sunumu | 6 Ocak 2026 | 10.00 |"}
+    yazilmamali: []
+
+  - dosya: t17-sinav-takvimi-kesin.md
+    tuzak: cizelge_surumu
+    belge_turu: ders_programi
+    tarih: "2025-10-28"
+    kanit: evet
+    birim_iliskisi: kendi
+    en_yuksek_od: 3
+    surum_grubu: sinav-takvimi
+    gerekce: >-
+      Kesin sürüm (temsilci). "Revize edilmiş" ifadesi derslik çakışmasının giderilmesidir:
+      izleme sonucuna dayanan iyileştirme (onlem_al) değildir.
+    eslesmeler:
+      - {olcut: B.2.2, yuva: B.2.2/2, asama: uygula,
+         alinti: "| MAT 305 Sayısal Analiz | proje sunumu | 6 Ocak 2026 | 10.00 |"}
+    naif:
+      eslesmeler:
+        - {olcut: B.2.2, yuva: B.2.2/2, asama: uygula,
+           alinti: "| MAT 305 Sayısal Analiz | proje sunumu | 6 Ocak 2026 | 10.00 |"}
+        - {olcut: B.2.2, yuva: B.2.2/7, asama: onlem_al,
+           alinti: "Bu takvim, 15 Ekim 2025 sürümünün derslik çakışması nedeniyle revize edilmiş halidir."}
+    bilinen_acik: >-
+      Sürüm notu "revize" önlem sayılırsa audit OD4 halkası kurar; sürüm birleştirme yalnız
+      file aşamasında yayımlanan listeyi sınırlar, OD'yi değil.
+    yazilmamali:
+      - iddia: "Sınav takvimi izleme sonucunda revize edilerek iyileştirilmiştir / üç kez güncellenmiştir."
+        olcut: B.2.2
+        atif_sart: false
+        anahtar: ["revize", "iyileştiril", "üç kez", "üç sürüm"]
+
+  - dosya: t18-bolum-kurulu-karari-gozden-gecirme.md
+    tuzak: yakin_metin
+    belge_turu: bolum_kurulu_karari
+    tarih: "2025-02-12"
+    kanit: evet
+    birim_iliskisi: kendi
+    en_yuksek_od: 2
+    gerekce: "Gözden geçirme kararı (niyet, planla). İncelemenin yapıldığı t19'da."
+    eslesmeler:
+      - {olcut: B.1.3, yuva: B.1.3/1, asama: planla,
+         alinti: "ilişkinin gözden geçirilmesine ve bu amaçla Eğitim Komisyonu bünyesinde üç kişilik bir çalışma grubu oluşturulmasına oy birliğiyle karar verilmiştir."}
+    yazilmamali:
+      - iddia: "İlişki gözden geçirilmiştir (yalnız karara atıfla)."
+        olcut: B.1.3
+        anahtar: ["gözden geçirilmiştir", "incelenmiştir"]
+
+  - dosya: t19-egitim-komisyonu-tutanagi-kazanim.md
+    tuzak: yakin_metin
+    belge_turu: komisyon_tutanagi
+    tarih: "2025-05-28"
+    kanit: evet
+    birim_iliskisi: kendi
+    en_yuksek_od: 4
+    gerekce: >-
+      İnceleme yapılmış (kontrol_et); kazanımların yeniden yazılması yalnız ÖNERİLMİŞ: değişiklik
+      yapıldığı (onlem_al) söylenemez.
+    eslesmeler:
+      - {olcut: B.1.3, yuva: B.1.3/4, asama: kontrol_et,
+         alinti: "MAT 201, MAT 202 ve MAT 305 derslerinde kazanımların yeniden yazılması önerilmiştir."}
+    naif:
+      eslesmeler:
+        - {olcut: B.1.3, yuva: B.1.3/4, asama: onlem_al,
+           alinti: "MAT 201, MAT 202 ve MAT 305 derslerinde kazanımların yeniden yazılması önerilmiştir."}
+    yazilmamali:
+      - iddia: "Üç dersin kazanımları yeniden yazılmış / güncellenmiştir."
+        olcut: B.1.3
+        atif_sart: false
+        anahtar: ["yeniden yazılmıştır", "yeniden yazılmış", "kazanımları güncellenmiştir", "kazanımları değiştirilmiştir"]
+        haric: ["önerilmiştir", "önerilmiş"]
+
+  - dosya: t20-bolum-web-sayfasi-program-ciktilari.md
+    tuzak: yakin_metin_beyan
+    belge_turu: web_sayfasi
+    tarih: null
+    kanit: evet
+    birim_iliskisi: kendi
+    en_yuksek_od: 2
+    gerekce: >-
+      Program çıktılarının ilanı (planla, yapı; tarihsiz: güncellik doğrulanmalı). "Her yıl gözden
+      geçirilmektedir" bir beyandır, izleme kanıtı değildir.
+    eslesmeler:
+      - {olcut: B.1.3, yuva: B.1.3/1, asama: planla,
+         alinti: "Örnek Bölümü lisans programının on iki program çıktısı aşağıda listelenmiştir."}
+    naif:
+      eslesmeler:
+        - {olcut: B.1.3, yuva: B.1.3/4, asama: kontrol_et,
+           alinti: "Program çıktıları ile ders kazanımları ilişkisi her yıl gözden geçirilmektedir."}
+    kod_notu: >-
+      Web sayfası karma tür: K denince olay sayılır, tarihsiz olduğu için sayılmaz
+      (tarih_dogrulanmali); kod yakalar ama yalnız tarih yokluğu yüzünden: sayfa tarihli olsaydı
+      beyan izleme halkası sayılırdı.
+    yazilmamali:
+      - iddia: "Program çıktısı–kazanım ilişkisi her yıl (sistematik olarak) gözden geçirilmektedir."
+        olcut: B.1.3
+        atif_sart: false
+        anahtar: ["her yıl gözden geçiril", "düzenli olarak gözden geçiril", "sistematik olarak gözden geçiril"]
+      - iddia: "Bölüm nitelikli ve yenilikçi bir eğitim sunmaktadır."
+        atif_sart: false
+        anahtar: ["yenilikçi bir eğitim", "nitelikli"]
+
+  - dosya: t21-danisman-atama-karari.md
+    tuzak: yok
+    belge_turu: bolum_kurulu_karari
+    tarih: "2025-10-01"
+    kanit: evet
+    birim_iliskisi: kendi
+    en_yuksek_od: 3
+    gerekce: "Bölümün yönergeyi uyguladığını gösteren karar (uygula)."
+    eslesmeler:
+      - {olcut: B.3.2, yuva: B.3.2/3, asama: uygula,
+         alinti: "programa yeni kaydolan 72 öğrencinin akademik danışmanlarının ekteki listede gösterildiği biçimde atanmasına oy birliğiyle karar verilmiştir."}
+    yazilmamali: []
+
+  - dosya: t22-anket-sonuclari-2025.md
+    tuzak: yok
+    belge_turu: anket_sonucu
+    tarih: "2025-07-01"
+    kanit: evet
+    birim_iliskisi: kendi
+    en_yuksek_od: 3
+    gerekce: "Anket sonuçları (bos_form_zinciri: uygula)."
+    eslesmeler:
+      - {olcut: A.4.2, yuva: A.4.2/2, asama: uygula,
+         alinti: "Anket 2024-2025 bahar yarıyılı sonunda 14 derste uygulanmış, 388 yanıt alınmıştır."}
+    yazilmamali: []
+
+  - dosya: t23-egitim-komisyonu-tutanagi-anket.md
+    tuzak: yok
+    belge_turu: komisyon_tutanagi
+    tarih: "2025-09-15"
+    kanit: evet
+    birim_iliskisi: kendi
+    en_yuksek_od: 4
+    gerekce: "Sonuçların incelenmesi (K) ve sonuca dayanan, öğrenci görüşüyle alınmış karar (Ö)."
+    eslesmeler:
+      - {olcut: A.4.2, yuva: A.4.2/5, asama: kontrol_et,
+         alinti: "2024-2025 bahar yarıyılı ders değerlendirme anketi sonuçları incelenmiştir."}
+      - {olcut: A.4.2, yuva: A.4.2/3, asama: onlem_al,
+         alinti: "MAT 102 dersinde haftalık ödev sayısının ikiye indirilmesine"}
+    yazilmamali:
+      - iddia: "Birden çok derste iyileştirme yapılmıştır."
+        olcut: A.4.2
+        anahtar: ["derslerde iyileştirme", "birçok derste", "tüm derslerde"]
+
+  - dosya: t24-obs-giris-ekrani.md
+    tuzak: bilgisiz_ekran
+    belge_turu: ekran_goruntusu
+    tarih: "2025-11-03"
+    kanit: hayir
+    birim_iliskisi: kendi
+    en_yuksek_od: 1
+    gerekce: "Bölüm hakkında bilgi içermeyen giriş ekranı (kanıt ilkesi bilgisiz_ekran)."
+    eslesmeler: []
+    naif:
+      eslesmeler:
+        - {olcut: B.1.6, yuva: B.1.6/3, asama: uygula,
+           alinti: "ÖRNEK ÜNİVERSİTESİ ÖĞRENCİ BİLGİ SİSTEMİ"}
+    bilinen_acik: "Kanıt değil kararı yalnız modelin; audit ekranın bilgi içerip içermediğini bilmez."
+    yazilmamali:
+      - iddia: "Bölümde eğitim süreçleri bilgi yönetim sistemiyle izlenmektedir (ekrana atıfla)."
+        anahtar: ["bilgi sistemi", "bilgi yönetim sistemi"]
+
+  - dosya: t25-bidr-2024-taslagi.md
+    tuzak: oz_referans
+    belge_turu: bidr_raporu
+    tarih: "2025-01-15"
+    kanit: hayir
+    birim_iliskisi: kendi
+    en_yuksek_od: 1
+    gerekce: "BİDR'ın kendisi/taslağı kanıt değildir (haric_turler); içindeki öz değerlendirme iddiaları kanıtsızdır."
+    eslesmeler: []
+    naif:
+      eslesmeler:
+        - {olcut: A.1.4, yuva: A.1.4/8, asama: ozgun,
+           alinti: "Bölümümüzde iç kalite güvencesi mekanizmaları içselleştirilmiş, sistematik, sürdürülebilir ve örnek gösterilebilir niteliktedir."}
+    bilinen_acik: >-
+      Hariç türler candidates aşamasında elenir; decisions.jsonl'e eşleşme yazılmışsa audit türü
+      yeniden denetlemez.
+    yazilmamali:
+      - iddia: "Bölüm iç kalite güvencesinde OD5 düzeyindedir / örnek gösterilebilir."
+        atif_sart: false
+        anahtar: ["OD5 düzeyinde", "içselleştirilmiş, sistematik", "örnek gösterilebilir niteliktedir"]
+
+  - dosya: t26-fakulte-staj-raporu.md
+    tuzak: fakulte_geneli
+    belge_turu: faaliyet_raporu
+    tarih: "2025-12-01"
+    kanit: evet
+    birim_iliskisi: fakulte_geneli
+    en_yuksek_od: 2
+    gerekce: "Fakülte geneli rapor, bölüm kırılımı yok: OD2 tavanı; bölüm sayısı bu rapordan çıkarılamaz."
+    eslesmeler:
+      - {olcut: B.1.4, yuva: B.1.4/4, asama: uygula,
+         alinti: "Fakültemizin bütün bölümlerinde 2025 yaz döneminde zorunlu staj yapılmıştır."}
+    naif:
+      birim_iliskisi: kendi
+      eslesmeler:
+        - {olcut: B.1.4, yuva: B.1.4/4, asama: uygula,
+           alinti: "Fakültemizin bütün bölümlerinde 2025 yaz döneminde zorunlu staj yapılmıştır."}
+    bilinen_acik: >-
+      Fakülte geneli faaliyet raporu kurum geneli türlerinden değildir; model `kendi` derse OD2
+      tavanı uygulanmaz.
+    yazilmamali:
+      - iddia: "Bölüm öğrencilerinin 391'i / %95'i stajını tamamlamıştır."
+        atif_sart: false
+        anahtar: ["391", "412", "%95", "yüzde 95"]
+
+  - dosya: t27-kariyer-gunu-2026-duyurusu.md
+    tuzak: sonraki_yil_etkinligin_duyurusu
+    belge_turu: etkinlik_duyurusu
+    tarih: "2025-12-10"
+    kanit: evet
+    birim_iliskisi: kendi
+    en_yuksek_od: 2
+    gerekce: "Duyuru 2025'te, etkinlik 2026'da: rapor yılı için yalnız planlama."
+    eslesmeler:
+      - {olcut: B.3.2, yuva: B.3.2/5, asama: planla,
+         alinti: "Örnek Bölümü 2026 Kariyer Günü 14 Ocak 2026 Çarşamba günü saat 14.00'te Bölüm Seminer Salonunda yapılacaktır."}
+    naif:
+      eslesmeler:
+        - {olcut: B.3.2, yuva: B.3.2/6, asama: uygula,
+           alinti: "Etkinliğe bilişim, finans ve eğitim sektörlerinden bölüm mezunları konuşmacı olarak katılacaktır."}
+    bilinen_acik: >-
+      Dönem kuralı belgenin tarihine bakar (2025-12); duyurulan olayın tarihi (2026) ayrıca
+      denetlenmez.
+    yazilmamali:
+      - iddia: "2026 Kariyer Günü gerçekleştirilmiştir."
+        atif_sart: false
+        anahtar: ["2026 kariyer günü gerçekleştiril", "14 ocak 2026 tarihinde gerçekleştiril", "konuşmacı olarak katılmıştır"]
+
+  - dosya: t28-tarihsiz-komisyon-tutanagi.md
+    tuzak: tarihsiz_olay
+    belge_turu: komisyon_tutanagi
+    tarih: null
+    kanit: dogrulanmali
+    birim_iliskisi: kendi
+    en_yuksek_od: 1
+    gerekce: "Tarihsiz olay: rapor yılına ait olduğu doğrulanmadan sayılmaz (doğrulanırsa K, OD4 halkası)."
+    eslesmeler:
+      - {olcut: B.1.5, yuva: B.1.5/3, asama: kontrol_et,
+         alinti: "PÇ3'e ulaşma düzeyinin hedefin altında kaldığı görülmüş"}
+    yazilmamali:
+      - iddia: "2025 yılında program çıktılarına ulaşma düzeyi izlenmiştir (yalnız tarihsiz tutanağa atıfla)."
+        olcut: B.1.5
+        anahtar: ["izlenmiştir", "izlenmektedir", "hedefin altında"]
