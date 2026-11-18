@@ -22,6 +22,8 @@ SUBCOMMAND_MODULES = [
     "bidr.audit.cli",
     "bidr.file.cli",
     "bidr.render.cli",
+    "bidr.write.cli",
+    "bidr.verify.cli",
 ]
 
 
