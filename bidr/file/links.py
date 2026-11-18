@@ -201,9 +201,12 @@ class LinkResolver:
                 p = ws.text_path(did)
                 return p.read_text(encoding="utf-8", errors="replace") if p.exists() else None
         sec = rapor_section(ws.root)
-        doms = sec.get("yayin_alan_adlari") or []
+        doms = sec.get("yayin_alan_adlari")
+        if not doms:
+            doms = _institution_domains(ws.root)   # yapılandırmada yoksa kurum profilinden
         if isinstance(doms, str):
             doms = [doms]
+        doms = doms or []
         return cls(load_links(ws.root, *extra_dirs), text_of, root=sec.get("kanit_kok_baglanti"),
                    domains=[str(d) for d in doms])
 
@@ -279,3 +282,17 @@ def update_gaps(path: Path, block: str) -> None:
         new = (cur.rstrip() + "\n\n" if cur.strip() else "") + block
     if new != cur:
         path.write_text(new, encoding="utf-8")
+
+
+def _institution_domains(ws_root: Path) -> list[str]:
+    """`config.yaml` `bidr.kurum` → `bidr/data/institutions/<kurum>.yaml` `yayin_alan_adlari`."""
+    import yaml
+    try:
+        cfg = yaml.safe_load((Path(ws_root) / "config.yaml").read_text(encoding="utf-8")) or {}
+        kurum = (cfg.get("bidr") or {}).get("kurum")
+        if not kurum:
+            return []
+        p = Path(__file__).resolve().parents[1] / "data" / "institutions" / f"{kurum}.yaml"
+        return list((yaml.safe_load(p.read_text(encoding="utf-8")) or {}).get("yayin_alan_adlari") or [])
+    except Exception:
+        return []

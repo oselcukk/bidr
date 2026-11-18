@@ -53,7 +53,7 @@ def _crit(a, cid):
 
 # Sınıfı henüz donem_kurali.yaml'a işlenmemiş türler (profil verisi bu şeridin dışında; karar
 # sahibinin). Kodda karma sayılır: planla yapı, üstü olay. Liste yalnız küçülebilir.
-SINIFSIZ = {"fotograf"}
+SINIFSIZ: set[str] = set()
 
 
 def test_every_catalog_type_has_exactly_one_class():

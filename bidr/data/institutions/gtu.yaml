@@ -6,6 +6,8 @@
 # Gövdede yalnız anılan kod (ör. "FR-0820 numaralı form") tür kanıtı sayılmaz.
 kurum: gtu
 ad: Gebze Teknik Üniversitesi
+# Kanıt bağlantısı: belge metnindeki bu alan adlarındaki adresler yayın adresi sayılır.
+yayin_alan_adlari: [gtu.edu.tr]
 # Kod biçimi: iki harfli önek + 4 hane. Önekler Türkçe harfsiz (katlanmış) yazılır.
 onekler:
   fr: FR   # form

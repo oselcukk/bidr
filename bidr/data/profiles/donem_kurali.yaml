@@ -26,6 +26,7 @@
 surum: 1
 
 yapi:
+  - fotograf                # tesis/mekân/etkinlik fotoğrafı: gösterdiği durum; tarihsizse "güncellik doğrulanmalı" (şef kararı 2026-11-18)
   - stratejik_plan
   - yonetmelik
   - yonerge                 # yönerge / usul ve esaslar
