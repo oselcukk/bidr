@@ -480,3 +480,49 @@ def test_cli_agent_mode(ws, monkeypatch):
     _agent(root, fake, "fine")
     assert main(["decide", "apply", "-w", str(root), "--stage", "fine", "--model", "x"]) == 0
     assert main(["compare-labels", "-w", str(root)]) == 0
+
+
+# -- gerçek bidr.llm işlevleriyle (model yine sahte) ----------------------------------------
+
+def test_agent_mode_with_real_llm_layer(ws):
+    """render_task / validate_output / verify_quote gerçek; cevapları ajan taklidi yazar."""
+    from bidr.decide.run import apply, prepare
+    root, ids = ws
+    fake = FakeLLM()
+    st = prepare(root, "coarse")                    # Backend() → bidr.llm
+    assert st["paket"] == 4
+    for p in (root / "work" / "coarse").iterdir():
+        assert SECRET not in p.read_text(encoding="utf-8")
+    _agent(root, fake, "coarse")
+    # ajanın kod çitli cevabı da kabul edilir (validate_output JSON'u ayıklar)
+    o = root / "work" / "coarse" / f"{ids['ekle']}.out.json"
+    o.write_text("```json\n" + o.read_text(encoding="utf-8") + "\n```", encoding="utf-8")
+    assert apply(root, "coarse", model="ajan")["islenen"] == 4
+    prepare(root, "fine")
+    _agent(root, fake, "fine")
+    st = apply(root, "fine", model="ajan")
+    assert st["islenen"] == 4 and list(st["alinti_tutmayan"]) == [ids["uydurma"]]
+    recs = {r["doc_id"]: r for r in read_jsonl(root / "decisions.jsonl")}
+    assert recs[ids["aynı"]]["olcutler"][0]["olcut"] == "B.1.1"
+    assert recs[ids["ekle"]]["olcutler"][0]["od"] == 3
+
+
+def test_provider_mode_with_real_run_task(ws):
+    from bidr.llm import config_from_dict
+    root, ids = ws
+    fake = FakeLLM()
+    seen = []
+
+    def respond(system, messages):
+        prompt = messages[-1]["content"]
+        seen.append(prompt)
+        task = "classify_fine" if "ADAY ALT ÖLÇÜTLER" in prompt else "classify_coarse"
+        return json.dumps(fake.answer(task, prompt), ensure_ascii=False)
+
+    b = Backend(load_model_config=lambda ws, role="default": config_from_dict(
+        {"provider": "fake", "responses": [respond]}, role=role))
+    out, st = run(root, backend=b, log=lambda m: None)
+    assert st["hata"] == 0 and st["ince"] == 4 and st["reddedilen_eslesme"] == 1
+    assert seen and not any(SECRET in p for p in seen)
+    recs = {r["doc_id"]: r for r in read_jsonl(out)}
+    assert recs[ids["aynı"]]["kaba"]["kip"] == "saglayici"
