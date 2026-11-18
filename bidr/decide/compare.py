@@ -294,9 +294,10 @@ def build(ws_root: Path, *, decisions: str = "decisions.jsonl", criteria=None) -
         if not lab.get("etiketli"):
             continue
         dec = decs.get(did)
-        if not dec or dec.get("durum") != "ok":
-            skipped.append({"doc_id": did, "neden": (dec or {}).get("neden") or (dec or {}).get("durum")
-                            or "karar_yok"})
+        if not dec or dec.get("durum") != "ok" or dec.get("asama") != "ince":
+            why = (dec or {}).get("neden") or ((dec or {}).get("durum") if (dec or {}).get("durum") != "ok"
+                                                 else "ince_karar_yok") or "karar_yok"
+            skipped.append({"doc_id": did, "neden": why})
             continue
         c = compare_doc(dec, lab)
         comps.append(c)

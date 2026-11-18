@@ -59,10 +59,11 @@ class FakeLLM:
         self.prompts = {n: (TASKS_DIR / n / "prompt.md").read_text(encoding="utf-8")
                         for n in ("classify_coarse", "classify_fine")}
 
-    def run_task(self, name, inputs, model, cache_dir):
-        holes = set(re.findall(r"\{\{(\w+)\}\}", self.prompts[name]))
-        assert holes == set(inputs), (holes, set(inputs))
-        self.calls.append((name, inputs))
+    def run_task(self, name, inputs, model, cache_dir, check=True):
+        if check:
+            holes = set(re.findall(r"\{\{(\w+)\}\}", self.prompts[name]))
+            assert holes == set(inputs), (holes, set(inputs))
+            self.calls.append((name, inputs))
         text = inputs["belge_metni"]
         if name == "classify_coarse":
             out = {"karar": "olcut_var", "gerekce": "g",
@@ -89,8 +90,29 @@ class FakeLLM:
         i = norm(text).find(norm(quote))
         return (i >= 0, 1.0 if i >= 0 else 0.0, (i, i + len(quote)) if i >= 0 else None)
 
+    def render_task(self, task, inputs):
+        holes = set(re.findall(r"\{\{(\w+)\}\}", self.prompts[task]))
+        assert holes == set(inputs), (holes, set(inputs))
+        prompt = re.sub(r"\{\{(\w+)\}\}", lambda m: inputs[m.group(1)], self.prompts[task])
+        return {"task": task, "version": "1", "prompt": prompt, "schema": _schema(task), "system": ""}
+
+    @staticmethod
+    def validate_output(task, raw):
+        try:
+            v = json.loads(raw) if isinstance(raw, str) else raw
+        except json.JSONDecodeError as e:
+            return None, [f"JSON değil: {e}"]
+        errs = [e.message for e in jsonschema.Draft202012Validator(_schema(task)).iter_errors(v)]
+        return (None, errs) if errs else (v, [])
+
+    def answer(self, task, prompt):
+        """Ajan taklidi: istemden cevap."""
+        return self.run_task(task, {"belge_metni": prompt}, None, None, check=False).output
+
     def backend(self):
-        return Backend(self.run_task, self.load_model_config, self.verify_quote)
+        return Backend(run_task=self.run_task, load_model_config=self.load_model_config,
+                       verify_quote=self.verify_quote, render_task=self.render_task,
+                       validate_output=self.validate_output)
 
 
 @pytest.fixture
@@ -155,6 +177,7 @@ def test_decide_records_and_skips(ws):
     assert a["karar"] == "olcut_var" and a["olcutler"][0]["olcut"] == "B.1.1"
     assert a["kaba"]["liste_disi"] == ["A.3.1"]
     assert a["kaba"]["model"] == "fake:test" and a["gorev"] == {"classify_coarse": "1", "classify_fine": "1"}
+    assert a["asama"] == "ince" and a["ince"]["model"] == "fake:test" and a["kaba"]["kip"] == "saglayici"
     # profil dışı aday (A.3.1) birleşime girmez
     assert "A.3.1" not in a["adaylar"] and a["adaylar"][:2] == ["B.1.1", "B.2.1"]
     assert recs[ids["degil"]]["karar"] == "kanit_degil"
@@ -229,6 +252,7 @@ def test_only_labeled_and_limit(ws):
     lab.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
     recs, _ = _decide(root, FakeLLM(), only_labeled=True)
     assert rows[0]["doc_id"] not in recs and len(recs) == 4
+    (root / "decisions.jsonl").unlink()      # decisions.jsonl birikimli bir depodur
     recs, _ = _decide(root, FakeLLM(), limit=2)
     assert len(recs) == 2
 
@@ -242,7 +266,7 @@ def test_model_error_marks_doc(ws):
         if "[EKLE]" in kw["inputs"]["belge_metni"]:
             raise RuntimeError("şema geçersiz")
         return orig(name, **kw)
-    b = Backend(boom, fake.load_model_config, fake.verify_quote)
+    b = Backend(run_task=boom, load_model_config=fake.load_model_config, verify_quote=fake.verify_quote)
     out, st = run(root, backend=b, log=lambda m: None)
     recs = {r["doc_id"]: r for r in read_jsonl(out)}
     assert recs[ids["ekle"]]["durum"] == "hata" and st["hata"] == 1
@@ -312,9 +336,9 @@ def test_cli_end_to_end(ws, monkeypatch):
     from bidr.cli import main
     root, ids = ws
     fake = FakeLLM()
-    for n in ("run_task", "load_model_config", "verify_quote"):
+    for n in ("run_task", "load_model_config", "verify_quote", "render_task", "validate_output"):
         monkeypatch.setattr(llm, n, getattr(fake, n), raising=False)
-    assert main(["decide", "-w", str(root), "-q"]) == 0
+    assert main(["decide", "run", "-w", str(root), "-q"]) == 0
     assert (root / "decisions.jsonl").exists()
     assert main(["compare-labels", "-w", str(root)]) == 0
     assert (root / "label-review.md").exists() and (root / "label-review.jsonl").exists()
@@ -348,3 +372,111 @@ def test_prompt_size_budget():
         P.fine_list(CS, big, TAGS) + body
     assert P.approx_tokens(coarse) < 7000
     assert P.approx_tokens(fine) < 8000
+
+
+# -- ajan modu -----------------------------------------------------------------------
+
+def _agent(root, fake, stage, broken=()):
+    """Ajan taklidi: her paketi okur, cevabı .out.json'a yazar."""
+    from bidr.decide.run import work_dir
+    from bidr.common import Workspace
+    d = work_dir(Workspace(root), stage)
+    n = 0
+    for p in sorted(d.glob("*.json")):
+        if p.name.endswith(".out.json"):
+            continue
+        pkg = json.loads(p.read_text(encoding="utf-8"))
+        out = d / pkg["cikti_dosyasi"]
+        if pkg["doc_id"] in broken:
+            out.write_text("Elbette! İşte cevap: {bozuk", encoding="utf-8")
+        else:
+            out.write_text(json.dumps(fake.answer(pkg["gorev"], pkg["istem"]), ensure_ascii=False),
+                           encoding="utf-8")
+        n += 1
+    return n
+
+
+def test_agent_mode_packages_and_apply(ws):
+    from bidr.decide.run import apply, prepare
+    root, ids = ws
+    fake = FakeLLM()
+    b = fake.backend()
+    st = prepare(root, "coarse", backend=b)
+    assert st["paket"] == 4 and st["atlandi"] == 1 and st["bekleyen"] == 4
+    wd = root / "work" / "coarse"
+    assert (wd / "README.md").exists() and "out.json" in (wd / "README.md").read_text(encoding="utf-8")
+    pkg = json.loads((wd / f"{ids['aynı']}.json").read_text(encoding="utf-8"))
+    assert pkg["gorev"] == "classify_coarse" and pkg["surum"] == "1" and pkg["sema"]["title"] == "classify_coarse"
+    assert "[AYNI]" in pkg["istem"] and "{{" not in pkg["istem"]
+    # paket dosyalarında yol/ad/iz yok
+    for p in wd.iterdir():
+        assert SECRET not in p.read_text(encoding="utf-8"), p.name
+    # fine hazırlığı kaba sonuç olmadan paket üretmez
+    assert prepare(root, "fine", backend=b)["paket"] == 0
+    # apply: cevap yoksa bekler
+    assert len(apply(root, "coarse", backend=b)["bekleyen"]) == 4
+
+    _agent(root, fake, "coarse", broken={ids["degil"]})
+    st = apply(root, "coarse", model="test-ajan", backend=b)
+    assert st["islenen"] == 3 and list(st["gecersiz"]) == [ids["degil"]]
+    assert ids["degil"] in (wd / "GECERSIZ.md").read_text(encoding="utf-8")
+    # yeniden yap: geçerli cevap
+    (wd / f"{ids['degil']}.out.json").write_text(
+        json.dumps(fake.answer("classify_coarse", pkg["istem"].replace("[AYNI]", "[DEGIL]"))), encoding="utf-8")
+    st = apply(root, "coarse", model="test-ajan", backend=b)
+    assert st["islenen"] == 4 and not st["gecersiz"] and not (wd / "GECERSIZ.md").exists()
+
+    st = prepare(root, "fine", backend=b)
+    assert st["paket"] == 4
+    fd = root / "work" / "fine"
+    for p in fd.iterdir():
+        assert SECRET not in p.read_text(encoding="utf-8"), p.name
+    fpkg = json.loads((fd / f"{ids['ekle']}.json").read_text(encoding="utf-8"))
+    assert fpkg["meta"]["adaylar"][0] == "B.2.3" and "B.2.3/2" in fpkg["istem"]
+    _agent(root, fake, "fine")
+    st = apply(root, "fine", model="test-ajan", backend=b)
+    assert st["islenen"] == 4 and list(st["alinti_tutmayan"]) == [ids["uydurma"]]
+    assert "alinti_tutmuyor" in (fd / "GECERSIZ.md").read_text(encoding="utf-8")
+    recs = {r["doc_id"]: r for r in read_jsonl(root / "decisions.jsonl")}
+    a = recs[ids["aynı"]]
+    assert a["asama"] == "ince" and a["ince"]["model"] == "test-ajan" and a["ince"]["kip"] == "ajan"
+    assert recs[ids["uydurma"]]["olcutler"] == []
+    assert recs[ids["rapor"]]["durum"] == "atlandi"
+    # işlenmiş belgeler yeniden paketlenmez
+    assert prepare(root, "fine", backend=b)["zaten_tamam"] == 4
+    # aynı akış compare-labels'a girer
+    res, _ = C.run(root)
+    assert {c["doc_id"] for c in res["karsilastirma"]} == {ids[k] for k in ("aynı", "uydurma", "ekle", "degil")}
+
+
+def test_prepare_invalidates_stale_answer(ws):
+    from bidr.decide.run import prepare
+    root, ids = ws
+    fake = FakeLLM()
+    b = fake.backend()
+    prepare(root, "coarse", backend=b)
+    _agent(root, fake, "coarse")
+    wd = root / "work" / "coarse"
+    # belge metni değişti → istem değişir → eski cevap .eski olur
+    (root / "text" / f"{ids['ekle']}.txt").write_text(DOCS["ekle"] + " ek satır", encoding="utf-8")
+    st = prepare(root, "coarse", backend=b)
+    assert st["yeni"] == 1 and st["bekleyen"] == 1
+    assert (wd / f"{ids['ekle']}.out.json.eski").exists()
+
+
+def test_cli_agent_mode(ws, monkeypatch):
+    import bidr.llm as llm
+    from bidr.cli import main
+    root, ids = ws
+    fake = FakeLLM()
+    for n in ("render_task", "validate_output", "verify_quote"):
+        monkeypatch.setattr(llm, n, getattr(fake, n), raising=False)
+    monkeypatch.setattr(llm, "run_task", lambda *a, **k: pytest.fail("ajan modunda sağlayıcı çağrıldı"),
+                        raising=False)
+    assert main(["decide", "prepare", "-w", str(root), "--stage", "coarse"]) == 0
+    _agent(root, fake, "coarse")
+    assert main(["decide", "apply", "-w", str(root), "--stage", "coarse", "--model", "x"]) == 0
+    assert main(["decide", "prepare", "-w", str(root), "--stage", "fine"]) == 0
+    _agent(root, fake, "fine")
+    assert main(["decide", "apply", "-w", str(root), "--stage", "fine", "--model", "x"]) == 0
+    assert main(["compare-labels", "-w", str(root)]) == 0
