@@ -1,0 +1,347 @@
+"""ingest testleri: tamamen sentetik (belgeler test içinde üretilir)."""
+from __future__ import annotations
+
+import csv
+import shutil
+import zipfile
+from pathlib import Path
+
+import pytest
+
+from bidr.common import Workspace, doc_id
+from bidr.ingest import extract as ex
+from bidr.ingest import ocr
+from bidr.ingest.pipeline import run, scan
+
+HAS_POPPLER = bool(shutil.which("pdftotext") and shutil.which("pdfinfo"))
+HAS_OCR = HAS_POPPLER and bool(shutil.which("pdftoppm")) and ocr.ocr_available()
+HAS_TEXTUTIL = bool(shutil.which("textutil"))
+
+
+# ----------------------------------------------------------------- üreticiler
+
+def make_docx(path: Path) -> Path:
+    import docx
+
+    d = docx.Document()
+    sec = d.sections[0]
+    sec.header.paragraphs[0].text = "Ust bilgi BASLIK-ALFA"
+    sec.footer.paragraphs[0].text = "FR-9999 Rev.01"
+    ft = sec.footer.add_table(rows=1, cols=2, width=docx.shared.Inches(6))
+    ft.cell(0, 0).text = "Form No: XY-123"
+    ft.cell(0, 1).text = "Sayfa altbilgi tablosu"
+    d.add_paragraph("Govde paragrafi birinci")
+    outer = d.add_table(rows=2, cols=2)
+    outer.cell(0, 0).text = "Dis hucre A1"
+    outer.cell(0, 1).text = "Dis hucre B1"
+    outer.cell(1, 0).text = "Dis hucre A2"
+    inner_cell = outer.cell(1, 1)
+    inner_cell.text = "Ic tablo oncesi"
+    inner = inner_cell.add_table(rows=2, cols=2)
+    inner.cell(0, 0).text = "Katilimci Bir"
+    inner.cell(0, 1).text = "Imza Bir"
+    inner.cell(1, 0).text = "Katilimci Iki"
+    inner.cell(1, 1).text = "Imza Iki"
+    d.add_paragraph("Govde paragrafi son")
+    d.save(path)
+    return path
+
+
+def make_xlsx(path: Path) -> Path:
+    import openpyxl
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Birinci"
+    ws.append(["Ders", "Kredi"])
+    ws.append(["MAT101", 4])
+    ws2 = wb.create_sheet("Ikinci")
+    ws2["C3"] = "uzak hucre degeri"
+    wb.save(path)
+    return path
+
+
+def make_pptx(path: Path) -> Path:
+    from pptx import Presentation
+    from pptx.util import Inches
+
+    prs = Presentation()
+    s1 = prs.slides.add_slide(prs.slide_layouts[1])
+    s1.shapes.title.text = "Slayt bir baslik"
+    s1.placeholders[1].text = "Madde metni"
+    s2 = prs.slides.add_slide(prs.slide_layouts[5])
+    s2.shapes.title.text = "Tablolu slayt"
+    tbl = s2.shapes.add_table(2, 2, Inches(1), Inches(2), Inches(4), Inches(1)).table
+    tbl.cell(0, 0).text = "TabloHucre1"
+    tbl.cell(1, 1).text = "TabloHucre4"
+    prs.save(path)
+    return path
+
+
+def make_text_image(path: Path, lines: list[str]):
+    from PIL import Image, ImageDraw, ImageFont
+
+    try:
+        font = ImageFont.load_default(size=56)
+    except TypeError:  # eski Pillow
+        font = ImageFont.load_default()
+    img = Image.new("RGB", (1800, 160 + 110 * len(lines)), "white")
+    dr = ImageDraw.Draw(img)
+    for i, ln in enumerate(lines):
+        dr.text((80, 80 + 110 * i), ln, fill="black", font=font)
+    img.save(path)
+    return img
+
+
+def make_text_pdf(path: Path, page_texts: list[str]) -> Path:
+    """Metin katmanlı en küçük PDF (Helvetica), elle yazılmış."""
+    objs: list[bytes] = []
+    n = len(page_texts)
+    font_id = 3 + 2 * n
+    kids = " ".join(f"{3 + 2 * i} 0 R" for i in range(n))
+    objs.append(b"<< /Type /Catalog /Pages 2 0 R >>")
+    objs.append(f"<< /Type /Pages /Kids [{kids}] /Count {n} >>".encode())
+    for i, t in enumerate(page_texts):
+        content_id = 4 + 2 * i
+        objs.append(f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+                    f"/Resources << /Font << /F1 {font_id} 0 R >> >> /Contents {content_id} 0 R >>".encode())
+        lines = t.split("\n")
+        ops = "BT /F1 14 Tf 72 720 Td 18 TL " + " ".join(f"({ln}) Tj T*" for ln in lines) + " ET"
+        objs.append(f"<< /Length {len(ops)} >>\nstream\n{ops}\nendstream".encode())
+    objs.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+    out = bytearray(b"%PDF-1.4\n")
+    offsets = []
+    for k, o in enumerate(objs, 1):
+        offsets.append(len(out))
+        out += f"{k} 0 obj\n".encode() + o + b"\nendobj\n"
+    xref = len(out)
+    out += f"xref\n0 {len(objs) + 1}\n0000000000 65535 f \n".encode()
+    for off in offsets:
+        out += f"{off:010d} 00000 n \n".encode()
+    out += f"trailer\n<< /Size {len(objs) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
+    path.write_bytes(bytes(out))
+    return path
+
+
+def read_inv(ws: Path) -> dict[str, dict]:
+    with open(Workspace(ws).inventory, newline="", encoding="utf-8") as f:
+        return {r["rel_path"]: r for r in csv.DictReader(f)}
+
+
+def text_of(ws: Path, row: dict) -> str:
+    return Workspace(ws).text_path(row["doc_id"]).read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------------- docx
+
+def test_docx_nested_table_header_footer(tmp_path):
+    p = make_docx(tmp_path / "x.docx")
+    res = ex.extract(p)
+    t = res.text
+    for s in ["Ust bilgi BASLIK-ALFA", "FR-9999 Rev.01", "Form No: XY-123",
+              "Govde paragrafi birinci", "Dis hucre A1 | Dis hucre B1",
+              "Ic tablo oncesi", "Katilimci Bir | Imza Bir", "Katilimci Iki | Imza Iki",
+              "Govde paragrafi son"]:
+        assert s in t, s
+    # iç tablo bir kez yazılır (iter() kaynaklı tekrar yok)
+    assert t.count("Katilimci Iki") == 1
+    # sıra: üstbilgi < gövde < altbilgi
+    assert t.index("BASLIK-ALFA") < t.index("Govde paragrafi birinci") < t.index("FR-9999")
+    assert t.index("Govde paragrafi birinci") < t.index("Katilimci Bir") < t.index("Govde paragrafi son")
+
+
+def test_docx_textbox_not_duplicated(tmp_path):
+    """mc:AlternateContent içindeki metin kutusu (Choice + Fallback) bir kez okunur."""
+    p = make_docx(tmp_path / "tb.docx")
+    W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    box = (
+        '<w:p><w:r><mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">'
+        f'<mc:Choice Requires="wps"><w:drawing><w:txbxContent xmlns:w="{W}"><w:p><w:r><w:t>KUTU-KOD-77</w:t></w:r></w:p>'
+        '</w:txbxContent></w:drawing></mc:Choice>'
+        f'<mc:Fallback><w:pict><w:txbxContent xmlns:w="{W}"><w:p><w:r><w:t>KUTU-KOD-77</w:t></w:r></w:p></w:txbxContent>'
+        '</w:pict></mc:Fallback></mc:AlternateContent></w:r></w:p>'
+    )
+    out = tmp_path / "tb2.docx"
+    with zipfile.ZipFile(p) as zin, zipfile.ZipFile(out, "w") as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename.startswith("word/footer"):
+                s = data.decode("utf-8")
+                s = s.replace("</w:ftr>", box + "</w:ftr>")
+                data = s.encode("utf-8")
+            zout.writestr(item, data)
+    t = ex.extract(out).text
+    assert t.count("KUTU-KOD-77") == 1
+
+
+# --------------------------------------------------------------- xlsx / pptx
+
+def test_xlsx_all_sheets(tmp_path):
+    res = ex.extract(make_xlsx(tmp_path / "a.xlsx"))
+    assert res.page_count == 2
+    assert "MAT101\t4" in res.pages[0]
+    assert "[sayfa: Ikinci]" in res.pages[1] and "uzak hucre degeri" in res.pages[1]
+
+
+def test_pptx_slides_and_tables(tmp_path):
+    res = ex.extract(make_pptx(tmp_path / "s.pptx"))
+    assert res.page_count == 2
+    assert "Slayt bir baslik" in res.pages[0] and "Madde metni" in res.pages[0]
+    assert "TabloHucre1" in res.pages[1] and "TabloHucre4" in res.pages[1]
+
+
+def test_text_and_html(tmp_path):
+    (tmp_path / "a.txt").write_bytes("Çağrı ölçüt".encode("cp1254"))
+    assert "Çağrı ölçüt" in ex.extract(tmp_path / "a.txt").text
+    (tmp_path / "b.html").write_text(
+        "<html><head><style>x{}</style></head><body><p>Bir</p><table><tr><td>H1</td><td>H2</td></tr></table>"
+        "<script>gizli()</script></body></html>", encoding="utf-8")
+    t = ex.extract(tmp_path / "b.html").text
+    assert "Bir" in t and "H1" in t and "H2" in t and "gizli" not in t and "x{}" not in t
+
+
+@pytest.mark.skipif(not HAS_TEXTUTIL, reason="textutil yok (macOS dışı)")
+def test_rtf_textutil(tmp_path):
+    (tmp_path / "r.rtf").write_text(r"{\rtf1\ansi Merhaba RTF metni\par}", encoding="ascii")
+    assert "Merhaba RTF metni" in ex.extract(tmp_path / "r.rtf").text
+
+
+# ----------------------------------------------------------------------- PDF
+
+@pytest.mark.skipif(not HAS_POPPLER, reason="poppler yok")
+def test_pdf_text_layer_pages(tmp_path):
+    p = make_text_pdf(tmp_path / "t.pdf", [
+        "Birinci sayfa metni yeterince uzun bir satir burada\nikinci satir da var metin",
+        "Ikinci sayfa metni de yeterince uzun bir satir burada\nve devam ediyor",
+    ])
+    res = ex.extract(p, use_ocr=False)
+    assert res.page_count == 2 and len(res.pages) == 2
+    assert "Birinci sayfa" in res.pages[0] and "Ikinci sayfa" in res.pages[1]
+    assert "\f" in res.text and res.ocr_pages == 0
+
+
+@pytest.mark.skipif(not HAS_OCR, reason="tesseract/poppler yok")
+def test_scanned_pdf_falls_back_to_ocr(tmp_path):
+    img = make_text_image(tmp_path / "s.png", ["TARAMA BELGESI", "KOMISYON KARARI 2024"])
+    pdf = tmp_path / "scan.pdf"
+    img.save(pdf, "PDF", resolution=150)
+    res = ex.extract(pdf, use_ocr=True)
+    assert res.ocr_pages == 1
+    assert "KOMISYON" in res.text.upper()
+    off = ex.extract(pdf, use_ocr=False)
+    assert off.ocr_missing == 1 and not off.text.strip()
+
+
+@pytest.mark.skipif(not HAS_OCR, reason="tesseract yok")
+def test_image_ocr(tmp_path):
+    make_text_image(tmp_path / "foto.png", ["TOPLANTI TUTANAGI"])
+    res = ex.extract(tmp_path / "foto.png", use_ocr=True)
+    assert "TUTANAG" in res.text.upper()
+
+
+# ------------------------------------------------------------------ pipeline
+
+def build_source(root: Path) -> Path:
+    src = root / "kaynak"
+    (src / "alt" / "derin").mkdir(parents=True)
+    make_docx(src / "alt" / "tutanak.docx")
+    make_xlsx(src / "tablo.xlsx")
+    shutil.copy(src / "tablo.xlsx", src / "alt" / "derin" / "tablo kopya.xlsx")
+    (src / "not.txt").write_text("Duz metin notu", encoding="utf-8")
+    (src / "bos.txt").write_text("   \n", encoding="utf-8")
+    with zipfile.ZipFile(src / "arsiv.zip", "w") as z:
+        z.writestr("a.txt", "x")
+    (src / "bozuk.docx").write_bytes(b"bu bir docx degil")
+    (src / ".DS_Store").write_bytes(b"\0\0")
+    (src / "~$tutanak.docx").write_bytes(b"kilit")
+    (src / "alt" / ".Belge.pdf.icloud").write_bytes(b"plist")
+    (src / ".gizli").mkdir()
+    (src / ".gizli" / "x.txt").write_text("gizli", encoding="utf-8")
+    return src
+
+
+def test_scan_skips_hidden_marks_icloud(tmp_path):
+    src = build_source(tmp_path)
+    rels = {e.rel: e for e in scan(src)}
+    assert ".DS_Store" not in rels and "~$tutanak.docx" not in rels
+    assert not any(".gizli" in r for r in rels)
+    assert rels["alt/Belge.pdf"].placeholder and rels["alt/Belge.pdf"].ext == ".pdf"
+
+
+def test_run_inventory_and_texts(tmp_path):
+    src = build_source(tmp_path)
+    ws = tmp_path / "ws"
+    before = sorted((p.relative_to(src), p.stat().st_mtime_ns) for p in src.rglob("*"))
+    rows = run(src, ws, use_ocr=False, log=lambda m: None)
+    after = sorted((p.relative_to(src), p.stat().st_mtime_ns) for p in src.rglob("*"))
+    assert before == after  # kaynak değişmedi
+
+    inv = read_inv(ws)
+    assert len(rows) == len(inv) == 8
+    tut = inv["alt/tutanak.docx"]
+    assert tut["status"] == "ok" and tut["doc_id"] == doc_id(src / "alt" / "tutanak.docx")
+    assert tut["sha256"].startswith(tut["doc_id"]) and int(tut["chars"]) > 0
+    assert "Katilimci Iki" in text_of(ws, tut) and "FR-9999" in text_of(ws, tut)
+
+    x = inv["tablo.xlsx"]
+    assert x["pages"] == "2" and x["dup_of"] == ""
+    kop = inv["alt/derin/tablo kopya.xlsx"]
+    assert kop["dup_of"] == "tablo.xlsx" and kop["doc_id"] == x["doc_id"] and kop["status"] == "ok"
+
+    assert inv["bos.txt"]["status"] == "empty"
+    assert inv["arsiv.zip"]["status"] == "unsupported" and inv["arsiv.zip"]["doc_id"]
+    assert inv["bozuk.docx"]["status"] == "error" and inv["bozuk.docx"]["error"]
+    assert inv["alt/Belge.pdf"]["status"] == "not_downloaded" and inv["alt/Belge.pdf"]["doc_id"] == ""
+    assert inv["not.txt"]["status"] == "ok"
+
+    # sayfa ayırıcı: xlsx iki sayfa -> bir '\f'
+    assert text_of(ws, x).count("\f") == 1
+
+
+def test_rerun_skips_and_force(tmp_path, monkeypatch):
+    src = build_source(tmp_path)
+    ws = tmp_path / "ws"
+    run(src, ws, use_ocr=False, log=lambda m: None)
+    calls: list[str] = []
+    real = ex.extract
+
+    def spy(path, use_ocr=True):
+        calls.append(Path(path).name)
+        return real(path, use_ocr)
+
+    monkeypatch.setattr(ex, "extract", spy)
+    run(src, ws, use_ocr=False, log=lambda m: None)
+    # yalnız tamamlanmamışlar (boş, desteklenmeyen, hatalı) yeniden denenir
+    assert "tutanak.docx" not in calls and "tablo.xlsx" not in calls and "not.txt" not in calls
+    assert read_inv(ws)["alt/tutanak.docx"]["status"] == "ok"
+    calls.clear()
+    run(src, ws, use_ocr=False, force=True, log=lambda m: None)
+    assert "tutanak.docx" in calls and "tablo.xlsx" in calls
+    assert "tablo kopya.xlsx" not in calls  # kopya hiç işlenmez
+
+
+@pytest.mark.skipif(not HAS_OCR, reason="tesseract yok")
+def test_no_ocr_then_ocr(tmp_path):
+    src = tmp_path / "k"
+    src.mkdir()
+    make_text_image(src / "foto.png", ["TOPLANTI TUTANAGI"])
+    ws = tmp_path / "ws"
+    run(src, ws, use_ocr=False, log=lambda m: None)
+    assert read_inv(ws)["foto.png"]["status"] == "needs_ocr"
+    run(src, ws, use_ocr=True, log=lambda m: None)
+    r = read_inv(ws)["foto.png"]
+    assert r["status"] == "ocr" and "TUTANAG" in text_of(ws, r).upper()
+
+
+def test_workspace_inside_source_rejected(tmp_path):
+    src = build_source(tmp_path)
+    with pytest.raises(ValueError):
+        run(src, src / "ws", log=lambda m: None)
+
+
+def test_cli_registered(tmp_path):
+    from bidr.cli import main
+
+    src = build_source(tmp_path)
+    assert main(["ingest", str(src), "--workspace", str(tmp_path / "ws"), "--no-ocr"]) == 0
+    assert (tmp_path / "ws" / "inventory.csv").exists()
