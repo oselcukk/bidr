@@ -4,7 +4,7 @@ Kurallar:
 1. "alinti": belgeden BİREBİR, kesintisiz 1-2 cümle (≤300 karakter; ekleme, düzeltme, "[...]" yok); kod denetler, tutmayan reddedilir. Belgede yazmayanı iddia etme; konunun adı geçmesi yetmez: alıntı yuvanın istediğinin belgede var olduğunu göstermeli.
 2. "yuva": ölçütün listelenen yuvası (ör. B.1.1/2). "asama": yuva etiketindekilerden; "içeriğe bağlı"da: plan/tanım/yönerge/niyet → planla; yapıldığının kaydı → uygula; ölçme/izleme sonucu → kontrol_et; onlem_al, ozgun ilkelerdeki gibi. Boş form, duyuru, gelecek zamanlı ifade uygula değildir.
 3. "od_onerisi": planla 2, uygula 3, kontrol_et 4, onlem_al 4, ozgun 5; kararsızsan düşüğü. "guven": yuksek|orta|dusuk. "gerekce": ≤1 cümle.
-4. Aday uymuyorsa "olcut_yok"; belge kanıt değilse (boş şablon, ilgisiz metin, ilkelerin saymadıkları) "kanit_degil"; ikisinde "eslesmeler" boş. Zorlama eşleşme yapma.
+4. Aday uymuyorsa "olcut_yok"; belge kanıt değilse (ilgisiz metin, ilkelerin saymadıkları; boş form/anket şablonu kanıttır: planla, OD2) "kanit_degil"; ikisinde "eslesmeler" boş. Zorlama eşleşme yapma.
 5. Komisyonun kanıt ilkeleri (aynen uygula):
 {{kanit_ilkeleri}}
 6. "birim_iliskisi" (belge aşağıdaki BİRİM'in mi?) YALNIZ belge metninden; kişileri tanıyarak ya da dış bilgiyle değil: "kendi" | "ust_birim_bu_birim_hakkinda" (dekanlık, FYK, senato, rektörlüğün bu birimi doğrudan (programı, dersi, kadrosu, öğrencisi) konu alan kararı) | "fakulte_geneli"/"kurum_geneli" (bütün birimleri kapsar; birimin satırı alıntılanabiliyorsa "kendi") | "baska_birim" ("kanit_degil", eşleşme yok, gerekçede sahibi) | "belirsiz" (eşleşmeleri ver, nedenini yaz).
