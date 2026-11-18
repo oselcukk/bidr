@@ -19,6 +19,7 @@ COLS = [
     ("belge", "belge (çalışma adı)", 42, False),
     ("kanit_adi", "kanıt adı (düzeltilebilir)", 36, True),
     ("belge_turu", "belge türü", 18, False),
+    ("birim_iliskisi", "birim ilişkisi", 14, False),
     ("donem_ici", "dönem içi", 9, False),
     ("donem_kurali", "dönem kuralı", 26, False),
     ("olcut", "ölçüt", 8, False),
@@ -78,6 +79,11 @@ HELP = [
     "belge metnindeki yayın adresidir (web çıktısının üst/altbilgisi). Kamuya açık belgenin yayımlandığı "
     "adresi 'bağlantı' hücresine yazın (https://…); ad gibi belgeye aittir. Yayımlanmamış belge için boş "
     "bırakın: config.yaml `rapor.kanit_kok_baglanti` tanımlıysa kanıt klasöründeki yoluna bağlanır.",
+    "Birim ilişkisi (ince karar): kendi = birimin belgesi; ust_birim_bu_birim_hakkinda = dekanlık/"
+    "fakülte yönetim kurulu/senato/rektörlüğün bu birimi konu alan kararı (OD tavanı yok); "
+    "fakulte_geneli / kurum_geneli = bütün birimleri kapsayan düzenleme ya da faaliyet (yalnız P, OD2); "
+    "belirsiz (sarı) = model aitliği anlayamadı: sayıldı ama birimin belgesi olduğunu doğrulayın, "
+    "değilse ret. Başka birime ait belgeler tabloya gelmez; gaps.md'de listelenir.",
     "Gri satır: sayılmayan eşleşme (ret; önceki yıl olayı = geçmiş kanıt; tarihi bilinmeyen ya da "
     "rapor yılından sonraki olay belgesi).",
     "Dönem kuralı (komisyon kararı): yapı belgesi (müfredat, ders kataloğu/bilgi formu, yönerge, iş akışı, "
@@ -132,6 +138,8 @@ def write_review(a, path: Path) -> None:
         if r["zayif"]:
             ws.cell(row=n, column=idx["guven"]).fill = F_LOW
             ws.cell(row=n, column=idx["vurgu"]).fill = F_LOW
+        if r.get("birim_iliskisi") == "belirsiz":
+            ws.cell(row=n, column=idx["birim_iliskisi"]).fill = F_LOW
         if r.get("alinti_kaynagi") == "betimleme":
             ws.cell(row=n, column=idx["alinti_kaynagi"]).fill = F_LOW
         for k in ("kanit_adi", "baglanti", "karar", "duzelt_olcut", "duzelt_yuva", "duzelt_asama", "etiket_karari", "etiket_yeni", "not"):

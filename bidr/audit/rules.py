@@ -30,6 +30,9 @@ KISA = {"planla": "P", "uygula": "U", "kontrol_et": "K", "onlem_al": "Ö", "ozgu
 # Kurum (üniversite) geneli düzenleme türleri: kanıt ilkesi `kurum_geneli_duzenleme` gereği
 # yalnız "planla" sayılır; bölümün uygulaması ayrı belge ister.
 KURUM_GENELI_TURLER = frozenset({"yonetmelik", "yonerge", "senato_karari"})
+# Bunlardan karar türleri: ince karar belgeyi üst birimin bu birim hakkındaki kararı
+# (`birim_iliskisi: ust_birim_bu_birim_hakkinda`) saydıysa tür tavanı uygulanmaz (OD tavanı yok).
+KARAR_TURLERI = frozenset({"senato_karari"})
 
 # Eksik halka için "şu tür belge gerekiyor" metni (yuva metinleri ayrıca listelenir).
 GEREKEN = {

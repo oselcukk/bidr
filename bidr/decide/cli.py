@@ -21,7 +21,9 @@ def _stats(st: dict, stage: str | None = None) -> str:
         s += (f"; ince karar (ince aşamadaki {st['ince']} belge): olcut_var={st['olcut_var']} "
               f"olcut_yok={st['olcut_yok']} kanit_degil={st['kanit_degil']}; "
               f"eşleşme kabul={st['kabul_eslesme']} red={st['reddedilen_eslesme']}"
-              + (f" od2_tavanı={st['od_tavan']}" if st.get("od_tavan") else ""))
+              + (f" od2_tavanı={st['od_tavan']}" if st.get("od_tavan") else "")
+              + (f"; başka birim={st['baska_birim']}" if st.get("baska_birim") else "")
+              + (f"; birim aitliği doğrulanmalı={st['birim_belirsiz']}" if st.get("birim_belirsiz") else ""))
     return s
 
 
@@ -92,6 +94,12 @@ def _decide(args) -> int:
         for did, ka in st.get("kanit_adi_red", {}).items():
             print(f"  kanıt adı reddedildi {did} ({', '.join(ka['red'])}): {ka['oneri']} → ad kuraldan; "
                   f"`bidr name prepare --only {did}`")
+        if st["baska_birim"]:
+            print(f"  başka birime ait (kanıt sayılmadı, gerekçe decisions.jsonl `ince.gerekce`): "
+                  + ", ".join(st["baska_birim"]))
+        if st["birim_belirsiz"]:
+            print(f"  birim aitliği doğrulanmalı (kabul edildi; review.xlsx/gaps.md'de işaretli): "
+                  + ", ".join(st["birim_belirsiz"]))
         if st["ayrildi"]:
             print(f"  {len(st['ayrildi'])} mükerrer belge temsilcinin kararını devralamadı (alıntı kendi "
                   f"metninde tutmuyor): yeniden prepare ile kendisi paketlenir")

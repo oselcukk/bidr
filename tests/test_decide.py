@@ -37,20 +37,20 @@ def _schema(name):
 
 def fine_answer(text: str) -> dict:
     if "[AYNI]" in text:
-        return {"karar": "olcut_var", "gerekce": "karar", "kurum_geneli": False, "kanit_adi": "Program Onay Kararı", "eslesmeler": [
+        return {"karar": "olcut_var", "gerekce": "karar", "birim_iliskisi": "kendi", "kanit_adi": "Program Onay Kararı", "eslesmeler": [
             {"olcut": "B.1.1", "yuva": "B.1.1/1", "asama": "planla", "od_onerisi": 2,
              "alinti": Q_B11, "gerekce": "onay kararı", "guven": "yuksek"}]}
     if "[UYDURMA]" in text:
-        return {"karar": "olcut_var", "gerekce": "x", "kurum_geneli": False, "kanit_adi": "Bölüm Kurulu Kararı", "eslesmeler": [
+        return {"karar": "olcut_var", "gerekce": "x", "birim_iliskisi": "kendi", "kanit_adi": "Bölüm Kurulu Kararı", "eslesmeler": [
             {"olcut": "B.1.1", "yuva": "B.1.1/6", "asama": "kontrol_et", "od_onerisi": 4,
              "alinti": "Program tasarım süreci yıllık olarak izlenmiş ve iyileştirilmiştir.",
              "gerekce": "izleme", "guven": "yuksek"}]}
     if "[EKLE]" in text:
-        return {"karar": "olcut_var", "gerekce": "x", "kurum_geneli": False, "kanit_adi": "Bölüm Kurulu Kararı", "eslesmeler": [
+        return {"karar": "olcut_var", "gerekce": "x", "birim_iliskisi": "kendi", "kanit_adi": "Bölüm Kurulu Kararı", "eslesmeler": [
             # aşama yuva etiketine uymuyor (uygula yuvası, model ozgun/5 diyor) → OD 3'e çekilir
             {"olcut": "B.2.3", "yuva": "B.2.3/2", "asama": "ozgun", "od_onerisi": 5,
              "alinti": Q_B23, "gerekce": "kredi verildi", "guven": "orta"}]}
-    return {"karar": "kanit_degil", "gerekce": "ilgisiz", "kurum_geneli": False, "kanit_adi": "Kantin Menüsü Duyurusu", "eslesmeler": []}
+    return {"karar": "kanit_degil", "gerekce": "ilgisiz", "birim_iliskisi": "kendi", "kanit_adi": "Kantin Menüsü Duyurusu", "eslesmeler": []}
 
 
 class FakeLLM:
@@ -165,7 +165,7 @@ def test_task_contracts_are_valid():
     # "kanıt değil" ve "hiçbir ölçüt" geçerli cevaplar
     for k in ("kanit_degil", "olcut_yok"):
         jsonschema.validate({"karar": k, "olcutler": [], "gerekce": ""}, _schema("classify_coarse"))
-        jsonschema.validate({"karar": k, "kurum_geneli": False, "kanit_adi": "Örnek Belge Adı", "eslesmeler": [], "gerekce": ""},
+        jsonschema.validate({"karar": k, "birim_iliskisi": "kendi", "kanit_adi": "Örnek Belge Adı", "eslesmeler": [], "gerekce": ""},
                             _schema("classify_fine"))
 
 
@@ -181,7 +181,7 @@ def test_decide_records_and_skips(ws):
     a = recs[ids["aynı"]]
     assert a["karar"] == "olcut_var" and a["olcutler"][0]["olcut"] == "B.1.1"
     assert a["kaba"]["liste_disi"] == ["A.3.1"]
-    assert a["kaba"]["model"] == "fake:test" and a["gorev"] == {"classify_coarse": "2", "classify_fine": "7"}
+    assert a["kaba"]["model"] == "fake:test" and a["gorev"] == {"classify_coarse": "2", "classify_fine": "8"}
     assert a["asama"] == "ince" and a["ince"]["model"] == "fake:test" and a["kaba"]["kip"] == "saglayici"
     # profil dışı aday (A.3.1) birleşime girmez
     assert "A.3.1" not in a["adaylar"] and a["adaylar"][:2] == ["B.1.1", "B.2.1"]
@@ -245,7 +245,7 @@ def test_no_path_name_or_trace_reaches_model(ws):
         assert word not in blob
     # belge bilgisi yalnız izinli içerik alanlarından
     for _, i in fake.calls:
-        assert set(i) <= {"olcutler", "adaylar", "belge_bilgisi", "belge_metni", "kanit_ilkeleri"}
+        assert set(i) <= {"olcutler", "adaylar", "belge_bilgisi", "belge_metni", "kanit_ilkeleri", "birim"}
         assert i["belge_bilgisi"] == "tür tahmini: Kurul Kararı; içerik tarihi: 2025-03-01; sayfa: 1"
 
 

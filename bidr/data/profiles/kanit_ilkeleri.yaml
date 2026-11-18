@@ -7,8 +7,9 @@ ilkeler:
       Kurum (üniversite) geneli yönerge ve yönetmelikler bölüm için kanıttır, ama tek
       başına yalnız kural ve süreç tanımıdır: aşama "planla" (OD2). Bölümün o düzenlemeyi
       uyguladığını gösteren ayrı bir belge (kurul kararı, öğrenci listesi, ilan vb.) yoksa
-      "uygula" seçme. Böyle bir belgede "kurum_geneli": true yaz; kod bu belgenin her
-      eşleşmesini OD2 ile sınırlar ve "uygulama_kaniti_eksik" diye işaretler.
+      "uygula" seçme. Böyle bir belgede "birim_iliskisi": "kurum_geneli" (fakülte geneli
+      düzenleme ya da faaliyette "fakulte_geneli") yaz; kod bu belgenin her eşleşmesini OD2 ile
+      sınırlar ve "uygulama_kaniti_eksik" diye işaretler.
   - kimlik: bilgisiz_ekran
     metin: >-
       Bölüm hakkında bilgi içermeyen ekranlar (ör. bilgi sistemi giriş ekranı, yalnız
@@ -26,6 +27,8 @@ ilkeler:
     metin: >-
       Bir düzenleme (yönetmelik, yönerge, usul ve esas) yalnız ilgili maddesi alıntılanabilen
       ölçüte bağlanır; konusu ilgili görünse de karşılayan madde yoksa o ölçüte eşleşme verme.
+      Üst birimin çok maddeli kararında (fakülte yönetim kurulu, senato) yalnız bu birimi konu
+      alan madde alıntılanır; başka bölümlerin maddeleri bu birimin kanıtı değildir.
   - kimlik: ders_bilgi_formu
     metin: >-
       Ders bilgi formu (izlence) program çıktılarıyla ilişki tablosu, AKTS iş yükü ve ölçme

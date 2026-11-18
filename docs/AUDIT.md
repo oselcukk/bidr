@@ -46,10 +46,20 @@ Tek yumuşatma (komisyon kararı, 2026-11-18): plan halkası eksik ama U/K/Ö va
 1. **Kod OD'si esas:** decide `od_kabul`'u düşürdüyse (aşama yuva etiketine uymuyor ya da
    model daha düşük OD dedi) aşama da düşer: OD3 → uygula, OD2 → planla, OD4 → kontrol_et
    (temkinli; önlem açık kanıt ister).
-2. **Kurum geneli düzenleme** (`yonetmelik`, `yonerge`, `senato_karari` türleri,
-   `rules.KURUM_GENELI_TURLER`): kanıt ilkesi `kurum_geneli_duzenleme` gereği yalnız planla.
-   Daha yüksek aşama denmişse planla'ya iner, `uygulama_kaniti_eksik` işaretlenir; ölçütte
-   bu belgeler dışında uygulama kanıtı yoksa gaps.md'de ayrı listelenir.
+2. **Kurum/fakülte geneli belge** (`yonetmelik`, `yonerge`, `senato_karari` türleri,
+   `rules.KURUM_GENELI_TURLER`, ya da ince kararın `birim_iliskisi`'si `kurum_geneli` /
+   `fakulte_geneli`): kanıt ilkesi `kurum_geneli_duzenleme` gereği yalnız planla. Daha yüksek
+   aşama denmişse planla'ya iner, `uygulama_kaniti_eksik` işaretlenir (fakültede ayrıca
+   `fakulte_geneli`); ölçütte bu belgeler dışında uygulama kanıtı yoksa gaps.md'de ayrı
+   listelenir. İstisna: `birim_iliskisi: ust_birim_bu_birim_hakkinda` olan karar türü
+   (`rules.KARAR_TURLERI`: senato kararı) sınırlanmaz: üst birimin bu birimi konu alan kararı
+   birimin kanıtıdır (yönetmelik/yönerge türü yine planla).
+2a. **Birim aitliği** (`birim_iliskisi`, docs/MODEL_LAYER.md): `baska_birim` belgenin
+   eşleşmeleri decide'da reddedilir, tabloya gelmez; gaps.md "Başka birime ait sayılan
+   belgeler" bölümünde gerekçesiyle listelenir (yanlışsa `bidr decide prepare --stage fine
+   --only <doc_id>`). `belirsiz` belge sayılır, satır `birim_aitligi_dogrulanmali` işareti ve
+   "birim aitliği doğrulanmalı" vurgusu alır; gaps.md "Birim aitliği doğrulanmalı". Eski
+   kayıtta alan yoksa `kendi` (eski `kurum_geneli` bayrağı varsa `kurum_geneli`).
 3. **Dönem kuralı** (belge türüne göre; aşağıda): yapı belgesi yürürlükteyse sayılır, olay
    belgesi rapor yılında gerçekleşmiş olmalı; önceki yıl olayı "geçmiş kanıt", tarihsiz olay
    "tarih doğrulanmalı" (sayılmaz).
@@ -120,12 +130,17 @@ kanıt yuvaları; dipnotlar hariç). Öncelik sırası:
 
 Grup içinde boş yuva sayısı çok olan önce.
 
+Birim bölümleri (varsa): birim aitliği doğrulanmalı (`belirsiz`), başka birime ait sayılan
+belgeler (`baska_birim`, kanıt sayılmadı). `audit-olcutler.json` `birim_aitligi` aynı listeleri
+taşır.
+
 Dönem bölümleri (varsa): gözden geçirme döngüleri ve döngü önerileri, geçmiş kanıtlar
 (süreklilik), tarihi doğrulanacak olay belgeleri, güncelliği doğrulanacak belgeler.
 
 ## review.xlsx
 
-"Eşleşmeler" sütunları: satır kimliği (`<doc_id>|<yuva>`), belge çalışma adı, tür, dönem içi,
+"Eşleşmeler" sütunları: satır kimliği (`<doc_id>|<yuva>`), belge çalışma adı, tür, birim ilişkisi
+(`belirsiz` sarı), dönem içi,
 dönem kuralı (sınıf · zaman · işaret, ör. "olay · önceki yıl (2023) · geçmiş kanıt
 (süreklilik)"; doğrulama isteyen hücre sarı), ölçüt, yuva ve metni, model aşaması, sayılan aşama, sayılan OD, yuva etiketi (aşama → OD) ve
 durumu (öneri/onaylı), vurgu, güven, işaretler, alıntı, gerekçe; kullanıcı sütunları

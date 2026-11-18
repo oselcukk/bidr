@@ -15,8 +15,10 @@ Akış (belge başına):
   5. Kod denetimi: aday dışı ölçüt, geçersiz yuva, tutmayan/çok kısa alıntı → eşleşme
      REDDEDİLİR (kayıtta kalır, `kabul: false`). Aşama yuva etiketine uymuyorsa ya da
      OD aşamayla tutarsızsa OD düşük olana çekilir (`od_kabul`), işaretlenir.
-     Kurum geneli düzenlemenin (model `kurum_geneli` ya da `kurum_geneli.yaml` türü)
-     eşleşmeleri OD2 ile sınırlanır (`uygulama_kaniti_eksik`).
+     Kurum/fakülte geneli belgenin (model `birim_iliskisi` ya da `kurum_geneli.yaml` türü)
+     eşleşmeleri OD2 ile sınırlanır (`uygulama_kaniti_eksik`). Başka birime ait belgenin
+     (`birim_iliskisi: baska_birim`) eşleşmeleri reddedilir; `belirsiz` kabul edilir,
+     `birim_aitligi_dogrulanmali` işaretlenir.
 
 Yeniden işleme: `prepare --only` yalnız verilen belgeleri yeniden paketler. Görev sürümü ya
 da istem değişen işlenmiş belgeler "eski" sayılır; `prepare` önce özet verir, `--yes` ile
@@ -88,12 +90,44 @@ def kurum_geneli_types(path: Path | None = None) -> frozenset[str]:
     return frozenset((yaml.safe_load(p.read_text(encoding="utf-8")) or {}).get("kurum_geneli_turler") or ())
 
 
+# Belgenin karar paketindeki birimle ilişkisi (classify_fine v8 `birim_iliskisi`).
+BIRIM_ILISKILERI = ("kendi", "ust_birim_bu_birim_hakkinda", "fakulte_geneli", "kurum_geneli",
+                    "baska_birim", "belirsiz")
+GENEL_ILISKI = frozenset({"fakulte_geneli", "kurum_geneli"})   # OD2 tavanı (kurum geneli kuralı)
+BIRIM_DISI = "baska_birim"                                       # bu birim için kanıt değil
+BIRIM_BELIRSIZ = "belirsiz"                                      # kabul; aitlik doğrulanmalı
+
+
+def unit_relation(out: dict) -> tuple[str, str]:
+    """Model cevabından (iliski, kaynak). Geri uyumluluk (v7 ve öncesi): `birim_iliskisi`
+    yoksa eski `kurum_geneli: true` → kurum_geneli (kaynak `eski_alan`), değilse `kendi`
+    (kaynak `varsayilan`; eski kararlar birim sorulmadan verildi, `belirsiz` sayılmaz)."""
+    v = out.get("birim_iliskisi")
+    if isinstance(v, str) and v in BIRIM_ILISKILERI:
+        return v, "model"
+    if out.get("kurum_geneli") is True:
+        return "kurum_geneli", "eski_alan"
+    return "kendi", "varsayilan"
+
+
+def record_unit_relation(rec: dict | None) -> str:
+    """decisions.jsonl kaydından birim ilişkisi (eski kayıtlar için `unit_relation` kuralı)."""
+    ince = (rec or {}).get("ince") or {}
+    v = ince.get("birim_iliskisi")
+    if isinstance(v, str) and v in BIRIM_ILISKILERI:
+        return v
+    kg = ince.get("kurum_geneli")
+    return "kurum_geneli" if isinstance(kg, dict) and kg.get("model") is True else "kendi"
+
+
 def kurum_geneli(out: dict, doc: dict | None, types: frozenset[str] | None = None) -> dict:
-    """{"model": bool|None, "tur": bool, "karar": bool}. Model ya da tür listesi yeter
-    (tavan yalnız OD'yi düşürür; bkz. kurum_geneli.yaml)."""
+    """{"model": bool|None, "tur": bool, "karar": bool}. Model (`birim_iliskisi` kurum ya da
+    fakülte geneli; eski cevapta `kurum_geneli`) ya da tür listesi yeter (tavan yalnız OD'yi
+    düşürür; bkz. kurum_geneli.yaml)."""
     types = kurum_geneli_types() if types is None else types
-    m = out.get("kurum_geneli")
-    m = m if isinstance(m, bool) else None
+    rel, src = unit_relation(out)
+    m = (rel in GENEL_ILISKI) if src != "varsayilan" else (
+        False if out.get("kurum_geneli") is False else None)
     t = bool(doc and doc.get("doc_type") in types)
     return {"model": m, "tur": t, "karar": bool(m) or t}
 
@@ -135,10 +169,11 @@ def merge_candidates(coarse: list[str], cand_row: dict | None, allowed: set[str]
 
 
 def check_matches(out: dict, cands: list[str], cs: CriteriaSet, tags: dict, text: str,
-                  verify: Callable, kurum: bool = False) -> list[dict]:
+                  verify: Callable, kurum: bool = False, birim: str = "kendi") -> list[dict]:
     """İnce kararın eşleşmelerini kodla denetler; her eşleşmeye `denetim`, `kabul`,
     `od_kabul` ekler. Alıntı tam (kısaltılmamış) metne karşı denetlenir. `kurum`: belge
-    kurum geneli düzenleme → kabul edilen OD en çok `KURUM_OD`."""
+    kurum/fakülte geneli → kabul edilen OD en çok `KURUM_OD`. `birim`: belgenin birimle
+    ilişkisi; `baska_birim` her eşleşmeyi reddeder, `belirsiz` işaretler."""
     rows = []
     seen = set()
     cset = set(cands)
@@ -168,6 +203,10 @@ def check_matches(out: dict, cands: list[str], cs: CriteriaSet, tags: dict, text
         if (olcut, yuva) in seen:
             red.append("yinelenen")
         seen.add((olcut, yuva))
+        if birim == BIRIM_DISI:
+            red.append("baska_birim")
+        elif birim == BIRIM_BELIRSIZ:
+            isaret.append("birim_aitligi_dogrulanmali")
         # OD: aşama yuva etiketine uymalı; uymuyorsa yuvanın en düşük OD'si.
         tag = tags.get(yuva) if slot is not None else None
         asama = r.get("asama")
@@ -225,6 +264,11 @@ class Context:
     cand: dict
     k: int
     max_aday: int
+    unit: dict = None          # {"birim", "kurum"}: config.yaml'dan, ince karar paketine girer
+
+    def __post_init__(self):
+        if self.unit is None:
+            self.unit = {"birim": None, "kurum": None}
 
     @classmethod
     def load(cls, ws_root: Path, *, profile: str | None = "akademik_bolum", k: int = 5,
@@ -235,7 +279,8 @@ class Context:
         allowed = load_profile(profile).allowed(cs) if profile else [s.id for s in cs.sub_criteria]
         return cls(ws, cs, load_tags(cs), profile or None, allowed,
                    excluded_types() if exclude_types is None else exclude_types,
-                   _documents(ws), _candidates(ws.root / candidates_name), k, max_aday)
+                   _documents(ws), _candidates(ws.root / candidates_name), k, max_aday,
+                   P.unit_info(ws.root))
 
     def text(self, did: str) -> str:
         return self.ws.text_path(did).read_text(encoding="utf-8", errors="replace")
@@ -328,7 +373,7 @@ def fine_inputs(ctx: Context, did: str, rec: dict) -> tuple[dict, dict] | None:
     body, ex = P.excerpt(ctx.text(did), P.FINE_CHARS, P.criteria_terms(ctx.cs, cands))
     inputs = {"adaylar": P.fine_list(ctx.cs, cands, ctx.tags),
               "belge_bilgisi": P.render_info(rec.get("belge_bilgisi") or {}), "belge_metni": body,
-              "kanit_ilkeleri": P.evidence_principles()}
+              "kanit_ilkeleri": P.evidence_principles(), "birim": P.render_unit(ctx.unit)}
     meta.update(metin=ex, istem_token_tahmini=P.approx_tokens("".join(inputs.values())))
     return inputs, meta
 
@@ -355,11 +400,14 @@ def apply_fine(ctx: Context, did: str, rec: dict, out: dict, meta: dict, model_i
                verify: Callable, extra: dict | None = None) -> dict:
     rec = _clear_pending(rec)
     kg = kurum_geneli(out, ctx.docs.get(did))
-    matches = check_matches(out, meta["adaylar"], ctx.cs, ctx.tags, ctx.text(did), verify, kg["karar"])
+    rel, rel_src = unit_relation(out)
+    matches = check_matches(out, meta["adaylar"], ctx.cs, ctx.tags, ctx.text(did), verify, kg["karar"],
+                            rel)
     rec["gorev"] = {**rec.get("gorev", {}), FINE: task_version(FINE)}
     rec.update(asama="ince", adaylar=meta["adaylar"], belirleyici_ilk_k=meta["belirleyici_ilk_k"],
                adaylar_kesilen=meta["adaylar_kesilen"])
     rec["ince"] = {"karar": out.get("karar"), "gerekce": out.get("gerekce", ""), "kurum_geneli": kg,
+                   "birim_iliskisi": rel, "birim_iliskisi_kaynagi": rel_src,
                    "kanit_adi": evidence_name_of(out), "model": model_id,
                    "metin": meta["metin"], "istem_token_tahmini": meta["istem_token_tahmini"],
                    **(extra or {})}
@@ -367,7 +415,7 @@ def apply_fine(ctx: Context, did: str, rec: dict, out: dict, meta: dict, model_i
     rec["olcutler"] = summarize(matches)
     if rec["olcutler"]:
         rec["karar"] = "olcut_var"
-    elif out.get("karar") == "kanit_degil":
+    elif out.get("karar") == "kanit_degil" or rel == BIRIM_DISI:   # başka birimin belgesi kanıt değil
         rec["karar"] = "kanit_degil"
     else:
         rec["karar"] = "olcut_yok"
@@ -391,7 +439,7 @@ def stats_of(recs: dict[str, dict]) -> dict:
     st = {"belge": len(recs), "ok": 0, "atlandi": 0, "hata": 0, "kaba": 0, "ince": 0,
           "olcut_var": 0, "olcut_yok": 0, "kanit_degil": 0, "kabul_eslesme": 0, "reddedilen_eslesme": 0,
           "kaba_karar": {"olcut_var": 0, "olcut_yok": 0, "kanit_degil": 0}, "devralan": 0,
-          "yeniden": 0, "od_tavan": 0}
+          "yeniden": 0, "od_tavan": 0, "baska_birim": 0, "birim_belirsiz": 0}
     for r in recs.values():
         st[r["durum"]] = st.get(r["durum"], 0) + 1
         if r["durum"] != "ok":
@@ -406,6 +454,9 @@ def stats_of(recs: dict[str, dict]) -> dict:
             st["od_tavan"] += sum("uygulama_kaniti_eksik" in m.get("denetim", {}).get("isaret", ())
                                   for m in r.get("eslesmeler", []))
             st[r["karar"]] += 1
+            rel = record_unit_relation(r)
+            st["baska_birim"] += rel == BIRIM_DISI
+            st["birim_belirsiz"] += rel == BIRIM_BELIRSIZ
             st["kabul_eslesme"] += sum(m["kabul"] for m in r.get("eslesmeler", []))
             st["reddedilen_eslesme"] += r.get("reddedilen_eslesme", 0)
     return st
@@ -515,9 +566,12 @@ def rep_output(rep: dict) -> dict:
     """Temsilcinin ince kararından modelin cevabı (kodun eklediği alanlar atılır)."""
     out = {"karar": rep["ince"].get("karar"), "gerekce": rep["ince"].get("gerekce", ""),
            "eslesmeler": [{k: m[k] for k in MATCH_KEYS if k in m} for m in rep.get("eslesmeler") or []]}
-    kg = rep["ince"].get("kurum_geneli")
-    if isinstance(kg, dict) and isinstance(kg.get("model"), bool):
-        out["kurum_geneli"] = kg["model"]
+    if rep["ince"].get("birim_iliskisi") in BIRIM_ILISKILERI:
+        out["birim_iliskisi"] = rep["ince"]["birim_iliskisi"]
+    else:                                   # v7 ve öncesi temsilci: eski alan (geri uyumluluk)
+        kg = rep["ince"].get("kurum_geneli")
+        if isinstance(kg, dict) and isinstance(kg.get("model"), bool):
+            out["kurum_geneli"] = kg["model"]
     ka = rep["ince"].get("kanit_adi")
     if isinstance(ka, dict) and isinstance(ka.get("oneri"), str):
         out["kanit_adi"] = ka["oneri"]
@@ -808,7 +862,7 @@ def apply(ws_root: Path, stage: str, *, model: str = "ajan:belirtilmemis",
     recs = load_decisions(ctx.ws)
     d = work_dir(ctx.ws, stage)
     st = {"islenen": 0, "degismedi": 0, "bekleyen": [], "gecersiz": {}, "alinti_tutmayan": {},
-          "eski_surum": [], "kanit_adi_red": {}}
+          "eski_surum": [], "kanit_adi_red": {}, "baska_birim": [], "birim_belirsiz": []}
     for p in _pkg_paths(d):
         pkg = json.loads(p.read_text(encoding="utf-8"))
         did = pkg["doc_id"]
@@ -842,10 +896,17 @@ def apply(ws_root: Path, stage: str, *, model: str = "ajan:belirtilmemis",
                 continue
             rec = apply_fine(ctx, did, rec, out, pkg["meta"], model, backend.verify_quote, extra)
             recs[did] = rec
+            # başka birimin belgesi yeniden yapılacak iş değil: alıntı listesine girmez
             bad = [f"{m.get('yuva')}: {', '.join(m['denetim']['red'])}"
-                   for m in rec["eslesmeler"] if not m["kabul"]]
+                   for m in rec["eslesmeler"] if not m["kabul"]
+                   and set(m["denetim"]["red"]) - {"baska_birim"}]
             if bad:
                 st["alinti_tutmayan"][did] = bad
+            rel = rec["ince"]["birim_iliskisi"]
+            if rel == BIRIM_DISI:
+                st["baska_birim"].append(did)
+            elif rel == BIRIM_BELIRSIZ:
+                st["birim_belirsiz"].append(did)
             ka = rec["ince"].get("kanit_adi")
             if ka and ka["durum"] == "red":
                 st["kanit_adi_red"][did] = ka

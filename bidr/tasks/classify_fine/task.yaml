@@ -1,4 +1,4 @@
-version: 7
+version: 8
 description: >-
   İnce karar. Belge metni + aday alt ölçütlerin rubriği (1-5, birebir) ve kanıt
   yuvaları (PUKÖ aşaması / OD etiketiyle) → her uyan ölçüt için
@@ -10,7 +10,14 @@ description: >-
   döngü tanımı alıntılanır; kod uygular: bidr/data/profiles/donem_kurali.yaml).
   v7: belge düzeyinde `kanit_adi` (3-7 sözcük kanıt dosyası adı; kişi adı/unvan yok). Kod
   kişi/unvan/e-posta içereni reddeder ve işaretler (bidr/name/check.py); ad kurala düşer.
+  v8: birim farkındalığı. İsteme birim (ve kurum) adı girer (`birim`, config.yaml `bidr:`);
+  `kurum_geneli` (bool) yerine `birim_iliskisi`: kendi | ust_birim_bu_birim_hakkinda |
+  fakulte_geneli | kurum_geneli | baska_birim | belirsiz. Kod: fakülte/kurum geneli OD2 tavanı,
+  baska_birim eşleşmeleri reddedilir (kanit_degil), belirsiz kabul + işaret. Eski kayıt: alan
+  yoksa `kurum_geneli: true` → kurum_geneli, değilse kendi.
 inputs:
   adaylar: "aday alt ölçütler: başlık, rubrik 1-5, yuvalar `[aşama → OD]` etiketiyle"
   belge_bilgisi: "documents.jsonl içerik alanları (tür tahmini, tarih, sayfa); yol/ad yok"
   belge_metni: "belge metni; kısaltıldıysa parçalar arası [...]"
+  kanit_ilkeleri: "komisyonun kanıt ilkeleri (bidr/data/profiles/kanit_ilkeleri.yaml)"
+  birim: "birim adı ve kurum adı (config.yaml `bidr.birim`, `bidr.kurum` profilinin adı)"

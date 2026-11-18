@@ -10,8 +10,17 @@ Kurallar:
 7. Hiçbir aday uymuyorsa karar "olcut_yok"; belge kanıt niteliği taşımıyorsa (boş şablon, bu BİDR raporunun kendisi ya da taslağı, ilgisiz metin; dış akreditasyon öz değerlendirme raporları kanıttır) "kanit_degil". İkisinde de "eslesmeler" boş liste. Bu cevaplar geçerlidir; zorlama eşleşme yapma.
 8. Komisyonun kanıt ilkeleri (aynen uygula):
 {{kanit_ilkeleri}}
-9. "kurum_geneli": belge kurum (üniversite) geneli bir düzenleme ya da politika metniyse (yönetmelik, yönerge, usul ve esaslar, kurum politikası, kurum stratejik planı; bölüme özgü bir uygulama kaydı değil) true, değilse false. Kurum geneli belgenin her eşleşmesi kodca OD2 ile sınırlanır; bölümün uyguladığını ayrı bir belge gösterir.
+9. "birim_iliskisi": belge aşağıdaki BİRİM'e ait mi (klasörde fakülte ve başka bölüm belgeleri de olabilir)?
+   - "kendi": birimin kendi belgesi.
+   - "ust_birim_bu_birim_hakkinda": dekanlık, fakülte yönetim kurulu, senato ya da rektörlüğün bu birimi (programı, dersi, kadrosu, öğrencisi, komisyonu) doğrudan konu alan kararı/yazısı. OD tavanı yok; alıntı yalnız bu birimi konu alan maddeden.
+   - "fakulte_geneli" / "kurum_geneli": bütün birimleri kapsayan düzenleme, politika ya da fakülte/kurum geneli faaliyet. Kod eşleşmeleri OD2 ile sınırlar. Bölüm kırılımlı fakülte belgesinde (ör. anketin bölüm tablosu) birimin satırı alıntılanabiliyorsa "kendi".
+   - "baska_birim": başka bölüm/birimin belgesi; kanıt değil: karar "kanit_degil", eşleşme yok, gerekçede ait olduğu birim.
+   - "belirsiz": aitlik metinden anlaşılmıyor; eşleşmeleri ver, gerekçede nedenini yaz.
+   Örnek (birim Matematik): FYK kararının 3. maddesi Matematik Bölümü'nün ders değişikliğini onaylıyor → "ust_birim_bu_birim_hakkinda", alıntı 3. maddeden. Kimya Bölümü laboratuvar güvenliği tutanağı → "baska_birim". Üniversite eğitim-öğretim yönetmeliği → "kurum_geneli".
 10. "kanit_adi": belgenin kanıt dosyası adı; komisyon ve hakem dosya listesinde belgenin ne olduğunu tek bakışta anlamalı. 3-7 sözcük, Türkçe, kurumsal, her sözcüğün baş harfi büyük. Belgenin türünü ve konusunu söyler; ders belgesinde ders kodunu, dönemlik/yıllık belgede dönemi ya da yılı içerir (metinde varsa): "Bölüm Toplantı Tutanakları", "Öğrenci Ders Memnuniyet Anketi", "MATH113 Örnek Ders İzlencesi", "ASELSAN Bilgisayar Laboratuvarı". Aynı türden belgeleri ayırt eder ("Yönerge" değil "GTÜ Çift Anadal Programı Yönergesi"). OCR hatalarını düzeltir, tamamı büyük harf yazmaz. Kişi adı, unvan, hitap, e-posta YOK (kişiye ait belgede rolü yazılır). "kanit_degil" ve "olcut_yok" kararında da doldurulur.
+
+BİRİM (bu rapor yalnız bu birim için hazırlanıyor)
+{{birim}}
 
 ADAY ALT ÖLÇÜTLER
 {{adaylar}}
@@ -25,4 +34,4 @@ BELGE METNİ
 >>>
 
 Yalnız şu biçimde tek bir JSON nesnesi döndür:
-{"karar": "olcut_var" | "olcut_yok" | "kanit_degil", "kurum_geneli": false, "kanit_adi": "Bölüm Kurulu Kararları 2024", "eslesmeler": [{"olcut": "B.1.1", "yuva": "B.1.1/2", "asama": "uygula", "od_onerisi": 3, "alinti": "...", "gerekce": "...", "guven": "orta"}], "gerekce": "genel kısa gerekçe"}
+{"karar": "olcut_var" | "olcut_yok" | "kanit_degil", "birim_iliskisi": "kendi", "kanit_adi": "Bölüm Kurulu Kararları 2024", "eslesmeler": [{"olcut": "B.1.1", "yuva": "B.1.1/2", "asama": "uygula", "od_onerisi": 3, "alinti": "...", "gerekce": "...", "guven": "orta"}], "gerekce": "genel kısa gerekçe"}

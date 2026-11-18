@@ -2,11 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "classify_fine",
   "type": "object",
-  "required": ["karar", "kurum_geneli", "kanit_adi", "eslesmeler", "gerekce"],
+  "required": ["karar", "birim_iliskisi", "kanit_adi", "eslesmeler", "gerekce"],
   "additionalProperties": false,
   "properties": {
     "karar": {"enum": ["olcut_var", "olcut_yok", "kanit_degil"]},
-    "kurum_geneli": {"type": "boolean"},
+    "birim_iliskisi": {"enum": ["kendi", "ust_birim_bu_birim_hakkinda", "fakulte_geneli", "kurum_geneli", "baska_birim", "belirsiz"]},
     "kanit_adi": {"type": "string", "minLength": 3, "maxLength": 80},
     "eslesmeler": {
       "type": "array",

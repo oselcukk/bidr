@@ -44,6 +44,26 @@ ok, score, span = verify_quote(quote, text)   # Türkçe katlama, boşluk, OCR t
   `{olcut, yuva, asama, od_onerisi, alinti, gerekce, guven}`. Alıntı belge
   metninden birebir olmalı; `verify_quote` ile denetlenir, tutmayan karar
   işaretlenir.
+- **Birim farkındalığı (classify_fine v8).** İnce karar istemine `{{birim}}` girer: çalışma
+  alanı `config.yaml` `bidr.birim` ve `bidr.kurum` profilinin `ad`ı (`prompt.unit_info`;
+  birim yoksa "belirtilmedi"). Kaba seçim istemi değişmez (aday seçimi; son söz ince kararın).
+  Belge düzeyinde `birim_iliskisi` (eski `kurum_geneli` bool alanının yerine; şema dışı değer
+  reddedilir):
+
+  | Değer | Anlamı | Kod (`apply_fine` / `check_matches`) |
+  |---|---|---|
+  | `kendi` | birimin kendi belgesi | kural yok |
+  | `ust_birim_bu_birim_hakkinda` | dekanlık/FYK/senato/rektörlüğün bu birimi konu alan kararı/yazısı; alıntı yalnız birimi konu alan maddeden (madde ilkesi) | OD tavanı yok; audit `senato_karari` tür tavanını da uygulamaz (yönetmelik/yönerge türü yine OD2) |
+  | `fakulte_geneli` / `kurum_geneli` | bütün birimleri kapsayan düzenleme, politika ya da fakülte/kurum geneli faaliyet | her eşleşme OD2 (`uygulama_kaniti_eksik`); bölüm kırılımlı fakülte belgesinde birimin satırı alıntılanırsa model `kendi` der |
+  | `baska_birim` | başka bölüm/birimin belgesi | her eşleşme reddedilir (`denetim.red: baska_birim`), karar `kanit_degil`, model gerekçesi `ince.gerekce`'de; GECERSIZ.md'ye girmez |
+  | `belirsiz` | aitlik metinden anlaşılmıyor | kabul, `birim_aitligi_dogrulanmali` işareti; review.xlsx ve gaps.md'de listelenir |
+
+  Kayıt: `ince.birim_iliskisi`, `ince.birim_iliskisi_kaynagi` (`model` | `eski_alan` |
+  `varsayilan`); `ince.kurum_geneli` (`model`/`tur`/`karar`) korunur, `model` artık
+  `birim_iliskisi`'nden türer. **Geri uyumluluk:** alanı olmayan eski kayıt/cevap
+  `kurum_geneli: true` ise `kurum_geneli`, değilse `kendi` sayılır (`belirsiz` değil;
+  `record_unit_relation`). Sürüm 7 → 8: işlenmiş kayıtlar "eski_surum" olur; `bidr decide
+  prepare --stage fine` özet verir, `--yes` ile birimli yeni istemle yeniden paketler.
 - `bidr decide -w WS [--profile P] [--only-labeled] [--limit N]` →
   `decisions.jsonl`.
 - `bidr compare-labels -w WS` → geçmiş etiketle karşılaştırma: aynı / ekliyor /

@@ -27,7 +27,7 @@ def top_gaps(a, n: int = 10) -> list[dict]:
 
 def gap_line(c: dict) -> str:
     halkalar = ", ".join(e["halka"] for e in c["eksik"]) or "—"
-    extra = " (yalnız kurum geneli düzenleme)" if c["kurum_geneli_yalniz"] else ""
+    extra = " (yalnız kurum/fakülte geneli belge)" if c["kurum_geneli_yalniz"] else ""
     return (f"{c['olcut']} {c['baslik']}: OD{c['od']}{extra}; OD{c['sonraki_od']} için eksik: {halkalar}; "
             f"boş yuva {c['yuva_toplam'] - c['yuva_dolu']}/{c['yuva_toplam']}")
 
@@ -75,6 +75,25 @@ def _donem_sections(a) -> list[str]:
     return L
 
 
+def _birim_sections(a) -> list[str]:
+    """Birim aitliği: doğrulanacak (belirsiz) ve başka birime ait sayılan belgeler."""
+    L: list[str] = []
+    b = getattr(a, "birim", None) or {}
+    if b.get("belirsiz"):
+        L += ["", "## Birim aitliği doğrulanmalı", "",
+              "İnce karar belgenin bu birime ait olup olmadığını metinden anlayamadı (`birim_iliskisi: belirsiz`). "
+              "Eşleşmeleri sayıldı ve tabloda işaretli; birimin belgesi değilse satırlarını `ret` edin.", ""]
+        for x in b["belirsiz"]:
+            L.append(f"- `{x['belge']}` ({x['eslesme']} eşleşme)" + (f": {x['gerekce']}" if x["gerekce"] else ""))
+    if b.get("baska_birim"):
+        L += ["", "## Başka birime ait sayılan belgeler (kanıt sayılmadı)", "",
+              "İnce karar bu belgeleri başka bir bölüm/birimin belgesi saydı; eşleşmeleri reddedildi. Yanlışsa: "
+              "`bidr decide prepare -w <çalışma alanı> --stage fine --only <doc_id>` ile yeniden karar.", ""]
+        for x in b["baska_birim"]:
+            L.append(f"- `{x['belge']}` (`{x['doc_id']}`)" + (f": {x['gerekce']}" if x["gerekce"] else ""))
+    return L
+
+
 def gaps_md(a) -> str:
     from .run import od_distribution
     L = [f"# Eksik kanıt raporu", "",
@@ -93,10 +112,11 @@ def gaps_md(a) -> str:
         L.append(f"{i}. {gap_line(c)}")
     kg = [c for c in a.criteria if c["kurum_geneli_yalniz"]]
     if kg:
-        L += ["", "## Kurum geneli belgeyle eşleşen, uygulama kanıtı eksik ölçütler", ""]
+        L += ["", "## Kurum/fakülte geneli belgeyle eşleşen, uygulama kanıtı eksik ölçütler", ""]
         for c in kg:
             docs = sorted({r["belge"] for r in a.rows if r["olcut"] == c["olcut"] and "kurum_geneli" in r["flags"]})
             L.append(f"- {c['olcut']} {c['baslik']}: " + "; ".join(f"`{d}`" for d in docs[:4]))
+    L += _birim_sections(a)
     L += _donem_sections(a)
     L += ["", "## Ölçüt ölçüt", ""]
     for c in a.criteria:

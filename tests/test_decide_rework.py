@@ -121,7 +121,7 @@ def test_version_change_needs_summary_and_yes(ws, monkeypatch):
     assert st["paket"] == 4 and st["yeni"] == 4 and not st["onay_gerekli"]
     assert not (root / "work" / "fine" / R.RESTALE).exists()
     recs = _recs(root)
-    assert all(recs[k]["yeniden"] == {"asama": "fine", "neden": "eski_surum", "onceki_surum": "7"} for k in done)
+    assert all(recs[k]["yeniden"] == {"asama": "fine", "neden": "eski_surum", "onceki_surum": "8"} for k in done)
     ck = _check(root, "fine")
     assert not ck.bitti and ck.kim == "ajan" and ck.ilerleme["cevapsiz"] == 4
     _agent(root, fake, "fine")
@@ -202,7 +202,7 @@ def test_kurum_geneli_cap_end_to_end(ws, how):
         def run_task(self, name, inputs, model, cache_dir, check=True):
             r = super().run_task(name, inputs, model, cache_dir, check)
             if how == "model" and name == R.FINE and "[EKLE]" in inputs["belge_metni"]:
-                r.output["kurum_geneli"] = True
+                r.output["birim_iliskisi"] = "kurum_geneli"
             return r
     _, st = R.run(root, backend=F().backend(), log=lambda m: None)
     rec = _recs(root)[x]
@@ -219,9 +219,11 @@ def test_kurum_geneli_in_prompt_and_schema():
     from bidr.decide import prompt as P
     assert "kurum_geneli" in P.evidence_principles()
     fine = (R.TASKS_DIR / R.FINE / "prompt.md").read_text(encoding="utf-8")
-    assert '"kurum_geneli"' in fine
+    assert '"kurum_geneli"' in fine and '"birim_iliskisi"' in fine and "{{birim}}" in fine
     sch = json.loads((R.TASKS_DIR / R.FINE / "output.schema.json").read_text(encoding="utf-8"))
-    assert "kurum_geneli" in sch["required"] and R.task_version(R.FINE) == "7"
+    assert "birim_iliskisi" in sch["required"] and "kurum_geneli" not in sch["properties"]
+    assert set(sch["properties"]["birim_iliskisi"]["enum"]) == set(R.BIRIM_ILISKILERI)
+    assert R.task_version(R.FINE) == "8"
 
 
 # -- 4. mükerrer metin ------------------------------------------------------------------

@@ -214,3 +214,43 @@ def evidence_principles(path=None) -> str:
         return "(tanımlı ilke yok)"
     data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
     return "\n".join(f"   - {i['metin']}" for i in data.get("ilkeler") or []) or "(tanımlı ilke yok)"
+
+
+# -- birim bağlamı ---------------------------------------------------------------------
+
+def _institution_name(key: str | None) -> str | None:
+    """Kurum profili anahtarı (config `bidr.kurum`, ör. gtu) → kurumun adı (profilin `ad`ı)."""
+    if not key:
+        return None
+    import os
+    from pathlib import Path
+
+    import yaml
+    d = Path(os.environ.get("BIDR_INSTITUTIONS_DIR",
+                            Path(__file__).resolve().parents[1] / "data" / "institutions")).expanduser()
+    p = d / f"{key}.yaml"
+    try:
+        data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return None
+    ad = data.get("ad") if isinstance(data, dict) else None
+    return str(ad).strip() if ad else None
+
+
+def unit_info(ws_root) -> dict:
+    """Karar paketlerine giren birim bilgisi: {"birim": ad|None, "kurum": ad|None}.
+    Kaynak yalnız çalışma alanının `config.yaml` `bidr:` bölümü (birim adı, kurum profili)."""
+    from bidr.init.config import load_section
+    sec = load_section(ws_root) or {}
+    birim = str(sec.get("birim") or "").strip() or None
+    return {"birim": birim, "kurum": _institution_name(sec.get("kurum"))}
+
+
+def render_unit(info: dict) -> str:
+    if not info.get("birim"):
+        return ("Birim: (belirtilmedi). Belge açıkça başka bir bölüme/birime ait değilse "
+                "birim_iliskisi \"kendi\" ya da genel düzenlemeyse \"kurum_geneli\"/\"fakulte_geneli\".")
+    s = f"Birim: {info['birim']}"
+    if info.get("kurum"):
+        s += f"\nKurum: {info['kurum']}"
+    return s

@@ -17,9 +17,11 @@ from bidr.criteria.loader import load_criteria
 from bidr.criteria.model import CriteriaSet, id_key
 from bidr.criteria.profiles import load_profile
 from bidr.criteria.slots import STAGE_OD, SlotTag, load_tags
+from bidr.decide.run import BIRIM_BELIRSIZ, BIRIM_DISI, GENEL_ILISKI, record_unit_relation
 
 from . import donem as D
-from .rules import GEREKEN, KISA, KURUM_GENELI_TURLER, LINKS, criterion_od, effective_stage
+from .rules import (GEREKEN, KARAR_TURLERI, KISA, KURUM_GENELI_TURLER, LINKS, criterion_od,
+                    effective_stage)
 
 SURUM = 1
 FILES = {"xlsx": "review.xlsx", "gaps": "gaps.md", "json": "audit-olcutler.json",
@@ -51,6 +53,8 @@ class Audit:
     decisions_sha: str
     uyarilar: list[str] = field(default_factory=list)
     donem: int | None = None                # rapor yılı (documents.jsonl `donem`)
+    # birim aitliği: {"baska_birim": [...], "belirsiz": [...]} (belge başına bir kayıt)
+    birim: dict = field(default_factory=lambda: {"baska_birim": [], "belirsiz": []})
 
     @property
     def by_key(self) -> dict[str, dict]:
@@ -70,6 +74,7 @@ def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | 
     did = rec["doc_id"]
     doc = docs.get(did) or {}
     key = f"{did}|{m['yuva']}"
+    rel = record_unit_relation(rec)
     flags = list((m.get("denetim") or {}).get("isaret") or [])
     olcut, yuva, asama = m["olcut"], m["yuva"], m.get("asama")
     etkin = effective_stage(asama, m.get("od_kabul"))
@@ -90,8 +95,14 @@ def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | 
         etkin = dz.get("asama") or etkin
         flags.append("insan_duzeltti")
     else:
-        if dtype in KURUM_GENELI_TURLER:
+        # Kurum/fakülte geneli: tür listesi ya da ince kararın birim ilişkisi. Üst birimin bu
+        # birim hakkındaki kararı (ör. senato kararı) tür yüzünden sınırlanmaz.
+        tur_kg = dtype in KURUM_GENELI_TURLER and not (
+            rel == "ust_birim_bu_birim_hakkinda" and dtype in KARAR_TURLERI)
+        if tur_kg or rel in GENEL_ILISKI:
             flags.append("kurum_geneli")
+            if rel == "fakulte_geneli":
+                flags.append("fakulte_geneli")
             if etkin and etkin != "planla":
                 etkin = "planla"
                 flags.append("uygulama_kaniti_eksik")
@@ -118,6 +129,9 @@ def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | 
         vurgu.append("düşük güven")
     elif dusuk:
         vurgu.append("düşük güven (incelemede onaylandı)")
+    if rel == BIRIM_BELIRSIZ:
+        flags.append("birim_aitligi_dogrulanmali")
+        vurgu.append("birim aitliği doğrulanmalı")
     if betimleme:
         flags.append("betimleme_alintisi")
         vurgu.append("alıntı görsel betimlemeden")
@@ -127,6 +141,7 @@ def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | 
         ymetin = ""
     row = {
         "satir": key, "doc_id": did, "belge": doc.get("calisma_adi") or did, "belge_turu": dtype,
+        "birim_iliskisi": rel,
         "kanit_adi": (name or ("", ""))[0], "kanit_adi_oneri": (name or ("", ""))[0],
         "kanit_adi_kaynagi": (name or ("", ""))[1],
         "baglanti": (link or ("", ""))[0], "baglanti_oneri": (link or ("", ""))[0],
@@ -373,10 +388,18 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
     names = _names(ws.root, out, docs, recs)
     links = _links(ws, out)
     desc = _described(ws)
+    birim: dict = {"baska_birim": [], "belirsiz": []}
     for rec in recs:
         if rec.get("durum") != "ok" or rec.get("asama") != "ince":
             continue
         n_ince += 1
+        rel = record_unit_relation(rec)
+        if rel in (BIRIM_DISI, BIRIM_BELIRSIZ):
+            ince = rec.get("ince") or {}
+            birim["baska_birim" if rel == BIRIM_DISI else "belirsiz"].append({
+                "doc_id": rec["doc_id"], "belge": (docs.get(rec["doc_id"]) or {}).get("calisma_adi") or rec["doc_id"],
+                "gerekce": ince.get("gerekce") or "",
+                "eslesme": sum(bool(m.get("kabul")) for m in rec.get("eslesmeler") or [])})
         for m in rec.get("eslesmeler") or []:
             if m.get("kabul"):
                 rows.append(_row(cs, tags, docs, rec, m, review.get(f"{rec['doc_id']}|{m['yuva']}"), rule,
@@ -391,7 +414,7 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
     ids = sorted(allowed | set(by_c), key=id_key)
     cyc = {c: _cycle(rule, by_c.get(c, []), period) for c in ids}
     crits = [_criterion(cs, tags, c, by_c.get(c, []), allowed, rule, cyc[c]) for c in ids]
-    return Audit(ws, out, profile, cs, tags, rows, crits, file_sha(dpath), uy, period)
+    return Audit(ws, out, profile, cs, tags, rows, crits, file_sha(dpath), uy, period, birim)
 
 
 def od_distribution(a: Audit) -> dict[int, int]:
@@ -411,7 +434,7 @@ def write_outputs(a: Audit, *, xlsx: bool = True) -> dict[str, Path]:
     paths["gaps"].write_text(report.gaps_md(a) + (("\n" + keep) if keep else ""), encoding="utf-8")
     js = {"surum": SURUM, "calisma_alani": str(a.ws.root), "profil": a.profile,
           "kararlar_sha": a.decisions_sha, "donem": a.donem, "od_dagilimi": od_distribution(a),
-          "olcutler": a.criteria}
+          "birim_aitligi": a.birim, "olcutler": a.criteria}
     paths["json"].write_text(json.dumps(js, ensure_ascii=False, indent=1), encoding="utf-8")
     if xlsx:
         paths["xlsx"] = a.out / FILES["xlsx"]
