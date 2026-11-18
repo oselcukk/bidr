@@ -94,7 +94,11 @@ class FakeLLM:
         holes = set(re.findall(r"\{\{(\w+)\}\}", self.prompts[task]))
         assert holes == set(inputs), (holes, set(inputs))
         prompt = re.sub(r"\{\{(\w+)\}\}", lambda m: inputs[m.group(1)], self.prompts[task])
-        return {"task": task, "version": "1", "prompt": prompt, "schema": _schema(task), "system": ""}
+        import yaml
+        from pathlib import Path
+        ver = str(yaml.safe_load((Path(__file__).resolve().parents[1] / "bidr" / "tasks" / task / "task.yaml")
+                                 .read_text(encoding="utf-8"))["version"])
+        return {"task": task, "version": ver, "prompt": prompt, "schema": _schema(task), "system": ""}
 
     @staticmethod
     def validate_output(task, raw):
@@ -176,7 +180,7 @@ def test_decide_records_and_skips(ws):
     a = recs[ids["aynı"]]
     assert a["karar"] == "olcut_var" and a["olcutler"][0]["olcut"] == "B.1.1"
     assert a["kaba"]["liste_disi"] == ["A.3.1"]
-    assert a["kaba"]["model"] == "fake:test" and a["gorev"] == {"classify_coarse": "1", "classify_fine": "1"}
+    assert a["kaba"]["model"] == "fake:test" and a["gorev"] == {"classify_coarse": "1", "classify_fine": "2"}
     assert a["asama"] == "ince" and a["ince"]["model"] == "fake:test" and a["kaba"]["kip"] == "saglayici"
     # profil dışı aday (A.3.1) birleşime girmez
     assert "A.3.1" not in a["adaylar"] and a["adaylar"][:2] == ["B.1.1", "B.2.1"]
