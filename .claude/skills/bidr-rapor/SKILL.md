@@ -35,9 +35,14 @@ Model işini sen yaparsın; hiçbir API ya da `bidr decide run` / `bidr llm` kul
    listesi, belge metni); `sema` cevabın JSON şemasıdır. İstemdeki kurallara uy:
    - yalnız istemdeki belge metnine dayan; dosya adı, klasör, dış bilgi yok;
    - ölçüt yalnız istemdeki listeden/adaylardan; yuva kodları istemdeki gibi;
-   - **alıntı belge metninden birebir kopya** (karakter karakter; kısaltma, "…", düzeltme yok;
-     en az 20 karakter); bulamıyorsan o eşleşmeyi yazma;
+   - **alıntı belge metninden birebir, kesintisiz kopya**: 1-2 cümle, en az 20 en çok 300
+     karakter; kısaltma, "[...]", düzeltme, birleştirme yok. Metin satır kırımlıysa tek satırlık
+     anlamlı bir parça yeterli (satır sonu ve boşluk farkını kod tolere eder). Bulamıyorsan o
+     eşleşmeyi yazma;
    - emin değilsen `olcut_yok` ya da `kanit_degil` geçerli ve dürüst cevaptır.
+   - ince pakette adayları kod seçer (kaba seçim ∪ belirleyici adaylar): kaba aşamada
+     `kanit_degil` dediğin belge de ince pakete gelebilir. Bu bilinçlidir; belgeyi yeniden,
+     bağımsız değerlendir (yine `kanit_degil` olabilir).
 3. Cevabı YALNIZ JSON olarak (açıklama, kod çiti yok) `work/<aşama>/<doc_id>.out.json`'a yaz.
    Paket dosyalarını (`<doc_id>.json`), `decisions.jsonl`'i ve başka dosyaları değiştirme.
 4. Çok paket varsa alt ajanlar kullanabilirsin: her birine bir grup paket ve bu bölümün
@@ -50,6 +55,8 @@ Model işini sen yaparsın; hiçbir API ya da `bidr decide run` / `bidr llm` kul
      hâlâ geçersizse dur ve kullanıcıya bildir.
    - "alıntısı tutmayan": kod o eşleşmeyi reddetti ve kullanmaz. Bir kez yeniden dene: belgede
      birebir geçen cümleyi kopyala ya da eşleşmeyi çıkar. Uydurma alıntıyla geçirmeye çalışma.
+   - Kaba `apply` çıktısındaki `olcut_var/olcut_yok/kanit_degil/eşleşme` sayaçları ince aşamadan
+     önce 0 görünür; bu normaldir (yalnız ince kararlar sayılır). Durumu `bidr next` belirler.
 7. `bidr next` ile devam.
 
 ## Bitirirken
