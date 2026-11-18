@@ -12,6 +12,7 @@ SUBCOMMAND_MODULES = [
     "bidr.labels.cli",
     "bidr.identify.cli",
     "bidr.candidates.cli",
+    "bidr.candidates.arama_cli",
     "bidr.evaluate.cli",
     "bidr.llm.cli",
     "bidr.decide.cli",

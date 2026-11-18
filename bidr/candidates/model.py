@@ -57,10 +57,21 @@ class BM25:
                  texts: dict[str, str] | None = None):
         if texts is None:
             texts = {s.id: criterion_text(cs, s.id) for s in cs.sub_criteria}
-        self.ids = list(texts)
-        self.tf = {sid: bag(t) for sid, t in texts.items()}
+        self._build({sid: bag(t) for sid, t in texts.items()}, k1, b, k3)
+
+    @classmethod
+    def from_bags(cls, bags: dict[str, dict], k1: float = 1.2, b: float = 0.75,
+                  k3: float = 8.0) -> "BM25":
+        """Hazır sözcük torbalarından (ikinci arama: arşiv belgeleri "belge", ölçüt "sorgu")."""
+        self = cls.__new__(cls)
+        self._build({k: dict(v) for k, v in bags.items()}, k1, b, k3)
+        return self
+
+    def _build(self, tf: dict[str, dict], k1: float, b: float, k3: float) -> None:
+        self.ids = list(tf)
+        self.tf = tf
         self.len = {sid: sum(c.values()) for sid, c in self.tf.items()}
-        self.avg = sum(self.len.values()) / len(self.ids)
+        self.avg = (sum(self.len.values()) / len(self.ids)) if self.ids else 0.0
         df = Counter()
         for c in self.tf.values():
             df.update(c.keys())
