@@ -22,7 +22,14 @@ from . import extract as ex
 FIELDS = [
     "doc_id", "sha256", "rel_path", "ext", "size", "pages", "chars",
     "method", "status", "dup_of", "error",
+    # OCR kalitesi (yalnız OCR'lanan belgelerde dolu): tesseract güveni 0-100,
+    # güven x metin sağlığı 0-1, düşük kalite işareti (1: görsel modele gönderilecek),
+    # gömülü görseller (metne eklenen / düşük kaliteden eklenmeyen).
+    "ocr_conf", "quality", "low_quality", "images_ocr", "images_lowq",
 ]
+# Önceki çalıştırmadan / ilk kopyadan taşınan alanlar
+CARRY = ("pages", "chars", "method", "status", "ocr_conf", "quality", "low_quality",
+         "images_ocr", "images_lowq")
 
 # Durumlar
 OK = "ok"                    # metin katmanından/biçimden çıkarıldı
@@ -102,6 +109,7 @@ def _process(e: Entry, ws: Workspace, use_ocr: bool) -> dict:
         msg = f"{type(err).__name__}: {err}".replace("\n", " ")[:300]
         return {"status": ERROR, "method": "", "pages": "", "chars": "", "error": msg}
     text = res.text
+    q = ex.assess(res)
     tmp = ws.text_path(did).with_suffix(".txt.tmp")
     tmp.write_text(text, encoding="utf-8")
     tmp.replace(ws.text_path(did))
@@ -109,7 +117,7 @@ def _process(e: Entry, ws: Workspace, use_ocr: bool) -> dict:
         status = NEEDS_OCR if res.ocr_missing else EMPTY
     elif res.ocr_missing:
         status = NEEDS_OCR
-    elif res.ocr_pages:
+    elif res.ocr_pages or res.images_ocr:
         status = OCR
     else:
         status = OK
@@ -117,6 +125,9 @@ def _process(e: Entry, ws: Workspace, use_ocr: bool) -> dict:
         "status": status, "method": res.method,
         "pages": "" if res.page_count is None else res.page_count,
         "chars": len(text), "error": "",
+        "ocr_conf": q["ocr_conf"], "quality": q["quality"],
+        "low_quality": 1 if q["low_quality"] else "",
+        "images_ocr": res.images_ocr or "", "images_lowq": res.images_lowq or "",
     }
 
 
@@ -158,7 +169,7 @@ def run(source: Path, workspace: Path, *, force: bool = False, use_ocr: bool = T
         old = prior.get(did)
         if (not force and ws.text_path(did).exists() and old
                 and old.get("status") in DONE_STATUSES):
-            for k in ("pages", "chars", "method", "status"):
+            for k in CARRY:
                 r[k] = old.get(k, "")
             continue
         todo.append(e)
@@ -180,7 +191,7 @@ def run(source: Path, workspace: Path, *, force: bool = False, use_ocr: bool = T
     for e in entries:
         if e.row["dup_of"]:
             src = first_by_sha[e.row["sha256"]].row
-            for k in ("pages", "chars", "method", "status"):
+            for k in CARRY:
                 e.row[k] = src[k]
 
     rows = [e.row for e in entries]
