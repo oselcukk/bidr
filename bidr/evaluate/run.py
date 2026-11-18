@@ -9,16 +9,25 @@ from pathlib import Path
 from bidr.candidates.data import Doc, load
 from bidr.candidates.model import Model
 from bidr.criteria.loader import load_criteria
+from bidr.criteria.profiles import excluded_types, load_profile
 
 from .metrics import KS, collapse, doc_metrics, mean
 
 SYSTEMS = {
     "bm25": ("bm25",),
+    "yuva": ("yuva",),
     "knn": ("knn",),
     "tur": ("tur",),
     "oncel": ("oncel",),
+    # eski birleşik (tür sinyalsiz = taban çizgisi koşulu) ve türlü hâli
+    "birlesik_eski": ("bm25", "knn", "oncel"),
     "birlesik": ("bm25", "knn", "tur", "oncel"),
+    # yeni: ölçüt-metni BM25 yerine yuva düzeyi BM25
+    "birlesik_yuva": ("yuva", "knn", "oncel"),
+    "birlesik_yuva_tur": ("yuva", "knn", "tur", "oncel"),
+    "birlesik_hepsi": ("bm25", "yuva", "knn", "tur", "oncel"),
 }
+SINGLE = ("bm25", "yuva", "knn", "tur")
 LEVELS = ("alt", "ana")
 
 
@@ -33,6 +42,8 @@ class Split:
     test: list[Doc]           # etiketli, ölçüme giren
     skipped: list[Doc]        # etiketli ama metni boş/kısa/yok
     dropped_train: int        # test içeriğiyle çakıştığı için eğitimden atılan
+    excluded_test: int = 0    # öz-referans türü yüzünden ölçümden çıkan etiketli test belgesi
+    excluded_train: int = 0   # aynı nedenle eğitimden çıkan etiketli belge
 
     def leakage(self) -> dict:
         tr_id = {d.doc_id for d in self.train}
@@ -42,41 +53,54 @@ class Split:
         te_tx = {k for d in self.test + self.skipped for k in d.keys if k.startswith("tx:")}
         return {"egitim": len(self.train), "test": len(self.test),
                 "doc_id_kesisim": len(tr_id & te_id), "metin_ozeti_kesisim": len(tr_tx & te_tx),
-                "egitimden_atilan_ortak_icerik": self.dropped_train}
+                "egitimden_atilan_ortak_icerik": self.dropped_train,
+                "haric_tur_test": self.excluded_test, "haric_tur_egitim": self.excluded_train}
 
 
-def _make(name: str, train_pool: list[Doc], test_pool: list[Doc], valid: set[str]) -> Split:
-    lab = [d for d in test_pool if any(g in valid for g in d.gold)]
+def _is_ex(d: Doc, ex: frozenset) -> bool:
+    return bool(d.doc_type) and d.doc_type in ex
+
+
+def _make(name: str, train_pool: list[Doc], test_pool: list[Doc], valid: set[str],
+          ex: frozenset = frozenset()) -> Split:
+    lab_all = [d for d in test_pool if any(g in valid for g in d.gold)]
+    lab = [d for d in lab_all if not _is_ex(d, ex)]
     test = [d for d in lab if d.usable]
     skipped = [d for d in lab if not d.usable]
-    keys = set().union(*(d.keys for d in lab)) if lab else set()
-    train = [d for d in train_pool if d.labeled and d.usable and not (d.keys & keys)]
+    # sızıntı anahtarları dışlanan belgeleri de kapsar (eğitime kopyası girmesin)
+    keys = set().union(*(d.keys for d in lab_all)) if lab_all else set()
+    train = [d for d in train_pool if d.labeled and d.usable and not (d.keys & keys)
+             and not _is_ex(d, ex)]
     dropped = sum(1 for d in train_pool if d.labeled and (d.keys & keys))
-    sp = Split(name, train, test, skipped, dropped)
+    ex_train = sum(1 for d in train_pool if d.labeled and d.usable and not (d.keys & keys)
+                   and _is_ex(d, ex))
+    sp = Split(name, train, test, skipped, dropped, len(lab_all) - len(lab), ex_train)
     lk = sp.leakage()
     if lk["doc_id_kesisim"] or lk["metin_ozeti_kesisim"]:
         raise LeakageError(f"{name}: eğitim/test kesişimi {lk}")
     return sp
 
 
-def louo_splits(docs: list[Doc], valid: set[str], units: list[str] | None = None) -> list[Split]:
+def louo_splits(docs: list[Doc], valid: set[str], units: list[str] | None = None,
+                ex: frozenset = frozenset()) -> list[Split]:
     lab = [d for d in docs if d.labeled]
     units = units or sorted({u for d in lab for u in d.units})
     out = []
     for u in units:
         test = [d for d in lab if u in d.units]
         rest = [d for d in lab if u not in d.units]
-        out.append(_make(f"louo:{u}", rest, test, valid))
+        out.append(_make(f"louo:{u}", rest, test, valid, ex))
     return out
 
 
-def transfer_split(train_docs: list[Doc], test_docs: list[Doc], valid: set[str], name: str) -> Split:
-    return _make(name, train_docs, test_docs, valid)
+def transfer_split(train_docs: list[Doc], test_docs: list[Doc], valid: set[str], name: str,
+                   ex: frozenset = frozenset()) -> Split:
+    return _make(name, train_docs, test_docs, valid, ex)
 
 
-def evaluate_split(sp: Split, cs, systems=SYSTEMS) -> dict:
+def evaluate_split(sp: Split, cs, systems=SYSTEMS, allowed: frozenset | None = None) -> dict:
     valid = {s.id for s in cs.sub_criteria}
-    model = Model(cs).fit(sp.train)
+    model = Model(cs, allowed=allowed).fit(sp.train)
     per = {s: {lv: [] for lv in LEVELS} for s in systems}
     active = defaultdict(int)
     per_crit = defaultdict(lambda: [0, 0])   # birleşik, alt düzey R@10: [bulunan, toplam]
@@ -136,7 +160,7 @@ def table_md(results: list[dict], level: str) -> str:
     for r in results:
         for s, d in r["olcu"].items():
             m = d[level]
-            off = "etkin_sinyal_belge" in r and s in ("bm25", "knn", "tur") and \
+            off = "etkin_sinyal_belge" in r and s in SINGLE and \
                 not r["etkin_sinyal_belge"].get(s)
             vals = ["kapalı"] * len(cols) if off else [f"{m[c]:.3f}" for c in cols]
             lines.append(f"| {r['bolme']} | {r['n']} | {s} | " + " | ".join(vals) + " |")
@@ -152,14 +176,19 @@ def report_md(name: str, results: list[dict], meta: dict) -> str:
            "H@k = en az bir doğru ilk k'da; MRR = ilk doğrunun ters sırası. "
            "`kapalı` = sinyal bu bölmede hiçbir test belgesi için veri üretmedi.", "",
            "## Sızıntı denetimi", "",
-           "| bölme | eğitim | test | doc_id ∩ | metin özeti ∩ | eğitimden atılan ortak içerik |",
-           "|---|---:|---:|---:|---:|---:|"]
+           "| bölme | eğitim | test | doc_id ∩ | metin özeti ∩ | eğitimden atılan ortak içerik "
+           "| öz-referans türü: test / eğitim dışı |",
+           "|---|---:|---:|---:|---:|---:|---:|"]
     for r in results:
         if "sizinti" in r:
             z = r["sizinti"]
             out.append(f"| {r['bolme']} | {z['egitim']} | {z['test']} | {z['doc_id_kesisim']} | "
-                       f"{z['metin_ozeti_kesisim']} | {z['egitimden_atilan_ortak_icerik']} |")
-    for lv, title in (("alt", "Alt ölçüt (46)"), ("ana", "Ana ölçüt (14)")):
+                       f"{z['metin_ozeti_kesisim']} | {z['egitimden_atilan_ortak_icerik']} | "
+                       f"{z.get('haric_tur_test', 0)} / {z.get('haric_tur_egitim', 0)} |")
+    out += ["", "Sistemler: " + "; ".join(f"`{k}` = {'+'.join(v)}" for k, v in SYSTEMS.items()
+                                          if len(v) > 1) + "."]
+    n_alt = meta.get("aday_olcut", 46)
+    for lv, title in (("alt", f"Alt ölçüt ({n_alt} aday)"), ("ana", "Ana ölçüt")):
         out += ["", f"## {title}", "", table_md(results, lv)]
     out += ["", "## Ölçüme girmeyen etiketli belgeler (boş / kısa / metin yok)", ""]
     seen = set()
@@ -175,9 +204,13 @@ def report_md(name: str, results: list[dict], meta: dict) -> str:
 
 
 def evaluate(louo: list[Path], transfers: list[tuple[Path, Path]], units: list[str] | None = None,
-             cs=None) -> tuple[list[dict], dict]:
+             cs=None, *, profile: str | None = None,
+             exclude_types: frozenset | None = None) -> tuple[list[dict], dict]:
     cs = cs or load_criteria()
     valid = {s.id for s in cs.sub_criteria}
+    ex = excluded_types() if exclude_types is None else frozenset(exclude_types)
+    prof = load_profile(profile) if profile else None
+    allowed = frozenset(prof.allowed(cs)) if prof else None
     cache: dict[Path, list[Doc]] = {}
 
     def docs(p: Path) -> list[Doc]:
@@ -188,13 +221,16 @@ def evaluate(louo: list[Path], transfers: list[tuple[Path, Path]], units: list[s
 
     results = []
     for ws in louo:
-        res = [evaluate_split(sp, cs) for sp in louo_splits(docs(ws), valid, units)]
+        res = [evaluate_split(sp, cs, allowed=allowed) for sp in louo_splits(docs(ws), valid, units, ex)]
         results += finalize(res, pooled_name=f"louo:{Path(ws).name}:havuz")
     for tr, te in transfers:
-        sp = transfer_split(docs(tr), docs(te), valid, f"{Path(tr).name}→{Path(te).name}")
-        results += finalize([evaluate_split(sp, cs)])
-    m = Model(cs)
+        sp = transfer_split(docs(tr), docs(te), valid, f"{Path(tr).name}→{Path(te).name}", ex)
+        results += finalize([evaluate_split(sp, cs, allowed=allowed)])
+    m = Model(cs, allowed=allowed)
     meta = {"agirliklar": m.weights, "knn_m": m.m, "tur_alpha": m.alpha,
+            "sistemler": {k: list(v) for k, v in SYSTEMS.items()},
+            "haric_turler": sorted(ex), "profil": prof.name if prof else None,
+            "aday_olcut": len(m.out_ids),
             "metin_esigi_karakter": 200, "kok_uzunlugu": 5,
             "olcut_surumu": cs.meta.get("source_sha256")}
     return results, meta

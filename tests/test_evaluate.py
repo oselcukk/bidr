@@ -8,7 +8,7 @@ import pytest
 from bidr.candidates.data import load
 from bidr.cli import main
 from bidr.evaluate.metrics import collapse, doc_metrics
-from bidr.evaluate.run import LeakageError, Split, _make, louo_splits, transfer_split
+from bidr.evaluate.run import SYSTEMS, LeakageError, Split, _make, louo_splits, transfer_split
 
 from synth import CS, ctext, make_ws
 
@@ -90,7 +90,7 @@ def test_cli_evaluate(tmp_path):
     for r in data["sonuclar"]:
         if "sizinti" in r:
             assert r["sizinti"]["doc_id_kesisim"] == 0
-        assert set(r["olcu"]) == {"bm25", "knn", "tur", "oncel", "birlesik"}
+        assert set(r["olcu"]) == set(SYSTEMS)
         assert "R@10" in r["olcu"]["birlesik"]["ana"]
     assert (te / "eval-t.md").exists()
     md = (ws / "eval-t.md").read_text()
