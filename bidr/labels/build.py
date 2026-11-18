@@ -181,6 +181,12 @@ def rapor_esle(
 ) -> tuple[list[Dosya], str | None, float | None, Eslesmeyen | None]:
     """Bir rapor satırını birimin dosyalarına eşler. (eşleşenler, yöntem, benzerlik, eşleşmeme)."""
     hedef_ad = ad_normal(kanit.ad)
+    # rapordaki ada eklenmiş açıklama/not parantezi ("Ders Planı (… HALA AYNISI MI …)") olmadan da dene
+    parantezsiz = ad_normal(re.sub(r"\([^)]*(\)|$)", " ", kanit.ad))
+    adlar = [a for a in {hedef_ad, parantezsiz} if a]
+
+    def benzer(x: str) -> float:
+        return max((ad_benzerlik(a, x) for a in adlar), default=0.0)
     ad_kod = ad_kodu(re.sub(r"^\W+", "", kanit.ad))
     ilgili_olcut = {kanit.bolum}
     if kanit.kod_olcut:
@@ -195,7 +201,7 @@ def rapor_esle(
         anahtar = (kanit.kod_olcut or kanit.bolum, kanit.kanit_no)
         adaylar = [d for d in hedefler if anahtar in d.anahtarlar]
         if adaylar:
-            skor = {id(d): max(ad_benzerlik(hedef_ad, ad_normal(a)) for a in d.kod_adlari(anahtar))
+            skor = {id(d): max(benzer(ad_normal(a)) for a in d.kod_adlari(anahtar))
                     for d in adaylar}
             iyi = [d for d in adaylar if not hedef_ad or skor[id(d)] >= ESIK_KOD_AD]
             if iyi:
@@ -211,7 +217,7 @@ def rapor_esle(
     skorlar: dict[str, float] = {}
     gruplar: dict[str, list[Dosya]] = defaultdict(list)
     for d in hedefler:
-        s = ad_benzerlik(hedef_ad, ad_normal(d.govde))
+        s = benzer(ad_normal(d.govde))
         gruplar[d.kayit].append(d)
         skorlar[d.kayit] = max(skorlar.get(d.kayit, 0.0), s)
     if not skorlar:
@@ -281,7 +287,7 @@ def kayitlar(dosyalar: list[Dosya]) -> list[dict]:
         kanitlar = []
         for d in ds:
             for k in d.kanitlar:
-                kanitlar.append({**k, "yol": d.yol})
+                kanitlar.append({**k, "yol": d.yol, "birim": d.birim})
         etiketler = _etiketler(kanitlar)
         ilk = ds[0]
         out.append({

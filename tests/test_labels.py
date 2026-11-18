@@ -99,6 +99,8 @@ def test_rapor_bolumleri():
         "A.2. Misyon ve Stratejik Amaçlar",
         "Kanıtlar: [A.2.1-1-OD3] Misyon",        # → A.2.1 (çıkarım)
         "Kanıtlar: [A.2.1-1-OD3] Misyon",        # tekrar: bir kez
+        "Güçlü Yönler",
+        "Matrislerle izlenmesi [B.1.1-4-OD3], iş akışları [B.1.1-9-OD3].",   # düzyazı atfı: sayılmaz
     ]
     ks = paragraf_kanitlari(paragraflar, "r.docx")
     assert [(k.bolum, k.bolum_cikarim, k.kanit_no, k.od) for k in ks] == [
@@ -242,3 +244,14 @@ def test_cli_build_ve_stats(agac: Path, tmp_path: Path, capsys):
     assert main(["labels", "stats", "-w", str(ws), "--json"]) == 0
     st = json.loads(capsys.readouterr().out)
     assert st["Kimya"]["etiketli"] == 2 and st["Kimya"]["od_li_belge"] == 2
+
+
+def test_rapor_adinda_not_paranteziyle_eslesme(tmp_path: Path):
+    k = tmp_path / "k"
+    _yaz(k / "B.1.1/[B.1.1-6-OD3] Ders Planı.pdf", "plan")
+    _rapor(k / "FR-0833.docx", ["B.1. Program", "B.1.4. İş yükü", "Kanıtlar:",
+                                "[B.1.1-6-OD3] Ders Planı (SİTEDEKİ BİLGİ ESKİ Mİ? YENİSİ VAR MI?)"])
+    s = build(k, birim="B")
+    assert s.eslesmeyen == []
+    (r,) = [x for x in s.kayitlar if x["iz"]["yollar"][0]["yol"].endswith("Ders Planı.pdf")]
+    assert "B.1.4" in [e["olcut"] for e in r["etiketler"]]

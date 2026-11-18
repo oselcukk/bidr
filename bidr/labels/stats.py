@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 
-from .parse import ALAN, ALT, ANA
+from .parse import ALAN, ALT, ANA, DUZEY_SIRASI
 
 DUZEYLER = (ALT, ANA, ALAN)
 
@@ -31,17 +31,23 @@ def istatistik(rows: list[dict]) -> dict:
                 s["etiket_disi"] += 1
             if not r["rapor_dosyasi"] and not r["etiket_disi"]:
                 s["kanit_adayi"] += 1
-            if not r["etiketli"]:
+            # birim görünümü: yalnız bu birimin yollarından / raporundan gelen kanıtlar
+            etk = []
+            for e in r["etiketler"]:
+                kn = [k for k in e["kanitlar"] if k.get("birim", b) == b]
+                if kn:
+                    etk.append((e, kn))
+            if not etk:
                 continue
             s["etiketli"] += 1
-            s["belge_en_ince"][r["en_ince_duzey"]] += 1
+            s["belge_en_ince"][max((e["duzey"] for e, _ in etk), key=DUZEY_SIRASI.get)] += 1
             od_var = False
-            for e in r["etiketler"]:
+            for e, kn in etk:
                 s["olcut"][e["olcut"]] += 1
                 s["etiket_duzey"][e["duzey"]] += 1
-                for k in e["kaynaklar"]:
+                for k in {k["kaynak"] for k in kn}:
                     s["kaynak"][k] += 1
-                if e["od"]:
+                if any(k.get("od") for k in kn):
                     s["od_li_etiket"] += 1
                     od_var = True
             if od_var:

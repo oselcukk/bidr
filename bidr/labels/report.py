@@ -15,6 +15,7 @@ _HEAD = re.compile(r"^\s*([A-E])\.\s?(\d)\.(?:\s?(\d)\.)?\s*(?=[^\d\s.])")
 _KANIT_BASI = re.compile(r"^\s*Kanıtlar\s*:", re.I)
 _ORNEK = re.compile(r"^\s*Örnek\s+Kanıtlar", re.I)
 # şablonda ölçüt bölümlerinin başladığı yer; ilk başlıklar otomatik numaralı olabilir
+_ON_EK = re.compile(r"^\s*(Kanıtlar\s*:\s*|Kanıtlar buraya yazılmalı.*?olmalıdır\.\s*)+", re.I)
 _BOLUM_BASI = re.compile(r"^\s*ÖLÇÜTLER\s+VE\s+KANITLAR\s*$")
 
 
@@ -94,7 +95,11 @@ def paragraf_kanitlari(paragraflar: list[str], ad: str = "") -> list[RaporKaniti
         if _ORNEK.match(metin):
             blokta = False
             continue
-        satirlar = kanit_satirlari(metin)
+        # liste satırı kodla başlamalı; düzyazı içindeki [..-OD3] atıfları kanıt listesi değildir
+        govde = _ON_EK.sub("", metin).lstrip()
+        satirlar = kanit_satirlari(govde)
+        if satirlar and not govde.startswith(satirlar[0].ham):
+            satirlar = []
         if _KANIT_BASI.match(metin):
             blokta = True
         elif blokta and not satirlar and len(metin) > 120:
