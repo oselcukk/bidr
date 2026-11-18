@@ -30,7 +30,8 @@ ALL = {"planla", "uygula", "kontrol_et", "onlem_al", "ozgun"}
     ({"planla", "uygula", "kontrol_et", "onlem_al"}, 4, ["ozgun"]),
     ({"planla", "uygula", "kontrol_et", "onlem_al", "ozgun"}, 5, []),
     ({"planla", "uygula", "ozgun"}, 3, ["kontrol_et", "onlem_al"]),  # özgün tek başına sıçratmaz
-    ({"uygula", "kontrol_et", "onlem_al"}, 2, ["planla"]),          # plan yok: örtük, OD2'de kalır
+    ({"uygula", "kontrol_et", "onlem_al"}, 4, ["ozgun"]),           # plan yok: örtük, zincir sürer (+ "plan önerilir")
+    ({"uygula"}, 3, ["kontrol_et", "onlem_al"]),                    # yalnız uygulama: OD3 + "plan önerilir"
 ])
 def test_chain(present, od, eksik):
     r = criterion_od(present, ALL)

@@ -12,8 +12,9 @@ yüksek düzeydir:
 Bir düzey, o düzeyin bütün halkaları ya kanıtlıysa ya da ölçütte o halkaya ait yuva
 yoksa (`yuvasiz`) ve o düzeyde ya da üstünde en az bir halka kanıtlıysa sağlanır.
 OD = 2'den başlayarak kesintisiz sağlanan en yüksek düzey; hiçbiri yoksa 1.
-Tek yumuşatma: plan halkası eksik ama üst halkalar varsa düzey 2 örtük sağlanır
-(uygulama planın örtük kanıtıdır) ve işaretlenir; OD3 için yine plan belgesi gerekir.
+Tek yumuşatma (komisyon kararı, 2026-11-18): plan halkası eksik ama üst halkalar
+varsa düzey 2 örtük sağlanır (uygulama tanımlı bir sürecin kanıtıdır), zincir
+yukarı devam eder ve ölçüt "plan belgesi önerilir" diye işaretlenir.
 """
 from __future__ import annotations
 
@@ -78,8 +79,7 @@ def criterion_od(present: set[str], has_slot: set[str]) -> ChainResult:
         if all(ok_link(x) for x in links) and any_at_or_above(lv):
             durum[lv] = "saglandi"
         elif lv == 2 and any_at_or_above(3):
-            durum[lv], ortuk, od = "ortuk", True, 2    # plan belgesi yok: OD2'de kalır
-            break
+            durum[lv], ortuk = "ortuk", True    # plan belgesi yok: örtük sağlanır, zincir sürer
         else:
             durum[lv] = "eksik"
             break
@@ -90,6 +90,4 @@ def criterion_od(present: set[str], has_slot: set[str]) -> ChainResult:
         eksik = [x for x in LEVELS[nxt] if x not in present and x in has_slot]
         if not eksik and not any(x in has_slot for x in LEVELS[nxt]):
             eksik = list(LEVELS[nxt])     # yuva yok ama kanıt yine de gerekir
-    if ortuk:
-        eksik = ["planla", *[x for x in eksik if x != "planla"]]
     return ChainResult(od, durum, eksik, nxt, ortuk)

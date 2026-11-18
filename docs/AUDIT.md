@@ -37,8 +37,9 @@ yuva yok (**yuvasız**), ve o düzeyde ya da üstünde en az bir halka kanıtlı
 - B.2.3 gibi kontrol/önlem yuvası olmayan ölçütte P+U → OD3; OD4 kendiliğinden gelmez,
   gaps.md "şablonda yuvası yok; ölçüt açıklamasına uygun belge gerekir" der.
 
-Tek yumuşatma: plan halkası eksik ama U/K/Ö var → OD2 (uygulama planın örtük kanıtı) ve
-"plan belgesi yok" notu; OD3 için yine plan belgesi gerekir.
+Tek yumuşatma (komisyon kararı, 2026-11-18): plan halkası eksik ama U/K/Ö var → düzey 2
+örtük sağlanır (uygulama tanımlı bir sürecin kanıtıdır), zincir yukarı devam eder ve ölçüt
+"plan belgesi önerilir" diye işaretlenir. OD4 kuralı (K ve Ö birlikte) değişmez.
 
 ## Halkayı ne sayar (eşleşme → sayılan aşama)
 

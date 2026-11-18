@@ -180,7 +180,7 @@ def _criterion(cs, tags, cid, rows, allowed) -> dict:
         grup = 9
     notlar = []
     if rs.ortuk_plan:
-        notlar.append("plan belgesi yok; uygulama/izleme kanıtı planın örtük kanıtı sayıldı (OD2'de kalır)")
+        notlar.append("plan belgesi önerilir: plan belgesi yok, uygulama/izleme kanıtı tanımlı sürecin örtük kanıtı sayıldı")
     if kg_only:
         notlar.append("yalnız kurum geneli düzenlemeyle eşleşti: bölümün uygulama kanıtı eksik")
     if ra.od > rs.od:
