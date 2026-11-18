@@ -128,6 +128,9 @@ def ocr_pdf_page(pdf: Path, page: int) -> OcrResult:
 _LETTERS = "A-Za-zÇĞİÖŞÜçğıöşüÂâÎîÛûÉéÀàÄäß"
 _WORD = re.compile(rf"^[{_LETTERS}]+(?:[-'’][{_LETTERS}]+)*$")
 _NUM = re.compile(r"^[\d.,:/%()+\-–]*\d[\d.,:/%()+\-–]*$")
+# e-posta, URL, kod (FR-0069, MBG111, A.1.2) da sağlıklı belirteçtir
+_SPECIAL = re.compile(r"^(?:[\w.+-]+@[\w-]+(?:\.[\w-]+)+|(?:https?://|www\.)\S+"
+                      r"|[A-ZÇĞİÖŞÜ]{1,6}[-.]?\d+(?:[-.]\d+)*)$")
 _VOWELS = set("aeıioöuüâîûéàäAEIİOÖUÜÂÎÛÉÀÄ")
 _PUNCT = "\"'“”‘’()[]{}<>.,;:!?«»|*•·-–—_"
 
@@ -146,7 +149,7 @@ def text_health(text: str) -> float | None:
         total += n
         if not core:
             continue
-        if _NUM.match(core):
+        if _NUM.match(core) or _SPECIAL.match(core):
             good += n
             continue
         if len(core) < 2 or not _WORD.match(core):

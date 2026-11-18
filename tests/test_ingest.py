@@ -457,6 +457,7 @@ def test_text_health_and_assess_without_ocr():
     assert text_health("Bölüm Kurulu 12.03.2025 tarihinde toplandı.") == 1.0
     assert text_health("ii Rrkk ;: |l ~~ aSdF eE 7x") < 0.3
     assert text_health("   ") is None
+    assert text_health("Kime: Ad SOYAD <ad@gtu.edu.tr>; FR-0069 www.gtu.edu.tr") == 1.0
     q = ex.assess(ex.Extraction(["metin"], "text"))
     assert q == {"ocr_conf": "", "quality": "", "low_quality": False}
     # OCR'dan 24 karakter çöp: güven yüksek olsa da düşük kalite
@@ -514,3 +515,16 @@ def _fake_run_factory(real_run, text: str, cover_ppi: int):
             r.stdout = "\n".join(out).encode()
         return r
     return fake
+
+
+@pytest.mark.skipif(not HAS_OCR, reason="tesseract/poppler yok")
+def test_photo_pdf_without_text_flagged(tmp_path):
+    src = tmp_path / "k"
+    src.mkdir()
+    make_noise_image(tmp_path / "n.png")
+    from PIL import Image
+    Image.open(tmp_path / "n.png").convert("RGB").save(src / "foto.pdf", "PDF", resolution=100)
+    ws = tmp_path / "ws"
+    run(src, ws, log=lambda m: None)
+    r = read_inv(ws)["foto.pdf"]
+    assert r["low_quality"] == "1"

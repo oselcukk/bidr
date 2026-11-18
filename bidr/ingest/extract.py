@@ -172,6 +172,7 @@ def extract_pdf(path: Path, use_ocr: bool) -> Extraction:
     with ThreadPoolExecutor(max_workers=PDF_PAGE_WORKERS) as pool:
         results = list(pool.map(lambda j: ocr.ocr_pdf_page(path, j[0] + 1), jobs))
     units: list[tuple[str, float | None]] = []
+    dropped: list[tuple[str, float | None]] = []
     for (i, must), res in zip(jobs, results):
         t = _clean(res.text)
         p = pages[i]
@@ -183,8 +184,10 @@ def extract_pdf(path: Path, use_ocr: bool) -> Extraction:
             pages[i] = t
             ocr_pages += 1
             units.append((t, res.conf))
+        elif must:
+            dropped.append((t, res.conf))  # gerekli OCR işe yaramadı: kalite ölçüsüne girer
     method = "pdftotext" + (f"+ocr({ocr_pages}/{len(pages)})" if ocr_pages else "")
-    return Extraction(pages, method, n, ocr_pages, ocr_missing, ocr_units=units)
+    return Extraction(pages, method, n, ocr_pages, ocr_missing, ocr_units=units, ocr_dropped=dropped)
 
 
 # ------------------------------------------------------------------------ Görsel
