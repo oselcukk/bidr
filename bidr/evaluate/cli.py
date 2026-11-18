@@ -14,7 +14,8 @@ def _run(args) -> int:
         print("en az bir --louo veya --transfer gerekli")
         return 2
     units = [u for u in (args.units or "").split(",") if u] or None
-    results, meta = evaluate(louo, transfers, units)
+    ex = None if not args.no_exclude_types else frozenset()
+    results, meta = evaluate(louo, transfers, units, profile=args.profile, exclude_types=ex)
     md = report_md(args.name, results, meta)
     data = {"ad": args.name, "ayarlar": meta, "sonuclar": results}
     outs = [Path(p).expanduser() for p in args.out] if args.out else \
@@ -40,5 +41,8 @@ def register(sub):
     p.add_argument("--name", default="baseline", help="çıktı adı: eval-<ad>.md/json")
     p.add_argument("--out", action="append", metavar="KLASÖR",
                    help="çıktı klasörü (varsayılan: her test WS)")
+    p.add_argument("--profile", help="birim profili (ör. akademik_bolum): yalnız doldurulacak ölçütler sıralanır")
+    p.add_argument("--no-exclude-types", action="store_true",
+                   help="öz-referans türlerini (profiles/haric_turler.yaml) dışlama")
     p.add_argument("--quiet", "-q", action="store_true")
     p.set_defaults(func=_run)

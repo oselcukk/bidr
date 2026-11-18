@@ -59,6 +59,43 @@ def _cmd_validate(a) -> int:
     return 0
 
 
+def _cmd_slots(a) -> int:
+    import json
+
+    from .slots import load_tags, tag_summary
+
+    cs = load_criteria(a.file)
+    tags = load_tags(cs)
+    for x in cs.slots():
+        if a.id and not (x.id == a.id or x.criterion == a.id or x.criterion.startswith(a.id + ".")):
+            continue
+        t = tags[x.id]
+        od = ",".join(map(str, t.od)) or "-"
+        print(f"{x.id:9} [{'+'.join(t.stages)} | OD {od} | {t.state}] {x.text}")
+        if a.why:
+            print(f"{'':9}   gerekçe: {t.reason}")
+    if not a.id:
+        print(json.dumps(tag_summary(tags), ensure_ascii=False))
+    return 0
+
+
+def _cmd_profile(a) -> int:
+    from .profiles import load_profile
+
+    cs = load_criteria(a.file)
+    p = load_profile(a.name)
+    ds = p.decisions(cs)
+    for d in ds:
+        if d.verdict != "dahil" or a.all:
+            print(f"{d.criterion:7} {d.verdict:8} {'aday' if d.keep else 'düşer':6} {d.reason}"
+                  f" | {cs.get(d.criterion).units}")
+    keep = sum(d.keep for d in ds)
+    print(f"{p.name}: {keep}/{len(ds)} alt ölçüt aday "
+          f"(dahil {sum(d.verdict == 'dahil' for d in ds)}, belirsiz {sum(d.verdict == 'belirsiz' for d in ds)}"
+          f" [{p.uncertain_policy}], hariç {sum(d.verdict == 'haric' for d in ds)})")
+    return 0
+
+
 def register(sub) -> None:
     p = sub.add_parser("criteria", help="YÖKAK/BİDR ölçüt şeması")
     p.add_argument("--file", default=None, help="ölçüt YAML'ı (vars.: bidr/data/criteria/yokak-2025.yaml)")
@@ -68,3 +105,11 @@ def register(sub) -> None:
     sh.add_argument("id")
     sh.set_defaults(func=_cmd_show)
     s.add_parser("validate", help="şema ve yapı denetimi").set_defaults(func=_cmd_validate)
+    sl = s.add_parser("slots", help="kanıt yuvaları ve PUKÖ/OD etiket önerileri")
+    sl.add_argument("id", nargs="?", help="alt ölçüt/ölçüt/yuva kimliği (boşsa tümü + özet)")
+    sl.add_argument("--why", action="store_true", help="gerekçeleri göster")
+    sl.set_defaults(func=_cmd_slots)
+    pr = s.add_parser("profile", help="birim profiline göre doldurulacak ölçütler")
+    pr.add_argument("name", help="profil adı (ör. akademik_bolum) ya da yaml yolu")
+    pr.add_argument("--all", action="store_true", help="dahil olanları da listele")
+    pr.set_defaults(func=_cmd_profile)

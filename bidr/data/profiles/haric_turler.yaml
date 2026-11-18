@@ -1,0 +1,10 @@
+# Öz-referans belge türleri: kanıt değildir. Bu türden belgeler (identify'ın
+# documents.jsonl `doc_type` alanı; tür yalnız metinden) candidates'te aday
+# almaz, değerlendirmede ne eğitime ne teste girer.
+# Tür adları bidr/data/doc_types.yaml kataloğundandır.
+haric_turler:
+  - bidr_sablonu             # boş BİDR şablonu
+  - bidr_raporu              # doldurulmuş BİDR (raporun kendisi)
+  - olcut_aciklama_taslagi   # alt ölçüt açıklama/rapor bölümü taslağı
+# Karar bekleyen (şimdilik dışlanmıyor):
+#   - kanit_listesi          # ölçüt kodlu kanıt/yapılacaklar listesi (çalışma notu)

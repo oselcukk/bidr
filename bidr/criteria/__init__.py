@@ -3,7 +3,7 @@
 Veri: `data/criteria/yokak-2025.yaml` (üretici: `bidr.criteria.extract_docx`).
 """
 from .loader import load_criteria, load_guide, validate
-from .model import Area, CriteriaSet, Criterion, SubCriterion
+from .model import Area, CriteriaSet, Criterion, EvidenceSlot, SubCriterion
 
 __all__ = ["load_criteria", "load_guide", "validate",
-           "Area", "CriteriaSet", "Criterion", "SubCriterion"]
+           "Area", "CriteriaSet", "Criterion", "EvidenceSlot", "SubCriterion"]
