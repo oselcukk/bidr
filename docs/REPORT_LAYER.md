@@ -281,7 +281,7 @@ Kurallar (kılavuz "Yazım Kuralları", "Kanıt Gösterimi"; K31) ve düzeyleri:
 | paragraf öncesi/sonrası aralık; başlıklar 12 pt kalın; alt başlık A.1.x.x.x numarası | uyarı |
 | şekil/tablo açıklaması: nesnenin üstünde, sağa dayalı, eğik, 10 pt; APA 7 metin içi gösterim (sezgisel) | uyarı |
 | atıf almayan liste kanıtı; numara 1..n sıralı değil; metin içinde `[n-ODk]` | uyarı |
-| kanıt dosya adı `[Ölçüt-sıra-ODk] Ad.uzantı`, klasör `A/A.1/A.1.1/`; listede olmayan dosya; evidence-index.csv ile fark | uyarı |
+| kanıt dosya adı `[sıra-ODk]. Ad.uzantı` (kılavuz), klasör `A/A.1/A.1.1/`; listede olmayan dosya; evidence-index.csv ile fark | uyarı |
 | kanıtsız "bulunamamıştır" ifadeli ölçüt (insan kararı) | uyarı |
 | rubrikte insan onayı olmadan (kod önerisiyle) işaretlenen OD: `od_onay_bekliyor` "OD insan onayı bekliyor" | uyarı |
 

@@ -126,7 +126,7 @@ def test_file_basic(env, tmp_path):
     assert [(r["kanit_no"], r["doc_id"]) for r in rows if r["olcut"] == "A.1.1"] == [
         ("1_OD2", "d_kom"), ("2_OD3", "d_karar")]
     k = by[("B.1.1", "d_karar")]
-    assert k["dosya"] == "B/B.1/B.1.1/[B.1.1-1-OD3] Bölüm Kurulu Kararları.pdf"
+    assert k["dosya"] == "B/B.1/B.1.1/[1-OD3]. Bölüm Kurulu Kararları.pdf"
     assert k["sayfalar"] == "2"
     pr = PdfReader(str(out / "evidence" / k["dosya"]))
     assert len(pr.pages) == 1 and float(pr.pages[0].mediabox.width) == 201   # 2. sayfa
@@ -181,7 +181,7 @@ def test_review_decisions(env, tmp_path):
     assert st["inceleme"] and not (out / "evidence" / R.NO_REVIEW).exists()
     assert {r["olcut"] for r in rows} == {"A.1.4", "B.1.1"}        # A.1.1: biri ret, öteki taşındı
     a14 = next(r for r in rows if r["olcut"] == "A.1.4")
-    assert a14["dosya"].startswith("A/A.1/A.1.4/[A.1.4-1-OD2] ") and a14["inceleme"] == "duzelt"
+    assert a14["dosya"].startswith("A/A.1/A.1.4/[1-OD2]. ") and a14["inceleme"] == "duzelt"
     an = next(r for r in rows if r["doc_id"] == "d_anket")
     assert an["inceleme"] == "kabul,karar_yok"
     assert R.status(out, ws)["guncel"]
@@ -196,7 +196,7 @@ def test_zip_and_cli(env, tmp_path, capsys):
     assert "inceleme yapılmadı" in capsys.readouterr().out
     with zipfile.ZipFile(out / R.ZIP) as z:
         names = z.namelist()
-    assert "evidence/B/B.1/B.1.1/[B.1.1-1-OD3] Bölüm Kurulu Kararları.pdf" in names
+    assert "evidence/B/B.1/B.1.1/[1-OD3]. Bölüm Kurulu Kararları.pdf" in names
     assert f"evidence/{R.NO_REVIEW}" in names and not any(R.MANIFEST in n for n in names)
 
 
@@ -250,7 +250,7 @@ def test_naming():
                            "doc_type": "resmi_yazi"}, "Resmi Yazı")
     assert ad == "Yazı - Birim İç Değerlendirme Raporu hazırlanması hk"
     assert evidence_name({"baslik": "Müfredatı (tüm"}, "M")[0] == "Müfredatı (tüm)"
-    assert file_name("B.1.1", 2, 4, "Ad", ".PDF") == "[B.1.1-2-OD4] Ad.pdf"
+    assert file_name("B.1.1", 2, 4, "Ad", ".PDF") == "[2-OD4]. Ad.pdf"
 
 
 # -- kanıt kodunun OD'si ve aynı kaynağın tek numarası (sentetik satırlar) -------------------------
@@ -287,6 +287,6 @@ def test_same_source_gets_one_number():
     assert sorted({s for s, _, _ in out}) == [1, 2, 3]                          # boşluksuz sıra
     # aynı numara tek OD taşır: dosya adındaki kod ile dizindeki kanit_no çelişmez
     names = {file_name("B.1.1", s, od, f"Yönerge ({it[0]})", ".pdf") for s, od, it in out if it[0].startswith("y")}
-    assert all(n.startswith("[B.1.1-2-OD3] ") for n in names) and len(names) == 4
+    assert all(n.startswith("[2-OD3]. ") for n in names) and len(names) == 4
     # sürüm grubu yoksa sha (doc_id) ayırır
     assert source_key("a", {}) != source_key("b", {}) and source_key("a", None) == source_key("a", {})

@@ -48,8 +48,8 @@ def test_clean_url(u, ok):
 
 
 def test_folder_url_encodes_segments():
-    u = folder_url("https://kanit.ornek.edu.tr/2025", "B/B.1/B.1.1/[B.1.1-1-OD3] Kurul Kararı.pdf")
-    assert u == "https://kanit.ornek.edu.tr/2025/B/B.1/B.1.1/%5BB.1.1-1-OD3%5D%20Kurul%20Karar%C4%B1.pdf"
+    u = folder_url("https://kanit.ornek.edu.tr/2025", "B/B.1/B.1.1/[1-OD3]. Kurul Kararı.pdf")
+    assert u == "https://kanit.ornek.edu.tr/2025/B/B.1/B.1.1/%5B1-OD3%5D.%20Kurul%20Karar%C4%B1.pdf"
     assert folder_url(None, "a") is None and folder_url("https://x.y", "") is None
 
 

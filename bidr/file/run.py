@@ -1,4 +1,4 @@
-"""Kanıt dosyalama: onaylı eşleşmeler → `evidence/<A>/<A.1>/<A.1.2>/[A.1.2-1-OD3] Ad.pdf` +
+"""Kanıt dosyalama: onaylı eşleşmeler → `evidence/<A>/<A.1>/<A.1.2>/[1-OD3]. Ad.pdf` +
 `evidence-index.csv` (sözleşme: docs/REPORT_LAYER.md).
 
 Girdi (salt okunur): `decisions.jsonl`, `documents.jsonl`, `inventory.csv`, `text/`
@@ -503,7 +503,7 @@ def _share_links(rows: list[dict]) -> None:
 
 def _unique(used: set[str], olcut: str, sira: int, od: int, ad: str, ext: str, did: str) -> str:
     """Klasörde tekil dosya adı (büyük/küçük harf duyarsız: macOS/Windows). Çakışmada ada kısa
-    kimlik, yine çakışırsa sayaç eklenir; `[Ölçüt-sıra-ODk]` öneki ve uzantı korunur."""
+    kimlik, yine çakışırsa sayaç eklenir; `[sıra-ODk].` öneki ve uzantı korunur."""
     cand, k = file_name(olcut, sira, od, ad, ext), 1
     while cand.casefold() in used:
         # ek kısaltmayla düşmesin: önce ad kısaltılır

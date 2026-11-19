@@ -158,7 +158,7 @@ kanıt dosyası adı yaz (3-7 sözcük; belgenin ne olduğu; kişi adı, unvan, 
 
 ## Dosyalama (file) ve bağlantılar
 
-`bidr file -w WS` onaylı kanıtları `evidence/<A>/<A.1>/<A.1.2>/[A.1.2-1-OD3] Ad.pdf` olarak
+`bidr file -w WS` onaylı kanıtları `evidence/<A>/<A.1>/<A.1.2>/[1-OD3]. Ad.pdf` olarak
 kopyalar, `evidence-index.csv` yazar. Raporda kanıt adı tıklanabilir bağlantı olur:
 kamuya açık belge yayımlandığı adrese (belge metnindeki web adresi; kullanıcı review.xlsx
 "bağlantı" sütunuyla düzeltir), yayımlanmamış belge kanıt klasöründeki yoluna

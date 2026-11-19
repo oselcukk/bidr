@@ -379,7 +379,7 @@ def _report_layer(ws: Path, capsys) -> None:
     assert main(["file", "-w", str(ws)]) == 0
     rows = {r["olcut"]: r for r in csv.DictReader(open(ws / "evidence-index.csv", encoding="utf-8"))}
     assert rows["B.2.3"]["baglanti_kaynagi"] == "klasor"
-    assert rows["B.2.3"]["baglanti"].startswith("https://kanit.ornek.edu.tr/2025/B/B.2/B.2.3/%5BB.2.3-1-OD")
+    assert rows["B.2.3"]["baglanti"].startswith("https://kanit.ornek.edu.tr/2025/B/B.2/B.2.3/%5B1-OD")
     assert ev("file").durum == "bitti" and not ev("file").uyarilar
     gaps = (ws / "gaps.md").read_text(encoding="utf-8")
     assert "Bütün kanıtların bağlantısı var" in gaps and "Eksik kanıt raporu" in gaps

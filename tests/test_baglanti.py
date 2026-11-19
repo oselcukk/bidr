@@ -210,13 +210,13 @@ def test_numbering_code_od_one_number_per_source_and_unique_files(tmp_path):
     assert ya["baglanti"] == yb["baglanti"] and ya["baglanti"]         # render haritası tek adres
     assert ya["dosya"] != yb["dosya"]
     assert "ayni_kaynak_tek_numara" in ya["isaretler"]
-    assert rows["kg"]["kanit_no"].endswith("_OD2") and "-OD2] " in rows["kg"]["dosya"]
+    assert rows["kg"]["kanit_no"].endswith("_OD2") and "-OD2]. " in rows["kg"]["dosya"]
     assert rows["uyg"]["kanit_no"].endswith("_OD3")
     nos = sorted({int(r["kanit_no"].split("_")[0]) for r in rows.values()})
     assert nos == list(range(1, len(nos) + 1)) == [1, 2, 3]           # boşluksuz
     for r in rows.values():                                            # dosya adındaki kod = kanit_no
         n, od = r["kanit_no"].split("_OD")
-        assert Path(r["dosya"]).name.startswith(f"[B.1.1-{n}-OD{od}] ")
+        assert Path(r["dosya"]).name.startswith(f"[{n}-OD{od}]. ")
         assert (out / "evidence" / r["dosya"]).is_file()
     links = {}
     for r in rows.values():                                            # (ölçüt, no) → tek bağlantı
@@ -229,7 +229,7 @@ def test_same_name_never_overwrites(tmp_path):
     b = R._unique(used, "B.1.1", 1, 3, "AD", ".pdf", "bbbbbb22")      # büyük/küçük harf duyarsız FS
     c = R._unique(used, "B.1.1", 1, 3, "Ad", ".pdf", "bbbbbb33")
     assert len({a.casefold(), b.casefold(), c.casefold()}) == 3
-    assert all(x.startswith("[B.1.1-1-OD3] ") and x.endswith(".pdf") for x in (a, b, c))
+    assert all(x.startswith("[1-OD3]. ") and x.endswith(".pdf") for x in (a, b, c))
     long = "Uzun " * 40
     x = R._unique(used, "B.1.1", 2, 3, long, ".pdf", "cccccc")
     y = R._unique(used, "B.1.1", 2, 3, long, ".pdf", "dddddd")         # kısaltma eki düşürmez

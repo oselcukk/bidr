@@ -98,10 +98,10 @@ def date_of(doc: dict | None) -> str | None:
 
 
 def file_name(olcut: str, sira: int, od: int, ad: str, ext: str) -> str:
-    """`[B.1.1-1-OD3] Ad.pdf`: geçen yılki Matematik kanıt adlarıyla ve kılavuzun kanıt
-    listesi gösterimiyle (`[1-OD3]. Ad.pdf`) aynı; ölçüt öneki dosyayı klasörü dışında da
-    tanınır kılar."""
-    return f"[{olcut}-{sira}-OD{od}] {ad}{ext.lower()}"
+    """Kılavuzun kanıt gösterimi: `[1-OD3]. Ad.pdf` (kurumca doğrulandı, 2026-11-19). Ölçüt
+    dosya adında değil, klasör yolundadır (`evidence/B/B.1/B.1.1/`); `olcut` imza uyumu için
+    tutulur."""
+    return f"[{sira}-OD{od}]. {ad}{ext.lower()}"
 
 
 # -- kanıt kodunun OD'si ve numaralama -------------------------------------------------------

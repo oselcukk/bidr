@@ -39,7 +39,8 @@ BOS_ACIKLAMA_IPUCU = ("kanıt bulunamamıştır", "veri bulunmamaktadır")
 RE_ATIF = re.compile(r"\[(\d+)([_-])OD([1-5])\]")
 RE_LISTE_KILAVUZ = re.compile(r"^\[(\d+)-OD([1-5])\]\.\s*(.+)$")
 RE_LISTE_MAT = re.compile(r"^(\d+)_OD([1-5])\s*:\s*(.+)$")          # render "mat" biçimi
-RE_DOSYA = re.compile(r"^\[([A-D]\.\d+\.\d+)-(\d+)-OD([1-5])\] (.+)\.([A-Za-z0-9]+)$")
+RE_DOSYA = re.compile(r"^\[(\d+)-OD([1-5])\]\. (.+)\.([A-Za-z0-9]+)$")   # [1-OD3]. Ad.pdf; ölçüt = klasör
+RE_OLCUT = re.compile(r"^[A-D]\.\d+\.\d+$")
 RE_ALT_BASLIK = re.compile(r"^([A-D](?:\.\d+){3,})\.?\s+\S")      # A.1.1.1 (A.1.x.x.x)
 RE_ACIKLAMA_NESNE = re.compile(r"^(Şekil|Tablo|Grafik)\s*\d+\s*[.:]")
 RE_APA_VIRGULSUZ = re.compile(
@@ -623,9 +624,12 @@ def _kanit_klasoru(ev: Path, listeler: dict[str, dict[int, int]], s: Sonuc) -> N
         rel = f.relative_to(ev).as_posix()
         m = RE_DOSYA.match(f.name)
         if not m:
-            s.ekle(UYARI, "kanit_dosya_adi", rel, "ad '[Ölçüt-sıra-ODk] Ad.uzantı' düzeninde değil")
+            s.ekle(UYARI, "kanit_dosya_adi", rel, "ad '[sıra-ODk]. Ad.uzantı' düzeninde değil")
             continue
-        olcut, n, od = m.group(1), int(m.group(2)), int(m.group(3))
+        olcut, n, od = f.parent.name, int(m.group(1)), int(m.group(2))
+        if not RE_OLCUT.match(olcut):
+            s.ekle(UYARI, "kanit_klasor_yeri", rel, "dosya bir alt ölçüt klasöründe (ör. B/B.1/B.1.1/) değil")
+            continue
         parts = olcut.split(".")
         beklenen = "/".join(".".join(parts[:i]) for i in range(1, 4))
         if f.parent.relative_to(ev).as_posix() != beklenen:

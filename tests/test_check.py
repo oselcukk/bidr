@@ -294,10 +294,10 @@ def _evidence(root: Path, names: dict[str, list[str]]) -> Path:
 
 def test_kanit_klasoru(tmp_path):
     rep = make_doc(tmp_path / "r.docx")
-    ev = _evidence(tmp_path, {"A.1.1": ["[A.1.1-1-OD3] Süreç.pdf", "[A.1.1-2-OD2] İzleme.pdf",
-                                        "[A.1.1-3-OD2] Fazla.pdf", "rastgele ad.pdf"],
-                              "A.1.2": ["[A.1.2-1-OD3] Süreç.pdf"]})
-    (ev / "A" / "A.1" / "A.1.2" / "[A.1.1-9-OD3] Yanlış yer.pdf").write_bytes(b"x")
+    ev = _evidence(tmp_path, {"A.1.1": ["[1-OD3]. Süreç.pdf", "[2-OD2]. İzleme.pdf",
+                                        "[3-OD2]. Fazla.pdf", "rastgele ad.pdf"],
+                              "A.1.2": ["[1-OD3]. Süreç.pdf"]})
+    (ev / "A" / "A.1" / "[9-OD3]. Yanlış yer.pdf").write_bytes(b"x")     # alt ölçüt klasöründe değil
     s = denetle(rep, kanit_klasoru=ev, beklenen=BEKLENEN)
     m = {(b.kod, b.yer): b for b in s.bulgular}
     assert m[("kanit_dosyasi_od", "A.1.1")].seviye == KRITIK          # listede 2_OD3, dosya OD2
