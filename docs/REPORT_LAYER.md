@@ -58,7 +58,12 @@ Bir belge bir ölçütte bir kez numaralanır; farklı ölçütlerde ayrı numar
 OD'si** (`bidr/file/naming.py`): kod OD'si `evidence_od(audit satırları, ölçüt OD'si)` — kodun
 düşüşleri yansır (kurum geneli → planla → OD2; `od_kabul` düşüşü), ölçüt OD'sine sayılmayan kanıt
 (dönem kuralı, düşük güven) ölçütün önerilen OD'sinin üstünü göstermez, modelin ham OD'si
-kullanılmaz. Aynı kaynak (aynı içerik ya da aynı `surum_grubu`; parça grupları dahil) bir ölçütte
+kullanılmaz. Ölçüt OD'sinin üstündeki düzey yalnız o düzey audit zincirinde kurulmuşsa gösterilir
+(OD4: izleme VE iyileştirme halkası kanıtlı; kılavuz örneği metin OD2 / kanıt OD4 böyle korunur);
+yalnız izleme olan ölçütte "OD4" etiketi ölçüt OD'sine iner ("iyileştirme kanıtı yok" bulgusuyla
+çelişmesin). Aynı kaynak (aynı içerik ya da aynı `surum_grubu`; parça grupları, OCR'lı tarama
+kopyaları ve kontrollü belgenin sayfaları dahil — bkz. `bidr/identify/versions.py`) ya da ölçüt
+içinde kapsanan kopya (`select.merge_contained`, `kaynak_grubu`) bir ölçütte
 seçimde ayrı tutulsa da (farklı dönem verisi) tek numara ve tek OD alır (`number_sources`): satırlar
 aynı `kanit_no`, aynı `ad` (grubun ilk üyesinin) ve aynı `baglanti`yı (öncelik insan > belge metni >
 klasör) taşır — write'ın kanıt listesi ve render'ın (ölçüt, kanit_no) bağlantı haritası tek değer
@@ -87,6 +92,15 @@ belgenin sürümleri listeyi şişirir. Ölçüt ölçüt iki adım:
    olunamaz: tek sayılır, satır `surum_belirsiz` işaretlenir, gaps.md "Sürümü doğrulanacak
    belgeler"de listelenir; komisyon üyenin satırını `duzelt` ederse (yuva aynı kalabilir) ayrı
    kanıt kalır. Temsilci satırı `surum_temsilcisi` işareti alır.
+   **Kopyalar** (kör test 2026-11-20: aynı yazının 5 taraması 5 numara almıştı): identify sürüm
+   grubuna OCR'a dayanıklı iki bağ ekler — okunur metin pencerelerinin karakter parçacıklarında iki
+   yönde yüksek kapsama (şablon parçacıkları derlem sıklığıyla ayıklanır; birincil tarih aynı, tür
+   ve baş bölge kimlikleri — tarih, ders kodu, sayı, doküman no — uyumlu, kardeş kalıp değil) ve
+   kontrollü belge imzası (doküman no + revizyon; form numarası değil). Kopya çiftinde modelin
+   farklı aşama vermesi ayırmaz (neden `kopya`). Ölçüt içinde **kapsanan kopya**: kalemin şablon
+   dışı metninin ≥ %90'ı aynı tarihli başka kalemde ve bu ölçütteki bütün alıntıları da oradaysa
+   kapsayan temsilci olur (neden `kapsanan_kopya`); atıflı kalem listede kalır ama numarayı paylaşır.
+   Farklı tarihli toplantı/dönem belgesi bu yollarla birleşmez (K20).
 2. **İlgililik.** (a) write sonrası metinde atıf yapılan kanıt her zaman girer, sınıra sayılmaz
    (atıf `texts/<ölçüt>.json`'dan; numara önceki dizinle, dizin değiştiyse `evidence-secim.json`
    atıf eşlemesiyle belgeye bağlanır). (b) Atıfsız kanıt yalnız doğrudan ilgiliyse girer: güven
@@ -178,8 +192,14 @@ geneli düzenleme, kanıtsız ölçüt).
 Kod denetimi (apply ve verify prepare): her cümle ölçüt kodu taşır; kod alana ait ve listenin
 dayanağı olan ölçütlerden (güçlü: doğrulanmış metni olan; gelişme: bulgusu olan); kanıt numarası
 (`[1_OD3]`) yok; write'taki yasak ifade (abartı, koçluk, `-malıdır`), gelecek vaadi ve OD aşımı
-kuralları; ayrıca "önerilir/gerekmektedir" öğüt dili yok. `girdi_sha`: alanın ölçütleri, doğrulanmış
-metin özetleri, OD ve bulgular; değişirse maddeler eskir.
+kuralları; ayrıca "önerilir/gerekmektedir" öğüt dili yok. Kanıtla çapraz denetim (`cross_check`):
+gelişmeye açık yönün "yok" hükmü ölçütün KANIT DURUMU'yla çelişmez (`kanitla_celiski`: izleme/
+iyileştirme/uygulama halkası kanıtlıyken ya da listede birime ait kanıt varken "bölüm düzeyinde
+kanıt yok/yalnız kurum geneli"; nedenli hüküm — "OD'ye sayılmamıştır", "tarihi doğrulanamadı" —
+çelişki değildir); aynı ölçütte güçlü yönün söylediği uygulamayı yok saymaz (`ic_celiski`); hedefe
+ulaşıldığı doğrulanmış metinde görünmeyen gösterge/performans değeri güçlü yön olmaz
+(`hedef_alti_guclu`). Bulgu, birime ait ama OD'ye sayılmamış kanıtı nedeniyle anar. `girdi_sha`:
+alanın ölçütleri, doğrulanmış metin özetleri, OD, bulgular ve kanıt durumu; değişirse maddeler eskir.
 Bağımsız doğrulama `bidr verify prepare|apply` akışına katılır: `work/verify/yonler/<alan>.json`
 (görev `verify_yonler`; doğrulayıcıya yalnız maddeler ve atıf yapılan ölçütlerin metni/bulgusu
 verilir) → `verify-yonler.jsonl`. Her madde "destekleniyor" ise `dogrulandi`. Reddedilen alan

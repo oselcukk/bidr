@@ -11,7 +11,12 @@ Her madde ilgili ölçüt kodunu parantez içinde taşır: "… (B.1.1)."
 
 apply: şema + kod denetimi (ölçüt atfı her cümlede, atıf alanda ve listenin dayanağı olan
 ölçütlerde mi, kanıt numarası yok, yasak ifade/koçluk/gelecek vaadi ve OD aşımı —
-bidr/write/text.py'deki kurallar). Geçen cevap `yonler/<alan>.json`, `durum: taslak`.
+bidr/write/text.py'deki kurallar) ve kanıtla çapraz denetim (`cross_check`, kör test
+2026-11-20): gelişmeye açık yönün "X kanıtı yok" hükmü audit zinciri ve kanıt listesiyle
+çelişmez (izleme/iyileştirme halkası kanıtlıyken "yok", listede birime ait kanıt varken "bölüm
+düzeyinde kanıt yok/yalnız kurum geneli"); aynı ölçütte güçlü yönün söylediği uygulamayı
+gelişmeye açık yön yok saymaz; hedefe ulaşıldığı metinde görünmeyen gösterge değeri güçlü yön
+olmaz. Geçen cevap `yonler/<alan>.json`, `durum: taslak`.
 
 Bağımsız doğrulama `bidr verify prepare|apply` akışına katılır (`work/verify/yonler/`,
 görev `verify_yonler`, kayıt `verify-yonler.jsonl`): her madde atıf yaptığı ölçütün metni ya
@@ -42,7 +47,8 @@ ALANLAR = ("A", "B", "C", "D")
 FINAL = ("dogrulandi", "reddedildi")
 KOD = re.compile(r"\b([A-E]\.\d+\.\d+)\b")
 RULE = ("İstemdeki kurallara uy: her cümle dayandığı ölçüt kodunu parantez içinde taşır \"(B.1.1)\"; "
-        "güçlü yön yalnız doğrulanmış metinden, gelişmeye açık yön yalnız bulgudan; öğüt ve vaat yok.")
+        "güçlü yön yalnız doğrulanmış metinden, gelişmeye açık yön yalnız bulgudan; öğüt ve vaat yok; "
+        "\"kanıt yok\" hükmü KANIT DURUMU ile ve aynı ölçütün güçlü yönüyle çelişmez.")
 VRULE = ("Her maddeyi yalnız atıf yaptığı ölçütün doğrulanmış metni (g) ya da bulgusu (a) ile karşılaştır "
          "(destekleniyor / kismen / desteklenmiyor + gerekçe); listedeki her maddeye bir karar ver.")
 
@@ -117,22 +123,90 @@ def _clean_criterion_text(t: dict) -> str:
     return " ".join(out)
 
 
-def findings(a: dict | None, has_evidence: bool) -> list[str]:
-    """Audit bulguları (gelişmeye açık yönün tek dayanağı)."""
+_SAYILMAMA = (("gecmis_kanit", "önceki yıla ait"), ("donem_sonrasi", "dönem sonrası"),
+              ("tarih_dogrulanmali", "tarihi doğrulanmalı"), ("birim_iliskisi_kod", "birim aitliği doğrulanmalı"))
+
+
+def unit_rows(rows: list[dict] | None) -> list[dict]:
+    """Kanıt listesinde birime ait (kurum/fakülte geneli işareti taşımayan) satırlar. Eski dizinde
+    `isaretler` sütunu yoksa bilinemez: boş."""
+    return [r for r in rows or [] if "isaretler" in r and "kurum_geneli" not in (r.get("isaretler") or "")]
+
+
+def _uncounted_note(rows: list[dict]) -> str:
+    """Birime ait ama OD'ye sayılmamış kanıtların kısa notu ("Ad (tarihi doğrulanmalı)")."""
+    out = []
+    for r in rows:
+        fl = r.get("isaretler") or ""
+        if "od_sayilmadi" not in fl:
+            continue
+        why = next((t for k, t in _SAYILMAMA if k in fl), "OD'ye sayılmadı")
+        out.append(f"{r.get('ad') or r.get('doc_id')} ({why})")
+    return "; ".join(out[:3])
+
+
+def findings(a: dict | None, has_evidence: bool, rows: list[dict] | None = None) -> list[str]:
+    """Audit bulguları (gelişmeye açık yönün tek dayanağı). `rows`: ölçütün kanıt listesi satırları;
+    birime ait ama OD'ye sayılmamış kanıt bulguda nedeniyle anılır ("bölüm düzeyinde kanıt yok"
+    denmesin)."""
     out = []
     if not has_evidence:
         out.append("bu dönemde ölçüte ilişkin kanıt bulunamadı")
     if not a:
         return out
+    unit = unit_rows(rows)
+    note = _uncounted_note(unit)
     od = a.get("od")
     if od is not None and int(od) <= 2 and has_evidence:
         out.append(f"önerilen OD{od} (düşük olgunluk düzeyi)")
     for e in a.get("eksik") or []:
-        out.append(f"OD{a.get('sonraki_od')} için {W.HALKA.get(e.get('halka'), e.get('halka'))} kanıtı eksik"
-                   + (f": {e['gereken']}" if e.get("gereken") else ""))
+        f_ = (f"OD{a.get('sonraki_od')} için {W.HALKA.get(e.get('halka'), e.get('halka'))} kanıtı eksik"
+              + (f": {e['gereken']}" if e.get("gereken") else ""))
+        if e.get("halka") == "uygula" and note:
+            f_ += f" (birime ait kanıt listede var ama OD'ye sayılmadı: {note})"
+        out.append(f_)
     if a.get("kurum_geneli_yalniz"):
-        out.append("yalnız kurum geneli düzenlemeyle eşleşti; birimin uygulama kanıtı eksik")
+        if unit:
+            out.append("OD'ye yalnız kurum geneli düzenleme sayıldı; birime ait kanıt listede var"
+                       + (f" ama OD'ye sayılmadı: {note}" if note else ""))
+        else:
+            out.append("yalnız kurum geneli düzenlemeyle eşleşti; birimin uygulama kanıtı eksik")
     return out
+
+
+# -- kanıt durumu (çapraz denetim için olgular) -------------------------------------------------
+
+_KISA = {"uygula": "U", "kontrol_et": "K", "onlem_al": "Ö"}
+
+
+def facts(a: dict | None, rows: list[dict] | None) -> dict:
+    """Ölçütün kanıt olguları: audit zincirinde kanıtlı halkalar ve kanıt listesindeki birim kanıtı."""
+    a = a or {}
+    z = a.get("zincir") if isinstance(a.get("zincir"), dict) else {}
+
+    def var(x: str) -> bool:
+        if x in z:
+            return (z[x] or {}).get("durum") == "var"
+        return f"{_KISA[x]}+" in (a.get("zincir_kisa") or "")
+    unit = unit_rows(rows)
+    return {"kanit": bool(rows), "uygulama": var("uygula"), "izleme": var("kontrol_et"),
+            "iyilestirme": var("onlem_al"), "birim_kaniti": [r.get("ad") or r.get("doc_id") or "" for r in unit][:5]}
+
+
+HEDEF_OK = re.compile(r"hedef\w* (?:ulasil|asil|karsilan|tuttur|gerceklestiril)|hedefin (?:uzerinde|ustunde)"
+                      r"|hedef\w* (?:ustunde|uzerinde)")
+HEDEF_ALTI = re.compile(r"hedefin (?:altinda|gerisinde)|hedef\w* (?:ulasilama|tutturulama|karsilanama|"
+                        r"gerceklestirileme)|performans\w* %\s*0\b|%\s*0 (?:performans|gerceklesme)")
+
+
+def target_state(text: str | None) -> str | None:
+    """Doğrulanmış metinde gösterge/hedef durumu: "ok" (hedefe ulaşıldı), "alti" (hedefin altında)
+    ya da None (hedefle karşılaştırma yok)."""
+    from bidr.identify.text import fold
+    t = " ".join(fold(text or "").split())
+    if HEDEF_ALTI.search(t):
+        return "alti"
+    return "ok" if HEDEF_OK.search(t) else None
 
 
 class Inputs:
@@ -168,7 +242,13 @@ class Inputs:
         return int((self.audit.get(c) or {}).get("od") or 1)
 
     def findings(self, c: str) -> list[str]:
-        return findings(self.audit.get(c), bool(self.index.get(c)))
+        return findings(self.audit.get(c), bool(self.index.get(c)), self.index.get(c))
+
+    def facts(self, c: str) -> dict:
+        return facts(self.audit.get(c), self.index.get(c))
+
+    def target(self, c: str) -> str | None:
+        return target_state(_clean_criterion_text(self.verified[c])) if c in self.verified else None
 
     def strong(self, alan: str) -> list[str]:
         return [c for c in self.criteria(alan) if c in self.verified]
@@ -177,8 +257,8 @@ class Inputs:
         return [c for c in self.criteria(alan) if self.findings(c)]
 
     def girdi_sha(self, alan: str) -> str:
-        rows = [(c, W.text_sha(self.verified[c]) if c in self.verified else None, self.od(c), self.findings(c))
-                for c in self.criteria(alan)]
+        rows = [(c, W.text_sha(self.verified[c]) if c in self.verified else None, self.od(c), self.findings(c),
+                 self.facts(c)) for c in self.criteria(alan)]
         return K.sha(json.dumps(rows, ensure_ascii=False))
 
     def render_criteria(self, cids: list[str]) -> str:
@@ -194,6 +274,13 @@ class Inputs:
                 L.append("  DOĞRULANMIŞ METİN: yok")
             f = self.findings(c)
             L.append("  BULGULAR: " + ("; ".join(f) if f else "yok"))
+            o = self.facts(c)
+            yn = lambda b: "var" if b else "yok"         # noqa: E731
+            L.append(f"  KANIT DURUMU: uygulama {yn(o['uygulama'])}, izleme {yn(o['izleme'])}, "
+                     f"iyileştirme {yn(o['iyilestirme'])}; listede birime ait kanıt "
+                     + (f"var ({len(o['birim_kaniti'])})" if o["birim_kaniti"] else "yok"))
+            if self.target(c) == "alti":
+                L.append("  HEDEF: metindeki gösterge hedefin altında (güçlü yön olamaz)")
             blocks.append("\n".join(L))
         return "\n\n".join(blocks) if blocks else "yok"
 
@@ -210,7 +297,9 @@ def write_inputs(src: Inputs, alan: str, hitap: str) -> tuple[dict, dict]:
               "guclu_olcutler": ", ".join(strong) or "yok (güçlü yön listesi boş kalır)",
               "gelisme_olcutler": ", ".join(weak) or "yok (gelişmeye açık yön listesi boş kalır)"}
     meta = {"alan": alan, "olcutler": src.criteria(alan), "guclu_olcutler": strong, "gelisme_olcutler": weak,
-            "od": {c: src.od(c) for c in src.criteria(alan)}, "girdi_sha": src.girdi_sha(alan)}
+            "od": {c: src.od(c) for c in src.criteria(alan)}, "girdi_sha": src.girdi_sha(alan),
+            "olgular": {c: src.facts(c) for c in src.criteria(alan)},
+            "hedef": {c: src.target(c) for c in src.criteria(alan)}}
     return inputs, meta
 
 
@@ -260,6 +349,112 @@ def check_item(metin: str, *, liste: str, alan: str, allowed: set[str], od: dict
     return issues
 
 
+# -- kanıtla çapraz denetim -----------------------------------------------------------------------
+# Katlanmış (ascii, küçük harf) cümle desenleri. Gelişmeye açık yön bir eksikliği söyler; söylediği
+# eksiklik audit zinciri ve kanıt listesiyle çelişmemeli. "OD'ye sayılmadı / doğrulanmalı" gibi
+# nedenli hüküm çelişki değildir (kanıt var ama sayılmadı).
+YOK = re.compile(r"bulunmamak|bulunmadig|yer almamak|yer almadig|yoktur|bulunamam|eksik|gorulmemekte"
+                 r"|gosterilmemis|sinirli kal|ulasilamam|ortaya konmamis|kanitlanmamis")
+NEDENLI = re.compile(r"\bsayil|dogrulanama|dogrulanmali|donem disi|onceki yil|tarih\w* (?:belirsiz|dogrulan)")
+H_IZLEME = re.compile(r"izlen|izleme|olcme|olcum|olculme|degerlendirme sonuc|sonuclarin\w* (?:degerlendir|izlen)")
+H_IYILESTIRME = re.compile(r"iyilestir|eylem plani|duzeltici|onleyici|sonuclara dayanan (?:degisiklik|karar)")
+H_BIRIM = re.compile(r"bolum(?:un|umuzun)? (?:duzeyinde|donem icindeki|kendi|tarafindan)|bolumun\b[^.]*uygulama"
+                     r"|birim(?:in)? (?:duzeyinde|uygulama)|yalniz(?:ca)? kurum|kurum(?: geneli)? duzeyinde"
+                     r"|kurum geneli\w*(?: \w+){0,2} (?:ile|yle) sinirli|kurum geneli duzenleme\w*le eslesmekte")
+H_UYGULAMA = re.compile(r"uygulama(?:sina|ya|larina)? (?:iliskin |dair )?(?:\w+ )?kanit|uygulama kanit|uygulandig")
+H_HIC = re.compile(r"(?:bu donemde |olcute iliskin |hicbir )?kanit bulunama|kanit(?:i)? (?:yoktur|bulunmamaktadir)")
+# güçlü yönde birimin bir uygulamayı yaptığını/kaydettiğini söyleyen fiil (yalnız "tanımlanmıştır",
+# "hazırlanmıştır" gibi plan dili değil; "izlenmesi" gibi ad biçimleri değil)
+UYGULAMA_FIIL = re.compile(r"(?:yurutul|gerceklestiril|yapil|kaydedil|karara baglan|gorusul|degerlendiril|uygulan"
+                           r"|kabul edil|akredite edil|gorevlendiril|ilan edil|yayimlan|izlen|toplan|iletil"
+                           r"|surdurul|acil|alin|katil)(?:mis|mak|mek|di|ir)\w*"
+                           r"|\bbulunmaktadir|\byer almaktadir|\byer almakta\b")
+# güçlü yönde gösterge/performans değeri iddiası
+PERF = re.compile(r"gosterge|performans|hedef|gerceklesme|yayin (?:sayisi|degeri)")
+DEGER = re.compile(r"\bdeger(?:i|leri)?\b|\boran(?:i|lari)?\b|\bsayisi\b|\bortalama"
+                   r"|(?<![\d.\-])(?!(?:19|20)\d\d\b)\d+(?:[.,]\d+)?(?![\d\-])")
+# izleme sözcüğü iyileştirmenin niteleyicisi ("izleme sonuçlarına dayanan iyileştirme") ise izleme hükmü değil
+NITELEYICI = re.compile(r"^\W*(?:\w+\W+){0,3}?(?:dayan|dayali|dogrultusunda|uzerine)")
+
+
+def _f(s: str) -> str:
+    from bidr.identify.text import fold
+    return " ".join(fold(s or "").split())
+
+
+def _claims(sentence: str) -> set[str]:
+    """Gelişmeye açık cümlenin "yok" hükümleri: izleme | iyilestirme | birim | uygulama | hic."""
+    low = _f(sentence)
+    if not YOK.search(low) or NEDENLI.search(low):
+        return set()
+    out = set()
+    for m in H_IZLEME.finditer(low):
+        if not (H_IYILESTIRME.search(low) and NITELEYICI.search(low[m.end():m.end() + 60])):
+            out.add("izleme")
+            break
+    if H_IYILESTIRME.search(low):
+        out.add("iyilestirme")
+    if H_BIRIM.search(low):
+        out.add("birim")
+    if H_UYGULAMA.search(low):
+        out.add("uygulama")
+    if not out and H_HIC.search(low):
+        out.add("hic")
+    return out
+
+
+def cross_check(t: dict, meta: dict) -> list[dict]:
+    """Maddelerin kanıt olgularıyla ve birbiriyle çelişkisi → [{yer, metin, kod, ayrinti}].
+    `meta["olgular"]` yoksa (eski paket) yalnız iç çelişki denetlenir."""
+    olg = meta.get("olgular") or {}
+    hedef = meta.get("hedef") or {}
+    out: list[dict] = []
+    rows = items(t)
+    practice: dict[str, list[str]] = {}
+    for r in rows:
+        if r["liste"] != "guclu":
+            continue
+        for s in T.split_sentences(r["metin"]):
+            low = _f(KOD.sub(" ", s))
+            for c in KOD.findall(s):
+                if UYGULAMA_FIIL.search(low):
+                    practice.setdefault(c, []).append(r["yer"])
+                if PERF.search(low) and DEGER.search(low) and hedef.get(c) != "ok":
+                    why = ("metindeki gösterge hedefin altında" if hedef.get(c) == "alti"
+                           else "metin hedefe ulaşıldığını göstermiyor")
+                    out.append({"yer": r["yer"], "metin": r["metin"], "kod": "hedef_alti_guclu",
+                                "ayrinti": f"({c}) gösterge/performans değeri güçlü yön değildir: {why}"})
+    for r in rows:
+        if r["liste"] != "gelisme":
+            continue
+        for s in T.split_sentences(r["metin"]):
+            cl = _claims(KOD.sub(" ", s))
+            if not cl:
+                continue
+            for c in dict.fromkeys(KOD.findall(s)):
+                o = olg.get(c) or {}
+                bad = []
+                if "izleme" in cl and o.get("izleme"):
+                    bad.append("izleme halkası kanıtlı")
+                if "iyilestirme" in cl and o.get("iyilestirme"):
+                    bad.append("iyileştirme halkası kanıtlı")
+                if ({"birim", "uygulama"} & cl) and o.get("uygulama"):
+                    bad.append("uygulama halkası kanıtlı")
+                elif "birim" in cl and o.get("birim_kaniti"):
+                    bad.append("kanıt listesinde birime ait kanıt var (" + "; ".join(o["birim_kaniti"][:2])
+                               + "): sayılmadıysa nedeniyle yazılır")
+                if "hic" in cl and o.get("kanit"):
+                    bad.append("ölçütün kanıt listesi boş değil")
+                for b in bad:
+                    out.append({"yer": r["yer"], "metin": r["metin"], "kod": "kanitla_celiski",
+                                "ayrinti": f"({c}) \"yok\" hükmü kanıtla çelişiyor: {b}"})
+                if ({"birim", "uygulama", "hic"} & cl) and practice.get(c):
+                    out.append({"yer": r["yer"], "metin": r["metin"], "kod": "ic_celiski",
+                                "ayrinti": f"({c}) güçlü yön ({', '.join(practice[c])}) bu ölçütte birimin "
+                                           "uygulamasını söylüyor; gelişmeye açık yön onu yok sayamaz"})
+    return out
+
+
 def check(t: dict, meta: dict) -> list[dict]:
     """Bütün maddelerin denetimi → [{yer, metin, kod, ayrinti}]."""
     out = []
@@ -268,7 +463,7 @@ def check(t: dict, meta: dict) -> list[dict]:
         for x in check_item(r["metin"], liste=r["liste"], alan=meta["alan"], allowed=allowed[r["liste"]],
                             od=meta.get("od") or {}):
             out.append({"yer": r["yer"], "metin": r["metin"], **x})
-    return out
+    return out + cross_check(t, meta)
 
 
 # -- prepare / apply -------------------------------------------------------------------------------
@@ -409,7 +604,9 @@ def _set_status(ws: Workspace, t: dict, durum: str, gerekce: list[str], model: s
 
 def _meta_for(src: Inputs, alan: str) -> dict:
     return {"alan": alan, "guclu_olcutler": src.strong(alan), "gelisme_olcutler": src.weak(alan),
-            "od": {c: src.od(c) for c in src.criteria(alan)}}
+            "od": {c: src.od(c) for c in src.criteria(alan)},
+            "olgular": {c: src.facts(c) for c in src.criteria(alan)},
+            "hedef": {c: src.target(c) for c in src.criteria(alan)}}
 
 
 def verify_prepare(ws_root: Path, *, redo: bool = False, backend: W.Backend | None = None) -> dict:
