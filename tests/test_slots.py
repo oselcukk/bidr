@@ -72,10 +72,11 @@ def test_profil_akademik_bolum():
     dec = {d.criterion: d for d in p.decisions(CS)}
     assert dec["A.3.1"].verdict == "haric" and not dec["A.3.1"].keep
     assert dec["A.3.2"].verdict == "haric"
-    assert dec["A.3.3"].verdict == "belirsiz" and dec["A.3.3"].keep
-    assert dec["C.1.3"].verdict == "belirsiz"
+    # ölçütü kılavuzda adı yazan birim doldurur: bölümü kapsamayanlar doldurulmaz
+    assert dec["A.3.3"].verdict == "haric" and not dec["A.3.3"].keep
+    assert dec["C.1.3"].verdict == "haric"
     assert dec["A.1.1"].verdict == "dahil"
-    assert len(p.allowed(CS)) == 44
+    assert len(p.allowed(CS)) == 42
 
 
 def test_profil_kurallari():
@@ -166,4 +167,4 @@ def test_cli_slots_profile(capsys):
     assert main(["criteria", "slots", "A.2.2"]) == 0
     assert "A.2.2/4" in capsys.readouterr().out
     assert main(["criteria", "profile", "akademik_bolum"]) == 0
-    assert "44/46" in capsys.readouterr().out
+    assert "42/46" in capsys.readouterr().out

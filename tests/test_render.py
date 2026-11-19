@@ -389,7 +389,7 @@ def test_scope_states(ws, tmp_path):
 def test_scope_from_profile_and_config(tmp_path, monkeypatch):
     from bidr.render.kapsam import profile_scope, workspace_scope
     k, uy = profile_scope("akademik_bolum")
-    assert k["A.1.1"] == "bolum" and k["A.3.1"] == "baska_birim" and k["A.3.3"] == "karar_gerekli" and not uy
+    assert k["A.1.1"] == "bolum" and k["A.3.1"] == "baska_birim" and k["A.3.3"] == "baska_birim" and k["C.1.3"] == "baska_birim" and not uy
     assert profile_scope(None)[0]["A.3.1"] == "bolum"                      # profil yoksa eski davranış
     prof = tmp_path / "profiller"
     prof.mkdir()
