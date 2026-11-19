@@ -11,7 +11,9 @@
            komisyonun başka birim onayladığı belgeninki değildir (audit/file ile aynı görünüm).
   apply    `<doc_id>.out.json` cevaplarını şemaya ve `check_name`'e göre doğrular,
            `kanit-adlari.jsonl`'e `kaynak: model` olarak yazar. Kişi adı/unvan/e-posta içeren
-           ya da biçimsiz ad reddedilir (`GECERSIZ.md`), belge kural adında kalır.
+           ya da biçimsiz ad reddedilir (`GECERSIZ.md`), belge kural adında kalır. Belgede
+           dayanağı olmayan ad (`ground.grounding`) kabul edilir, kayıtta `dogrulanmali` ve
+           `GECERSIZ.md`'de ayrı bölümde listelenir.
 """
 from __future__ import annotations
 
@@ -24,12 +26,14 @@ from bidr.common import Workspace, read_jsonl
 from bidr.decide import prompt as P
 
 from .check import YASAKLI_GOSTERIM, check_name_noted
+from .ground import _pages, grounding
 from .resolve import NAMES, decision_name, load_names, upsert
 
 TASK = "name_evidence"
 NAME_CHARS = 2500        # belge metni bütçesi (baş ağırlıklı)
 QUOTE_CHARS = 200
 MAX_MATCH = 6
+PART_CHARS = 240         # alıntının sayfasının başı (derlemede parçanın başlığı)
 
 README = """# bidr iş paketleri: {task} (sürüm {version})
 
@@ -94,12 +98,37 @@ def eligible(recs: dict[str, dict]) -> list[str]:
     return out
 
 
+def _text(ws: Workspace, did: str) -> str:
+    p = ws.text_path(did)
+    return p.read_text(encoding="utf-8", errors="replace") if p.exists() else ""
+
+
+def part_heads(text: str, quotes: list[tuple[str, str]]) -> str:
+    """Çok sayfalı belgede her alıntının geldiği sayfanın başı (derlemede parçanın başlığı;
+    model adı belgenin ilk parçasından değil alıntının parçasından kurabilsin)."""
+    from bidr.llm.quote import verify_quote
+    pages = _pages(text)
+    if len(pages) < 2:
+        return "(tek sayfa)"
+    out = []
+    for yuva, q in quotes:
+        sp = verify_quote(q, text).span if q else None
+        if not sp:
+            continue
+        i = next((k for k, (a, b) in enumerate(pages) if a <= sp[0] <= b), len(pages) - 1)
+        head = " ".join(text[pages[i][0]:pages[i][1]].split())
+        head = head if len(head) <= PART_CHARS else head[:PART_CHARS].rsplit(" ", 1)[0] + " …"
+        out.append(f"- {yuva}: sayfa {i + 1}/{len(pages)}: \"{head}\"")
+    return "\n".join(out) or "(yok)"
+
+
 def inputs_of(ws: Workspace, did: str, rec: dict, doc: dict | None, cs=None) -> dict:
     if cs is None:
         from bidr.criteria.loader import load_criteria
         cs = load_criteria()
     lines = []
-    for m in [m for m in rec.get("eslesmeler") or [] if m.get("kabul")][:MAX_MATCH]:
+    acc = [m for m in rec.get("eslesmeler") or [] if m.get("kabul")][:MAX_MATCH]
+    for m in acc:
         try:
             title = cs.get(m["olcut"]).title
         except KeyError:
@@ -107,12 +136,14 @@ def inputs_of(ws: Workspace, did: str, rec: dict, doc: dict | None, cs=None) -> 
         q = (m.get("alinti") or "").replace("\n", " ")
         q = q if len(q) <= QUOTE_CHARS else q[:QUOTE_CHARS].rsplit(" ", 1)[0] + " …"
         lines.append(f"- {m['olcut']} {title} (yuva {m['yuva']}, {m.get('asama')}): \"{q}\"")
-    text = ws.text_path(did).read_text(encoding="utf-8", errors="replace") if ws.text_path(did).exists() else ""
+    text = _text(ws, did)
     body, _ = P.excerpt(text, NAME_CHARS)
     bas = (doc or {}).get("baslik")
     return {"belge_bilgisi": P.render_info(P.content_info(doc)),
             "baslik": bas.strip() if isinstance(bas, str) and bas.strip() else "(yok)",
-            "olcutler": "\n".join(lines) or "(yok)", "belge_metni": body or "(metin yok)"}
+            "olcutler": "\n".join(lines) or "(yok)",
+            "parcalar": part_heads(text, [(m["yuva"], m.get("alinti") or "") for m in acc]),
+            "belge_metni": body or "(metin yok)"}
 
 
 def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
@@ -175,8 +206,11 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", only: list[str] |
     ws = Workspace(ws_root)
     d = work_dir(ws)
     ver = task_version()
-    st = {"islenen": 0, "degismedi": 0, "bekleyen": [], "gecersiz": {}, "reddedilen": {}, "eski_surum": []}
+    st = {"islenen": 0, "degismedi": 0, "bekleyen": [], "gecersiz": {}, "reddedilen": {}, "eski_surum": [],
+          "dogrulanmali": {}}
     have = load_names(ws.root)
+    dp = ws.root / "decisions.jsonl"
+    recs = {r["doc_id"]: r for r in read_jsonl(dp) if r.get("doc_id")} if dp.exists() else {}
     new: list[dict] = []
     for p in _pkgs(d):
         pkg = json.loads(p.read_text(encoding="utf-8"))
@@ -205,6 +239,12 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", only: list[str] |
         if notes:
             rec["oneri"] = out.get("kanit_adi")
             rec["not"] = notes
+        g = grounding(ad, _text(ws, did), {m["yuva"]: m.get("alinti") or ""
+                                          for m in (recs.get(did) or {}).get("eslesmeler") or []
+                                          if m.get("kabul") and m.get("yuva")})
+        if g["dogrulanmali"]:
+            rec["dogrulanmali"] = {"belge": g["belge"], "parca_uyumsuz": g["parca_uyumsuz"]}
+            st["dogrulanmali"][did] = {"ad": ad, **rec["dogrulanmali"]}
         prev = (have.get(did) or {}).get("model")
         if prev and {k: v for k, v in prev.items() if k != "zaman"} == rec:
             st["degismedi"] += 1
@@ -220,6 +260,12 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", only: list[str] |
         lines.append(f"- `{did}.json` — ad reddedildi ({', '.join(x['neden'])}): "
                      + json.dumps(x["oneri"], ensure_ascii=False)
                      + f". Kişi adı/unvan/e-posta yok; 3-7 sözcük; yasaklı karakter yok ({YASAKLI_GOSTERIM}).")
+    if st["dogrulanmali"]:
+        lines += ["", "## Kabul edildi, doğrulanmalı (ad belgede dayanaksız ya da başka parçayı anlatıyor)", ""]
+        for did, x in st["dogrulanmali"].items():
+            why = x["belge"] + ([f"parca_uyumsuz: {', '.join(x['parca_uyumsuz'])}"] if x["parca_uyumsuz"] else [])
+            lines.append(f"- `{did}.json` — {json.dumps(x['ad'], ensure_ascii=False)} ({'; '.join(why)}). "
+                         "Ad alıntının geldiği belgeyi/parçayı adlandırmalı; belgede olmayan nitelik yok.")
     if d.exists():
         g = d / "GECERSIZ.md"
         if len(lines) > 2:

@@ -40,11 +40,14 @@ def _cmd(args) -> int:
         return 2
     print(f"işlenen={st['islenen']} değişmedi={st['degismedi']} bekleyen={len(st['bekleyen'])} "
           f"geçersiz={len(st['gecersiz'])} reddedilen={len(st['reddedilen'])} "
-          f"eski sürüm={len(st['eski_surum'])} → {st['dosya']}")
+          f"eski sürüm={len(st['eski_surum'])} doğrulanmalı={len(st['dogrulanmali'])} → {st['dosya']}")
     for did, errs in st["gecersiz"].items():
         print(f"  geçersiz {did}: {'; '.join(errs)}")
     for did, x in st["reddedilen"].items():
         print(f"  reddedildi {did} ({', '.join(x['neden'])}): {x['oneri']}")
+    for did, x in st["dogrulanmali"].items():
+        why = x["belge"] + ([f"parca_uyumsuz: {', '.join(x['parca_uyumsuz'])}"] if x["parca_uyumsuz"] else [])
+        print(f"  doğrulanmalı {did} ({'; '.join(why)}): {x['ad']}")
     return 1 if (st["gecersiz"] or st["reddedilen"]) else 0
 
 

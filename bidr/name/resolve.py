@@ -8,6 +8,10 @@
 
 Model kaynakları arasında `kanit-adlari.jsonl` önce gelir (adlandırma görevi ayrı ve sonra
 çalışır). Her ad yeniden denetlenir (kişi/unvan/e-posta): tutmayan kaynak atlanır, uyarı verilir.
+Belge metni verilmişse model adının belgede dayanağı da denetlenir (`ground.grounding`): adın
+resmî türü/birimi/niteliği/sayısı metinde yoksa ya da kabul edilmiş alıntı derlemenin başka bir
+parçasından geliyorsa ad kullanılır ama "doğrulanmalı" uyarısı verilir ve `dogrulanmali[doc_id]`
+kaydedilir (dosyalama yuva işaretine çevirebilir: `slot_flags`). İnsan adı denetlenmez.
 """
 from __future__ import annotations
 
@@ -17,6 +21,7 @@ from pathlib import Path
 from bidr.common import read_jsonl, write_jsonl
 
 from .check import check_name
+from .ground import grounding
 
 NAMES = "kanit-adlari.jsonl"
 KAYNAKLAR = ("insan", "model")
@@ -66,8 +71,10 @@ class Resolver:
     satırında düzeltilmiş olabilir)."""
 
     def __init__(self, names: dict[str, dict[str, dict]], decisions: dict[str, dict],
-                 docs: dict[str, dict], labels: dict[str, str] | None = None):
+                 docs: dict[str, dict], labels: dict[str, str] | None = None, text_of=None):
         self.names, self.decisions, self.docs, self.labels = names, decisions, docs, labels or {}
+        self.text_of = text_of                  # doc_id → belge metni ("" yoksa); None: denetim yok
+        self.dogrulanmali: dict[str, dict] = {}
 
     @classmethod
     def load(cls, ws_root: Path, *extra_dirs, docs: dict | None = None,
@@ -79,7 +86,13 @@ class Resolver:
         if decisions is None:
             p = ws_root / "decisions.jsonl"
             decisions = {r["doc_id"]: r for r in read_jsonl(p) if r.get("doc_id")} if p.exists() else {}
-        return cls(load_names(ws_root, *extra_dirs), decisions, docs, labels)
+        from bidr.common import Workspace
+        ws = Workspace(ws_root)
+
+        def text_of(did: str) -> str:
+            p = ws.text_path(did)
+            return p.read_text(encoding="utf-8", errors="replace") if p.exists() else ""
+        return cls(load_names(ws_root, *extra_dirs), decisions, docs, labels, text_of=text_of)
 
     def candidates(self, did: str, aliases: list[str] | tuple = ()) -> list[tuple[str, str]]:
         ids = [did, *[a for a in aliases if a != did]]
@@ -102,8 +115,34 @@ class Resolver:
         for ad, src in self.candidates(did, aliases):
             ok, errs = check_name(ad)
             if ok:
+                if src == "model":
+                    uy += self._ground(did, ok)
                 return safe_name(ok), src, uy
             uy.append(f"{did}: {src} kanıt adı reddedildi ({', '.join(errs)}): {json.dumps(ad, ensure_ascii=False)}")
         d = self.docs.get(did) or {}
         ad, u = evidence_name({**d, "doc_id": did}, self.labels.get(d.get("doc_type")))
         return ad, "kural", uy + u
+
+    def quotes(self, did: str) -> dict[str, str]:
+        rec = self.decisions.get(did) or {}
+        return {m["yuva"]: m.get("alinti") or "" for m in rec.get("eslesmeler") or []
+                if m.get("kabul") and m.get("yuva")}
+
+    def _ground(self, did: str, ad: str) -> list[str]:
+        if self.text_of is None:
+            return []
+        g = grounding(ad, self.text_of(did) or "", self.quotes(did))
+        if not g["dogrulanmali"]:
+            self.dogrulanmali.pop(did, None)
+            return []
+        self.dogrulanmali[did] = {"ad": ad, **g}
+        why = g["belge"] + ([f"parca_uyumsuz: {', '.join(g['parca_uyumsuz'])}"] if g["parca_uyumsuz"] else [])
+        return [f"{did}: model kanıt adı doğrulanmalı ({'; '.join(why)}): {json.dumps(ad, ensure_ascii=False)}"]
+
+    def slot_flags(self, did: str, yuva: str) -> list[str]:
+        """Dosyalama için yuva işareti: `ad_dogrulanmali` (belge düzeyi) ya da `ad_parca_uyumsuz`."""
+        g = self.dogrulanmali.get(did)
+        if not g:
+            return []
+        out = ["ad_dogrulanmali"] if g["belge"] else []
+        return out + (["ad_parca_uyumsuz"] if yuva in g["parca_uyumsuz"] else [])
