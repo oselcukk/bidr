@@ -33,7 +33,7 @@ def _run(p, text, *, font="Times New Roman", size=10, bold=False, italic=False):
     return r
 
 
-def _body_p(cell_or_doc, text, *, after=6, before=0, **kw):
+def _body_p(cell_or_doc, text, *, after=0.6, before=0, **kw):
     p = cell_or_doc.add_paragraph()
     p.paragraph_format.space_before = Pt(before)
     p.paragraph_format.space_after = Pt(after)
@@ -186,12 +186,12 @@ def test_bicim_ihlalleri(tmp_path, sablon):
 
 def test_aralik_yapilandirilabilir(tmp_path, monkeypatch):
     rep = make_doc(tmp_path / "r.docx", aciklama={"A.1.1": ["Cümle [1_OD3] [2_OD3]."]})
-    # bütün gövde 6 pt sonrası: varsayılanla uyumlu, 0,6 nk kuralıyla uyumsuz
+    # bütün gövde 0,6 nk sonrası: varsayılanla uyumlu, 6 nk kuralıyla uyumsuz
     assert "aralik" not in codes(denetle(rep, beklenen=BEKLENEN))
-    s = denetle(rep, rules=load_rules({"paragraf_sonrasi_nk": 0.6}), beklenen=BEKLENEN)
+    s = denetle(rep, rules=load_rules({"paragraf_sonrasi_nk": 6}), beklenen=BEKLENEN)
     assert "aralik" in codes(s, UYARI)
-    assert s.kurallar["paragraf_sonrasi_nk"] == 0.6 and "0.6 nk" in s.kurallar["not"]
-    assert Rules().paragraf_sonrasi_nk == 6
+    assert s.kurallar["paragraf_sonrasi_nk"] == 6 and "0.6 nk" in s.kurallar["not"]
+    assert Rules().paragraf_sonrasi_nk == 0.6
     assert load_rules({"paragraf_sonrasi_nk": 0.6}, paragraf_sonrasi_nk=None).twip(0.6) == 12
     assert load_rules({}, paragraf_sonrasi_nk=0.6).paragraf_sonrasi_nk == 0.6
 
@@ -365,13 +365,13 @@ def test_cli_config_denetim(tmp_path, mini_criteria, capsys):
     ws = tmp_path / "ws"
     ws.mkdir()
     make_doc(ws / "report.docx")
-    (ws / "config.yaml").write_text("rapor:\n  denetim:\n    paragraf_sonrasi_nk: 0.6\n", encoding="utf-8")
+    (ws / "config.yaml").write_text("rapor:\n  denetim:\n    paragraf_sonrasi_nk: 6\n", encoding="utf-8")
     rc = main(["denetle", "-w", str(ws)])
     js = json.loads((ws / "denetim.json").read_text(encoding="utf-8"))
-    assert js["kurallar"]["paragraf_sonrasi_nk"] == 0.6
+    assert js["kurallar"]["paragraf_sonrasi_nk"] == 6
     assert js["ozet"]["kodlar"]["aralik"]["seviye"] == UYARI
     assert "sablon_yok" in js["ozet"]["kodlar"]
     assert rc == 0                         # aralık uyarıdır, kritik değil
-    rc = main(["denetle", "-w", str(ws), "--paragraf-sonrasi", "6"])
+    rc = main(["denetle", "-w", str(ws), "--paragraf-sonrasi", "0.6"])
     js = json.loads((ws / "denetim.json").read_text(encoding="utf-8"))
     assert "aralik" not in js["ozet"]["kodlar"]

@@ -13,7 +13,7 @@ from bidr.criteria.extract_docx import W, _ptext
 FONT = "Times New Roman"
 BODY_SZ = 20               # yarım punto: 10 pt gövde (kılavuz "Yazım Kuralları")
 SPACING_BEFORE = 0         # twip: "öncesi 0 nk"
-SPACING_AFTER = 120        # twip = 6 pt. Kılavuz "sonrası 0,6 nk" diyor; geçen yılki raporlarda uygulanan değer 6 pt (yazım hatası kabul edildi)
+SPACING_AFTER = 12         # twip = 0,6 nk: kılavuz "sonrası 0,6 nk" (kurumca doğrulandı, 2026-11-19)
 TASLAK_RENK = "C00000"
 LINK_RENK = "0563C1"            # Word "Köprü" rengi
 

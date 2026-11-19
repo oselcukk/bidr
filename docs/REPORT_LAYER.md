@@ -296,10 +296,9 @@ Kapsam birimin doldurduğu bölgelerdir; şablonun kendi kılavuz metni biçim d
 biçimi bulgusu şablonda da varsa "şablon kusuru" diye işaretlenir (FR-0833 R0'da B.2 kalın değil,
 A.3.1 11 pt, A.5.1 10 pt).
 
-**Paragraf sonrası aralık — kurumdan sorulacak.** Kılavuz metni "sonrası 0,6 nk" der; render 6 pt
-yazar (`docx_ops.SPACING_AFTER`, geçen yılın raporlarındaki değer). Denetim yapılandırılabilir,
-varsayılanı render'la aynı **6 nk**: config.yaml `rapor.denetim.paragraf_sonrasi_nk: 0.6` ya da
-`--paragraf-sonrasi 0.6`. Öteki anahtarlar: `yazi_tipi`, `govde_punto`, `baslik_punto`,
+**Paragraf sonrası aralık: 0,6 nk** (kılavuz değeri, kurumca doğrulandı 2026-11-19). Render
+(`docx_ops.SPACING_AFTER` = 12 twip) ve denetim varsayılanı aynıdır; gerekirse config.yaml
+`rapor.denetim.paragraf_sonrasi_nk` ya da `--paragraf-sonrasi`. Öteki anahtarlar: `yazi_tipi`, `govde_punto`, `baslik_punto`,
 `aciklama_punto`, `paragraf_oncesi_nk`.
 
 **Kanıt gösterimi — karar gerekli.** Kılavuzun örneği metin içinde `[1_OD3]`, ölçüt sonundaki
@@ -327,4 +326,4 @@ değil.
 | `kanit_adi_modeli` | `false`: `name` aşaması atlanır |
 | `hazirlayanlar` | kapaktaki "Raporu Hazırlayanlar": `[{unvan, ad_soyad, eposta, gorev}, …]` (`ad_soyad` gerekli; `bidr init` sorar ve yazar); boşsa rapor TASLAK |
 | `kapsam` | `{ölçüt: bolum\|ortak\|baska_birim\|karar_gerekli}`: kullanıcının kapsam kararı (profilin üstüne) |
-| `denetim` | biçim denetçisi kuralları (`paragraf_sonrasi_nk` vars. 6 — kılavuz 0,6 der, kurumdan doğrulanacak; `yazi_tipi`, `govde_punto`, `baslik_punto`, `aciklama_punto`, `paragraf_oncesi_nk`) |
+| `denetim` | biçim denetçisi kuralları (`paragraf_sonrasi_nk` vars. 0,6 — kılavuz değeri; `yazi_tipi`, `govde_punto`, `baslik_punto`, `aciklama_punto`, `paragraf_oncesi_nk`) |

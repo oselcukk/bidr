@@ -65,6 +65,6 @@ def register(sub):
     p.add_argument("--index", default=None, help="evidence-index.csv (vars.: WS/evidence-index.csv, varsa)")
     p.add_argument("--out", default=None, help="denetim.json yolu (vars.: WS/denetim.json)")
     p.add_argument("--paragraf-sonrasi", type=float, default=None,
-                   help="paragraf sonrası aralık, nk (vars. 6; kılavuz metni 0,6 der — kurumdan doğrulanacak)")
+                   help="paragraf sonrası aralık, nk (vars. 0,6: kılavuz değeri)")
     p.add_argument("--satir", type=int, default=12, help="tabloda her koddan gösterilecek en çok bulgu")
     p.set_defaults(func=_run)

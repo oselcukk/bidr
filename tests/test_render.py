@@ -183,11 +183,11 @@ def test_fill_cells_and_format(ws, tmp_path):
                                      "A.1.1 sentetik paragraf iki [2_OD2].",
                                      "Önceki yıla göre sentetik fark."]
     assert _lines(a.kanit_tc) == ["Kanıtlar:", "1_OD3: Sentetik kanıt bir", "2_OD2: Sentetik kanıt iki"]
-    # biçim: 10 pt, Times New Roman, kalın değil, önce 0 / sonra 6 pt (120 twip)
+    # biçim: 10 pt, Times New Roman, kalın değil, önce 0 / sonra 0,6 nk (12 twip)
     for tc in (a.aciklama_tc, a.kanit_tc):
         for p in list(tc.iter(W + "p"))[1:]:
             sp = p.find(W + "pPr/" + qn("w:spacing"))
-            assert (sp.get(qn("w:before")), sp.get(qn("w:after"))) == ("0", "120")
+            assert (sp.get(qn("w:before")), sp.get(qn("w:after"))) == ("0", "12")
             for r in p.iter(W + "r"):
                 rpr = r.find(W + "rPr")
                 assert rpr.find(qn("w:sz")).get(qn("w:val")) == "20"
@@ -197,7 +197,7 @@ def test_fill_cells_and_format(ws, tmp_path):
     cell_par = d.tables[0].rows[5].cells[0].paragraphs[1]
     assert cell_par.runs[0].font.size.pt == 10
     assert cell_par.paragraph_format.space_before.pt == 0
-    assert cell_par.paragraph_format.space_after.pt == pytest.approx(6.0)
+    assert cell_par.paragraph_format.space_after.pt == pytest.approx(0.6)
     # metni olmayan ölçüt boş kalmaz: nötr ifade + audit eksik notu
     b = blocks["A.1.2"]
     assert _lines(b.aciklama_tc) == ["Açıklamalar:", BOS_IFADE,

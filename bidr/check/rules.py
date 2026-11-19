@@ -2,16 +2,15 @@
 
 Değerler config.yaml `rapor.denetim` ile (anahtar anahtar) ve CLI ile değiştirilebilir.
 
-Paragraf sonrası aralık: kılavuz metni "sonrası 0,6 nk" der; render 6 pt yazar (geçen yılın
-raporlarında uygulanan değer, yazım hatası kabul edildi). Hangisinin doğru olduğu kuruma
-sorulacak; o güne dek varsayılan render ile aynı 6 pt'dir. Kurum 0,6 nk derse
-`rapor.denetim.paragraf_sonrasi_nk: 0.6` (ya da `bidr denetle --paragraf-sonrasi 0.6`).
+Paragraf sonrası aralık: kılavuzdaki "sonrası 0,6 nk" kurumca doğrulandı (2026-11-19); render de
+0,6 nk yazar. Başka bir değer gerekirse `rapor.denetim.paragraf_sonrasi_nk` (ya da
+`bidr denetle --paragraf-sonrasi`).
 """
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, fields
 
-KILAVUZ_SONRASI_NK = 0.6     # kılavuz metnindeki değer (bilgi; varsayılan değil)
+KILAVUZ_SONRASI_NK = 0.6     # kılavuz metnindeki değer (kurumca doğrulandı)
 
 
 @dataclass
@@ -21,7 +20,7 @@ class Rules:
     baslik_punto: float = 12
     aciklama_punto: float = 10          # şekil/tablo açıklaması (üstte, sağa dayalı, italik)
     paragraf_oncesi_nk: float = 0
-    paragraf_sonrasi_nk: float = 6      # kılavuz "0,6 nk"; kurumdan doğrulanacak (yukarıda)
+    paragraf_sonrasi_nk: float = KILAVUZ_SONRASI_NK
 
     def twip(self, nk: float) -> int:
         return round(nk * 20)
@@ -29,7 +28,7 @@ class Rules:
     def to_dict(self) -> dict:
         d = asdict(self)
         d["not"] = (f"paragraf_sonrasi_nk={self.paragraf_sonrasi_nk:g}; kılavuz metni "
-                    f"'{KILAVUZ_SONRASI_NK:g} nk' der, render 6 pt yazar — kurumdan doğrulanacak")
+                    f"'{KILAVUZ_SONRASI_NK:g} nk' der (kurumca doğrulandı)")
         return d
 
 
