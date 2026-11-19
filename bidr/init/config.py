@@ -28,6 +28,9 @@ FIELDS: dict[str, tuple[type | tuple, bool, str]] = {
     "etiket_birim": ((str, type(None)), False, "labels build --unit değeri (vars. birim)"),
     "egitim": (list, False, "candidates --train için etiketli başka çalışma alanları (isteğe bağlı)"),
     "ajan": ((str, type(None)), False, "model işini yapan ajanın adı, kayıtlara geçer (ör. claude-code:opus)"),
+    # birim sinyalleri (isteğe bağlı; boşsa kurum profilinin `birimler:` kaydı kullanılır)
+    "fakulte": ((str, type(None)), False, "birimin bağlı olduğu fakülte (ör. Temel Bilimler Fakültesi)"),
+    "ders_kodlari": (list, False, "birimin ders kodu önekleri (ör. [MATH, MAT]); metinde birim sinyali"),
 }
 
 
@@ -180,6 +183,11 @@ def validate(answers: dict, ws: Path | None = None) -> tuple[dict, list[str]]:
         "egitim": egitim,
         "ajan": answers.get("ajan") or None,
     }
+    if str(answers.get("fakulte") or "").strip():
+        sec["fakulte"] = str(answers["fakulte"]).strip()
+    kodlar = [str(x).strip() for x in answers.get("ders_kodlari") or [] if str(x).strip()]
+    if kodlar:
+        sec["ders_kodlari"] = kodlar
     return sec, []
 
 

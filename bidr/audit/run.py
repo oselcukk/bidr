@@ -176,6 +176,9 @@ def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | 
             sayilir = False
             flags += ["birim_aitligi_dogrulanmali", "birim_onay_bekliyor"]
             vurgu.insert(0, "BİRİM AİTLİĞİ DOĞRULANMALI: onaylanana dek sayılmaz")
+    if (rec.get("ince") or {}).get("birim_iliskisi_kod") == "kendi" and karar not in ("kabul", "duzelt", "ret"):
+        # model `belirsiz` dedi; kod metindeki birim sinyaliyle `kendi` önerdi (bidr/audit/savunma.py)
+        vurgu.insert(0, "birim kodca önerildi (metinde birim sinyali; model belirsiz dedi): doğrulanmalı")
     if sv_out:
         vurgu.extend(sv_out["vurgu"])
     if betimleme:
