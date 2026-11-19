@@ -375,3 +375,31 @@ def test_cli_config_denetim(tmp_path, mini_criteria, capsys):
     rc = main(["denetle", "-w", str(ws), "--paragraf-sonrasi", "0.6"])
     js = json.loads((ws / "denetim.json").read_text(encoding="utf-8"))
     assert "aralik" not in js["ozet"]["kodlar"]
+
+
+def test_taslak_nedeni_render_kaydindan(tmp_path, sablon, mini_criteria, capsys):
+    """denetle TASLAK nedenini tahmin etmez: bu docx'i üreten render kaydının gerekçesini yazar
+    (kör test: neden boş hazırlayanlarken "doğrulanmamış metin" deniyordu)."""
+    import hashlib
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    rep = make_doc(ws / "report.docx")
+    d = docx.Document(str(rep))
+    d.sections[0].header.add_paragraph("TASLAK — doğrulanmamış ya da eksik içerik var")
+    d.save(str(rep))
+    neden = "kapakta 5 'Raporu Hazırlayanlar' yer tutucusu kaldı (config.yaml rapor.hazirlayanlar boş)"
+    sha = hashlib.sha256(rep.read_bytes()).hexdigest()[:16]
+    (ws / ".bidr-render.json").write_text(json.dumps({"cikti": str(rep), "cikti_sha": sha,
+                                                      "taslak_nedenleri": [neden]}), encoding="utf-8")
+    assert main(["denetle", "-w", str(ws), "--sablon", str(sablon)]) == 1
+    js = json.loads((ws / "denetim.json").read_text(encoding="utf-8"))
+    msg = [b["mesaj"] for b in js["bulgular"] if b["kod"] == "taslak_damgasi"]
+    assert msg and all(neden in m and "doğrulanmamış metin" not in m for m in msg)
+    # belge render'dan sonra değiştiyse neden tahmin edilmez
+    d.sections[0].header.add_paragraph("elle eklenen satır")
+    d.save(str(rep))
+    capsys.readouterr()
+    main(["denetle", "-w", str(ws), "--sablon", str(sablon)])
+    js = json.loads((ws / "denetim.json").read_text(encoding="utf-8"))
+    msg = [b["mesaj"] for b in js["bulgular"] if b["kod"] == "taslak_damgasi"]
+    assert msg and all("bilinmiyor" in m and neden not in m for m in msg)

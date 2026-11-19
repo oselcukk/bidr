@@ -503,8 +503,9 @@ def _report_layer(ws: Path, capsys) -> None:
     main(["next", "-w", str(ws)])
     out = capsys.readouterr().out
     assert "denetle" in out and "yayıma hazır değil" in out and "KULLANICI gerekli" in out
-    # rapor yeniden üretilince denetim eskir
-    assert main(["render", "-w", str(ws)]) == 0
+    # rapor yeniden üretilince denetim eskir (farklı kanıt gösterimiyle: aynı saniyede aynı girdiyle
+    # üretilen docx bayt bayt aynı olabilir, o zaman denetim gerçekten günceldir)
+    assert main(["render", "-w", str(ws), "--kanit-bicimi", "kilavuz"]) == 0
     assert ev("denetle").kim == "komut" and "güncel" in ev("denetle").neden
     # metin değişirse rapor eskir
     t = json.loads((ws / "texts/B.2.3.json").read_text(encoding="utf-8"))
@@ -654,3 +655,62 @@ def test_init_preparers(kurulum, capsys):
     cfg = yaml.safe_load((ws / "config.yaml").read_text(encoding="utf-8"))
     assert len(cfg["rapor"]["hazirlayanlar"]) == 2 and cfg["rapor"]["hazirlayanlar"][1]["unvan"] == ""
     assert cfg["rapor"]["sablon"] == "/yok/sablon.docx"
+
+
+def _docx_stub(p: Path) -> Path:
+    import zipfile
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(p, "w") as z:
+        z.writestr("[Content_Types].xml", "<Types/>")
+        z.writestr("word/document.xml", "<w:document/>")
+    return p
+
+
+def test_init_report_template(kurulum, capsys):
+    """`sablon` cevabı config.yaml `rapor.sablon`'a gider (kör test: config'i elle düzenlemeden
+    şablon yolunu yazacak resmi yol yoktu); boşsa var olan korunur; değişiklik onay ister."""
+    src, ws, ans = kurulum
+    a = yaml.safe_load(ans.read_text(encoding="utf-8"))
+    for bad, msg in (("/yok/FR-0833.docx", "rapor şablonu yok"), (str(ans), ".docx olmalı")):
+        ans.write_text(yaml.safe_dump({**a, "sablon": bad}, allow_unicode=True), encoding="utf-8")
+        assert main(["init", "-w", str(ws), "--answers", str(ans)]) == 2
+        assert msg in capsys.readouterr().err
+    notdocx = ans.parent / "bozuk.docx"
+    notdocx.write_text("docx değil", encoding="utf-8")
+    ans.write_text(yaml.safe_dump({**a, "sablon": str(notdocx)}, allow_unicode=True), encoding="utf-8")
+    assert main(["init", "-w", str(ws), "--answers", str(ans)]) == 2
+    assert "açılamadı" in capsys.readouterr().err
+    t1 = _docx_stub(ans.parent / "sablon" / "FR-0833.docx")
+    ans.write_text(yaml.safe_dump({**a, "sablon": str(t1)}, allow_unicode=True), encoding="utf-8")
+    assert main(["init", "-w", str(ws), "--answers", str(ans)]) == 0
+    assert f"rapor şablonu: {t1}" in capsys.readouterr().out
+    cfg = yaml.safe_load((ws / "config.yaml").read_text(encoding="utf-8"))
+    assert cfg["rapor"]["sablon"] == str(t1)
+    assert "şablon bilinmiyor" not in (evaluate(ws).get("render").neden or "")
+    # cevapta sablon null: var olan korunur
+    ans.write_text(yaml.safe_dump({**a, "sablon": None}, allow_unicode=True), encoding="utf-8")
+    assert main(["init", "-w", str(ws), "--answers", str(ans)]) == 0
+    assert yaml.safe_load((ws / "config.yaml").read_text(encoding="utf-8"))["rapor"]["sablon"] == str(t1)
+    # farklı şablon: kullanıcı onayı
+    t2 = _docx_stub(ans.parent / "sablon" / "FR-0833-r1.docx")
+    ans.write_text(yaml.safe_dump({**a, "sablon": str(t2)}, allow_unicode=True), encoding="utf-8")
+    capsys.readouterr()
+    assert main(["init", "-w", str(ws), "--answers", str(ans)]) == 5
+    assert "rapor.sablon:" in capsys.readouterr().out
+    assert main(["init", "-w", str(ws), "--answers", str(ans), "--yes"]) == 0
+    assert yaml.safe_load((ws / "config.yaml").read_text(encoding="utf-8"))["rapor"]["sablon"] == str(t2)
+
+
+def test_sandbox_wrapper_command(tmp_path, monkeypatch):
+    """`tools/sandbox.sh` ile çalışan bidr, sonraki komutları da sarmalayıcıyla yazdırır."""
+    import subprocess
+    from bidr.pipeline.state import bidr_command
+    repo = Path(__file__).resolve().parents[1]
+    wrap = repo / "tools" / "sandbox.sh"
+    assert wrap.is_file()
+    monkeypatch.setenv("BIDR_SARMALAYICI", str(wrap))
+    assert bidr_command() == f"sh {wrap}" or bidr_command() == f"sh '{wrap}'"
+    monkeypatch.setenv("BIDR_SARMALAYICI", str(tmp_path / "yok.sh"))
+    assert "sandbox.sh" not in bidr_command()
+    r = subprocess.run(["sh", str(wrap), "--help"], capture_output=True, text=True, timeout=30)
+    assert r.returncode == 0 and "sh tools/sandbox.sh kur" in r.stdout

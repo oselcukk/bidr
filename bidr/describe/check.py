@@ -7,6 +7,8 @@ from pathlib import Path
 def describe_tamam(c):
     from bidr.pipeline.checks import AJAN, KOMUT, Check, _sample
 
+    from bidr.transcribe import run as T
+
     from . import run as R
 
     ws = c.ws
@@ -20,7 +22,11 @@ def describe_tamam(c):
         return Check(atlandi=True, neden="metni seyrek görsel belge/sayfa yok")
     done = {d for d in need if R.settled(ws, d, log)}
     todo = need - done
-    tb = sorted(d for d in done if log.get(d, {}).get("durum") == "metin_belgesi")
+    tlog = T.load_log(ws)
+    mb = {d for d in done if log.get(d, {}).get("durum") == "metin_belgesi"}
+    # ajanın 'metin sayfası' dediği belge sonradan transcribe ile yazıya geçirildiyse iş bitmiştir
+    tb_ok = {d for d in mb if T.is_done(ws, d, tlog)}
+    tb = sorted(mb - tb_ok)
     sk = sorted(d for d in done if log.get(d, {}).get("durum") == "atlandi")
     uy = []
     if tb:
@@ -28,8 +34,18 @@ def describe_tamam(c):
                   + c.fmt("bidr transcribe prepare -w {ws}") + f" --only {','.join(tb)}")
     if sk:
         uy.append(f"{len(sk)} belge paketlenemedi (describe.jsonl neden): {_sample(sk)}")
-    prog = {"secilen": len(need), "betimlenen": len(done - set(tb) - set(sk)),
-            "metin_belgesi": len(tb), "atlanan": len(sk)}
+    # seçimden sonra (ör. transcribe ile) metni çoğalan belgenin eski paketi seçim dışında kalır
+    wd = R.work_dir(ws)
+    disari = sorted(p.parent.name for p in wd.glob("*/*.json") if p.stem == p.parent.name
+                    and p.parent.name not in need) if wd.exists() else []
+    if disari:
+        uy.append(f"{len(disari)} paket otomatik seçimde değil ('seçilen' sayısına girmez; paketlendikten "
+                  f"sonra metni yazıya geçirildi ya da --only ile eklendi): betimlenmesi isteğe bağlı, cevabı "
+                  f"yazılırsa apply işler: {_sample(disari)}")
+    prog = {"secilen": len(need), "betimlenen": len(done - mb - set(sk)),
+            "metin_belgesi": len(tb), "metin_belgesi_yazildi": len(tb_ok), "atlanan": len(sk)}
+    if disari:
+        prog["secim_disi_paket"] = len(disari)
     if not todo:
         return Check(bitti=True, ilerleme=prog, uyarilar=uy, neden=f"{len(done)} görsel belge işlendi")
     d = R.work_dir(ws)

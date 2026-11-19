@@ -345,3 +345,58 @@ def test_cli(tmp_path, capsys):
     _out(ws, ids["foto"], [_item()])
     assert main(["describe", "apply", "-w", str(ws), "--model", "t"]) == 0
     assert "işlenen=1" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("text", [
+    "Masada bir gözlük, defter ve kalem var.",
+    "Rafta koruyucu gözlükler duruyor.",
+    "Kürsüdeki konuşmacının yüzü görünmüyor; yaklaşık 40 dinleyici var.",
+    "Yüzü görünmeyen 1 konuşmacı ve perde.",
+    "Kişinin yüzü kadrajda değil.",
+    "Dinleyicilerin yüzleri seçilmiyor.",
+])
+def test_object_and_hidden_face_not_person_description(text):
+    """Nesne olarak gözlük ve yüzün görünmediğini söylemek kişi betimlemesi değildir (kör test)."""
+    assert R.check_item(_item(betimleme=text, nesneler=[{"ad": "gözlük", "yaklasik_sayi": 1}])) == []
+
+
+@pytest.mark.parametrize("text", [
+    "Gözlüklü bir konuşmacı kürsüde.",
+    "Gözlük takan bir kişi sunum yapıyor.",
+    "Konuşmacının yüzü net görünüyor.",
+    "Yüzü gülümseyen bir öğrenci.",
+    "Sakallı bir konuşmacı.",
+])
+def test_real_person_description_still_rejected(text):
+    errs = R.check_item(_item(betimleme=text))
+    assert errs and "KVKK" in errs[0]
+
+
+def test_text_page_warning_cleared_after_transcribe(tmp_path):
+    """Ajan 'metin sayfası' dedi → transcribe ile yazıya geçirildi → uyarı kalkar (kör test)."""
+    ws, src, ids = _ws(tmp_path, {"foto": (".png", GARBAGE, 1)})
+    did = ids["foto"]
+    R.prepare(ws, only=[did], source=src)
+    _out(ws, did, [_item(icerik="belge_sayfasi", betimleme="Tutanak sayfası.")])
+    assert R.apply(ws)["metin_belgesi"] == [did]
+    assert any("transcribe prepare" in u for u in _check(ws, src).uyarilar)
+    # transcribe uygulandı (kısa metin: hâlâ seyrek, describe seçiminde kalır)
+    tr = "Kısa tutanak notu"
+    (ws / "text" / f"{did}.txt").write_text(tr, encoding="utf-8")
+    write_jsonl(ws / "transcribe.jsonl", [{"doc_id": did, "durum": "uygulandi",
+                                           "metin_sha": hashlib.sha256(tr.encode()).hexdigest()}])
+    c = _check(ws, src)
+    assert c.bitti and not any("metin sayfası" in u for u in c.uyarilar)
+    assert c.ilerleme["metin_belgesi"] == 0 and c.ilerleme["metin_belgesi_yazildi"] == 1
+
+
+def test_stale_package_outside_selection_is_reported(tmp_path):
+    """Paketlendikten sonra metni çoğalan belge seçimden çıkar: 'seçilen' sayısı ile paket sayısı
+    farkı uyarıda açıklanır."""
+    ws, src, ids = _ws(tmp_path, {"foto": (".png", GARBAGE, 1), "afis": (".png", GARBAGE, 1)})
+    st = R.prepare(ws, auto=True, source=src)
+    assert st["secilen"] == 2 and st["paket"] == 2
+    (ws / "text" / f"{ids['afis']}.txt").write_text(RICH, encoding="utf-8")    # ör. transcribe sonrası
+    c = _check(ws, src)
+    assert c.ilerleme["secilen"] == 1 and c.ilerleme["secim_disi_paket"] == 1
+    assert any("otomatik seçimde değil" in u and ids["afis"] in u for u in c.uyarilar)

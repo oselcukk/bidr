@@ -1,4 +1,8 @@
-"""`bidr transcribe prepare|apply`."""
+"""`bidr transcribe prepare|apply`.
+
+Çıkış kodları: 0 tamam (apply'da cevapsız ya da eski sürüm paket hata sayılmaz; aşamanın bitip
+bitmediğini `bidr next` söyler) · 1 apply'da en az bir geçersiz ya da şüpheli cevap uygulanmadı
+(work/transcribe/GECERSIZ.md) · 2 eksik/yanlış argüman · 3 önkoşul aşaması bitmemiş (kapı)."""
 from __future__ import annotations
 
 
@@ -47,7 +51,19 @@ def _cmd(args) -> int:
         print(f"metni değişen {len(st['degisen'])} belge: documents -{g['documents']}, candidates "
               f"-{g['candidates']}, decisions metin_degisti={g['decisions']}, karar paketi .eski={g['paket']}")
         print("Sonra: bidr identify, bidr candidates, bidr decide prepare/apply (bidr next sırayı verir)")
-    return 1 if (st["gecersiz"] or st["supheli"]) else 0
+    return _exit(st)
+
+
+def _exit(st: dict) -> int:
+    """apply çıkış kodu: 0 = işlenen her cevap geçerli (cevapsız/eski sürüm paket hata sayılmaz;
+    tamamlanmayı `bidr next` söyler); 1 = en az bir geçersiz ya da şüpheli cevap var
+    (work/transcribe/GECERSIZ.md; şüpheli için görüntüye bakıp doğruysa `--kabul-supheli`)."""
+    g, s = len(st["gecersiz"]), len(st["supheli"])
+    if not (g or s):
+        return 0
+    print(f"çıkış 1: {g} geçersiz, {s} şüpheli cevap uygulanmadı → work/transcribe/GECERSIZ.md"
+          + (" (şüpheli: görüntüye bak; okuma doğruysa apply --kabul-supheli)" if s else ""))
+    return 1
 
 
 def register(sub):

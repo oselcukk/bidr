@@ -34,6 +34,7 @@ FIELDS: dict[str, tuple[type | tuple, bool, str]] = {
 # `rapor:` bölümüne yazılan cevaplar (bidr bölümüne girmez): anahtar → açıklama
 RAPOR_FIELDS = {
     "hazirlayanlar": "kapaktaki 'Raporu Hazırlayanlar': [{unvan, ad_soyad, eposta, gorev}, …]",
+    "sablon": "boş FR-0833 rapor şablonu (.docx; salt okunur) → config.yaml rapor.sablon",
 }
 HAZIRLAYAN_KEYS = ("unvan", "ad_soyad", "eposta", "gorev")
 RAPOR_SECTION = "rapor"
@@ -66,6 +67,28 @@ def check_preparers(v) -> tuple[list[dict] | None, list[str]]:
             errs.append(f"hazirlayanlar #{i}: e-posta biçimi geçersiz: {rec['eposta']}")
         out.append(rec)
     return (None, errs) if errs else (out, [])
+
+
+def check_template(v) -> tuple[str | None, list[str]]:
+    """`rapor.sablon` cevabı → (mutlak yol | None, hatalar). Boş: verilmedi (var olan değer korunur).
+    Dosya var, .docx ve açılabilen bir Word paketi olmalı; şablon hiç değiştirilmez."""
+    import zipfile
+    if v is None or v == "":
+        return None, []
+    if not isinstance(v, str):
+        return None, ["sablon bir dosya yolu olmalı (boş FR-0833 .docx)"]
+    p = Path(v).expanduser().resolve()
+    if not p.is_file():
+        return None, [f"rapor şablonu yok: {p} (boş FR-0833 .docx; henüz yoksa `sablon: null` bırakın)"]
+    if p.suffix.lower() != ".docx":
+        return None, [f"rapor şablonu .docx olmalı: {p.name}"]
+    try:
+        with zipfile.ZipFile(p) as z:
+            if "word/document.xml" not in z.namelist():
+                return None, [f"rapor şablonu Word belgesi değil (word/document.xml yok): {p}"]
+    except (zipfile.BadZipFile, OSError) as e:
+        return None, [f"rapor şablonu açılamadı: {p} ({e})"]
+    return str(p), []
 
 
 def data_dir() -> Path:
@@ -119,6 +142,8 @@ def validate(answers: dict, ws: Path | None = None) -> tuple[dict, list[str]]:
         errs.append(f"bilinmeyen alan(lar): {', '.join(unknown)} (geçerli: {', '.join([*FIELDS, *RAPOR_FIELDS])})")
     if "hazirlayanlar" in answers:
         errs += check_preparers(answers["hazirlayanlar"])[1]
+    if "sablon" in answers:
+        errs += check_template(answers["sablon"])[1]
     for k, (typ, req, _) in FIELDS.items():
         v = answers.get(k)
         if v is None or v == "":

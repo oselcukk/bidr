@@ -2,6 +2,7 @@
 bitti / bekliyor / engelli / atlandi / yok. Salt okunur."""
 from __future__ import annotations
 
+import os
 import shlex
 import shutil
 import sys
@@ -50,7 +51,11 @@ def stage(sid: str) -> dict:
 
 
 def bidr_command() -> str:
-    """Komutlarda kullanılacak `bidr` çağrısı: PATH'teyse `bidr`, değilse tam yol."""
+    """Komutlarda kullanılacak `bidr` çağrısı: sandbox sarmalayıcısıyla (`tools/sandbox.sh`,
+    `BIDR_SARMALAYICI`) çalışıyorsa o; PATH'teyse `bidr`; değilse tam yol."""
+    wrap = os.environ.get("BIDR_SARMALAYICI")
+    if wrap and Path(wrap).is_file():
+        return f"sh {shlex.quote(wrap)}"
     here = Path(sys.executable).parent / ("bidr.exe" if sys.platform == "win32" else "bidr")
     on_path = shutil.which("bidr")
     if on_path and (not here.exists() or Path(on_path).resolve() == here.resolve()):

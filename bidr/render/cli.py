@@ -23,8 +23,9 @@ def _run(args) -> int:
         return rc
     sablon = args.sablon or rapor_section(ws).get("sablon")
     if not sablon:
-        print("HATA şablon yok: --sablon verin ya da config.yaml `rapor: {sablon: <boş FR-0833 .docx>}` "
-              "yazın", file=sys.stderr)
+        print("HATA şablon yok: answers.yaml'a `sablon: <boş FR-0833 .docx tam yolu>` yazıp `bidr init "
+              "--answers <answers.yaml>` yeniden çalıştırın (config.yaml rapor.sablon) ya da --sablon verin",
+              file=sys.stderr)
         return 2
     sablon = Path(str(sablon)).expanduser()
     birim = args.birim
@@ -62,6 +63,11 @@ def _run(args) -> int:
     if res.karar_gerekli:
         print(f"uyarı: {len(res.karar_gerekli)} ölçütte kapsam kararı gerekli ({', '.join(res.karar_gerekli)}): "
               "soru gaps.md'de; KULLANICI karar verir (config.yaml rapor.kapsam)")
+    if res.atifsiz_listelenen:
+        n = sum(map(len, res.atifsiz_listelenen.values()))
+        print(f"not: {n} kanıt metinde atıf almıyor ama kanıt klasöründe; numara sırası bozulmasın diye "
+              f"listede ({', '.join(sorted(res.atifsiz_listelenen))}). Metne atıf eklemek için write "
+              "yeniden; kanıtı çıkarmak için review.xlsx'te ret → audit apply → file")
     if res.baglantisiz:
         print(f"uyarı: {len(res.baglantisiz)} kanıtın bağlantısı yok (gaps.md 'Bağlantısı olmayan kanıtlar')")
     print(json.dumps(res.ozet(), ensure_ascii=False, indent=1))

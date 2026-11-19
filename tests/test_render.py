@@ -537,3 +537,32 @@ def test_cli_workspace_inputs(ws, tmp_path, capsys):
     capsys.readouterr()
     assert main(["render", "-w", str(ws)]) == 0
     assert "e-posta biçimi geçersiz" in capsys.readouterr().out
+
+
+def test_uncited_filed_evidence_keeps_numbering(ws, tmp_path):
+    """Metinde atıf almayan ama kanıt klasörüne konmuş kanıt listede kalır: numara boşluğu ve
+    `listede_olmayan_dosya` oluşmaz (kör test: B.1.1 listesi 1, 2, 4 diye atlıyordu)."""
+    write_text(ws / "texts", "A.1.1",
+               paragraflar=[{"metin": "A.1.1 sentetik paragraf [1_OD3] [3_OD2].", "atiflar": ["1_OD3", "3_OD2"]}],
+               kanitlar=[{"no": "1_OD3", "ad": "Sentetik kanıt bir", "dosya": "a.pdf"},
+                         {"no": "3_OD2", "ad": "Sentetik kanıt üç", "dosya": "c.pdf"}])
+    idx = ws / "evidence-index.csv"
+    idx.write_text("kanit_no,olcut,od,ad,dosya,baglanti\n"
+                   "1_OD3,A.1.1,3,Sentetik kanıt bir,a.pdf,\n"
+                   "2_OD2,A.1.1,2,Sentetik kanıt iki,b.pdf,\n"
+                   "3_OD2,A.1.1,2,Sentetik kanıt üç,c.pdf,\n", encoding="utf-8")
+    res, d, blocks = _run(ws, tmp_path, index_path=idx)
+    assert _lines(blocks["A.1.1"].kanit_tc) == ["Kanıtlar:", "1_OD3: Sentetik kanıt bir",
+                                                "2_OD2: Sentetik kanıt iki", "3_OD2: Sentetik kanıt üç"]
+    assert res.atifsiz_listelenen == {"A.1.1": ["2_OD2"]}
+    # denetle: numaralar sıralı, klasördeki her dosya listede; atıfsız kanıt yalnız uyarı olarak görünür
+    from bidr.check.run import denetle
+    ev = ws / "evidence" / "A" / "A.1" / "A.1.1"
+    ev.mkdir(parents=True)
+    for n, od, ad in ((1, 3, "bir"), (2, 2, "iki"), (3, 2, "üç")):
+        (ev / f"[{n}-OD{od}]. Sentetik kanıt {ad}.pdf").write_bytes(b"%PDF-1.4 sentetik")
+    s = denetle(ws / "report.docx", kanit_klasoru=ws / "evidence", index_path=idx,
+                beklenen=(["A.1.1", "A.1.2"], ["A.1"]))
+    kod = {b.kod for b in s.bulgular if b.yer == "A.1.1"}
+    assert not kod & {"kanit_numarasi", "listede_olmayan_dosya", "kanit_dosyasi_yok", "dizinle_uyusmuyor"}
+    assert "atifsiz_kanit" in kod
