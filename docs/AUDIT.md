@@ -373,6 +373,44 @@ aşağıdaki "Kod tarafı savunmalar" yine uygulanır). Bağ doc_id üzerindendi
    `faaliyet_sha` taşır; `faaliyetler.json` değişirse (ya da sonradan oluşursa) tablo güncel
    sayılmaz (`review_state.guncel`), `bidr audit` yeniden çalıştırılmalı.
 
+### PUKÖ zinciri (belgeler arası açık atıf)
+
+Sorun (Kimya kör testi, 2026-11-20): anket komisyonu kararı (14.01) → bölüm yazısı (27.01, "dış
+paydaş görüşleri ve anket komisyonu kararı doğrultusunda hazırlanan …") → Fakülte Kurulu kararı
+(03.02, "… 27.01.2025 tarih ve E.… sayılı yazısı görüşüldü", dersler açıldı) gerçek bir
+izleme → önlem döngüsüdür; ama eşleşmeler belge belge değerlendirildiği için ara yazı hiçbir
+ölçütte sayılmadı (aday ve inceleme aşamasında düştü), karar belgesi de yalnız "uygula" kaldı.
+Belgeler arasındaki bağ ancak metindeki göndermeden görülür.
+
+1. **"Dayanır" bağı yalnız açık göndermeden** (`bidr/faaliyet/atif.py`, belirleyici):
+   - *sayı*: "GG.AA.YYYY tarih(li) ve <sayı> sayılı …" → başlığında aynı tarih ve aynı evrak
+     sayısını (son rakam öbeği) taşıyan belge(ler) ("Sayı : E-…-184506" + belge tarihi ya da
+     "Evrak Tarih ve Sayısı: GG.AA.YYYY-E.184506"). Tarih ve sayı birlikte tutmalı.
+   - *ad*: "<ad> (kararı | görüşleri | sonuçları | değerlendirmesi …) doğrultusunda / sonucunda /
+     sonuçlarına göre / üzerine / uyarınca / istinaden" → adı bu ifadeyle karşılıklı örtüşen (en
+     az iki ayırt edici sözcük; "Bölüm", "Toplantısı" sayılmaz) faaliyet kaydı (`faaliyetler.json`).
+     Kayıt kaynak belgeden önce ve 180 gün içinde olmalı, böyle **tek** kayıt olmalı; birden çoksa
+     bağ kurulmaz, audit uyarısı düşer. Tür sözcüğü olmayan sayım ("Fakülte Kurulu, … ve …
+     doğrultusunda") ve çoğul genel anma ("kurulların kararları") bağ kurmaz.
+   Bağlar zaman yönlüdür; zincir en çok 4 bağ izlenir. Tahmin (yalnız tarih yakınlığı, konu
+   benzerliği) bağ kurmaz.
+2. **Önlem halkası** (`bidr/audit/puko.py`, audit sırasında; `faaliyetler.json` dosyası
+   değişmez). Ölçüt C'de izleme kanıtı olan belge X (C'deki sayılan, düşük güvenli olmayan satırı
+   `kontrol_et`; ya da sayılan satırı olup faaliyet kaydındaki aşaması `degerlendirme`) ve X'e
+   zincirle dayanan, türü `…_karari` olan belge Y varsa: Y'nin C'nin önlem yuvasındaki satırı
+   `onlem_al`'a çıkar, satır yoksa açılır (`puko_zinciri` işareti; alıntı Y'deki gönderme cümlesi,
+   gerekçe zincirin yolu). Önlem yuvası: yalnız `onlem_al` etiketli olan önce, sonra `onlem_al`
+   içeren, sonra belirsiz. Ölçütte önlem yuvası yoksa uygulanmaz. Dönem kuralı açılan satıra da
+   uygulanır; kod savunmaları uygulanmaz (dayanak metindeki atıftır).
+3. **İnsan kararı aşar.** Zincir satırı (`Y|yuva`) review.xlsx'te reddedilirse sayılmaz ve başka
+   yuvaya taşınmaz. Modelin Y için aynı yuvadaki eşleşmesi reddedilmişse (başka bir iddia, ör.
+   "uygula") sıradaki önlem yuvası denenir.
+4. **Çıktı.** `audit-olcutler.json` ölçüt alanı `puko_zinciri`: `[{satir, onlem, izleme,
+   ara_belgeler, yol, baglar[{kaynak, hedef, faaliyet, tur, atif}], sayilir}]`; ölçüt notu
+   "PUKÖ zinciri: `Y → ara → X` (… ara belgeler kanıt listesine önerilir)". Ara belgeler (ör.
+   bölüm yazısı) satır olarak eklenmez: kanıt listesine ve rapor metnine girmeleri write/file
+   şeridinin işidir.
+
 ## Kod tarafı savunmalar (K27 OD rubriği)
 
 Modelin bilinen yanlışlarını (evalsets/ `naif` kayıtları) belge türü, alıntıdaki ifade, belge

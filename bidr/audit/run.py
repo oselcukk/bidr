@@ -358,6 +358,7 @@ def _criterion(cs, tags, cid, rows, allowed, rule: D.Rule | None = None,
         "od_onay": ({k: od_karar.get(k) for k in ("od", "not", "kod_onerisi", "zaman")} if od_karar else None),
         "uygulama_yayilimi": ek.get("uygulama_yayilimi"),
         "faaliyetler": ek.get("faaliyetler") or [],
+        "puko_zinciri": ek.get("puko_zinciri") or [],
         "zincir": {x: {"durum": d, "eslesme": n} for x, (d, n) in halka.items()},
         "zincir_kisa": " ".join(f"{KISA[x]}{'+' if d == 'var' else '~' if d == 'dusuk' else '·' if d == 'yuvasiz' else '-'}"
                                 for x, (d, _) in halka.items()),
@@ -557,6 +558,7 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
     desc = _described(ws)
     birim: dict = {"baska_birim": [], "belirsiz": []}
     sayfa: list[dict] = []
+    own: dict[str, dict] = {}                   # birime ait ince kayıtlar (PUKÖ zinciri)
     for orig in recs:
         if orig.get("durum") != "ok" or orig.get("asama") != "ince":
             continue
@@ -576,6 +578,8 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
         if pin or record_unit_relation(orig) in (BIRIM_DISI, BIRIM_BELIRSIZ):
             sayfa.append(_unit_row(orig, rec, pin, docs, names(orig["doc_id"])[0]))
         rel = record_unit_relation(rec)
+        if rel not in (BIRIM_DISI, BIRIM_BELIRSIZ):
+            own[rec["doc_id"]] = rec
         if rel in (BIRIM_DISI, BIRIM_BELIRSIZ):
             ince = rec.get("ince") or {}
             birim["baska_birim" if rel == BIRIM_DISI else "belirsiz"].append({
@@ -604,11 +608,44 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
     for c in ids:
         ek[c] = sv.criterion(by_c.get(c, []), _slot_links(cs, tags, c)[1])
         ek[c]["faaliyetler"] = sv.activities_for(by_c.get(c, []))
+    rows += _puko(cs, tags, ws, docs, own, sv, by_c, ek, review, rule, names, links, inv, surum, uy)
+    rows.sort(key=lambda r: (id_key(r["olcut"]), r["yuva"], r["belge"]))
     crits = [_criterion(cs, tags, c, by_c.get(c, []), allowed, rule, cyc[c], ek[c], od_kar.get(c)) for c in ids]
     sayfa.sort(key=lambda x: x["belge"])
     return Audit(ws, out, profile, cs, tags, rows, crits, file_sha(dpath), uy, period, birim, sayfa,
                  file_sha(out / FILES["birim"]), sv.faaliyet_sha, sv.unrealized(),
                  file_sha(out / FILES["od"]))
+
+
+def _puko(cs, tags, ws, docs, own, sv, by_c, ek, review, rule, names, links, inv, surum, uy) -> list[dict]:
+    """Belgeler arası açık atıf zinciriyle önlem halkası (bkz. puko.py). Yeni satırları döndürür;
+    var olan satırlar ve `ek[ölçüt]` (notlar, `puko_zinciri`) yerinde güncellenir."""
+    from . import puko as P
+    baglar, bnot = P.build_links(docs, own, sv.text, (sv.faaliyet or {}).get("faaliyetler") or [])
+    if bnot:
+        uy.append(f"{len(bnot)} belge göndermesi birden çok faaliyete uyuyor: bağ kurulmadı ({bnot[0]}"
+                  + (" …" if len(bnot) > 1 else "") + ")")
+    before = {c: len(v) for c, v in by_c.items()}
+
+    def make_row(rec, m, dec):
+        did = rec["doc_id"]
+        return _row(cs, tags, docs, rec, m, dec, rule, names(did), links(did), False, inv.get(did), surum, None)
+
+    def disp(did):
+        return (docs.get(did) or {}).get("calisma_adi") or did
+
+    zin = P.apply(by_c, baglar, docs=docs, recs=own, fmap=sv.fmap, slots_of=lambda c: _slot_links(cs, tags, c),
+                  tags=tags, make_row=make_row, review=review, names=disp)
+    new = []
+    for c, zs in zin.items():
+        new += by_c[c][before.get(c, 0):]
+        ek[c]["puko_zinciri"] = zs
+        say = [z for z in zs if z["sayilir"]]
+        if say:
+            ek[c].setdefault("notlar", []).append(
+                "PUKÖ zinciri: " + "; ".join(f"`{z['yol']}`" for z in say)
+                + " (Ö halkası metindeki açık atıfla; ara belgeler kanıt listesine önerilir)")
+    return new
 
 
 def od_distribution(a: Audit) -> dict[int, int]:
