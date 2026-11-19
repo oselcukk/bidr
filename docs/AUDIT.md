@@ -165,6 +165,34 @@ bu bir tanıma kuralı değil komisyon/kurum politikasıdır (`kurum_geneli.yaml
   `tarih.olay_tarihi_en_gec` türlerinde (vars. `etkinlik_duyurusu`) olayın tarihi belgedeki en
   geç tarihtir: duyuru yayım tarihini değil etkinlik tarihini taşır (2025 Aralık'ta yayımlanan
   2026 Ocak semineri dönem sonrasıdır).
+- **Tarih kaynakları, kör test 2026-11-20** (identify alanları `tarih_araliklari`,
+  `yururluk_araligi`, `yil_ifadeleri`, `guncelleme_tarihi`; `bidr/identify/dates.py`):
+  - *Başlangıç–bitiş aralıkları* (proje, sözleşme, görevlendirme: "01.03.2025 | 01.03.2027";
+    "Bitiş tarihi:" etiketi): bitiş tarihi belgenin dönemini belirlemez. Birincil tarih
+    seçiminde kullanılmaz; olay belgesinde ileri bitiş tarihi "dönem sonrası tarih de var"
+    belirsizliği doğurmaz. En az 3 çiftli aralık tablosunda (proje listesi) eşi okunamamış ileri
+    tarihler de bitiş/OCR kalıntısı sayılır; dönem sonrası BAŞLANGIÇ (2026'da başlayan proje)
+    belirsizlik olarak kalır. Etiketsiz birincil tarih önceki yılda/bilinmiyor ama bir aralık
+    rapor yılında başlıyorsa olay rapor yılındadır (kaynak "aralık başlangıcı").
+  - *Plan yürürlük aralığı* (baş bölgede plan/strateji sözcüğünün yanında 2–10 yıllık
+    "2022-2026"; eski kayıtta başlıktan): yapı belgesinde aralık rapor yılını kapsıyorsa
+    önceki/bilinmeyen tarih belgeyi dönem içi yapar (hazırlık tarihi değil yürürlük belirler);
+    dönem sonrası tarihi aşmaz. Etiketsiz birincil tarih seçimi aralığın 3 yıl öncesinden eski
+    anılan tarihleri atlar (kör test: "2022-2026 Stratejik Planı"nın tarihi plandaki "4 Kasım
+    2014" kuruluş anmasından okunmuş, kanıt adına "(2014-11-04)" olarak girmişti: dosyalama
+    aynı adlı iki numarayı belge tarihiyle ayırır, `bidr/file/run.py`). Program dönemi
+    ("Erasmus+ 2021-2027") ve akademik yıl yürürlük aralığı değildir.
+  - *Açık yıl ifadesi* ("2025 yılı içerisinde", "2025 yılında"): metinde tam tarih ve akademik
+    dönem yoksa tarih kaynağıdır (kaynak "metin (yıl ifadesi: …)"). Rapor yılı geçiyorsa dönem
+    içi; yalnız sonraki yıllar geçiyorsa dönem sonrası; yalnız önceki yıllar ("1994 yılında
+    kuruldu") belgenin tarihi değildir: bilinmiyor kalır.
+  - *Dönem sonrası güncellenmiş sayfa* ("Son güncelleme: 11 Kasım 2026"; damga içerik tarihi
+    sayılmaz): içerikte rapor yılını gösteren tarih ya da yıl ifadesi yoksa sayfanın gösterdiği
+    hâl (kurul üyeleri, haberler) rapor yılına ait olmayabilir (kör test: A.1.4 kurul yapısı ve
+    A.1.5 haberleri 2026 kopyalarından alınmış, 2025 kadrosuyla çelişmişti). Plan halkası
+    (tanım) `guncellik_dogrulanmali` + `sayfa_donem_sonrasi` ile sayılır; uygulama ve üstü
+    sayılmaz (`tarih_dogrulanmali` + `sayfa_donem_sonrasi`): OD3+ dayanağı olamaz. İçerikte
+    rapor yılı tarihi/ifadesi varsa kural devreye girmez.
 - **Yıllık olmayan döngüler:** ölçütte sayılan (düşük güvenli olmayan) bir eşleşmenin
   kodla doğrulanmış **alıntısı** bir gözden geçirme döngüsü tanımlıyorsa ("her 4 yılda bir",
   "dört yılda bir", "akreditasyon döngüsünde", "program süresinin sonunda"), son N yılın
