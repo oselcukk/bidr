@@ -40,11 +40,13 @@ ETIKET = {
     "surum_donem_sonrasi": "dönem sonrası sürüm (kanıt değil)",
     "surum_dogrulanmali": "sürüm doğrulanmalı",
     "yururlukten_kalkmis": "başka bir belgeyle yürürlükten kaldırılmış (kanıt değil)",
+    "sayfa_donem_sonrasi": "sayfa dönem sonrası güncellemeli; içerikte rapor yılı tarihi yok",
 }
 # sayılmayan dönem işaretleri (satır görünür; yayımlanan listeye girmez: bidr/file/select.py)
 DONEM_DISI = ("donem_sonrasi", "surum_yururlukten_kalkmis", "surum_donem_sonrasi", "yururlukten_kalkmis")
 KAYNAK = {"bas_en_sik": "baş bölgede en sık tarih", "bas_ilk": "baş bölgedeki ilk tarih",
           "metin_ilk": "metindeki ilk tarih"}
+ARALIK_TABLOSU = 3      # en az bu kadar başlangıç–bitiş çifti: proje/sözleşme listesi
 _YIL = re.compile(r"(?<!\d)((?:19|20)\d\d)(?!\d)")
 _AKADEMIK = re.compile(r"(?<!\d)(20\d\d)\s*[-_/]\s*(20\d\d)(?!\d)")
 
@@ -151,11 +153,27 @@ def _from_name(name: str | None, period: int | None) -> tuple[str, int | None] |
     return None
 
 
+def _span(doc: dict) -> tuple[int, int] | None:
+    """Belgenin çok yıllı yürürlük aralığı (identify `yururluk_araligi`; eski kayıtta başlıktan)."""
+    sp = doc.get("yururluk_araligi")
+    if isinstance(sp, (list, tuple)) and len(sp) == 2:
+        try:
+            return int(sp[0]), int(sp[1])
+        except (TypeError, ValueError):
+            return None
+    from bidr.identify.dates import plan_span
+    from bidr.identify.text import fold
+    b = fold(str(doc.get("baslik") or ""))
+    return plan_span(b, len(b)) if b else None
+
+
 def doc_time(doc: dict, dosya: str | None = None) -> dict:
     """Belgenin rapor yılına göre zamanı ve tarihin nereden alındığı:
     {zaman: ici|once|sonra|bilinmiyor, yil, kaynak, zayif}. Öncelik: metin içi birincil tarih
     (identify `tarih`, `tarih_kaynagi`), akademik dönem (`akademik_donem`; dönemsiz "2026-2027"
-    akademik yılı da), dosya adı (`zayif`: yalnız dışlamada güvenilir)."""
+    akademik yılı da), metindeki yıl ifadesi (`yil_ifadeleri`: "2025 yılı içerisinde"), dosya
+    adı (`zayif`: yalnız dışlamada güvenilir). Yapı belgesinde yürürlük aralığı için
+    `yapi_time`."""
     from bidr.identify.dates import term_year
     ici, period = doc.get("donem_ici"), doc.get("donem")
     year, kaynak = None, ""
@@ -194,20 +212,60 @@ def doc_time(doc: dict, dosya: str | None = None) -> dict:
             if all(a > period for a, _ in spans):
                 return {"zaman": SONRA, "yil": min(a for a, _ in spans), "kaynak": k, "zayif": False}
             return {"zaman": ONCE, "yil": max(b for _, b in spans), "kaynak": k, "zayif": False}
+    # açık takvim yılı ifadesi ("2025 yılı içerisinde", "2025 yılında"): metin içi tarih kaynağı
+    ys = _years(doc.get("yil_ifadeleri"))
+    if ys:
+        k = "metin (yıl ifadesi: " + ", ".join(f"{y} yılı" for y in ys) + ")"
+        if period is not None and period in ys:
+            return {"zaman": ICI, "yil": period, "kaynak": k, "zayif": False}
+        # yalnız daha sonraki yıllar: içerik dönem sonrasına ait. Yalnız önceki yıllar ise çoğu
+        # kez anılan geçmiştir ("1994 yılında kuruldu"), belgenin tarihi değil: bilinmiyor kalır.
+        if period is not None and all(y > period for y in ys):
+            return {"zaman": SONRA, "yil": min(ys), "kaynak": k, "zayif": False}
     n = _from_name(dosya, period)
     if n and n[0] != BILINMIYOR:
         return {"zaman": n[0], "yil": n[1], "kaynak": f"dosya adı ({Path(str(dosya)).name})", "zayif": True}
     return {"zaman": BILINMIYOR, "yil": year, "kaynak": kaynak, "zayif": False}
 
 
+def yapi_time(doc: dict, dosya: str | None = None) -> dict:
+    """Yapı belgesinin zamanı: `doc_time`, ama çok yıllı yürürlük aralığı ("2022-2026 Stratejik
+    Planı", identify `yururluk_araligi`) rapor yılını kapsıyorsa önceki/bilinmeyen tarih belgeyi
+    dönem içi yapar: hazırlık tarihi değil yürürlük belirler. Dönem sonrası tarihi aşmaz
+    (sonraki sürüm/revizyon kuralı geçerli)."""
+    t = doc_time(doc, dosya)
+    period, sp = doc.get("donem"), _span(doc)
+    weak = t["zaman"] in (ONCE, BILINMIYOR) or (t["zaman"] == ICI and t["zayif"])
+    if sp and period is not None and sp[0] <= period <= sp[1] and weak:
+        k = f"yürürlük aralığı ({sp[0]}-{sp[1]})"
+        return {"zaman": ICI, "yil": period, "kaynak": k + (f"; {t['kaynak']}" if t["kaynak"] else ""),
+                "zayif": False}
+    return t
+
+
 def _event_date(rule: Rule, doc: dict, dtype: str, t: dict) -> tuple[dict, str]:
     """Olay belgesinde birden çok tarih: olayın tarihi ile belgede geçen referans tarihlerini
     ayırır. (zaman kaydı, not). Not doluysa ve zaman değişmediyse emin değil: tarih doğrulanmalı."""
     period = doc.get("donem")
-    if period is None or t["zayif"] or not doc.get("tarih"):
+    if period is None or t["zayif"]:
         return t, ""
-    ys = _years(doc.get("tarihler"))
-    if not ys:
+    # Başlangıç–bitiş çiftleri (proje, sözleşme, görevlendirme): bitiş tarihi olayın tarihi
+    # değildir; ileri bitiş tarihi belgeyi "dönem sonrası" ya da "tarih belirsiz" yapmaz.
+    # Aralık tablosunda (en az ARALIK_TABLOSU çift) eşleşmemiş ileri tarihler de bitiş/OCR
+    # kalıntısı sayılır; belgenin dönemi başlangıçlardan okunur.
+    ranges = [r for r in doc.get("tarih_araliklari") or [] if isinstance(r, (list, tuple)) and len(r) == 2]
+    starts = {r[0] for r in ranges if r[0]}
+    ends = {r[1] for r in ranges} - starts
+    dates = [x for x in doc.get("tarihler") or [] if x not in ends]
+    if len(starts) >= ARALIK_TABLOSU:
+        dates = [x for x in dates if _years([x]) and _years([x])[0] <= period] + sorted(starts)
+    ys = _years(dates)
+    sy = _years(starts)
+    if (sy and period in sy and t["zaman"] in (ONCE, BILINMIYOR)
+            and not str(doc.get("tarih_kaynagi") or "").startswith("etiket:")):
+        return {**t, "zaman": ICI, "yil": period,
+                "kaynak": (t["kaynak"] + "; " if t["kaynak"] else "") + f"aralık başlangıcı ({period})"}, ""
+    if not doc.get("tarih") or not ys:
         return t, ""
     if dtype in rule.en_gec_turler:
         y = max(ys)                     # duyuru: yayım tarihi değil etkinlik tarihi (en geç)
@@ -238,19 +296,40 @@ def _revised(rule: Rule, doc: dict) -> bool:
     return period is not None and any(y <= period for y in _years(doc.get("tarihler")))
 
 
+def _stale_page(doc: dict, t: dict) -> str | None:
+    """Sayfa güncelleme damgası (identify `guncelleme_tarihi`) rapor yılından sonra ve içerikte
+    rapor yılını gösteren tarih yoksa damganın tarihi, değilse None."""
+    upd, period = str(doc.get("guncelleme_tarihi") or ""), doc.get("donem")
+    if not upd[:4].isdigit() or period is None or int(upd[:4]) <= period:
+        return None
+    if t["zaman"] == BILINMIYOR or (t["zaman"] == ICI and t["zayif"]):
+        return upd
+    return None
+
+
 def apply_row(rule: Rule, doc: dict, dtype: str, stage: str | None, dosya: str | None = None,
               surum: str | None = None) -> dict:
     """Bir eşleşmeye dönem kuralı: {sinif, zaman, yil, sayilir, flags, kaynak, not}. `sayilir`
     False ise satır görünür kalır ama hiçbir halkayı kanıtlamaz (döngü sonradan açabilir).
     `surum`: belgenin sürüm grubundaki durumu (`version_status`)."""
     cls = rule.cls(dtype, stage)
-    t = doc_time(doc, dosya)
+    t = yapi_time(doc, dosya) if cls == YAPI else doc_time(doc, dosya)
     note = ""
     if cls == OLAY:
         t, note = _event_date(rule, doc, dtype, t)
     zaman, yil = t["zaman"], t["yil"]
     flags: list[str] = []
     say = True
+    stale = _stale_page(doc, t)
+    if stale:
+        # Sayfanın kopyası dönemden sonra güncellenmiş ve içerikte rapor yılına ait tarih yok:
+        # sayfanın gösterdiği hâl (kurul üyeleri, haberler) rapor yılına ait değil olabilir.
+        # Plan halkası (yapı: tanım/yürürlük) güncellik uyarısıyla sayılır; üstü sayılmaz.
+        flags.append("sayfa_donem_sonrasi")
+        note = f"sayfa {stale} güncellemeli; içerikte {doc.get('donem')} tarihi ya da yıl ifadesi yok"
+        if stage != "planla":
+            return {"sinif": cls, "zaman": zaman, "yil": yil, "sayilir": False,
+                    "flags": ["tarih_dogrulanmali", *flags], "kaynak": t["kaynak"], "not": note}
     if cls == YAPI:
         if surum in ("surum_yururlukten_kalkmis", "surum_donem_sonrasi"):
             say = False

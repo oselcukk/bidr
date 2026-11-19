@@ -45,6 +45,13 @@ onceki_olay_plani_sayilir: true
 # farklı döneme düşen tarihler varsa (rapor yılı + dönem sonrası; ya da önceki yıl + rapor yılı)
 # olay tarihi kodla ayrılamaz: "tarih doğrulanmalı". Aşağıdaki türlerde olay tarihi belgedeki
 # EN GEÇ tarihtir (duyuru yayım tarihini değil etkinlik tarihini taşır).
+#
+# Tarih kaynakları (kod, ayar yok; docs/AUDIT.md "Tarih kaynakları"): başlangıç–bitiş
+# aralığının bitiş tarihi belgenin dönemini belirlemez (proje/sözleşme bitişi 2027 olabilir);
+# plan yürürlük aralığı ("2022-2026 Stratejik Planı") rapor yılını kapsıyorsa yapı belgesi
+# dönem içidir; "2025 yılı içerisinde" gibi açık yıl ifadesi tarihsiz belgenin tarih kaynağıdır;
+# "Son güncelleme" damgası rapor yılından sonra olan ve içeriği rapor yılını göstermeyen sayfa
+# yalnız plan halkasında (güncellik uyarısıyla) sayılır, OD3+ dayanağı olamaz.
 tarih:
   olay_tarihi_en_gec:
     - etkinlik_duyurusu

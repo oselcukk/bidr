@@ -18,7 +18,8 @@ from bidr.common import Workspace, write_jsonl
 from . import versions
 from .catalog import UNKNOWN, Catalog, load_catalog
 from .classify import classify
-from .dates import DateFinder, academic_terms, term_year
+from .dates import (DateFinder, academic_terms, date_ranges, plan_span, term_year, update_dates,
+                    year_phrases)
 from .naming import title, working_name
 
 INVENTORY_COLUMNS = ("doc_id", "dup_of", "status", "method", "pages", "parca_grubu", "parca_sira")
@@ -64,6 +65,15 @@ def identify_text(raw: str, catalog: Catalog, finder: DateFinder,
     r["tarihler"] = distinct[:30]
     r["tarih_araligi"] = [distinct[0], distinct[-1]] if distinct else None
     r["akademik_donem"] = terms[:5]
+    # dönem kuralının ek girdileri (bidr/audit/donem.py): aralıklar, yürürlük aralığı, yıl
+    # ifadeleri, sayfa güncelleme damgası
+    r["tarih_araliklari"] = [[a.d.isoformat() if a else None, b.d.isoformat()]
+                             for a, b in date_ranges(doc.folded, found)][:30]
+    span = plan_span(doc.folded, catalog.regions["bas"])
+    r["yururluk_araligi"] = list(span) if span else None
+    r["yil_ifadeleri"] = year_phrases(doc.folded)[:5]
+    upd = update_dates(doc.folded)
+    r["guncelleme_tarihi"] = upd[-1].isoformat() if upd else None
     if period is not None:
         ici, kanit = None, None
         if d:
