@@ -37,6 +37,10 @@ description: >-
   ilkesi `madde_ilkesi`: fakülteye göre maddeli kurum düzenlemesinde yalnız birimin fakültesinin
   (ya da ortak) maddesi. Kod: metindeki birim sinyali `belirsiz`i `kendi`ye çevirir, başka
   fakültenin maddesini saymaz (`madde_baska_fakulte`).
+  v10 açıklama (sürüm değişmedi, şema aynı): `kanit_adi` alıntıların geldiği belgeyi adlandırır;
+  birleştirilmiş dosyada ilk eşleşmenin alıntısının geldiği parça; metinde olmayan tür, yıl,
+  nitelik ("ve Ekleri", "Derlemesi") eklenmez. Kod adın belgede dayanağını denetler
+  (bidr/name/ground.py; dosyalamada `Resolver` uyarısı, ad `doğrulanmalı`).
 inputs:
   adaylar: "aday alt ölçütler: başlık, rubrik 1-5, yuvalar `[aşama → OD]` etiketiyle"
   belge_bilgisi: "documents.jsonl içerik alanları (tür tahmini, tarih, sayfa); yol/ad yok"

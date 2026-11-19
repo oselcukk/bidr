@@ -1,12 +1,18 @@
-version: 1
+version: 2
 description: >-
   Kanıt adı (ucuz, sonradan). Zaten karara bağlanmış bir belge için kısa bağlam (belge
   metninin başı ve eşleştiği ölçütlerden alıntılar) + tür + tarih → kanıt dosyasının okur adı
   `kanit_adi` (3-7 sözcük, Türkçe, kurumsal; kişi adı/unvan yok). Kod kişi/unvan/e-posta
   içeren adı reddeder (bidr/name/check.py). Yasaklı dosya adı karakterleri istemde yazılı;
   / \ | : reddedilmez, "-" olur (kayıtta `not`, `oneri`). Çıktı `kanit-adlari.jsonl` (kaynak: model).
+  v2: derleme belgeler. Ad alıntıların geldiği belgeyi anlatır; birleştirilmiş dosyada ilk
+  eşleşmenin alıntısının geldiği parçayı adlandırır; belgede olmayan nitelik ("ve Ekleri",
+  "Derlemesi") ve tür eklenmez. Girdi `parcalar`: her alıntının sayfa numarası ve sayfanın başı.
+  Kod adın belgede dayanağını denetler (bidr/name/ground.py): tür/birim/nitelik/sayı metinde
+  yoksa ya da alıntı başka parçadansa ad kabul edilir, kayıtta `dogrulanmali`. Şema aynı.
 inputs:
   belge_bilgisi: "documents.jsonl içerik alanları (tür tahmini, tarih, akademik dönem, sayfa); yol/ad yok"
   baslik: "identify'ın metinden çıkardığı başlık (kural tabanlı; yanılabilir)"
   olcutler: "belgenin kabul edilmiş eşleşmeleri: ölçüt başlığı, yuva, alıntı"
+  parcalar: "çok sayfalı belgede her alıntının sayfası (n/N) ve o sayfanın başı (derleme parçasının başlığı)"
   belge_metni: "belge metninin başı (kısaltılmış)"

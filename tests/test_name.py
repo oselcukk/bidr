@@ -262,3 +262,105 @@ def test_rol_adi_kisi_sayilmaz():
     ad, errs = check_name("Öğretim Üyesi Yayın Performansı Takip Tablosu")
     assert ad and not errs
     assert "kisi_unvan" in check_name("Dr. Öğr. Üyesi Ahmet Yılmaz Ders Notu")[1]
+
+
+# -- adın belgede dayanağı (bidr/name/ground.py) ------------------------------------------------
+
+from bidr.name.ground import grounding  # noqa: E402
+
+_STAJ = ("Doküman No ÖR-0101 ÖRNEK ÜNİVERSİTESİ STAJ ESASLARI Madde 1 Bu esasların amacı öğrencilerin "
+         "staj çalışmalarının düzenlenmesidir ve bir kurum içi uygulamadır.")
+_ARAS = ("Doküman No ÖR-0202 ÖRNEK ÜNİVERSİTESİ ARAŞTIRMA BİRİMİ YÖNERGESİ Madde 1 Bu yönergenin amacı "
+         "araştırma süreçlerinin planlanması ve izlenmesidir. Madde 2 Birim, araştırma politikasını "
+         "hazırlar ve her yıl gözden geçirir.")
+DERLEME = _STAJ + "\f" + _STAJ.replace("Madde 1", "Madde 5") + "\f" + _ARAS + "\f" + _ARAS
+Q_ARAS = "Birim, araştırma politikasını hazırlar ve her yıl gözden geçirir."
+
+KARAR_EKLI = ("BÖLÜM KURULU KARARLARI Toplantı Sayısı 2025/1 Karar 2025/1-1: Örnek dersinin adı bu "
+              "dönemden itibaren değiştirilmiştir ve bölüme bildirilmiştir.\f"
+              "Duyuru: eğitim programı başvuruları bu ay açılmıştır ve bir hafta sürecektir.\f"
+              "Fotoğraf sayfası, bu sayfada görsel bulunmaktadır.\f"
+              "Etkinlik Raporu: Bölüm tarafından okul öğrencileri için bir laboratuvar etkinliği "
+              "düzenlenmiştir ve katılımcılara deneyler gösterilmiştir.")
+Q_ETK = "Bölüm tarafından okul öğrencileri için bir laboratuvar etkinliği düzenlenmiştir"
+Q_KARAR = "Örnek dersinin adı bu dönemden itibaren değiştirilmiştir"
+
+
+def test_grounding_compilation_names_wrong_part():
+    """Kodlu derleme: ad ilk parçayı ve uydurma niteliği anlatıyor, alıntı ikinci parçadan."""
+    g = grounding("Staj Esasları ve Kurum Yönergeleri Derlemesi", DERLEME, {"C.1.1/1": Q_ARAS})
+    assert g["dogrulanmali"] and g["belge"] == ["nitelik_yok"] and g["parca_uyumsuz"] == ["C.1.1/1"]
+    g = grounding("Araştırma Birimi Yönergesi", DERLEME, {"C.1.1/1": Q_ARAS})
+    assert not g["dogrulanmali"], g
+
+
+def test_grounding_decision_with_appended_report():
+    """Kodsuz derleme: karar + duyuru + fotoğraf + etkinlik raporu; "ve Ekleri" metinde yok."""
+    g = grounding("Bölüm Kurulu Kararı 2025-1 ve Ekleri", KARAR_EKLI, {"B.1.5/2": Q_KARAR, "D.1.1/3": Q_ETK})
+    assert g["belge"] == ["nitelik_yok"] and g["parca_uyumsuz"] == ["D.1.1/3"]
+    g = grounding("Bölüm Kurulu Kararı 2025-1", KARAR_EKLI, {"B.1.5/2": Q_KARAR})
+    assert not g["dogrulanmali"], g
+    # metinde ek gösterimi varsa "Ekleri" dayanaklıdır
+    assert grounding("Bölüm Kurulu Kararı ve Ekleri", KARAR_EKLI.replace("Duyuru:", "Ek-1 Duyuru:"))["belge"] == []
+
+
+@pytest.mark.parametrize("ad,text,beklenen", [
+    ("Örnek Fakülte Yönetmeliği 2031", "Bu metin bir kurul kararıdır ve bölüm tarafından yazılmıştır.",
+     ["birim_yok", "sayi_yok", "tur_yok"]),
+    # betimleyici tür (rapor, liste) metinde geçmese de dayanaksız sayılmaz
+    ("Laboratuvar Etkinliği Raporu", "Bölüm tarafından bir laboratuvar etkinliği düzenlenmiştir.", []),
+    # yabancı dildeki belgenin Türkçe adı sözcük sözcük eşlenmez
+    ("Uluslararası Öğrenci Kabul Yönergesi", "Directive for the admission of international students "
+     "and the rules of the application to the university.", []),
+    # ünsüz yumuşaması: "Tutanakları" ~ "TUTANAĞI"
+    ("Anket Komisyonu Toplantı Tutanakları", "ANKET KOMİSYONU TOPLANTI TUTANAĞI bu toplantı ile yapıldı.", []),
+])
+def test_grounding_doc_level(ad, text, beklenen):
+    assert grounding(ad, text)["belge"] == beklenen
+
+
+def test_grounding_long_regulation_article_page():
+    """Uzun düzenlemenin ortasındaki sayfa kendi türünü anmayabilir: "Madde N" yapısı yeter."""
+    t = ("ÖRNEK ÖĞRENCİ KABUL YÖNERGESİ Madde 1 Bu yönergenin amacı kabul usulüdür.\f"
+         "Madde 3 Başvurular bir komisyon tarafından değerlendirilir ve sonuçlandırılır.\f"
+         "Ülke sınavları tablosu bu sayfada yer alır ve puanlar listelenir.\f"
+         "Madde 9 Kontenjanlar bölüm önerileri ile belirlenir ve ilan edilir.")
+    q = {"B.2.3/1": "Madde 9 Kontenjanlar bölüm önerileri ile belirlenir"}
+    assert grounding("Öğrenci Kabul Yönergesi", t, q)["parca_uyumsuz"] == []
+
+
+def test_resolver_flags_ungrounded_model_name():
+    docs = {"d": {"doc_id": "d", "doc_type": "bolum_kurulu_karari"}}
+    dec = {"d": {"ince": {"kanit_adi": {"ad": "Bölüm Kurulu Kararı 2025-1 ve Ekleri", "durum": "kabul"}},
+                 "eslesmeler": [{"yuva": "D.1.1/3", "alinti": Q_ETK, "kabul": True},
+                                {"yuva": "B.1.5/2", "alinti": Q_KARAR, "kabul": True}]}}
+    r = Resolver({}, dec, docs, text_of=lambda did: KARAR_EKLI)
+    ad, src, uy = r.resolve("d")
+    assert (ad, src) == ("Bölüm Kurulu Kararı 2025-1 ve Ekleri", "model")      # ad kullanılır
+    assert len(uy) == 1 and "doğrulanmalı" in uy[0] and "nitelik_yok" in uy[0] and "D.1.1/3" in uy[0]
+    assert r.slot_flags("d", "D.1.1/3") == ["ad_dogrulanmali", "ad_parca_uyumsuz"]
+    assert r.slot_flags("d", "B.1.5/2") == ["ad_dogrulanmali"]
+    # insan adı denetlenmez; metin verilmemişse denetim yok
+    names = {"d": {"insan": {"ad": "Etkinlik Raporu ve Ekleri"}}}
+    assert Resolver(names, dec, docs, text_of=lambda did: KARAR_EKLI).resolve("d")[2] == []
+    assert Resolver({}, dec, docs).resolve("d")[2] == []
+
+
+def test_name_task_parts_and_grounding_record(env, capsys):
+    ws, _ = env
+    NR.prepare(ws)
+    d = ws / "work" / "name"
+    pkg = json.loads((d / "d_karar.json").read_text(encoding="utf-8"))
+    # çok sayfalı belgede alıntının sayfası ve sayfanın başı istemde
+    assert "ALINTILARIN SAYFALARI" in pkg["istem"] and "sayfa 2/3" in pkg["istem"]
+    (d / "d_anket.out.json").write_text(json.dumps(
+        {"kanit_adi": "Öğrenci Anket Uygulama Yönergesi", "gerekce": "x"}), encoding="utf-8")
+    (d / "d_karar.out.json").write_text(json.dumps(
+        {"kanit_adi": "Bölüm Kurulu Uygulama Kararı", "gerekce": "x"}), encoding="utf-8")
+    assert main(["name", "apply", "-w", str(ws), "--model", "test", "--only", "d_anket,d_karar"]) == 0
+    out = capsys.readouterr().out
+    assert "doğrulanmalı=1" in out and "doğrulanmalı d_anket (tur_yok; parca_uyumsuz: B.1.1/5, B.1.1/6)" in out
+    recs = {r["doc_id"]: r for r in read_jsonl(ws / NAMES)}
+    assert recs["d_anket"]["dogrulanmali"] == {"belge": ["tur_yok"], "parca_uyumsuz": ["B.1.1/5", "B.1.1/6"]}
+    assert "dogrulanmali" not in recs["d_karar"]
+    assert "d_anket" in (d / "GECERSIZ.md").read_text(encoding="utf-8")
