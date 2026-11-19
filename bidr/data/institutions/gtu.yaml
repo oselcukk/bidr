@@ -26,6 +26,16 @@ onek_turleri:
   YN: yonetmelik
   İA: is_akisi
   AN: anket_formu
+# Birimlerin metinde aranan açık sinyalleri (bidr/audit/savunma.py; config.yaml `bidr:` aşar):
+# bağlı olduğu fakülte (fakülteye göre maddeli kurum düzenlemelerinde doğru madde) ve ders kodu
+# önekleri (ör. "MATH407", "MAT 113"). Yalnız kurumun herkese açık ders kataloğundaki önekler.
+birimler:
+  - ad: Matematik Bölümü
+    fakulte: Temel Bilimler Fakültesi
+    ders_kodlari: [MATH, MAT]
+  - ad: Kimya Bölümü
+    fakulte: Temel Bilimler Fakültesi
+    ders_kodlari: [CHEM, KİM, KIM]
 kod_agirligi: 6
 kodlar:
   FR-0044: {tur: toplanti_tutanagi, ad: Toplantı Tutanağı}

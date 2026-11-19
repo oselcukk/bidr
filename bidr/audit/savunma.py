@@ -9,8 +9,11 @@ metin sezgileri uygulanmaz (insan kararı kuralı aşar; tür ve birim kurallar�
 Satır düzeyi (`row`): hariç tür, bilgisiz ekran, yürürlükten kaldırılmış düzenleme, madde
 ilkesi, boş form, duyuru/gelecek zaman, kurum geneli ifade, faaliyet aşaması, aşama
 sözcük denetimleri (katılım ≠ izleme; niyet, bilgilendirme ve sürüm notu ≠ iyileştirme).
-Belge düzeyi (`unit_relation`): metinde birimin adı hiç yokken başka birim adı geçen belge
-`belirsiz`, bütün birimleri kapsayan belge kurum/fakülte geneli sayılır.
+Belge düzeyi (`unit_relation`): metinde birimin açık sinyali (adı, program adı, bölüm sayfası
+yolu, ders kodu öneki) hiç yokken başka birim adı geçen belge `belirsiz`, bütün birimleri kapsayan
+belge kurum/fakülte geneli sayılır; model `belirsiz` dediyse ve metinde birimin sinyali varsa
+(başka birim adı, kurum geneli ifade yoksa) `kendi` önerilir. Fakülteye göre maddeli kurum
+düzenlemesinde başka fakültenin maddesinden alıntı sayılmaz (`madde_baska_fakulte`).
 Ölçüt düzeyi (`criterion`): iyileştirme–izleme bağı (K→Ö), özgünlük (bağımsız kanıt ve
 süreklilik), fotoğrafın tek başına uygulama sayılmaması, uygulamanın yayılımı (OD3 kısmi).
 """
@@ -73,10 +76,21 @@ SONUC_VAR = re.compile(r"\d+\s*(?:yanit|katilimci|kisi)|ortalama|%|(?<![\d.,])\d
 KALKMA = re.compile(r"yururlukten (?:kalk|kaldir)|ilga edil")
 GIRIS = re.compile(r"kullanici adi|parola|sifre")
 MADDE = re.compile(r"(?m)^\s*(?:madde|gundem|karar)\s*(?:no\.?\s*)?\d+|^\s*\d+\s*[.)-]\s")
-# birim adı geçişi (özgün yazımda büyük harfle başlayan ad + "Bölüm…")
-BIRIM_ADI = re.compile(r"\b([A-ZÇĞİÖŞÜ][A-Za-zÇĞİÖŞÜçğıöşüâîû]+)\s+(?:Bölüm|BÖLÜM)")
+# başka birim adı geçişi: "X Bölümü…", "X Bölüm Başkanlığı/Kurulu" (aynı satırda). "Birinci Bölüm"
+# gibi bölüm başlıkları ve satır sonundaki menü öğeleri ("… Bölüm Başkanı / Bölüm Olanakları") birim
+# adı değildir.
+BIRIM_ADI = re.compile(r"\b([A-ZÇĞİÖŞÜ][A-Za-zÇĞİÖŞÜçğıöşüâîû]+)[ \t]+(?:Bölümü|BÖLÜMÜ|Bölüm[ \t]+(?:Başkan|Kurul|Sekreter)"
+                       r"|BÖLÜM[ \t]+(?:BAŞKAN|KURUL|SEKRETER))")
 _GENEL_SOZ = frozenset({"her", "ilgili", "bu", "ayni", "diger", "hangi", "bir", "tum", "butun", "ana", "alt",
-                        "ilk", "son", "kendi", "ogrencinin", "gore", "fakulte", "universite", "egitim"})
+                        "ilk", "son", "kendi", "ogrencinin", "gore", "fakulte", "universite", "egitim",
+                        "birinci", "ikinci", "ucuncu", "dorduncu", "besinci", "baskani", "fakultesi", "bolum"})
+# sayfa altlığı / adres satırındaki kurum adı ("© … Rektörlüğü, 41400 …"): belge kurum geneli değildir
+ADRES = re.compile(r"(?:©|\(c\)|copyright)[^|]{0,80}?rektorlug\w*|rektorlug\w*\s*,?\s*(?:p\.?\s?k\b|\d{5})")
+# ders kodu: 2-5 büyük harf önek + 3 hane ("MATH407", "MAT 113"); 4 haneli sayı (yıl, proje no) değil
+DERS_KODU = re.compile(r"(?<![A-Za-zÇĞİÖŞÜçğıöşü0-9-])([A-ZÇĞİÖŞÜ]{2,5})[ \t]?(\d{3})(?![\d])")
+# fakülte başlığı (fakülteye göre maddeli düzenleme): büyük harfli satırda "… FAKÜLTESİ"
+_BUYUK = re.compile(r"[A-ZÇĞİÖŞÜ]")
+_HARF = re.compile(r"[A-Za-zÇĞİÖŞÜçğıöşüâîû]")
 
 
 def f(s: str | None) -> str:
@@ -99,10 +113,28 @@ def birim_pattern(birim: str) -> re.Pattern | None:
     return re.compile(r"\b" + re.escape(s).replace(r"\ ", r"\s+") + tail)
 
 
+def own_patterns(birim: str) -> list[tuple[str, re.Pattern]]:
+    """Birim adı "Bölüm" sözcüğü olmadan da birimi gösterdiği açık bağlamlar (katlanmış metin):
+    program adı ("Programı: Örnek", "Örnek lisans programı") ve web sayfası yolu ("Bölümler › Örnek").
+    "Örnek Mühendisliği/Eğitimi/Öğretmenliği" başka programdır, sayılmaz."""
+    s = _stem(birim)
+    if not s:
+        return []
+    n = re.escape(s).replace(r"\ ", r"\s+")
+    dur = r"\b(?!\s+(?:muhendisligi|egitimi|ogretmenligi)\b)"
+    return [("program adı", re.compile(rf"\bprogram\w*\s*:?\s+{n}{dur}|\b{n}\s+(?:(?:lisans|yuksek lisans|doktora"
+                                      rf"|lisansustu)\s+)?program")),
+            ("bölüm sayfası yolu", re.compile(rf"\bbolumler\W+(?:\d+\W+)*{n}{dur}"
+                                               rf"|\bakademik programlar\W+(?:(?:on lisans|lisans|yuksek lisans"
+                                               rf"|doktora)\W+)*{n}{dur}"))]
+
+
 @dataclass
 class Savunma:
     ws_root: Path
     birim: str = ""                                   # config.yaml `bidr.birim`
+    fakulte: str = ""                                 # birimin fakültesi (config / kurum profili)
+    ders_kodlari: tuple = ()                          # birimin ders kodu önekleri (config / kurum profili)
     donem: int | None = None
     docs: dict = field(default_factory=dict)
     haric: frozenset = frozenset()
@@ -110,6 +142,7 @@ class Savunma:
     faaliyet_sha: str = ""
     _text: dict = field(default_factory=dict)
     _sig: dict = field(default_factory=dict)
+    _fak: dict = field(default_factory=dict)
     kaldirilan: dict = field(default_factory=dict)   # doc_id → kaldıran belgenin adı
     fmap: dict = field(default_factory=dict)         # doc_id → (faaliyet kaydı, belgenin aşaması)
 
@@ -118,8 +151,11 @@ class Savunma:
         from bidr.criteria.profiles import excluded_types
         from bidr.init.config import load_section
         from .run import file_sha
+        from bidr.decide.prompt import unit_profile
         birim = str((load_section(ws_root) or {}).get("birim") or "").strip()
-        sv = cls(Path(ws_root), birim, donem, docs, excluded_types())
+        up = unit_profile(ws_root) if birim else {}
+        sv = cls(Path(ws_root), birim, up.get("fakulte") or "", tuple(up.get("ders_kodlari") or ()),
+                 donem, docs, excluded_types())
         fp = Path(ws_root) / FAALIYET
         if fp.exists():
             try:
@@ -165,21 +201,50 @@ class Savunma:
         nesir = [x for x in lines if x not in madde and not x.startswith("#") and len(x.split()) >= 8]
         ekran = (self.docs.get(did) or {}).get("doc_type") in EKRAN_TURLER
         giris = ekran and bool(GIRIS.search(t)) and "giris" in t and len(t) < 800
-        s = {"birim_var": birim_var, "baska": sorted(others),
+        own = []
+        if birim_var:
+            own.append("birim adı")
+        for ad, pat in own_patterns(self.birim) if self.birim else []:
+            if pat.search(t):
+                own.append(ad)
+        kod = self._course_codes(raw)
+        if kod:
+            own.append(f"ders kodu ({kod})")
+        s = {"birim_var": birim_var, "own": own, "baska": sorted(others),
              "bilgisiz": giris or (ekran and len(kisa) >= 3 and len(kisa) == len(madde) and not nesir),
-             "kurum": bool(KURUM_BELGE.search(t)), "fakulte": bool(FAKULTE_BELGE.search(t)),
+             "kurum": bool(KURUM_BELGE.search(ADRES.sub(" ", t))), "fakulte": bool(FAKULTE_BELGE.search(t)),
              "bas": f(raw[:300])}
         self._sig[did] = s
         return s
 
+    def _course_codes(self, raw: str) -> str:
+        """Birimin ders kodu önekiyle yazılmış kodlar metindeki ders kodlarının en az yarısıysa
+        örnek kod (ör. "MATH407"), değilse "" (başka bölümün müfredatında birimin servis dersi
+        geçmesi birim sinyali değildir)."""
+        if not self.ders_kodlari:
+            return ""
+        own = {fold(x).upper() for x in self.ders_kodlari}
+        hits = [(fold(m.group(1)).upper(), m.group(0)) for m in DERS_KODU.finditer(raw)]
+        mine = [h for p_, h in hits if p_ in own]
+        return " ".join(mine[0].split()) if mine and 2 * len(mine) >= len(hits) else ""
+
     # -- belge düzeyi: birim ilişkisi ----------------------------------------------------------
     def unit_relation(self, rec: dict, rel: str) -> tuple[str, str] | None:
-        """(yeni ilişki, gerekçe) ya da None. Yalnız birim adı biliniyorsa ve model `kendi` /
-        `ust_birim_bu_birim_hakkinda` dediyse; insan birim kararı varsa çağrılmaz."""
-        if not self.birim or rel not in ("kendi", "ust_birim_bu_birim_hakkinda"):
+        """(yeni ilişki, gerekçe) ya da None. Yalnız birim adı biliniyorsa; insan birim kararı
+        varsa çağrılmaz. Metinde birimin açık sinyali (birim adı, program adı, bölüm sayfası
+        yolu, birimin ders kodları) varsa model `kendi` / üst birim dediğinde düşürülmez; model
+        `belirsiz` dediyse ve başka birim adı ya da bütün birimleri kapsayan ifade yoksa `kendi`
+        önerilir (satır işaretli; insan/ajan incelemede reddedebilir)."""
+        if not self.birim:
             return None
         s = self.sig(rec["doc_id"])
-        if s["birim_var"]:
+        if rel == "belirsiz":
+            if s["own"] and not s["baska"] and not (s["kurum"] or s["fakulte"]):
+                return ("kendi", "kod: metinde birim sinyali (" + ", ".join(s["own"]) + "), başka birim adı yok")
+            return None
+        if rel not in ("kendi", "ust_birim_bu_birim_hakkinda"):
+            return None
+        if s["own"]:
             return None
         if s["baska"]:
             return ("belirsiz", "kod: metinde birimin adı yok, başka birim adı var ("
@@ -245,6 +310,13 @@ class Savunma:
             out["sayilir"] = False
             fl.append("bilgisiz_ekran")
             vu.append("bilgi içermeyen ekran/bağlantı sayfası: kanıt değil")
+        if self.fakulte:
+            h = self.other_faculty(did, m.get("alinti") or "")
+            if h:
+                out["sayilir"] = False
+                # madde_baska_birim: dosyalama (bidr/file/select.py KANIT_DEGIL) aynı kuralla dışlar
+                fl += ["madde_baska_birim", "madde_baska_fakulte"]
+                vu.append(f"alıntı başka fakültenin maddesinden (\"{h[:60]}\"): {self.fakulte} için kanıt değil")
         if self.birim and s["birim_var"]:
             blk = self._block(did, q)
             if blk is not None:
@@ -293,6 +365,60 @@ class Savunma:
                 down("uygula", "surum_notu_onlem_degil", "sürüm notu (revize): izlemeye dayanan iyileştirme değil")
         out["etkin"] = e
         return out
+
+    # -- fakülte maddesi -----------------------------------------------------------------------
+    def _sections(self, did: str) -> tuple[str, list[tuple[int, str]]]:
+        """(katlanmış birleşik metin, [(başlangıç, başlık)]): büyük harfli başlık satırları (ardışık
+        satırlar tek başlık; sayfa üst bilgisi gibi tekrarlanan satırlar başlık değil)."""
+        if did in self._fak:
+            return self._fak[did]
+        lines = self.text(did).splitlines()
+        from collections import Counter
+        rep_ = Counter(f(x) for x in lines if x.strip())
+        parts, heads, pos, prev = [], [], 0, False
+        for x in lines:
+            fx = f(x)
+            if not fx:
+                prev = False
+                continue
+            harf = _HARF.findall(x)
+            h = (len(harf) >= 6 and len(_BUYUK.findall(x)) >= 0.85 * len(harf) and rep_[fx] == 1
+                 and not fx.startswith("madde"))
+            if h and prev and heads:
+                heads[-1] = (heads[-1][0], heads[-1][1] + " " + fx)
+            elif h:
+                heads.append((pos, fx))
+            prev = h
+            parts.append(fx)
+            pos += len(fx) + 1
+        self._fak[did] = (" ".join(parts), heads)
+        return self._fak[did]
+
+    def other_faculty(self, did: str, q: str) -> str | None:
+        """Alıntı fakülteye göre maddeli bir düzenlemede yalnız başka fakültenin bölümünde geçiyorsa
+        o bölümün başlığı, değilse None. Belge parçası başlığı içermiyorsa aynı tarih ve türdeki
+        belgelerde (aynı düzenlemenin tam metni) aranır. Birimin fakültesi bilinmiyorsa None."""
+        own = f(self.fakulte)
+        key = f(q)[:80]
+        if not own or len(key) < 20:
+            return None
+        doc = self.docs.get(did) or {}
+        tarih, tur = str(doc.get("tarih") or "")[:10], doc.get("doc_type")
+        cands = [did] + ([o for o, d in self.docs.items() if o != did and tarih and d.get("doc_type") == tur
+                          and str(d.get("tarih") or "")[:10] == tarih] if tarih else [])
+        for c in cands[:30]:
+            text, heads = self._sections(c)
+            fh = [h for _, h in heads if "fakultesi" in h]
+            if len({h for h in fh}) < 2 or key not in text:
+                continue
+            others = []
+            for m in re.finditer(re.escape(key), text):
+                h = next((h for p_, h in reversed(heads) if p_ <= m.start()), "")
+                if "fakultesi" not in h or own in h:
+                    return None                       # birimin fakültesinin ya da ortak bölüm
+                others.append(h)
+            return others[0]
+        return None
 
     def _block(self, did: str, q: str) -> str | None:
         """Alıntının bulunduğu madde/gündem bloğu (madde yapısı yoksa None)."""

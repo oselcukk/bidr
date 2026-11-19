@@ -218,10 +218,10 @@ def evidence_principles(path=None) -> str:
 
 # -- birim bağlamı ---------------------------------------------------------------------
 
-def _institution_name(key: str | None) -> str | None:
-    """Kurum profili anahtarı (config `bidr.kurum`, ör. gtu) → kurumun adı (profilin `ad`ı)."""
+def _institution(key: str | None) -> dict:
+    """Kurum profili (config `bidr.kurum`, ör. gtu → bidr/data/institutions/gtu.yaml); yoksa {}."""
     if not key:
-        return None
+        return {}
     import os
     from pathlib import Path
 
@@ -232,18 +232,55 @@ def _institution_name(key: str | None) -> str | None:
     try:
         data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
     except (OSError, yaml.YAMLError):
-        return None
-    ad = data.get("ad") if isinstance(data, dict) else None
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _institution_name(key: str | None) -> str | None:
+    """Kurum profili anahtarı (config `bidr.kurum`, ör. gtu) → kurumun adı (profilin `ad`ı)."""
+    ad = _institution(key).get("ad")
     return str(ad).strip() if ad else None
 
 
+def _codes(v) -> list[str]:
+    if isinstance(v, str):
+        v = [v]
+    return [str(x).strip() for x in (v or []) if str(x).strip()]
+
+
+def unit_profile(ws_root) -> dict:
+    """Birimin metinde aranacak açık sinyalleri: {"birim", "fakulte", "ders_kodlari"}.
+    Kaynak: `config.yaml` `bidr:` (`birim`; isteğe bağlı `fakulte`, `ders_kodlari`) — yoksa kurum
+    profilinin `birimler:` listesinde aynı adlı birimin kaydı (ad karşılaştırması harf katlanmış).
+    Yalnız yapılandırmadan gelir; bilinmeyen alan boş kalır (sinyal uydurulmaz)."""
+    from bidr.identify.text import fold
+    from bidr.init.config import load_section
+    sec = load_section(ws_root) or {}
+    birim = str(sec.get("birim") or "").strip()
+    out = {"birim": birim, "fakulte": str(sec.get("fakulte") or "").strip(),
+           "ders_kodlari": _codes(sec.get("ders_kodlari"))}
+    if birim and not (out["fakulte"] and out["ders_kodlari"]):
+        key = " ".join(fold(birim).split())
+        for b in _institution(sec.get("kurum")).get("birimler") or []:
+            if isinstance(b, dict) and " ".join(fold(str(b.get("ad") or "")).split()) == key:
+                out["fakulte"] = out["fakulte"] or str(b.get("fakulte") or "").strip()
+                out["ders_kodlari"] = out["ders_kodlari"] or _codes(b.get("ders_kodlari"))
+                break
+    return out
+
+
 def unit_info(ws_root) -> dict:
-    """Karar paketlerine giren birim bilgisi: {"birim": ad|None, "kurum": ad|None}.
-    Kaynak yalnız çalışma alanının `config.yaml` `bidr:` bölümü (birim adı, kurum profili)."""
+    """Karar paketlerine giren birim bilgisi: {"birim": ad|None, "kurum": ad|None} (+ biliniyorsa
+    "fakulte"). Kaynak yalnız çalışma alanının `config.yaml` `bidr:` bölümü (birim adı, kurum
+    profili) ve kurum profilinin `birimler:` kaydı."""
     from bidr.init.config import load_section
     sec = load_section(ws_root) or {}
     birim = str(sec.get("birim") or "").strip() or None
-    return {"birim": birim, "kurum": _institution_name(sec.get("kurum"))}
+    out = {"birim": birim, "kurum": _institution_name(sec.get("kurum"))}
+    fak = unit_profile(ws_root)["fakulte"] if birim else ""
+    if fak:
+        out["fakulte"] = fak
+    return out
 
 
 def render_unit(info: dict, sabit: str | None = None) -> str:
@@ -254,6 +291,8 @@ def render_unit(info: dict, sabit: str | None = None) -> str:
              "birim_iliskisi \"kendi\" ya da genel düzenlemeyse \"kurum_geneli\"/\"fakulte_geneli\".")
     else:
         s = f"Birim: {info['birim']}"
+        if info.get("fakulte"):
+            s += f"\nFakülte: {info['fakulte']}"
         if info.get("kurum"):
             s += f"\nKurum: {info['kurum']}"
     if sabit:

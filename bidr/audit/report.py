@@ -118,7 +118,9 @@ SAVUNMA = {
     "onlem_izlemeye_dayanmiyor": "iyileştirme bir izleme sonucuna dayanmıyor → uygula",
     "ozgun_kanitsiz": "özgünlük kanıtı yetersiz (bağımsız kanıt ve birden çok dönem gerekir): sayılmadı",
     "fotograf_destekleyici": "fotoğraf tek başına uygulama sayılmaz (destekleyici): sayılmadı",
-    "birim_iliskisi_kod": "kod birim ilişkisini değiştirdi (metinde birimin adı yok): belirsiz ya da kurum/fakülte geneli",
+    "madde_baska_fakulte": "alıntı fakülteye göre maddeli düzenlemede başka fakültenin maddesinden: sayılmadı",
+    "birim_iliskisi_kod": "kod birim ilişkisini değiştirdi: metinde birimin sinyali yok (belirsiz ya da kurum/fakülte "
+                          "geneli) ya da model belirsiz dedi ama metinde birimin sinyali var (kendi; doğrulanmalı)",
 }
 
 
@@ -137,6 +139,8 @@ def _savunma_sections(a) -> list[str]:
     by: dict[str, list[str]] = {}
     for r in a.rows:
         for fl in r["flags"]:
+            if fl == "madde_baska_birim" and "madde_baska_fakulte" in r["flags"]:
+                continue                          # aynı satır: fakülte nedeniyle gösterilir
             if fl in SAVUNMA and not _hum(r):
                 by.setdefault(fl, []).append(f"{r['olcut']} `{r['belge']}`")
     if by:

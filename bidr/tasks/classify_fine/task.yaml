@@ -31,9 +31,15 @@ description: >-
   yürürlükten kalkmış düzenleme. Bölümün kendi usul belgesi `kendi`dir. Kanıt ilkelerine
   `iyilestirme_kaniti`, `ozgunluk_kaniti`. Şema aynı. Kod aynı kuralları ucuz denetimlerle de
   uygular (bidr/audit/savunma.py).
+  v10 açıklama (sürüm değişmedi, şema aynı): birimin kendi sayfası/listesi kurum sitesinde olsa da
+  `kendi`; metinde birim adı, programı ya da ders kodu varken `belirsiz` denmez. BİRİM bilgisine
+  biliniyorsa fakülte girer (config.yaml `bidr.fakulte` ya da kurum profili `birimler:`); kanıt
+  ilkesi `madde_ilkesi`: fakülteye göre maddeli kurum düzenlemesinde yalnız birimin fakültesinin
+  (ya da ortak) maddesi. Kod: metindeki birim sinyali `belirsiz`i `kendi`ye çevirir, başka
+  fakültenin maddesini saymaz (`madde_baska_fakulte`).
 inputs:
   adaylar: "aday alt ölçütler: başlık, rubrik 1-5, yuvalar `[aşama → OD]` etiketiyle"
   belge_bilgisi: "documents.jsonl içerik alanları (tür tahmini, tarih, sayfa); yol/ad yok"
   belge_metni: "belge metni; kısaltıldıysa parçalar arası [...]"
   kanit_ilkeleri: "komisyonun kanıt ilkeleri (bidr/data/profiles/kanit_ilkeleri.yaml)"
-  birim: "birim adı ve kurum adı (config.yaml `bidr.birim`, `bidr.kurum` profilinin adı)"
+  birim: "birim adı, biliniyorsa fakültesi ve kurum adı (config.yaml `bidr.birim`, `bidr.fakulte`, `bidr.kurum` profili)"

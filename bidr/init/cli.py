@@ -27,6 +27,8 @@ gecmis_etiket: false                      # kaynakta geçmiş yılın BİDR rapo
 etiket_birim: null                        # (gecmis_etiket) labels --unit; null = birim
 egitim: []                                # (isteğe bağlı) etiketli başka çalışma alanları, candidates --train
 ajan: null                                # model işini yapan ajan, kayda geçer (ör. claude-code:sonnet)
+fakulte: null                             # (isteğe bağlı) birimin fakültesi; null = kurum profilindeki kayıt
+ders_kodlari: []                          # (isteğe bağlı) birimin ders kodu önekleri (ör. [MATH, MAT]); boş = kurum profili
 hazirlayanlar: []                         # kapaktaki "Raporu Hazırlayanlar" (config.yaml rapor.hazirlayanlar);
                                           # her kişi: {{unvan: …, ad_soyad: …, eposta: …, gorev: …}}; boşsa rapor TASLAK
 """

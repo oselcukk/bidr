@@ -29,7 +29,10 @@ ilkeler:
       Bir düzenleme (yönetmelik, yönerge, usul ve esas) yalnız ilgili maddesi alıntılanabilen
       ölçüte bağlanır; konusu ilgili görünse de karşılayan madde yoksa o ölçüte eşleşme verme.
       Üst birimin çok maddeli kararında (fakülte yönetim kurulu, senato) yalnız bu birimi konu
-      alan madde alıntılanır; başka bölümlerin maddeleri bu birimin kanıtı değildir.
+      alan madde alıntılanır; başka bölümlerin maddeleri bu birimin kanıtı değildir. Fakülteye
+      göre ayrı maddeleri olan kurum düzenlemesinde (ör. atama koşulları) yalnız BİRİM'in
+      fakültesinin ya da bütün fakültelere ortak maddeyi alıntıla; başka fakültenin maddesi bu
+      birimin kanıtı değildir (kod denetler).
   - kimlik: ders_bilgi_formu
     metin: >-
       Ders bilgi formu (izlence) program çıktılarıyla ilişki tablosu, AKTS iş yükü ve ölçme

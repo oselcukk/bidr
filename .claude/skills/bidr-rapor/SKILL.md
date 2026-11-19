@@ -119,15 +119,30 @@ kullanıcıya gerçekleşme belgesinin (tutanak, katılım listesi, rapor) eksik
    - Tabloyu bidr ortamının Python'u ve openpyxl ile doldur (yalnız KARAR ve NOT hücreleri;
      sütun/sayfa yapısını bozma). Her satırın KARAR'ını yaz ve aynı satırın NOT'una `ajan (kullanıcı yetkisiyle)` yaz
      (gerekçe varsa ardına: `ajan (kullanıcı yetkisiyle): <kısa gerekçe>`).
-   - Güveni düşük (`güven: dusuk`, sarı) eşleşmeler `ret`. Diğerlerinde alıntı yuvayı açıkça
-     karşılıyorsa `kabul`, karşılamıyorsa `ret`; emin olmadığın satır `ret`. `duzelt`, kanıt adı ve
-     bağlantı düzeltmesi yapma; OD'yi yükseltmek için karar verme.
+   - Güveni düşük (`güven: dusuk`, sarı) eşleşmeler `ret`. Güveni orta/yüksek ve işaretsiz satır
+     `kabul` (alıntıyı model seçti, kod belgede doğruladı; içerik beğenisiyle ret yok).
+   - İşaretli satırlara (belge başına gruplanmış) yeni bir alt ajan belge metnine
+     (`text/<doc_id>.txt`) bakarak karar verir; işaretsiz satırlara bakmaz. İşaretli: birim
+     aitliği doğrulanmalı ya da `birim_iliskisi_kod`; dönem dışı, `tarih_dogrulanmali`,
+     `guncellik_dogrulanmali`; `kurum_geneli`; OD4/OD5'e yükselten.
+     Birim: metinde birimin adı, programı, ders kodu, bölüm sayfası ya da kurulu geçiyorsa `kabul`;
+     başka birimin belgesi olduğu açıksa ya da birimi gösteren hiçbir ifade yoksa `ret` (sinyal
+     uydurma). Dönem: metinde rapor yılına ait tarih ya da ifade ("2025 yılı içerisinde") varsa ya
+     da yapı belgesi rapor yılında yürürlükteyse `kabul`; yalnız dönem dışı olaysa `ret`. Kurum
+     geneli: alıntı birimin fakültesinin ya da bütün birimlerin maddesindense `kabul` (tavanı kod
+     uygular); başka fakültenin/bölümün maddesiyse `ret`. OD4+: alıntı izleme sonucunu ya da ona
+     dayanan yapılmış değişikliği gösteriyorsa `kabul`; öneri, niyet ya da bilgilendirmeyse `ret`.
+   - Her `ret`in NOT'unda belgeden somut neden olur ve gerekçe belgeyle çelişemez: metinde
+     birimin adı ya da ders kodu varken "birim doğrulanamıyor", içerik varken "yalnız başlık"
+     yazılmaz. Somut neden kurulamıyorsa satır `kabul`. `duzelt`, kanıt adı ve bağlantı
+     düzeltmesi yapma; OD'yi yükseltmek için karar verme.
    - Yetki yalnız review.xlsx kararlarını kapsar; hakem cevapları ve `bidr verify karar` için
      ayrıca açık söz gerekir.
    - Rapor TASLAK kalır: render'ın TASLAK damgası yalnız doğrulanmamış metne bakar, bu yüzden
      raporu sen TASLAK diye bildirirsin. Bitirirken ve her özetinde "kararlar ajan tarafından,
      kullanıcı yetkisiyle verildi; rapor kullanıcı tabloyu gözden geçirene kadar TASLAK" de;
-     ajanın verdiği kabul/ret sayılarını söyle. Kullanıcı sonra tabloyu düzeltirse `bidr audit
+     ajanın verdiği kabul/ret sayılarını (işaret türüne göre) ve birim sinyali olmadığı için
+     reddedilen belgeleri söyle. Kullanıcı sonra tabloyu düzeltirse `bidr audit
      apply`'dan yeniden yürür.
 3. Kullanıcı "bitti" deyince (yetki devrinde sen bitirince) `bidr audit apply -w WS`. Çıkış 1: geçersiz kararlar listelenir;
    kullanıcıya göster, düzeltmesini iste.
