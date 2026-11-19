@@ -314,3 +314,43 @@ def test_split_sentences_turkish_abbreviations():
     assert len(out) == 4, out
     assert out[0].startswith("Öğrencilerin T.C. Kimlik") and out[3].startswith("A.Ş.")
     assert T.check_text([s], "", index_nos={"1_OD2"}, od=2) == []
+
+
+def test_split_sentences_company_titles():
+    """Şirket unvanı kısaltmaları ("San. ve Tic. A.Ş.", "Tic. Ltd. Şti.") cümleyi bölmez (kör test)."""
+    s = ("Staj ABC Kimya San. ve Tic. A.Ş. bünyesinde yapılmıştır [1_OD2]. Ortak proje XYZ İnş. Taah. "
+         "Ltd. Şti. ile yürütülmüştür [1_OD2]. Kurum içi eğitim tamamlanmıştır [1_OD2].")
+    out = T.split_sentences(s)
+    assert len(out) == 3, out
+    assert T.check_text([s], "", index_nos={"1_OD2"}, od=2) == []
+    # gerçek cümle sonu hâlâ böler: ikinci cümlenin atfı yoksa yakalanır
+    bad = T.check_text(["Staj ABC San. ve Tic. A.Ş. bünyesindedir [1_OD2]. Protokol imzalanmıştır."], "",
+                       index_nos={"1_OD2"}, od=2)
+    assert [x["kod"] for x in bad] == ["atifsiz"]
+
+
+@pytest.mark.parametrize("sentence", [
+    "Staj süreci yönergedeki adımlar izlenerek yürütülmektedir [1_OD2].",
+    "Başvurular iş akışı izlenerek değerlendirilmektedir [1_OD2].",
+    "Yönetmelik hükümleri izlenerek atama yapılmıştır [1_OD2].",
+    "Yönergede staj sürecinin danışman tarafından izlenerek değerlendirileceği belirtilmektedir [1_OD2].",
+    "Doçentlik başvurusunda yayın koşulu öngörülmektedir [1_OD2].",
+    "Atama ölçütlerinde en az iki uluslararası yayın öngörülmektedir [1_OD2].",
+])
+def test_procedure_and_document_verbs_not_claims(sentence):
+    """"izlenerek" yol/usul izlemek ya da belge hükmünün parçası; "öngörülmektedir" hüküm dilinde."""
+    assert T.check_sentence(sentence, index_nos={"1_OD2"}, od=2, komisyon=False) == []
+
+
+@pytest.mark.parametrize("sentence,kod", [
+    ("Ders çıktıları anket sonuçları izlenerek güncellenmiştir [1_OD2].", "kanitsiz_ust_duzey"),
+    ("Öğrenci geri bildirimleri izlenerek iyileştirilmiştir [1_OD2].", "kanitsiz_ust_duzey"),
+    ("Memnuniyet anket yoluyla izlenmektedir [1_OD2].", "kanitsiz_ust_duzey"),
+    ("Öğrenci başarısı her aşamada izlenmektedir [1_OD2].", "kanitsiz_ust_duzey"),
+    ("Mezun görüşleri izlenerek program güncellenmiştir; bu yönergede belirtilmektedir [1_OD2].",
+     "kanitsiz_ust_duzey"),
+    ("Bölüm kurulu toplantısında yeni ders açılması öngörülmektedir [1_OD2].", "gelecek_vaat"),
+    ("Önümüzdeki yıl yeni laboratuvar kurulması öngörülmektedir [1_OD2].", "gelecek_vaat"),
+])
+def test_monitoring_and_plan_claims_still_caught(sentence, kod):
+    assert kod in {x["kod"] for x in T.check_sentence(sentence, index_nos={"1_OD2"}, od=2, komisyon=False)}

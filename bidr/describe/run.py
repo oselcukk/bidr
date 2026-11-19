@@ -387,11 +387,19 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, auto: bool = False,
 
 # -- içerik denetimi -------------------------------------------------------------------------
 
-# Kişi betimlemesi (KVKK): katlanmış (aksansız, küçük) metinde aranır.
+# Kişi betimlemesi (KVKK): katlanmış (aksansız, küçük) metinde aranır. Nesne olarak anılan
+# gözlük ("masada bir gözlük", "koruyucu gözlükler") kişi betimlemesi değildir; kişiye yüklenen
+# biçimi ("gözlüklü", "gözlük takan") öyledir. Yüzün GÖRÜNMEDİĞİNİ söylemek ("yüzü görünmeyen",
+# "yüzleri kadrajda değil") kişiyi betimlemez, mahremiyeti korur: yalnız bu olumsuz bağlam muaf.
+_YUZ_YOK = (r"(?!\s+(?:\w+\s+)?(?:gorunm\w*|gorunmez\w*|gorulm\w*|gorulemi\w*|secilm\w*|secilemi\w*|"
+            r"ayirt\s+edilm\w*|ayirt\s+edilemi\w*|taninm\w*|taninami\w*|bulanik\w*|kapali\w*|maskeli\w*|"
+            r"gizli\w*|kadrajda\s+degil|kadraj\s+disinda\w*|belli\s+degil|net\s+degil|yok)\b)")
 _PERSON = re.compile(
-    r"\b(sakal\w*|biyik\w*|gozluk\w*|sarisin\w*|esmer\w*|kumral\w*|kizil sac\w*|sac\w*|kel|"
+    r"\b(sakal\w*|biyik\w*|gozluklu\w*|gozluk(?:ler\w*)?\s+tak\w*|gozlug\w*\s+tak\w*|"
+    r"sarisin\w*|esmer\w*|kumral\w*|kizil sac\w*|sac\w*|kel|"
     r"basortu\w*|turban\w*|tesettur\w*|yasli\w*|genc (kadin|erkek|kiz|adam)\w*|kadin\w*|erkek\w*|"
-    r"bayan\w*|bay|kiz|kizlar\w*|oglan\w*|adam|adamlar\w*|gulumse\w*|gulen|yuzu|yuzleri|yuz ifade\w*|"
+    r"bayan\w*|bay|kiz|kizlar\w*|oglan\w*|adam|adamlar\w*|gulumse\w*|gulen|"
+    rf"yuzu\b{_YUZ_YOK}|yuzleri\b{_YUZ_YOK}|yuz ifade\w*|"
     r"kiyafet\w*|giyinmis|giymis|takim elbise\w*|ceket\w*|kravat\w*|etek\w*|ten rengi|"
     r"taniniyor|tanindig\w*)\b")
 # Tarih/yıl çıkarımı denetimi yalnız gerçek tarih biçimlerine bakar. Sayı aralıkları

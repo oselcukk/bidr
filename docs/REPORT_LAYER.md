@@ -254,7 +254,16 @@ düzeyinde korunur; test edilir).
 Belge "TASLAK" damgalıdır (`taslak_nedenleri`): `dogrulandi` olmayan metin (kullanıcının
 `cikar` dediği ve `baska_birim` ölçütün metni sayılmaz); boş ya da şablon yönergesi
 ("…değerlendiriniz.") kalan güçlü/gelişmeye açık yön hücresi ya da doğrulanmamış madde; kapakta
-kalan hazırlayan yer tutucusu (`rapor.hazirlayanlar` boş); `karar_gerekli` ölçüt.
+kalan hazırlayan yer tutucusu (`rapor.hazirlayanlar` boş); `karar_gerekli` ölçüt. Gerekçeler render
+çıktısında ve `.bidr-render.json` `taslak_nedenleri`'nde; `bidr denetle` `taslak_damgasi` bulgusunda
+aynı gerekçeyi bu kayıttan okur (belge kayıttan sonra değiştiyse "nedeni bilinmiyor" der, tahmin
+etmez).
+Kanıtlar hücresi: metnin atıf verdiği kanıtlar + `evidence-index.csv`'de o ölçüte dosyalanmış ama
+metinde atıf almayan kanıtlar, numara sırasıyla (`atifsiz_listelenen`). Böylece liste numarası
+atlamaz ve kanıt klasöründeki her dosya listede bulunur (`denetle` `kanit_numarasi` /
+`listede_olmayan_dosya` çıkmaz); atıfsız kanıt `atifsiz_kanit` uyarısıyla görünür. Kanıtı
+rapordan çıkarmanın yolu review.xlsx'te ret → `audit apply` → `file`; metne atıf eklemenin yolu
+yeniden yazımdır.
 `.bidr-render.json` girdilerin özetini tutar (`render_tamam`): şablon, metinler, `yonler/`,
 audit, kanıt dizini, hazırlayanlar ve kapsam görünümü.
 
@@ -318,7 +327,7 @@ değil.
 | anahtar | anlamı |
 |---|---|
 | `onceki_rapor` | geçen yılın FR-0833 docx'i ya da `<ölçüt>.txt` klasörü (write: üslup ve karşılaştırma) |
-| `sablon` | boş FR-0833 şablonu (render) |
+| `sablon` | boş FR-0833 şablonu (render); answers.yaml `sablon` (tam yol) ile `bidr init` yazar: dosya var, .docx ve Word paketi olmalı; cevapta boşsa var olan korunur, farklıysa kullanıcı onayı (`--yes`) |
 | `kanit_kok_baglanti` | kanıt klasörünün yüklendiği kök adres (klasör bağlantıları) |
 | `yayin_alan_adlari` | gövde URL'sinin yayın adresi sayılacağı alan adları (ör. `[gtu.edu.tr]`) |
 | `kanit_secimi` | kanıt seçimi ayarları (yukarıda; `olcut_basina_en_fazla`, `kurum_geneli_en_fazla`, `gecmis_kanit_en_fazla`, `en_dusuk_guven`, `dolayli_isaretler`, `surum_birlestir`) |

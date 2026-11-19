@@ -9,7 +9,12 @@
   böyle cümlede olabilir (uydurma vaat yok).
 - OD aşımı: metin önerilen OD'nin üstünde olgunluk iddia etmez (açık "OD4" anışı, rubriğin
   üst düzey ifadeleri). İzleme/iyileştirme fiili kullanan cümle OD4+ kanıta, özgün/örnek
-  gösterilebilir diyen cümle OD5 kanıta atıf yapmalıdır.
+  gösterilebilir diyen cümle OD5 kanıta atıf yapmalıdır. Yol/usul izlemek ("yönergedeki adımlar
+  izlenerek") ve belge hükmünü aktaran cümledeki ulaç ("… izlenerek değerlendirileceği
+  belirtilmektedir") izleme iddiası değildir.
+- "öngörülmektedir" gibi belge fiilleri atıflı ve hüküm/düzenleme diliyle (yönerge, madde, koşul,
+  ölçüt, program…) anlatılan cümlede belgenin içeriğidir; öteki yerde gelecek vaadi sayılır.
+- Kısaltmalar (unvanlar, "A.Ş.", "San. ve Tic.", "Ltd. Şti.") cümleyi bölmez.
 - Yasak ifadeler: abartı, slogan, koçluk dili (bkz. YASAK).
 - Belge/birim adı içindeki terim ("GTÜ Yapay Zekâ Politikası", "Sürdürülebilirlik
   Koordinatörlüğü", tırnak içi ad) yasak ifade, vaat ve üst düzey dil denetimlerinden muaftır
@@ -24,7 +29,10 @@ KOMISYON = "[komisyon]"
 _BRACKET = re.compile(r"\[[^\[\]]{1,40}\]")
 _ABBR = {"vb", "vs", "ör", "örn", "bkz", "bk", "dr", "prof", "doç", "öğr", "gör", "arş", "no", "s",
          "sn", "md", "mad", "yy", "st", "yrd", "çev", "ed", "vd", "a.ş", "ltd", "şti", "t.c", "nr", "tel",
-         "uzm", "okt", "müh", "yük", "sy", "c", "ss", "bşk", "mah", "cad", "sok", "dk", "sa"}
+         "uzm", "okt", "müh", "yük", "sy", "c", "ss", "bşk", "mah", "cad", "sok", "dk", "sa",
+         # şirket unvanı kısaltmaları: "ABC Kimya San. ve Tic. A.Ş.", "XYZ İnş. Taah. Ltd. Şti."
+         "san", "tic", "inş", "taah", "paz", "ith", "ihr", "elk", "elekt", "mak", "hiz", "hizm",
+         "danş", "org", "bilg", "end", "ürt", "dağ", "koll", "inc", "corp", "co", "gmbh"}
 # Harf+nokta dizisi: "T.C.", "A.Ş.", "a.g.e." — son noktadan önceki parça "T.C" biçimindedir.
 _LETTER_DOTS = re.compile(r"(?:[^\W\d_]{1,2}\.)+[^\W\d_]{1,2}")
 _BOUNDARY = re.compile(r"[.!?…]+(?=\s+[\"“'(\[A-ZÇĞİÖŞÜ0-9])")
@@ -104,7 +112,10 @@ _YASAK = [(re.compile(p), t) for p, t in YASAK]
 GELECEK = re.compile(r"\b\w+(acaktır|ecektir|acağız|eceğiz)\b|\bplanlanmaktadır\b|"
                      r"\bhedeflenmektedir\b|\böngörülmektedir\b|\bdüşünülmektedir\b")
 DUZENLEME = re.compile(r"yönerge|yönetmeli|iş akış|usul|esaslar|mevzuat|kanun|karar(ı|ında|da)\b|form\b|"
-                       r"rehber|kılavuz|misyon|vizyon|politika|strateji|plan(ı|ında|da)\b|sayfa(sı|sında|da)\b|belge(si|sinde|de)\b")
+                       r"rehber|kılavuz|misyon|vizyon|politika|strateji|plan(ı|ında|da)\b|sayfa(sı|sında|da)\b|belge(si|sinde|de)\b|"
+                       # hüküm dili: "yayın koşulu öngörülmektedir", "maddesinde … öngörülmektedir"
+                       r"madde|hüküm|hükm|koşul|şart(ı|lar)|ölçüt|kriter|zorunlu|tüzü|protokol|sözleşme|"
+                       r"talimat|prosedür|ilke(si|leri|lerinde|sinde)\b|müfredat|program(ı|ında|da)\b")
 # Belge içeriğini aktaran fiiller: atıflı ve bir düzenleme/belge metnine bağlanan cümlede belgeye
 # aittir (mevzuat dili), bölümün vaadi ya da öğüdü değildir.
 BELGE_FIIL = {"öngörülmektedir", "hedeflenmektedir", "planlanmaktadır"}
@@ -117,6 +128,20 @@ UST_DUZEY = {
 # Bu fiiller cümlede olumlu geçiyorsa cümle OD4+ kanıta atıf yapmalı.
 FIIL_K = re.compile(r"\b(izlen|iyileştiril|gözden geçiril)(mekte|mektedir|miştir|mekte olup|erek|ir)\b|"
                     r"\bönlem(ler)? alın(mış|makta)")
+# "izlemek" = "(adımı, yolu, usulü) takip etmek": nesnesi bir yol/usul olan izleme ölçme-izleme iddiası
+# değildir ("yönergedeki adımlar izlenerek", "iş akışı izlenmektedir").
+_YALIN = r"(?:lar|ler)?(?:[ıiuü]|s[ıiuü]|n[ıiuü]|y[ıiuü]|s[ıiuü]n[ıiuü]|[ıiuü]n[ıiuü]|lar[ıi]|ler[ıi])?"
+# yalnız yalın/belirtme hâli ("adımlar", "akışı", "usulü"); "yoluyla", "aşamada", "sırasında" gibi
+# araç/zaman anlatan biçimler ölçme-izleme iddiasıdır, muaf değildir.
+_IZLE_USUL = re.compile(rf"\b(?:adım|yol|yöntem|usul|prosedür|akış|sıra|aşama|talimat|kural|esas|hüküm|hükm|"
+                        rf"yönerge|yönetmelik|mevzuat|takvim|şema|madde|ilke|protokol){_YALIN}\s+$")
+
+# Belgenin içeriğini aktaran cümle: ulaç ("izlenerek", "iyileştirilerek") belgedeki hükmün parçasıdır,
+# cümlenin yüklemi belgeyi aktaran fiildir ("… izlenerek değerlendirileceği belirtilmektedir").
+_AKTARIM_SONU = re.compile(r"\b(öngörülmektedir|öngörmektedir|belirtilmektedir|belirtilmiştir|belirtmektedir|"
+                           r"tanımlanmıştır|tanımlanmaktadır|tanımlamaktadır|düzenlenmiştir|düzenlenmektedir|"
+                           r"düzenlemektedir|hükme bağlanmıştır|ifade edilmektedir|yer almaktadır)\W*$")
+_CEKIMLI = re.compile(r"[;:]|\w+(d[ıiuü]r|t[ıiuü]r|m[ıiuü]ş|d[ıiuü])\b")
 FIIL_Z = re.compile(r"\bözgün\b|örnek gösterilebilir|içselleştiril")
 OLUMSUZ = re.compile(r"\w+(mamaktadır|memektedir|mamıştır|memiştir|mamakta|memekte)\b|"
                      r"bulunmamaktadır|\byoktur\b|\bdeğildir\b")
@@ -195,6 +220,21 @@ def mask_names(s: str) -> str:
     return s
 
 
+def _fiil_k(ad: str, low: str, cites: list[str]):
+    """Olumlu izleme/iyileştirme fiili (OD4+ iddiası); yol/usul izlemek ve belge içeriğini aktaran
+    cümledeki ulaç sayılmaz."""
+    for m in FIIL_K.finditer(ad):
+        w = m.group(0)
+        if w.startswith("izlen") and _IZLE_USUL.search(ad[:m.start()]):
+            continue
+        son = _AKTARIM_SONU.search(ad.rstrip())
+        if w.endswith("erek") and son and cites and DUZENLEME.search(low) \
+                and not _CEKIMLI.search(ad[m.end():son.start()]):
+            continue   # ulaç ile aktaran fiil arasında başka yüklem (";", "-mıştır") yoksa
+        return m
+    return None
+
+
 def check_sentence(s: str, *, index_nos: set[str], od: int, komisyon: bool) -> list[dict]:
     """Tek cümlenin kod denetimi → sorun listesi [{kod, ayrinti}]."""
     issues: list[dict] = []
@@ -240,7 +280,7 @@ def check_sentence(s: str, *, index_nos: set[str], od: int, komisyon: bool) -> l
             if m and od < lvl:
                 issues.append({"kod": "od_asimi", "ayrinti": f"“{m.group(0)}” OD{lvl} dili; önerilen OD{od}"})
         top = max((citation_od(c) for c in cites if c in index_nos), default=0)
-        m = FIIL_K.search(ad)
+        m = _fiil_k(ad, low, cites)
         if m and top < 4:
             issues.append({"kod": "kanitsiz_ust_duzey",
                            "ayrinti": f"“{m.group(0)}” izleme/iyileştirme iddiası OD4+ kanıt atfı ister"})

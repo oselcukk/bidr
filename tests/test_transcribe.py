@@ -227,3 +227,18 @@ def test_apply_photo_without_text(tmp_path):
     assert st["islenen"] == 1
     assert (ws / "text" / f"{did}.txt").read_text(encoding="utf-8") == ""
     assert next(read_jsonl(ws / "transcribe.jsonl"))["metin_yok"] is True
+
+
+def test_apply_exit_code_explained(tmp_path, capsys):
+    """apply çıkış 1 = geçersiz ya da şüpheli cevap var; çıktı nedenini söyler (kör test)."""
+    from bidr.cli import main
+    ws, src, ids = _ws(tmp_path, {"foto": (".png", OCR_TEXT, 1)})
+    did = ids["foto"]
+    R.prepare(ws, only=[did], source=src)
+    _out(ws, did, [FAKE])
+    capsys.readouterr()
+    assert main(["transcribe", "apply", "-w", str(ws)]) == 1
+    out = capsys.readouterr().out
+    assert "çıkış 1: 0 geçersiz, 1 şüpheli" in out and "--kabul-supheli" in out
+    assert main(["transcribe", "apply", "-w", str(ws), "--kabul-supheli"]) == 0
+    assert "çıkış 1" not in capsys.readouterr().out

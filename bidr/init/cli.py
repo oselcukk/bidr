@@ -31,6 +31,8 @@ fakulte: null                             # (isteğe bağlı) birimin fakültesi
 ders_kodlari: []                          # (isteğe bağlı) birimin ders kodu önekleri (ör. [MATH, MAT]); boş = kurum profili
 hazirlayanlar: []                         # kapaktaki "Raporu Hazırlayanlar" (config.yaml rapor.hazirlayanlar);
                                           # her kişi: {{unvan: …, ad_soyad: …, eposta: …, gorev: …}}; boşsa rapor TASLAK
+sablon: null                              # boş FR-0833 rapor şablonu, tam yol (.docx; config.yaml rapor.sablon);
+                                          # henüz yoksa null: render'a kadar bidr next yeniden ister
 """
 
 
@@ -45,6 +47,7 @@ QUESTIONS = [
     ("ajan", "Model işini yapan ajanın adı (boş bırakılabilir)", ""),
     ("hazirlayanlar", "Raporu hazırlayanlar, her satıra bir kişi: unvan; ad soyad; e-posta; görev "
                       "(boş satır bitirir)", None),
+    ("sablon", "Boş FR-0833 rapor şablonunun (.docx) yolu (boş bırakılabilir)", ""),
 ]
 
 
@@ -82,7 +85,8 @@ def _diff(old: dict, new: dict) -> list[str]:
 
 def _run(args) -> int:
     from . import agentfiles
-    from .config import check_preparers, load_rapor, load_section, validate, write_rapor_key, write_section
+    from .config import (check_preparers, check_template, load_rapor, load_section, validate, write_rapor_key,
+                         write_section)
 
     if args.sablon:
         print(template(), end="")
@@ -114,11 +118,15 @@ def _run(args) -> int:
     people = None
     if "hazirlayanlar" in answers:            # rapor: bölümüne gider; cevapta yoksa var olan liste korunur
         people = check_preparers(answers["hazirlayanlar"])[0] or []
+    sablon = check_template(answers.get("sablon"))[0]   # boşsa var olan rapor.sablon korunur
     if old is not None:
         d = _diff(old, sec)
-        prev = load_rapor(ws).get("hazirlayanlar") or []
+        prev_r = load_rapor(ws)
+        prev = prev_r.get("hazirlayanlar") or []
         if people is not None and prev and prev != people:
             d.append(f"  rapor.hazirlayanlar: {len(prev)} kişi → {len(people)} kişi")
+        if sablon and prev_r.get("sablon") and str(Path(str(prev_r["sablon"])).expanduser()) != sablon:
+            d.append(f"  rapor.sablon: {prev_r['sablon']!r} → {sablon!r}")
         if d and not args.yes:
             print(f"Bu çalışma alanı zaten kurulu ({ws}/config.yaml) ve cevaplar farklı:")
             print("\n".join(d))
@@ -129,11 +137,16 @@ def _run(args) -> int:
     write_section(ws, sec)
     if people is not None:
         write_rapor_key(ws, "hazirlayanlar", people)
+    if sablon:
+        write_rapor_key(ws, "sablon", sablon)
     notes = agentfiles.write_workspace_files(ws, sec, claude_hook=args.claude_hook)
     print(f"Kuruldu: {ws}/config.yaml ({sec['birim']} · {sec['donem']} · profil {sec['profil']})")
     n = len(load_rapor(ws).get("hazirlayanlar") or [])
     print(f"  raporu hazırlayanlar: {n} kişi" + ("" if n else " (boş: kapak yer tutucuları kalır, rapor TASLAK; "
                                                     "answers.yaml `hazirlayanlar` ile yeniden bidr init)"))
+    sab = load_rapor(ws).get("sablon")
+    print(f"  rapor şablonu: {sab}" if sab else "  rapor şablonu: yok (render'dan önce answers.yaml `sablon` "
+                                                 "ile yeniden bidr init; bidr next hatırlatır)")
     for n in notes:
         print(f"  {n}")
     from bidr.pipeline.state import bidr_command

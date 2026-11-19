@@ -93,6 +93,8 @@ class Result:
     # işaretlenen OD'nin kaynağı: onayli (komisyon, audit `od_onayli`) | kod (audit `od`) | metin
     # (audit kaydı yok: write'ın `od_onerisi`). Onaysız işaretlenenler denetle'de uyarı olur.
     od_kaynagi: dict[str, str] = field(default_factory=dict)
+    # kanıt klasöründe olup metinde atıf almayan, numara boşluğu kalmasın diye listelenen kanıtlar
+    atifsiz_listelenen: dict[str, list[str]] = field(default_factory=dict)
 
     @property
     def od_onay_bekliyor(self) -> dict[str, dict]:
@@ -108,7 +110,7 @@ class Result:
                 "kapsam_disi": self.kapsam_disi, "karar_gerekli": self.karar_gerekli, "yonler": self.yonler,
                 "eksik_notlu_metin": self.eksik_notlu,
                 "uyari": len(self.uyarilar), "baglantili_kanit": self.baglantili,
-                "baglantisiz_kanit": len(self.baglantisiz),
+                "baglantisiz_kanit": len(self.baglantisiz), "atifsiz_listelenen": self.atifsiz_listelenen,
                 "degisen_parcalar": self.degisen_parcalar}
 
 
@@ -166,6 +168,37 @@ def load_links(index: Path | None) -> dict[tuple[str, str], str]:
             if u and r.get("olcut") and r.get("kanit_no"):
                 out[(r["olcut"].strip(), r["kanit_no"].strip())] = u
     return out
+
+
+def load_index_rows(index: Path | None) -> dict[str, list[dict]]:
+    """evidence-index.csv → {ölçüt: [{no, ad, dosya}]} (kanıt klasöründeki dosyalar). Yoksa boş."""
+    import csv
+    if index is None or not Path(index).exists():
+        return {}
+    out: dict[str, list[dict]] = {}
+    with open(index, encoding="utf-8", newline="") as f:
+        for r in csv.DictReader(f):
+            c, no = (r.get("olcut") or "").strip(), (r.get("kanit_no") or "").strip()
+            if c and RE_NO.match(no):
+                out.setdefault(c, []).append({"no": no, "ad": (r.get("ad") or "").strip(),
+                                              "dosya": (r.get("dosya") or "").strip()})
+    return out
+
+
+def _no_key(no: str) -> tuple:
+    m = RE_NO.match(str(no))
+    return (int(m.group(1)), str(no)) if m else (10 ** 6, str(no))
+
+
+def evidence_list(cited: list[dict], filed: list[dict]) -> tuple[list[dict], list[str]]:
+    """Ölçütün kanıt listesi: metnin atıf verdiği kanıtlar + kanıt klasörüne konmuş ama metinde atıf
+    almayanlar, numara sırasıyla. Klasördeki numaralar listede boşluk bırakmaz (`bidr denetle`
+    `kanit_numarasi` / `listede_olmayan_dosya`); atıfsız olanlar ikinci değerle döner."""
+    by = {str(k.get("no", "")).strip(): k for k in cited}
+    extra = [k for k in filed if k["no"] not in by]
+    for k in extra:
+        by[k["no"]] = k
+    return [by[n] for n in sorted(by, key=_no_key)], [k["no"] for k in extra]
 
 
 def eksik_text(a: dict | None) -> str | None:
@@ -346,6 +379,7 @@ def render(template: Path, out: Path, *, texts_dir: Path, audit_path: Path | Non
     res.uyarilar += uy
 
     links = load_links(index_path)
+    filed = load_index_rows(index_path)
     if index_path is not None and not Path(index_path).exists():
         res.uyarilar.append(f"evidence-index.csv yok ({index_path}); kanıt adları bağlantısız")
     doc = docx.Document(str(template))
@@ -412,7 +446,10 @@ def render(template: Path, out: Path, *, texts_dir: Path, audit_path: Path | Non
                 aciklama.append(ops.make_paragraph([(note, {"italic": True})]))
                 res.eksik_notlu.append(cid)
             kanit = []
-            for k in t.get("kanitlar") or []:
+            liste, atifsiz = evidence_list(t.get("kanitlar") or [], filed.get(cid, []))
+            if atifsiz:
+                res.atifsiz_listelenen[cid] = atifsiz
+            for k in liste:
                 pre, ad = kanit_parts(k, opts.kanit_bicimi)
                 url = links.get((cid, str(k.get("no", "")).strip()))
                 if url:

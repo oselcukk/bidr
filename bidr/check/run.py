@@ -286,10 +286,13 @@ def file_sha(p: Path) -> str:
 def denetle(docx_path: Path, *, rules: Rules | None = None, sablon: Path | None = None,
             kanit_klasoru: Path | None = None, index_path: Path | None = None,
             beklenen: tuple[list[str], list[str]] | None = None,
-            od_bekleyen: dict[str, dict] | None = None) -> Sonuc:
+            od_bekleyen: dict[str, dict] | None = None,
+            taslak_nedenleri: list[str] | None = None) -> Sonuc:
     """`beklenen`: (alt ölçütler, ölçütler); vars. paket ölçüt verisi (46 alt ölçüt).
     `od_bekleyen`: {ölçüt: {od, kaynak}}: rubrikte insan onayı olmadan (kod/metin önerisiyle)
-    işaretlenen düzeyler (`od_onay_bekleyenler`); her biri `od_onay_bekliyor` uyarısı olur."""
+    işaretlenen düzeyler (`od_onay_bekleyenler`); her biri `od_onay_bekliyor` uyarısı olur.
+    `taslak_nedenleri`: bu belgeyi üreten render'ın TASLAK gerekçeleri (`taslak_nedenleri()`);
+    verilmezse damga bulgusu nedeni bilinmiyor der (tahmin etmez)."""
     import docx
 
     rules = rules or Rules()
@@ -303,7 +306,7 @@ def denetle(docx_path: Path, *, rules: Rules | None = None, sablon: Path | None 
     _kapak(doc, s)
     listeler = _olcutler(doc, d, s, beklenen or beklenen_olcutler())
     _swot(doc, d, s)
-    _form_alanlari(doc, s, sablon)
+    _form_alanlari(doc, s, sablon, taslak_nedenleri)
     if sablon is not None and Path(sablon).exists():
         _sablondan(s, Path(sablon), rules)
     if kanit_klasoru is not None:
@@ -319,11 +322,9 @@ def denetle(docx_path: Path, *, rules: Rules | None = None, sablon: Path | None 
 OD_KAYNAK = {"kod": "kod önerisi", "metin": "metnin önerisi"}
 
 
-def od_onay_bekleyenler(ws: Path, docx_path: Path) -> tuple[dict[str, dict], str]:
-    """({ölçüt: {od, kaynak}}, kaynak açıklaması): insan onayı olmadan işaretlenen OD düzeyleri.
-    Render kaydı (`.bidr-render.json`) bu docx'i üretmişse (çıktı özeti tutuyorsa) onun
-    `od_onay_bekliyor` listesi esastır; yoksa `audit-olcutler.json`'da `od_onayli`'si boş ve
-    `od`'si olan ölçütler (render kodu çağrılmaz; dosyalar salt okunur)."""
+def render_kaydi(ws: Path, docx_path: Path) -> dict | None:
+    """Render kaydı (`.bidr-render.json`), yalnız bu docx'i üretmişse (çıktı özeti tutuyorsa);
+    değilse None (belge sonradan değişmiş ya da başka bir render'ın çıktısı)."""
     import hashlib
     ws, docx_path = Path(ws), Path(docx_path)
     man = ws / ".bidr-render.json"           # bidr.render.run.MANIFEST
@@ -331,10 +332,28 @@ def od_onay_bekleyenler(ws: Path, docx_path: Path) -> tuple[dict[str, dict], str
         rec = json.loads(man.read_text(encoding="utf-8")) if man.exists() else None
     except (OSError, ValueError):
         rec = None
-    if rec and isinstance(rec.get("od_onay_bekliyor"), dict) and docx_path.exists():
-        sha = hashlib.sha256(docx_path.read_bytes()).hexdigest()[:16]
-        if rec.get("cikti_sha") == sha:
-            return {str(c): v for c, v in rec["od_onay_bekliyor"].items() if isinstance(v, dict)}, "render kaydı"
+    if not isinstance(rec, dict) or not docx_path.exists():
+        return None
+    return rec if rec.get("cikti_sha") == hashlib.sha256(docx_path.read_bytes()).hexdigest()[:16] else None
+
+
+def taslak_nedenleri(ws: Path, docx_path: Path) -> list[str] | None:
+    """Bu docx'i üreten render'ın TASLAK gerekçeleri; kayıt yoksa ya da eşleşmiyorsa None."""
+    rec = render_kaydi(ws, docx_path)
+    if rec is None or not isinstance(rec.get("taslak_nedenleri"), list):
+        return None
+    return [str(x) for x in rec["taslak_nedenleri"]]
+
+
+def od_onay_bekleyenler(ws: Path, docx_path: Path) -> tuple[dict[str, dict], str]:
+    """({ölçüt: {od, kaynak}}, kaynak açıklaması): insan onayı olmadan işaretlenen OD düzeyleri.
+    Render kaydı (`.bidr-render.json`) bu docx'i üretmişse (çıktı özeti tutuyorsa) onun
+    `od_onay_bekliyor` listesi esastır; yoksa `audit-olcutler.json`'da `od_onayli`'si boş ve
+    `od`'si olan ölçütler (render kodu çağrılmaz; dosyalar salt okunur)."""
+    ws, docx_path = Path(ws), Path(docx_path)
+    rec = render_kaydi(ws, docx_path)
+    if rec and isinstance(rec.get("od_onay_bekliyor"), dict):
+        return {str(c): v for c, v in rec["od_onay_bekliyor"].items() if isinstance(v, dict)}, "render kaydı"
     ap = ws / "audit-olcutler.json"
     try:
         js = json.loads(ap.read_text(encoding="utf-8")) if ap.exists() else None
@@ -578,14 +597,21 @@ def _parca_imzalari(doc) -> dict[str, list[str]]:
     return out
 
 
-def _form_alanlari(doc, s: Sonuc, sablon: Path | None) -> None:
+def _form_alanlari(doc, s: Sonuc, sablon: Path | None, nedenler: list[str] | None = None) -> None:
     import docx
     imza = _parca_imzalari(doc)
     taslak = [k for i, sec in enumerate(doc.sections) for k in FORM_PARCALARI
               if not getattr(sec, k).is_linked_to_previous
               and any(x.startswith("TASLAK") for x in field_signature(getattr(sec, k)._element))]
+    if nedenler:
+        neden = "nedeni (render kaydı): " + "; ".join(nedenler)
+    else:
+        neden = ("nedeni bilinmiyor: bu belge son render kaydıyla eşleşmiyor; `bidr render` çıktısındaki "
+                 "'Belge TASLAK damgalı' satırlarına bakın")
+    if taslak:
+        s.bilgi["taslak_nedenleri"] = list(nedenler or [])
     for k in taslak:
-        s.ekle(KRITIK, "taslak_damgasi", k, "üstbilgide TASLAK damgası var (doğrulanmamış metin)")
+        s.ekle(KRITIK, "taslak_damgasi", k, f"üstbilgide TASLAK damgası var; {neden}")
     hepsi = " ".join(x for v in imza.values() for x in v)
     s.bilgi["form_alanlari"] = imza
     if sablon is not None and Path(sablon).exists():
@@ -653,7 +679,9 @@ def _kanit_klasoru(ev: Path, listeler: dict[str, dict[int, int]], s: Sonuc) -> N
                        f"listede {n}_OD{od}, dosya adında OD{'/'.join(str(o) for o, _ in nums[n])}")
         for n in sorted(set(nums) - set(liste)):
             s.ekle(UYARI, "listede_olmayan_dosya", olcut,
-                   f"{n} numaralı dosya raporun kanıt listesinde yok: {nums[n][0][1]}")
+                   f"{n} numaralı dosya raporun kanıt listesinde yok: {nums[n][0][1]} (metinde atıf "
+                   "almayan kanıt olabilir: `bidr render` kanıt klasöründeki her kanıtı listeler; render "
+                   "eskiyse yeniden çalıştırın)")
     for olcut in sorted(set(dosyalar) - set(listeler)):
         s.ekle(UYARI, "listede_olmayan_dosya", olcut, "ölçüt bloğu belgede yok ama kanıt dosyaları var")
 

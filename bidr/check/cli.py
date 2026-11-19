@@ -5,7 +5,8 @@
 Şablon verilmezse config.yaml `rapor.sablon`, o da yoksa son render kaydındaki şablon
 (`.bidr-render.json`) kullanılır. Kural değerleri config.yaml `rapor.denetim`. Rubrikte insan
 onayı olmadan (kod önerisiyle) işaretlenen OD'ler `od_onay_bekliyor` uyarısı olur (render kaydı ya
-da `audit-olcutler.json` `od_onayli`)."""
+da `audit-olcutler.json` `od_onayli`). TASLAK damgasının nedeni bu docx'i üreten render
+kaydından okunur (`taslak_nedenleri`)."""
 from __future__ import annotations
 
 import json
@@ -30,7 +31,7 @@ def _run(args) -> int:
     from bidr.write.sources import rapor_section
 
     from .rules import load_rules
-    from .run import denetle, od_onay_bekleyenler, tablo, yaz
+    from .run import denetle, od_onay_bekleyenler, tablo, taslak_nedenleri, yaz
 
     ws = Path(args.workspace).expanduser().resolve()
     rapor = rapor_section(ws)
@@ -45,7 +46,8 @@ def _run(args) -> int:
     try:
         res = denetle(docx_path, rules=rules, sablon=_sablon(ws, args.sablon, rapor),
                       kanit_klasoru=kanit if (args.kanit or kanit.is_dir()) else None,
-                      index_path=index, od_bekleyen=od_onay_bekleyenler(ws, docx_path)[0])
+                      index_path=index, od_bekleyen=od_onay_bekleyenler(ws, docx_path)[0],
+                      taslak_nedenleri=taslak_nedenleri(ws, docx_path))
     except Exception as e:  # bozuk docx vb.
         print(f"HATA denetlenemedi: {e}", file=sys.stderr)
         return 2

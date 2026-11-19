@@ -50,6 +50,31 @@ hepsini gösterir; önkoşulu bitmemiş aşamanın komutu çıkış kodu 3 ile d
 Rapor katmanının arayüzü: `docs/REPORT_LAYER.md`; denetim kuralları: `docs/AUDIT.md`;
 model katmanı: `docs/MODEL_LAYER.md`.
 
+Çıkış kodları (bütün komutlarda ortak anlam): 0 tamam · 2 eksik/yanlış argüman ya da girdi ·
+3 önkoşul aşaması bitmemiş (kapı) · 5 `init`: var olan kurulum farklı, kullanıcı onayı gerekir.
+`apply` komutlarında 1 = en az bir cevap geçersiz ya da şüpheli olduğu için uygulanmadı
+(`work/<aşama>/GECERSIZ.md`; çıktının son satırı sayıları söyler). Cevapsız ya da eski sürüm
+paket apply'ı 1 yapmaz: aşamanın bitip bitmediğini `bidr next` söyler. transcribe/describe'da
+şüpheli = ajanın okuması OCR'ın okunabilen parçalarıyla örtüşmüyor; görüntüye bakılır, okuma
+doğruysa `apply --kabul-supheli`. `denetle`'de 1 = kritik bulgu var.
+
+### Ajan modunda iş paketlerini dağıtmak
+
+Büyük aşamalarda (kaba/ince karar, binlerce paket) paketler alt ajanlara gruplanarak verilir:
+
+- **Eşzamanlı alt ajan sınırı.** Claude Code aynı anda en çok 20 alt ajan çalıştırır; 21.'si
+  hata verir. Grupları 20'lik dalgalar halinde başlat, biten her grubun yerine yenisini koy.
+  Başka ajan ortamlarının sınırı farklı olabilir; ilk hata mesajı sınırı söyler.
+- **Ortak başlık + belge parçası.** Bir aşamanın paketlerinde istemin başı (kurallar, ölçüt
+  kataloğu, birim) ve sonu (şema) bütün paketlerde birebir aynıdır (kaba kararda istemin yaklaşık
+  %70'i). Her alt ajana bu ortak kısmı bir kez (`ORTAK.md`), belgeye özgü kısımları bir grup
+  dosyasında ver. Önce ortak kısmın bütün paketlerde bayt bayt aynı olduğunu bir betikle
+  doğrula; aynı değilse gruplama yapma. Paket dosyalarına (`<id>.json`) dokunulmaz; değişen
+  yalnız sunum biçimidir.
+- **Cevap yolu değişmez.** Alt ajan her paket için `work/<aşama>/<id>.out.json` yazar (grup
+  cevabı yazdırıp bir betikle dağıtmak da olur). Alt ajanın Bash'i olmayabilir: cevabı dosya
+  okuma/yazma araçlarıyla yazmak yeterlidir. Doğrulama `apply`'dadır (şema, birebir alıntı).
+
 ## Kimlikler
 
 `doc_id` = içerik sha256'sının ilk 16 hanesi (`bidr.common.doc_id`). Aynı içerik
@@ -95,6 +120,12 @@ aynı kimliği alır; ad değişse de değişmez.
 
 Repo dışında tutulur (`bidr.common.Workspace`). Gerçek belge, metin, etiket
 yalnız orada durur.
+
+Sandbox'lı ajan ortamında (yalnız çalışma klasörüne yazılabilir) `tools/sandbox.sh` geçici
+klasörü (`TMPDIR`) ve paket önbelleklerini repo içindeki git dışı `_tmp/`'ye alır; yalnız geçici
+dosya (OCR'ın sayfa görüntüleri, pytest'in sınama klasörleri) oraya düşer. Çalışma alanı yine
+repo dışında olmalıdır (`bidr init` reddeder). Testler TMPDIR'in repo içinde olmasına
+dayanıklıdır (`tests/conftest.py`: yalnız pytest'in temel klasörü repo dışı sayılır).
 
 ## Durum (2026-11-18)
 

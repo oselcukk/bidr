@@ -793,8 +793,9 @@ def render_tamam(c: Ctx) -> Check:
     m = load_manifest(ws.root)
     if not sablon and not m:
         return Check(kim=INSAN, komutlar=[
-            "(insan) boş FR-0833 şablonunun (.docx) yolunu kullanıcıdan al; config.yaml'a "
-            "`rapor: {sablon: <yol>}` olarak yazılır (ya da komuta --sablon <yol>)", cmd],
+            "(insan) boş FR-0833 şablonunun (.docx) yolunu kullanıcıdan al; answers.yaml'a "
+            "`sablon: <tam yol>` yaz ve `bidr init --answers <answers.yaml>` yeniden çalıştır "
+            "(config.yaml rapor.sablon'a o yazar; tek seferlik: komuta --sablon <yol>)", cmd],
             neden="rapor şablonu bilinmiyor (config.yaml rapor.sablon yok)")
     if not m or not Path(m.get("cikti") or "").exists():
         return Check(kim=KOMUT, komutlar=[cmd], neden="report.docx üretilmedi")

@@ -46,25 +46,43 @@ Aşamalar (`bidr/data/pipeline.yaml`, ayrıntı `docs/ARCHITECTURE.md`):
    yalnız doğrulanmış metin ve audit bulgusundan, aynı bağımsız doğrulamayla) → render
    (`report.docx`, FR-0833 şablonu; kapak hazırlayanları, ölçüt kapsamı).
 
-**Sandbox'lı ajan ortamı** (Codex, Claude Code sandbox gibi; yalnız çalışma klasörüne yazılabilir):
-paket yöneticisi önbelleği ve geçici klasör çalışma klasörüne alınır, yoksa kurulum ya da OCR
-(`tesseract` geçici PNG'yi `/tmp` altında açamaz) başarısız olur:
+**Sandbox'lı ajan ortamı** (Codex, Claude Code sandbox gibi; yalnız çalışma klasörüne yazılabilir,
+`export X=…` ya da `X=… komut` biçimi izin ister): hazır sarmalayıcıyı kullanın. Geçici klasörü
+(`TMPDIR`; OCR'da `tesseract` geçici PNG'yi `/tmp` altında açamaz) ve paket önbelleklerini repo
+içindeki git dışı `_tmp/`'ye alıp komutu çalıştırır; ortam değişkenini elle vermek gerekmez:
 
 ```
-mkdir -p _tmp/uv-cache _tmp/pip-cache _tmp/tmp                 # _tmp/ git dışıdır
-export UV_CACHE_DIR="$PWD/_tmp/uv-cache" PIP_CACHE_DIR="$PWD/_tmp/pip-cache" TMPDIR="$PWD/_tmp/tmp"
-uv venv && uv pip install -e '.[dev]'                          # bidr komutlarını da aynı TMPDIR ile çalıştırın
+sh tools/sandbox.sh kur                    # .venv + bidr (uv yoksa python3 -m venv + pip)
+sh tools/sandbox.sh pytest -q              # test paketi (TMPDIR repo içindeyken de geçer)
+sh tools/sandbox.sh next -w <çalışma alanı>   # her bidr komutu: sh tools/sandbox.sh <argümanlar>
 ```
 
-**Boş FR-0833 şablonu** (`rapor.sablon`, render için gerekli): kurulumda kullanıcıdan istenir.
-Kurum profili (`bidr/data/institutions/<kurum>.yaml`) `sablon_adresi` taşıyorsa ajan şablonu
-oradan çalışma alanına indirir; adres boşsa (gtu profilinde şimdilik boş) kullanıcıya sorulur.
+Sarmalayıcıyla çalışan `bidr next` ve çalışma alanının `AGENTS.md`'si sonraki komutları da
+sarmalayıcıyla yazar. Çalışma alanı yine repo dışında olmalıdır; `_tmp/`'ye yalnız geçici dosya
+düşer. Windows PowerShell'de aynı oturumda bir kez:
+`$env:TMPDIR="$PWD\_tmp\tmp"; $env:UV_CACHE_DIR="$PWD\_tmp\uv-cache"; $env:PIP_CACHE_DIR="$PWD\_tmp\pip-cache"`.
 
-Önkoşulu bitmemiş aşamanın komutu çıkış kodu 3 ile durur. Çalışma alanı repo ve kaynak
-klasör dışında olmalıdır; kaynak salt okunurdur.
+**Boş FR-0833 şablonu** (`rapor.sablon`, render için gerekli): kurulumda kullanıcıdan istenir ve
+yolu answers.yaml `sablon` alanına (tam yol) yazılır; `bidr init` dosyanın .docx olduğunu
+denetleyip `config.yaml` `rapor.sablon`'a yazar (config elle düzenlenmez). Kurum profili
+(`bidr/data/institutions/<kurum>.yaml`) `sablon_adresi` taşıyorsa ajan şablonu oradan çalışma
+alanına indirir; adres boşsa (gtu profilinde şimdilik boş) kullanıcıya sorulur. Şablon kurulumda
+yoksa `sablon: null` kalır; render'dan önce `bidr next` yeniden ister.
+
+Çıkış kodları: 0 tamam · 2 eksik/yanlış argüman · 3 önkoşul aşaması bitmemiş · 5 `init`
+kullanıcı onayı ister; `apply` komutlarında 1 = geçersiz ya da şüpheli cevap uygulanmadı
+(`work/<aşama>/GECERSIZ.md`), `denetle`'de 1 = kritik bulgu (ayrıntı `docs/ARCHITECTURE.md`).
+Çalışma alanı repo ve kaynak klasör dışında olmalıdır; kaynak salt okunurdur.
+
+**Alt ajanlarla çalışmak.** Kaba/ince karar gibi binlerce paketli aşamalarda paketler alt
+ajanlara gruplanır. Claude Code aynı anda en çok 20 alt ajan çalıştırır: 20'lik dalgalar halinde
+başlatın. Paketlerin istem başı (kurallar, ölçüt kataloğu) ve sonu (şema) birebir aynıdır; her
+alt ajana bu ortak kısmı bir kez, belgeye özgü kısımları bir grup dosyasında verin. Cevaplar yine
+paket başına `*.out.json`; ayrıntı `docs/ARCHITECTURE.md` "Ajan modunda iş paketlerini dağıtmak".
 
 Rapor ayarları `config.yaml`'ın `rapor:` bölümündedir (hepsi isteğe bağlı; ayrıntı
-`docs/REPORT_LAYER.md`): `sablon` (boş FR-0833 .docx), `onceki_rapor` (geçen yılın raporu),
+`docs/REPORT_LAYER.md`): `sablon` (boş FR-0833 .docx; answers.yaml `sablon` ile `bidr init`
+yazar), `hazirlayanlar` (kapak; answers.yaml ile), `onceki_rapor` (geçen yılın raporu),
 `kanit_kok_baglanti` (kanıt klasörünü yüklediğiniz kök adres), `yayin_alan_adlari`,
 `yeniden_yazim_siniri`. Raporda kanıt adı tıklanabilir bağlantıdır: kamuya açık belge
 yayımlandığı adrese (belge metnindeki web adresi ya da review.xlsx "bağlantı" sütunu),
