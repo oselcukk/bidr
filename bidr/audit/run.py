@@ -457,7 +457,7 @@ def _criterion(cs, tags, cid, rows, allowed, rule: D.Rule | None = None,
     notlar.extend(ek.get("notlar") or [])
     od_onayli = (od_karar or {}).get("od")
     if rs.od == 5 and od_onayli is None:
-        notlar.append("OD5 kod önerisidir: insan onayı bekliyor (review.xlsx \"Ölçüt özeti\" ONAYLANAN OD)")
+        notlar.append("OD5 kod önerisidir: insan onayı bekliyor (review.xlsx \"Maddeler\" Onayladığınız düzey)")
     if od_onayli is not None and od_onayli != rs.od:
         notlar.append(f"komisyonun onayladığı düzey OD{od_onayli} (kod önerisi OD{rs.od})")
     eksik_notu = _missing_note(rows, counted, rs)
@@ -630,6 +630,8 @@ def _unit_row(rec: dict, eff: dict, pin: dict | None, docs: dict, name: str) -> 
         durum = f"insan kararı: {rel}"
     return {"doc_id": did, "belge": (docs.get(did) or {}).get("calisma_adi") or did, "kanit_adi": name,
             "gerekce": ince.get("gerekce") or "", "eslesmeler": esl, "eslesme_sayisi": len(red),
+            "olcutler": sorted({m.get("olcut") for m in (*red, *(x for x in eff.get("eslesmeler") or [] if x.get("kabul")))
+                                if m.get("olcut")}),
             "model_iliskisi": ince.get("birim_iliskisi_model") or record_unit_relation(rec),
             "durum": durum, "insan_birim_iliskisi": rel, "not": (pin or {}).get("not") or ""}
 
@@ -848,8 +850,8 @@ def audit(ws_root: Path, *, out: Path | None = None, profile: str | None = None)
     n_rb = _mark_relook(a, outp, applied, carry, {str(xr.get("satir")): xr for xr in xrows})
     if n_rb:
         uy.append(f"{n_rb} kararlı satır yeniden bakılmalı (karardan sonra yeni inceleme işareti ya da sayılan "
-                  f"aşama/OD değişti): eski karar korundu; review.xlsx 'YENİDEN BAK' sütunu (tablonun başında). "
-                  f"Karar aynı kalacaksa 'bakıldı' = evet, sonra `bidr audit apply`")
+                  f"aşama/OD değişti): eski karar korundu; review.xlsx 'İnceleme' 1. bölüm. "
+                  f"KARARINIZ'ı yeniden seçin (aynı kalacaksa aynısını), sonra `bidr audit apply`")
     if carry_names:
         n = 0
         for r in a.rows:     # uygulanmamış kanıt adı düzeltmesi: tabloda kalır
@@ -961,6 +963,8 @@ def _norm(v) -> str:
 def parse_decision(xr: dict, cs: CriteriaSet) -> tuple[dict | None, str | None]:
     """Tablo satırı → karar kaydı. (None, None): karar boş. (None, hata): geçersiz."""
     from bidr.criteria.slots import STAGES
+    if xr.get("sade_hata"):                     # sade sayfadaki karar çevrilemedi (bkz. sade.py)
+        return None, str(xr["sade_hata"])
     k = _norm(xr.get("karar"))
     k = {"red": "ret", "reddet": "ret", "onay": "kabul", "duzeltme": "duzelt"}.get(k, k)
     sid = xr.get("satir") or ""

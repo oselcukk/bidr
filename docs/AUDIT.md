@@ -264,6 +264,62 @@ verify/render şeridi çağırabilir).
 
 ## review.xlsx
 
+### Sade sayfalar (son kullanıcı; `bidr/audit/sade.py`)
+
+Kalite komisyonu üyesi teknik değildir: 37 sütunluk "Eşleşmeler", yuva/aşama/OD/işaret kodları
+anlaşılmıyordu. Dosya açılınca yalnız şu sayfalar görünür; teknik sayfalar ("Eşleşmeler", "Ölçüt
+özeti", "Başka birime ait sayılanlar", "Açıklama", `_meta`) gizli kalır ve uzman/ajan yolu olarak
+çalışmaya devam eder.
+
+- **İnceleme** — satır = bir öneri ("şu belge şu maddeye kanıt"). Sütunlar: Sıra · Madde (kod —
+  kılavuz başlığı; altında yuvanın kılavuz örneği) · Belge (klasördeki özgün dosya adı; alt klasör
+  ayrı satırda) · Önerilen kanıt adı (düzeltilebilir) · Belgede ne yazıyor (alıntı) · Neden bu
+  maddeye (aşamanın düz adı + modelin gerekçesi) · Dikkat (işaretlerin düz Türkçe karşılığı ve ne
+  yapılacağı; `sade.DIKKAT`) · Önerimiz (Kabul/Bakın) · **KARARINIZ** · Doğru madde · Not. Gizli
+  sütunlar: satır kimliği, bölüm, yazılan (yazıldığı andaki karar/madde/not/ad, JSON).
+  - KARARINIZ (açılır liste) → teknik karar: `Kabul` = kabul; `Kabul — etkinlik yapıldı` = duzelt
+    aşama `uygula` (mevcut yuva; satır zaten izleme/iyileştirme sayılıyorsa düşürmemek için kabul);
+    `Ret` = ret; `Başka maddeye taşı` = duzelt ölçüt+yuva; `Başka maddeye taşı — etkinlik yapıldı` =
+    ikisi birden (gerçek incelemede 14 düzeltmenin 5'i böyleydi). Doğru madde ölçüt kodu (açılır
+    liste, `B.3.2 — başlık`) ya da yuva (`B.3.2/3`) olabilir; yalnız ölçüt verilirse yuvayı kod seçer
+    (yuva etiketi satırın sayılan aşamasını içeren tek yuva; tek değilse ilk yuva ve Not'a "maddedeki
+    yeri kodca seçildi: …; yeniden bakılmalı"). Taşımada Doğru madde boşsa ya da seçenek tanınmazsa
+    satır geçersizdir (`apply` çıkış 1).
+  - Bölümler: **1. Bakmanız gerekenler** (kararsız ve: düşük güven, bakılmalı işaret, OD4/5'e
+    yükselten, sayılmayan, birim onayı bekleyen; ya da yeniden bakılacak — açık sarı), **2. Sorunsuz
+    görünenler** (kararsız, işaretsiz), **3. Daha önce karar verdikleriniz**. Sıralama: bölüm, yeniden
+    bak, birim onayı, madde kodu.
+  - **Toplu kabul**: 2. bölüm başlık satırının KARARINIZ hücresinde `Hepsini kabul` seçilirse o
+    bölümde kararı boş kalan satırlar `kabul` olur (Not: "toplu kabul (sade tablo, 2. bölüm)").
+    Seçilmezse boş satır karar bekler: boş = kabul varsayılmaz, çünkü `apply` inceleme sırasında
+    (birim kararı, ara kayıt) birkaç kez çalışır ve görülmemiş satırları sessizce kabul ederdi.
+    1. bölüm toplu kabul edilmez.
+  - **Yeniden bakılacak** satırda KARARINIZ boş yazılır, Dikkat "Daha önce "Kabul" demiştiniz…"
+    der; eski karar geçerli kalır. Kullanıcı herhangi bir seçenek seçince (aynısı da olur) satır
+    bakılmış sayılır (`bakildi = evet`).
+- **Bölümünüze ait mi** — birim sayfasının sadesi: Belge · Kanıt adı · Neden soruyoruz · Hangi
+  maddeler için önerildi · CEVABINIZ (`Evet — bölümümüzün belgesi` = kendi, `Hayır — başka birimin
+  belgesi` = baska_birim, `Fakültenin geneli için`, `Üniversitenin geneli için`, `Üst birimin bölümümüz
+  hakkındaki kararı`, `Önceki cevabı kaldır` = model) · Not.
+- **Maddeler** — Madde · Önerilen düzey (`3 — Uygulanıyor` …) · Neden bu düzey (kanıtı olan/olmayan
+  kısımlar, bir üst düzey için gereken) · Onayladığınız düzey (boş = öneri) · Not → `olcut-od-kararlari.jsonl`.
+- **Nasıl doldurulur** — 7 satır.
+
+Biçim: başlık dondurulmuş, hücreler kaydırmalı, satır yüksekliği metne göre, A4 yatay sayfaya
+genişlikte sığar, başlık her sayfada yinelenir; renkler: başlık mavi-gri, doldurulacak hücre açık
+mavi, bakılacak satır açık sarı.
+
+**Okuma (birleştirme).** `sheet.read_review` / `read_unit_sheet` / `read_od_sheet` teknik sayfayı
+okur, sonra sade sayfayı üstüne yazar: sade hücre gizli "yazılan" değerinden farklıysa sade değer
+teknik karara çevrilir; değilse teknik sayfanın değeri geçerlidir (teknik sayfayı doğrudan düzenleyen
+eski yol ve testler değişmez). Sade sayfası olmayan eski biçim tablo olduğu gibi okunur; `bidr audit`
+yeniden üretiminde işlenmiş kararlar (`review-decisions.jsonl`) ve işlenmemiş tablo kararları yeni
+sade sayfaya etiketiyle taşınır (gerçek çalışma alanı denemesi, 2026-11-21: eski biçim tablodaki 187
+karar — 151 kabul, 22 ret, 14 düzelt — 3. bölüme taşındı; `apply` aynı karar, birim ve kanıt adı
+kayıtlarını verdi).
+
+### Teknik sayfalar
+
 "Eşleşmeler" sütunları: satır kimliği (`<doc_id>|<yuva>`), belge çalışma adı, tür, birim ilişkisi
 (`belirsiz` sarı), dönem içi,
 dönem kuralı (sınıf · zaman · işaret, ör. "olay · önceki yıl (2023) · geçmiş kanıt
@@ -369,7 +425,7 @@ işlemek kullanıcı onayıyla ayrı bir adımdır. gaps.md yeniden yazılırken
 ## Tamamlanma şartı (`audit_tamam`)
 
 review.xlsx var ve güncel `decisions.jsonl`'den üretilmiş (`_meta.kararlar_sha`); her satırın
-geçerli kararı var; tablodaki her karar `review-decisions.jsonl`'de birebir; kanıt adı ve
+geçerli kararı var (sade sayfada 2. bölüm `Hepsini kabul` ile toplu verilebilir); tablodaki her karar `review-decisions.jsonl`'de birebir; kanıt adı ve
 bağlantı düzeltmeleri ve birim sayfası kararları da işlenmiş (`uygulanmamis_duzeltme` = 0);
 birim kararları tablodan sonra değiştiyse tablo yeniden üretilmiş; "yeniden bakılmalı" satır yok
 (her biri için `bakıldı` = evet ya da değişen karar, işlenmiş). Aşama `onay: insan`: kararı ajan vermez.

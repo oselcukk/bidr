@@ -362,8 +362,10 @@ def audit_tamam(c: Ctx) -> Check:
         if st["gecersiz"]:
             why += f" ({st['gecersiz']} geçersiz karar)"
         return Check(kim=INSAN, ilerleme=prog,
-                     komutlar=[f"(insan) {ws.root / FILES['xlsx']}: kullanıcı her satıra KARAR yazar "
-                               "(kabul/ret/duzelt); gaps.md eksikleri gösterir. Kararı ajan vermez.",
+                     komutlar=[f"(insan) {ws.root / FILES['xlsx']}: kullanıcı 'İnceleme' sayfasında her satır için "
+                               "KARARINIZ'ı seçer (2. bölüm 'Hepsini kabul' ile toplu kabul edilebilir) ya da ajan "
+                               "satırları kullanıcıya tek tek sorup cevabı yazar; gaps.md eksikleri gösterir. "
+                               "Kararı ajan vermez.",
                                apply_cmd],
                      neden=why)
     if st["uygulanmamis"] or st.get("uygulanmamis_duzeltme"):
@@ -378,9 +380,9 @@ def audit_tamam(c: Ctx) -> Check:
         # karar korunur (insan kararı ezilmez); karardan sonra satırın dayanağı değişti
         prog["yeniden_bak"] = st["yeniden_bak"]
         return Check(kim=INSAN, ilerleme=prog,
-                     komutlar=[f"(insan) {ws.root / FILES['xlsx']}: 'YENİDEN BAK' sütunu dolu satırlar (tablonun "
-                               "başında, turuncu). Kullanıcı satıra yeniden bakar: karar aynı kalacaksa 'bakıldı' = "
-                               "evet, değilse KARAR/NOT'u değiştirir. Kararı ajan vermez.", apply_cmd],
+                     komutlar=[f"(insan) {ws.root / FILES['xlsx']}: 'İnceleme' 1. bölümde \"Daha önce … demiştiniz\" "
+                               "satırları. Kullanıcı satıra yeniden bakar ve KARARINIZ'ı yeniden seçer (aynı kalacaksa "
+                               "aynısını; teknik sayfada 'bakıldı' = evet de olur). Kararı ajan vermez.", apply_cmd],
                      neden=f"{st['yeniden_bak']} kararlı satır yeniden bakılmalı: karardan sonra yeni inceleme "
                            "işareti eklendi ya da sayılan aşama/OD değişti (eski karar korundu ve geçerli)")
     return Check(bitti=True, ilerleme=prog, neden=f"{st['satir']} satır kararlı ve işlendi")

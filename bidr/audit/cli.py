@@ -39,7 +39,7 @@ def _run(args) -> int:
                 return 1
             b = st.get("birim") or {}
             if b.get("geri_alinan") or b.get("kaldirilan") or b.get("baska_birim_onay"):
-                print("Birim kararları değişti: tabloyu yenileyin (geri alınan eşleşmeler 'Eşleşmeler' "
+                print("Birim kararları değişti: tabloyu yenileyin (geri alınan eşleşmeler 'İnceleme' "
                       "sayfasında karar bekler): bidr audit -w " + str(ws) + (f" --out {args.out}" if args.out else ""))
             if b.get("yeniden_karar"):
                 print(f"{len(b['yeniden_karar'])} belge yeniden ince karar bekliyor (eşleşme kaydı yok; birim "
@@ -48,8 +48,8 @@ def _run(args) -> int:
             if st["bos"]:
                 print(f"{st['bos']} satır karar bekliyor.")
             if st.get("yeniden_bak"):
-                print(f"{st['yeniden_bak']} kararlı satır yeniden bakılmalı ('YENİDEN BAK' sütunu; eski karar "
-                      "geçerli): karar aynı kalacaksa 'bakıldı' = evet, sonra yeniden apply.")
+                print(f"{st['yeniden_bak']} kararlı satır yeniden bakılmalı ('İnceleme' 1. bölüm; eski karar "
+                      "geçerli): KARARINIZ'ı yeniden seçin (aynı kalacaksa aynısını), sonra yeniden apply.")
             return 0
         a, paths = run.audit(ws, out=args.out, profile=args.profile)
     except (FileNotFoundError, RuntimeError, ValueError) as e:
@@ -65,7 +65,8 @@ def _run(args) -> int:
         print(f"  {i}. {gap_line(c)}")
     for k, p in paths.items():
         print(f"{k}: {p}")
-    print("Sonra: review.xlsx'te her satıra karar (kabul/ret/duzelt) → bidr audit apply -w " + str(ws)
+    print("Sonra: review.xlsx 'İnceleme' sayfasında KARARINIZ (2. bölüm için 'Hepsini kabul' seçilebilir; "
+          "ya da kullanıcıya satır satır sorulur) → bidr audit apply -w " + str(ws)
           + (f" --out {args.out}" if args.out else ""))
     return 0
 
