@@ -105,6 +105,30 @@ ok, score, span = verify_quote(quote, text)   # Türkçe katlama, boşluk, OCR t
   yeniden hesaplananla aynı değilse bekliyor — ikinci arama ya da yeniden karar eskitir; yalnız
   duyurulu faaliyet uyarıdır). Write paketine ölçütün kanıtlarının faaliyet özeti girer
   (docs/REPORT_LAYER.md "write"); audit kullanımı tasarımı docs/AUDIT.md "Faaliyet kayıtları".
+- **Araç güncellemesinde yeniden işleme** (bitmiş raporu yeni sürümle güncelleme). Paket
+  `girdi_sha` (görev girdisi başına sha) taşır, apply onu kayda (`kaba`/`ince.girdi_sha`) ve
+  `ince.denetim_surumu`'nu (`DENETIM_SURUMU`, kod denetimi kuralları) yazar. `prepare` işlenmiş
+  belgenin eskimesini ayırır (`staleness`): `eski_surum` (görev sürümü; toptan, `--yes`),
+  `girdi_degisti` (belgeye özgü girdi — `DOC_KEYS`: aday listesi ve ölçüt blokları, belge
+  bilgisi, metin payı, birim — değişti: onaysız yeniden paketlenir), `kural_degisti` (yalnız
+  ortak kural metni — istem şablonu, kanıt ilkeleri — değişti: kayıt geçerli, status'ta tek satır
+  "istem sürümü eski"; toptan yeniden işleme yalnız `--yes` ile), `istem_degisti` (ayrım
+  yapılamadı: girdi izi yok ve eski paket yok; `--yes` ile). `girdi_sha`'sız eski kayıtta ayrım
+  kayıttaki istemle üretilmiş eski paketten yapılır: yeni belge girdilerinin her biri eski
+  istemde birebir geçiyor ve paketin aday/metin özeti aynıysa yalnız kural değişmiştir (ajanın
+  güncelleme denemesindeki `ince_etki.py`'nin genel hâli); ilk karşılaştırmada kayda girdi izi
+  yazılır. `apply` yalnız istemi, cevabı ya da denetim sürümü değişen belgeyi yeniden işler
+  (öteki `degismedi`); yeniden işlenen kayıtta ikinci arama eşleşmeleri korunur (aşağıda).
+  Yardımcı dosyalar paket klasörünün dışında: `work/_durum/<aşama>-yeniden.json` (onay bekleyen
+  ve `kural_degisti` belgeler + son tam prepare'in `parmak`'ı: görev dosyaları, istemi kuran kod,
+  ölçüt/profil verisi, text/, documents.jsonl, candidates.jsonl, insan birim kararları, birim
+  bilgisi). `_pkg_paths` `_` ile başlayan dosyaları ve eski sürümün `YENIDEN.json`'ını paket
+  saymaz (prepare onu siler); `doc_id`'siz JSON `paket_degil` sayılır, apply çökmez.
+  `checks.karar_tamam`: ajan kipi kayıtları varken parmak yoksa ya da değiştiyse aşama bitmemiş
+  ("eski olabilir: araç sürümü ya da girdiler değişti") ve `bidr next` onaysız prepare'i ister;
+  prepare etkiyi hesaplar (model çağrısı yok). identify kayıtlarına `arac_surumu` yazılır
+  (`identify.pipeline.ARAC_SURUMU`); `identify_tamam` eski sürümlü ya da dönemi config'inkiyle
+  aynı olmayan (`--period`'suz çalışmış) kaydı bitmiş saymaz.
 - `bidr decide -w WS [--profile P] [--only-labeled] [--limit N]` →
   `decisions.jsonl`.
 - `bidr compare-labels -w WS` → geçmiş etiketle karşılaştırma: aynı / ekliyor /
@@ -215,8 +239,11 @@ işlenmiş arşivin bütün belgeleri derlem. Kod: `bidr/candidates/ikinci.py` (
   `karar`, `reddedilen_eslesme` yeniden hesaplanır; `ince`, `adaylar`, `kaba` değişmez (decide'ın
   eskime denetimi etkilenmez). Kayıt bölümü `ikinci_arama`: `olcutler` (bakılan ölçüt → puan,
   sıra, nedenler, istem/cevap sha, eşleşme/kabul sayısı), `ince_parmak`, `eslesme`, `son`.
-  İlk geçiş yeniden karara bağlanırsa (`decide prepare --only`) ikinci arama eşleşmeleri düşer,
-  parmak değişir: eski paket `eski_paket` sayılır, `arama prepare` belgeyi yeniden paketler.
+  İlk geçiş yeniden karara bağlanırsa (`decide apply`) ikinci arama eşleşmeleri düşmez:
+  `carry_second_search` onları yeni birim ilişkisiyle aynı kod denetiminden geçirip kayda geri
+  ekler, `ince_parmak` ve `eslesme` güncellenir (ilk geçiş aynı ölçüt/yuvayı kabul ettiyse ikinci
+  aramanınki düşer: çift sayım yok). Cevabı kayıtta olan paket parmak izi eski olsa da işlenmiş
+  sayılır (`arama.merged`); işlenmemiş cevabın paketi ilk geçiş değiştiyse `eski_paket` olur.
 - **Ölçüm** (`bidr arama olcum -w WS [--json]`): ölçüt başına bakılan çift, önerilen eşleşme,
   kod kabul/red (nedenleriyle), insan kabul/ret/incelenmedi (`review-decisions.jsonl`, satır
   `<doc_id>|<yuva>`) ve isabet. İnsanın kabul ettiği = ilk geçişin kaçırdığı kanıt; reddettiği

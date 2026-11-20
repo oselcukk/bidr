@@ -10,8 +10,10 @@ geçirip decisions.jsonl'deki kayda EKLER. İlk geçişin eşleşmeleri ve `ince
 `ikinci_arama` taşır (review.xlsx "işaretler" sütununda görünür); kayıtta `ikinci_arama`
 bölümü hangi ölçütlerin hangi puanla bakıldığını tutar. Ölçüm: `bidr arama olcum`.
 
-İlk geçiş yeniden karara bağlanırsa (`decide prepare --only`) ikinci aramanın eşleşmeleri
-düşer; `ince_parmak` değiştiği için `arama prepare` o belgeyi yeniden paketler.
+İlk geçiş yeniden karara bağlanırsa (`decide apply`) ikinci aramanın eşleşmeleri düşmez:
+`decide.run.carry_second_search` onları yeni birim ilişkisiyle yeniden denetleyip kayda ekler ve
+`ince_parmak`'ı günceller (aynı ölçüt/yuvayı ilk geçiş kabul ettiyse ikinci aramanınki düşer).
+Cevabı zaten kayıtta olan paket, parmak izi eski olsa da işlenmiş sayılır (`merged`).
 """
 from __future__ import annotations
 
@@ -65,6 +67,17 @@ def done_criteria(rec: dict) -> set[str]:
     if n != ia.get("eslesme", 0):
         return set()
     return set((ia.get("olcutler") or {}))
+
+
+def merged(rec: dict | None, pkg: dict, cevap: str) -> bool:
+    """Paketin bu cevabı kayda zaten işlenmiş mi (ilk geçiş sonradan yeniden uygulanmış olsa da)."""
+    if not rec:
+        return False
+    oc = (rec.get("ikinci_arama") or {}).get("olcutler") or {}
+    adaylar = (pkg.get("meta") or {}).get("adaylar") or []
+    return done_criteria(rec) >= set(adaylar) and all(
+        (oc.get(c) or {}).get("cevap_sha") == cevap and (oc.get(c) or {}).get("istem_sha") == pkg.get("istem_sha")
+        for c in adaylar)
 
 
 def eligible_map(ctx, recs: dict[str, dict], weak: set[str], *, redo: bool = False) -> tuple[dict, dict]:
@@ -203,8 +216,8 @@ def merge(ctx, did: str, rec: dict, out: dict, pkg: dict, model: str, verify, ce
 
 def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", backend=None, ctx=None) -> dict:
     """`.out.json` cevaplarını doğrular, ikinci arama eşleşmesi olarak decisions.jsonl'e ekler."""
-    from bidr.decide.run import FINE, Backend, Context, _pkg_paths, load_decisions, save_decisions, \
-        task_version, work_dir
+    from bidr.decide.run import FINE, Backend, Context, _load_pkg, _pkg_paths, load_decisions, \
+        save_decisions, task_version, work_dir
 
     backend = backend or Backend()
     if ctx is None:
@@ -214,7 +227,9 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", backend=None, ctx
     st = {"islenen": 0, "degismedi": 0, "bekleyen": [], "gecersiz": {}, "eski_surum": [],
           "eski_paket": [], "eklenen_kabul": 0, "eklenen_red": 0}
     for p in _pkg_paths(d) if d.exists() else []:
-        pkg = json.loads(p.read_text(encoding="utf-8"))
+        pkg = _load_pkg(p)
+        if pkg is None:
+            continue
         did = pkg["doc_id"]
         outp = d / pkg["cikti_dosyasi"]
         if not outp.exists():
@@ -224,21 +239,18 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", backend=None, ctx
             st["eski_surum"].append(did)
             continue
         rec = recs.get(did)
+        raw = outp.read_text(encoding="utf-8")
+        cevap = _sha(raw)
+        if rec and rec.get("asama") == "ince" and merged(rec, pkg, cevap):
+            st["degismedi"] += 1                # ilk geçiş yeniden uygulandıysa da eşleşmeler kayıtta
+            continue
         if not rec or rec.get("asama") != "ince" or \
                 first_pass_print(rec) != pkg["meta"]["ikinci_arama"]["ince_parmak"]:
             st["eski_paket"].append(did)        # ilk geçiş değişmiş: `arama prepare` yeniden paketler
             continue
-        raw = outp.read_text(encoding="utf-8")
         out, errs = backend.validate_output(FINE, raw)
         if out is None:
             st["gecersiz"][did] = errs[:5]
-            continue
-        cevap = _sha(raw)
-        oc = (rec.get("ikinci_arama") or {}).get("olcutler") or {}
-        if done_criteria(rec) >= set(pkg["meta"]["adaylar"]) and all(
-                (oc.get(c) or {}).get("cevap_sha") == cevap and (oc.get(c) or {}).get("istem_sha") == pkg["istem_sha"]
-                for c in pkg["meta"]["adaylar"]):
-            st["degismedi"] += 1
             continue
         rec, new = merge(ctx, did, rec, out, pkg, model, backend.verify_quote, cevap)
         recs[did] = rec

@@ -73,10 +73,16 @@ def _decide(args) -> int:
               + (f"; mükerrer metin: {st['mukerrer']} belge temsilciyi bekliyor, {st['devralindi']} devraldı"
                  + (f", {st['ayrildi']} ayrıldı (kendisi paketlendi)" if st["ayrildi"] else "")
                  if st["mukerrer"] or st["devralindi"] else ""))
+        if st.get("girdi_degisti"):
+            print(f"belgeye özgü girdisi (aday listesi/ölçüt blokları/metin payı/belge bilgisi/birim) "
+                  f"değişen {st['girdi_degisti']} belge yeniden paketlendi (onay gerekmez).")
+        if st.get("kural_eski"):
+            print(f"istem sürümü eski: {st['kural_eski']} belgede yalnız ortak kural metni değişti; kayıtlar "
+                  f"geçerli. Toptan yeniden işleme isteğe bağlı ve pahalı: aynı komut --yes ile.")
         if st["onay_gerekli"]:
             from collections import Counter
-            why = Counter(st["eski"].values())
-            print(f"ONAY GEREKLİ: yeniden işlenecek {len(st['eski'])} belge "
+            why = Counter(w for w in st["eski"].values() if w != "kural_degisti")
+            print(f"ONAY GEREKLİ: yeniden işlenecek {sum(why.values())} belge "
                   f"({', '.join(f'{k}={v}' for k, v in sorted(why.items()))}) — işlenmiş kararları "
                   f"görevin eski sürümü ya da eski istemiyle. Yeniden işlemek pahalı: ~{st['eski_cagri']} "
                   f"model cevabı, ~{st['eski_token']} istem token'ı. Kullanıcı onaylarsa aynı komutu "
@@ -85,6 +91,8 @@ def _decide(args) -> int:
         return 0
     if args.action == "apply":
         st = R.apply(ws.root, args.stage, model=args.model)
+        if st.get("paket_degil"):
+            print(f"paket olmayan dosya atlandı: {', '.join(st['paket_degil'])}")
         print(f"işlenen={st['islenen']} değişmeyen={st['degismedi']} bekleyen={len(st['bekleyen'])} "
               f"geçersiz={len(st['gecersiz'])} alıntısı tutmayan belge={len(st['alinti_tutmayan'])} "
               f"eski sürüm paketi={len(st['eski_surum'])}"

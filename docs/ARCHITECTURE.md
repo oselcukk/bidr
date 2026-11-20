@@ -135,6 +135,14 @@ ikinci arama ve denetle 2026-11-19'da bağlandı): her aşamanın kodla denetlen
 şartı var; sentetik uçtan uca test (`tests/test_pipeline.py`) bütün geçişleri, kapıları,
 yeniden yazım döngüsünü ve bağlantılı raporu sınar. Model işi ajan modunda (ücretli API yok).
 
+Araç güncellemesi (bitmiş raporu yeni sürümle güncelleme): belirleyici aşama çıktısı üreten
+kodun sürümünü taşır (identify `arac_surumu`); model aşamalarında `bidr status` son tam
+prepare'in girdi parmak izine bakar, değiştiyse onaysız prepare'i ister. Prepare belgeye özgü
+girdisi değişen belgeyi yeniden paketler, yalnız ortak istem kuralı değişen kaydı geçerli sayar
+(tek satır uyarı; toptan yeniden işleme `--yes`), apply yalnız değişen cevabı işler ve ikinci
+arama eşleşmelerini korur (docs/MODEL_LAYER.md "Araç güncellemesinde yeniden işleme").
+candidates ve describe henüz sürüm damgası taşımaz.
+
 Ölçüm (v0.1 taban çizgisi, LLM yok, akademik bölüm profili): fakülte verisiyle eğitilip
 Matematik'te sınanınca alt ölçüt R@1/R@5/R@10 0.22 / 0.67 / 0.77; ana ölçütte R@3 0.93.
 

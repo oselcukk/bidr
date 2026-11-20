@@ -112,14 +112,15 @@ def test_version_change_needs_summary_and_yes(ws, monkeypatch):
     assert st["onay_gerekli"] and set(st["eski"]) == done and set(st["eski"].values()) == {"eski_surum"}
     assert st["paket"] == 0 and st["eski_cagri"] == 4 and st["eski_token"] > 0
     assert _recs(root) == before                                # kayıtlara dokunulmadı
-    assert (root / "work" / "fine" / R.RESTALE).exists()
+    assert R.restale_path(Workspace(root), "fine").exists()
+    assert not (root / "work" / "fine" / "YENIDEN.json").exists()      # yardımcı dosya paket klasöründe değil
     ck = _check(root, "fine")                                  # bidr status: bitti + uyarı
     assert ck.bitti and ck.ilerleme["yeniden_islenecek"] == 4
     assert any("yeniden işlenecek 4 belge" in u for u in ck.uyarilar) and "yeniden işlenecek 4" in ck.neden
 
     st = prepare(root, "fine", backend=b, yes=True)            # onaylı
     assert st["paket"] == 4 and st["yeni"] == 4 and not st["onay_gerekli"]
-    assert not (root / "work" / "fine" / R.RESTALE).exists()
+    assert R.load_restale(Workspace(root), "fine")["belgeler"] == {}
     recs = _recs(root)
     assert all(recs[k]["yeniden"] == {"asama": "fine", "neden": "eski_surum", "onceki_surum": "10"} for k in done)
     ck = _check(root, "fine")
@@ -137,16 +138,16 @@ def test_prompt_change_detected_without_redo(ws):
     b = fake.backend()
     _full(root, fake, b)
     x = ids["ekle"]
+    assert _check(root, "coarse").bitti
     (root / "text" / f"{x}.txt").write_text(DOCS["ekle"] + " Ek satır.", encoding="utf-8")
-    before = _recs(root)
+    ck = _check(root, "coarse")                 # girdi değişti: status prepare'i (onaysız) ister
+    assert not ck.bitti and ck.kim == "komut" and ck.komutlar == ["PREP"] and "eski olabilir" in ck.neden
+    # belgeye özgü girdi (metin) değişti: onaysız yeniden paketlenir; ötekiler dokunulmaz
     st = prepare(root, "coarse", backend=b)
-    assert st["eski"] == {x: "istem_degisti"} and st["paket"] == 0 and st["zaten_tamam"] == 3
-    assert _recs(root) == before
+    assert st["eski"] == {} and st["girdi_degisti"] == 1 and st["paket"] == 1 and st["zaten_tamam"] == 3
+    assert not st["onay_gerekli"] and _recs(root)[x]["yeniden"]["neden"] == "girdi_degisti"
     ck = _check(root, "coarse")
-    assert ck.bitti and ck.ilerleme["yeniden_islenecek"] == 1
-    st = prepare(root, "coarse", backend=b, yes=True)
-    assert st["paket"] == 1 and _recs(root)[x]["yeniden"]["neden"] == "istem_degisti"
-    assert not _check(root, "coarse").bitti
+    assert not ck.bitti and ck.kim == "ajan" and ck.ilerleme["cevapsiz"] == 1
 
 
 def test_version_only_bump_rewrites_pending_package(ws, monkeypatch):
