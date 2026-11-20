@@ -9,8 +9,9 @@
            Uygunluk insan birim kararıyla (`birim-kararlari.jsonl`, insan > model) belirlenir:
            başka birim sayılıp komisyonca geri alınan belgenin geri yüklenen eşleşmeleri kanıttır;
            komisyonun başka birim onayladığı belgeninki değildir (audit/file ile aynı görünüm).
-           `--parca`: model adı olan ama derleme olduğu saptanan (`derleme_kaniti`) ve parça adı
-           almamış belgeler de paketlenir (parça adı için yeniden adlandırma).
+           Varsayılan olarak model adı olan ama derleme olduğu saptanan (`derleme_kaniti`) ve
+           görevin bu sürümüyle parça adı sorulmamış belgeler de paketlenir (parça adı için
+           yeniden adlandırma; `parca_gerekli`); `--no-parca` bunu kapatır. Aday yoksa paket yok.
   apply    `<doc_id>.out.json` cevaplarını şemaya ve `check_name`'e göre doğrular,
            `kanit-adlari.jsonl`'e `kaynak: model` olarak yazar. Kişi adı/unvan/e-posta içeren
            ya da biçimsiz ad reddedilir (`GECERSIZ.md`), belge kural adında kalır. Belgede
@@ -128,13 +129,19 @@ def part_heads(text: str, quotes: list[tuple[str, str]]) -> str:
 
 
 def compilation_hint(text: str) -> str:
-    """İstem için derleme bilgisi (kodla saptanan; kodsuz derlemeyi model sayfa başlarından görür)."""
+    """İstem için derleme bilgisi (kodla saptanan parçalar; kodsuz derlemeyi model sayfa
+    başlarından da görür)."""
+    from bidr.identify.parca import text_parts
     if len(_pages(text)) < 2:
         return "tek sayfa: derleme değil"
     codes = [c for c in dict.fromkeys(page_codes(text)) if c]
-    if len(codes) > 1:
-        return f"evet: sayfa başlarında {len(codes)} farklı doküman kodu (" + ", ".join(codes[:8]) + ")"
-    return "doküman kodu ayrımı yok (sayfa başları farklı belgeler gösteriyorsa derlemedir)"
+    rs = text_parts(text)
+    if len(rs) > 1:
+        sp = ", ".join(f"s. {a + 1}" if a == b else f"s. {a + 1}-{b + 1}" for a, b, _ in rs[:10])
+        return (f"evet: {len(rs)} parça ({sp})"
+                + (f"; sayfa başlarında {len(codes)} farklı doküman kodu (" + ", ".join(codes[:8]) + ")"
+                   if len(codes) > 1 else ""))
+    return "parça ayrımı saptanmadı (sayfa başları farklı belgeler gösteriyorsa derlemedir)"
 
 
 def accepted_quotes(rec: dict | None) -> dict[str, str]:
@@ -144,11 +151,15 @@ def accepted_quotes(rec: dict | None) -> dict[str, str]:
 
 
 def derleme_kaniti(ad: str | None, text: str, quotes: dict[str, str]) -> bool:
-    """Belgenin derleme olduğuna kod kanıtı: birden çok doküman kodu ya da belge adı bazı
-    alıntıların çevresinde tutmuyor (`parca_uyumsuz`: alıntı başka parçadan)."""
+    """Belgenin derleme olduğuna kod kanıtı: birden çok doküman kodu, kabul edilmiş alıntılar
+    birleşik belgenin farklı parçalarından (`bidr.identify.parca.part_ranges`) ya da belge adı
+    bazı alıntıların çevresinde tutmuyor (`parca_uyumsuz`: alıntı başka parçadan)."""
     if len(_pages(text)) < 2:
         return False
     if coded_compilation(text):
+        return True
+    keys = {k for k in (quote_part(text, q) for q in quotes.values() if q) if k and k[0] == "parca"}
+    if len(keys) > 1:
         return True
     return bool(ad and grounding(ad, text, quotes)["parca_uyumsuz"])
 
@@ -217,7 +228,7 @@ def inputs_of(ws: Workspace, did: str, rec: dict, doc: dict | None, cs=None) -> 
 
 
 def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
-            parca: bool = False, render=None) -> dict:
+            parca: bool = True, render=None) -> dict:
     if render is None:
         from bidr.llm import render_task as render
     from bidr.criteria.loader import load_criteria
@@ -229,6 +240,7 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
     d = work_dir(ws)
     d.mkdir(parents=True, exist_ok=True)
     st = {"paket": 0, "yeni": 0, "zaten_adli": 0, "derleme": 0, "uygun_degil": [], "klasor": str(d)}
+    cache = load_derleme_cache(ws)
     pool = eligible(recs)
     if only is not None:
         ids = list(dict.fromkeys(only))
@@ -238,7 +250,7 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
         ids = pool
     for did in ids:
         if only is None and not redo and ("model" in (have.get(did) or {}) or decision_name(recs[did])):
-            if not (parca and _needs_parts(ws, did, recs[did], have.get(did) or {})):
+            if not (parca and _needs_parts(ws, did, recs[did], have.get(did) or {}, cache)):
                 st["zaten_adli"] += 1
                 continue
             st["derleme"] += 1
@@ -257,22 +269,75 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
                                  "istem": r["prompt"], "sema": r["schema"]}, ensure_ascii=False, indent=1),
                      encoding="utf-8")
         st["yeni"] += 1
+    if parca:
+        save_derleme_cache(ws, cache)
     n = _pending(d)
     (d / "README.md").write_text(README.format(task=TASK, version=task_version(), n=n), encoding="utf-8")
     st["bekleyen"] = n
     return st
 
 
-def _needs_parts(ws: Workspace, did: str, rec: dict, have: dict) -> bool:
-    """Model adı olan belge parça adı için yeniden paketlenmeli mi: insan adı yok, ad görevin bu
-    sürümüyle (parça adı sorularak) alınmamış, derleme kanıtı var."""
+DERLEME_ONBELLEK = "derleme.onbellek"  # work/name/: derleme kanıtı önbelleği (JSON; prepare/apply yazar)
+DERLEME_SURUM = "1"                   # derleme_kaniti/parça sınırı kodu değişirse artır
+
+
+def _derleme_key(ad: str | None, text: str, quotes: dict[str, str]) -> str:
+    return _sha(json.dumps([DERLEME_SURUM, ad or "", _sha(text), sorted(quotes.items())],
+                           ensure_ascii=False))[:20]
+
+
+def load_derleme_cache(ws: Workspace) -> dict:
+    p = work_dir(ws) / DERLEME_ONBELLEK
+    try:
+        return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_derleme_cache(ws: Workspace, cache: dict) -> None:
+    d = work_dir(ws)
+    d.mkdir(parents=True, exist_ok=True)
+    (d / DERLEME_ONBELLEK).write_text(json.dumps(cache, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+
+
+def _derleme(did: str, ad: str | None, text: str, quotes: dict[str, str], cache: dict | None) -> bool:
+    """`derleme_kaniti`, önbellekle (anahtar: ad, metin özeti, alıntılar, kod sürümü)."""
+    if cache is None:
+        return derleme_kaniti(ad, text, quotes)
+    k = _derleme_key(ad, text, quotes)
+    hit = cache.get(did)
+    if hit and hit.get("k") == k:
+        return bool(hit["d"])
+    v = derleme_kaniti(ad, text, quotes)
+    cache[did] = {"k": k, "d": v}
+    return v
+
+
+def _needs_parts(ws: Workspace, did: str, rec: dict, have: dict, cache: dict | None = None) -> bool:
+    """Belge parça adı için (yeniden) paketlenmeli mi: insan adı yok, derleme kanıtı var ve ad
+    görevin bu sürümüyle derleme bilgisi verilerek (`derleme: true` kaydı) alınmamış."""
     if "insan" in have:
         return False
     m = have.get("model") or {}
-    if str((m.get("gorev") or {}).get(TASK)) == task_version():
+    if str((m.get("gorev") or {}).get(TASK)) == task_version() and m.get("derleme"):
         return False
     q = accepted_quotes(rec)
-    return len(q) > 0 and derleme_kaniti(m.get("ad") or decision_name(rec), _text(ws, did), q)
+    return len(q) > 0 and _derleme(did, m.get("ad") or decision_name(rec), _text(ws, did), q, cache)
+
+
+def parts_pending(ws: Workspace, recs: dict[str, dict], names: dict[str, dict],
+                  pool: list[str] | None = None, cache: dict | None = None) -> list[str]:
+    """Adı olan ama parça adı bekleyen derleme belgeleri (`_needs_parts`); hattın name aşaması
+    bunları da bekler (`bidr name prepare` varsayılan olarak paketler). `cache` verilmezse
+    `work/name/derleme.json` okunur (yazılmaz: durum denetimi salt okunur)."""
+    pool = eligible(recs) if pool is None else pool
+    cache = load_derleme_cache(ws) if cache is None else cache
+    out = []
+    for did in pool:
+        h = names.get(did) or {}
+        if ("model" in h or decision_name(recs[did])) and _needs_parts(ws, did, recs[did], h, cache):
+            out.append(did)
+    return out
 
 
 def _pkgs(d: Path) -> list[Path]:
@@ -295,6 +360,7 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", only: list[str] |
     have = load_names(ws.root)
     dp = ws.root / "decisions.jsonl"
     recs = {r["doc_id"]: r for r in read_jsonl(dp) if r.get("doc_id")} if dp.exists() else {}
+    cache = load_derleme_cache(ws)
     new: list[dict] = []
     for p in _pkgs(d):
         pkg = json.loads(p.read_text(encoding="utf-8"))
@@ -331,6 +397,8 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", only: list[str] |
             rec["parca_not"] = st["parca_not"][did] = pnotes
         g = grounding(ad, text, {y: q for y, q in quotes.items() if y not in parts})
         g = part_grounding(g, text, quotes, parts)
+        # derleme bilgisi (parça adı soruldu mu): parça adı adımı bu kayıtla biter (`_needs_parts`)
+        rec["derleme"] = bool(quotes) and _derleme(did, ad, text, quotes, cache)
         if g["dogrulanmali"]:
             rec["dogrulanmali"] = {"belge": g["belge"], "parca_uyumsuz": g["parca_uyumsuz"]}
             st["dogrulanmali"][did] = {"ad": ad, **rec["dogrulanmali"]}
@@ -342,6 +410,7 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", only: list[str] |
         st["islenen"] += 1
     if new:
         upsert(ws.root / NAMES, new)
+        save_derleme_cache(ws, cache)
     lines = [f"# Yeniden yapılacak ({TASK})", ""]
     for did, errs in st["gecersiz"].items():
         lines.append(f"- `{did}.json` — geçersiz cevap: " + "; ".join(errs))

@@ -21,6 +21,7 @@ from .classify import classify
 from .dates import (DateFinder, academic_terms, date_ranges, plan_span, term_year, update_dates,
                     year_phrases)
 from .naming import title, working_name
+from .text import collapse, fold
 
 INVENTORY_COLUMNS = ("doc_id", "dup_of", "status", "method", "pages", "parca_grubu", "parca_sira")
 SCHEMA_VERSION = 1
@@ -49,30 +50,24 @@ def _format(method: str) -> str:
     return m or "bilinmiyor"
 
 
-def identify_text(raw: str, catalog: Catalog, finder: DateFinder,
-                  period: int | None = None) -> dict:
-    """Tek metin için kayıt (sürüm grubu ve çalışma adı tekilleştirmesi hariç)."""
-    r = classify(raw, catalog)
-    doc = r.pop("_doc")
-    t = catalog.get(r["doc_type"])
-    found = finder.content_dates(doc.folded)
-    d, src, _ = finder.primary(doc.folded, t.date_labels if t else [], found,
-                               head=catalog.regions["bas"])
-    terms = academic_terms(doc.folded, catalog.regions["bas"])
+def date_fields(folded: str, finder: DateFinder, type_labels: list[str], head: int,
+                period: int | None = None) -> dict:
+    """Katlanmış metnin tarih alanları (belge ya da birleşik belgenin bir parçası)."""
+    found = finder.content_dates(folded)
+    d, src, _ = finder.primary(folded, type_labels, found, head=head)
+    terms = academic_terms(folded, head)
     distinct = sorted({f.d.isoformat() for f in found})
-    r["tarih"] = d.isoformat() if d else None
-    r["tarih_kaynagi"] = src
-    r["tarihler"] = distinct[:30]
-    r["tarih_araligi"] = [distinct[0], distinct[-1]] if distinct else None
-    r["akademik_donem"] = terms[:5]
+    r: dict = {"tarih": d.isoformat() if d else None, "tarih_kaynagi": src, "tarihler": distinct[:30],
+               "tarih_araligi": [distinct[0], distinct[-1]] if distinct else None,
+               "akademik_donem": terms[:5]}
     # dönem kuralının ek girdileri (bidr/audit/donem.py): aralıklar, yürürlük aralığı, yıl
     # ifadeleri, sayfa güncelleme damgası
     r["tarih_araliklari"] = [[a.d.isoformat() if a else None, b.d.isoformat()]
-                             for a, b in date_ranges(doc.folded, found)][:30]
-    span = plan_span(doc.folded, catalog.regions["bas"])
+                             for a, b in date_ranges(folded, found)][:30]
+    span = plan_span(folded, head)
     r["yururluk_araligi"] = list(span) if span else None
-    r["yil_ifadeleri"] = year_phrases(doc.folded)[:5]
-    upd = update_dates(doc.folded)
+    r["yil_ifadeleri"] = year_phrases(folded)[:5]
+    upd = update_dates(folded)
     r["guncelleme_tarihi"] = upd[-1].isoformat() if upd else None
     if period is not None:
         ici, kanit = None, None
@@ -85,6 +80,26 @@ def identify_text(raw: str, catalog: Catalog, finder: DateFinder,
         r["donem"] = period
         r["donem_ici"] = ici
         r["donem_kaniti"] = kanit
+    return r
+
+
+def identify_text(raw: str, catalog: Catalog, finder: DateFinder,
+                  period: int | None = None) -> dict:
+    """Tek metin için kayıt (sürüm grubu ve çalışma adı tekilleştirmesi hariç)."""
+    r = classify(raw, catalog)
+    doc = r.pop("_doc")
+    t = catalog.get(r["doc_type"])
+    labels = t.date_labels if t else []
+    r.update(date_fields(doc.folded, finder, labels, catalog.regions["bas"], period))
+    # birleşik/derleme belge: parça başına tarih (bidr/identify/parca.py; dönem kuralı eşleşme
+    # başına alıntının parçasının tarihini kullanır)
+    pages = raw.split("\f")
+    if len(pages) > 1:
+        from .parca import parts_record
+        r["parcalar"] = parts_record(pages, lambda part: date_fields(
+            fold(collapse(part)), finder, labels, catalog.regions["bas"], period))
+    else:
+        r["parcalar"] = []
     label = t.label if t else "Bilinmeyen Belge"
     r["doc_type_etiket"] = label
     r["baslik"] = title(r["doc_type"], doc, r["kanitlar"])

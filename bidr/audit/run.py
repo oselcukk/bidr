@@ -20,6 +20,7 @@ from bidr.criteria.slots import STAGE_OD, SlotTag, load_tags
 from bidr.decide.run import (BIRIM_BELIRSIZ, BIRIM_DISI, BIRIM_KARARLARI, GENEL_ILISKI, INSAN_ILISKILERI,
                              load_unit_pins, needs_redecide, pin_applied, record_unit_relation,
                              unit_view)
+from bidr.identify.parca import part_view
 
 from . import donem as D
 from .rules import (GEREKEN, KARAR_TURLERI, KISA, KURUM_GENELI_TURLER, LINKS, criterion_od,
@@ -139,7 +140,8 @@ def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | 
             etkin = sv_out["etkin"]
             flags.extend(sv_out["flags"])
     # Dönem kuralı (yapı/olay/karma). İnsan kararında (ret/duzelt) yalnız gösterilir.
-    dz_ = (D.apply_row(rule, doc, dtype, etkin, dosya, (surum or {}).get(did))
+    dz_ = (D.apply_row(rule, doc, dtype, etkin, dosya, (surum or {}).get(did),
+                       part_view(doc, m.get("alinti"), sv.text(did) if sv and doc.get("parcalar") else None))
            if rule is not None and etkin else None)
     if dz_ and karar not in ("ret", "duzelt"):
         sayilir = dz_["sayilir"]

@@ -462,7 +462,8 @@ def _invalid_keys(gfile: Path, pattern: str) -> set[str]:
 
 def name_tamam(c: Ctx) -> Check:
     from bidr.name.resolve import decision_name, load_names
-    from bidr.name.run import _pkgs, decisions_view, eligible, task_version, work_dir
+    from bidr.name.run import (_pkgs, _text, compilation_hint, decisions_view, eligible, parts_pending,
+                               task_version, work_dir)
     from bidr.write.sources import rapor_section
     ws = c.ws
     if rapor_section(ws.root).get("kanit_adi_modeli") is False:
@@ -476,19 +477,30 @@ def name_tamam(c: Ctx) -> Check:
     names = load_names(ws.root)
     have = {d for d in pool if (names.get(d) or {}).get("model") or (names.get(d) or {}).get("insan")
             or decision_name(recs[d])}
-    missing = pool - have
-    prog = {"belge": len(pool), "adli": len(have)}
+    # parça adı: adı olan ama derleme olduğu saptanan (birleşik belge; alıntılar farklı
+    # parçalardan) belge, görevin bu sürümüyle parça adı sorulana dek bekler. Aday yoksa adım biter.
+    parca = set(parts_pending(ws, recs, names, sorted(have)))
+    missing = (pool - have) | parca
+    prog = {"belge": len(pool), "adli": len(have), "parca_adi_bekleyen": len(parca)}
     if not missing:
-        return Check(bitti=True, ilerleme=prog, neden=f"{len(pool)} belgenin model/insan kanıt adı var")
+        return Check(bitti=True, ilerleme=prog, neden=f"{len(pool)} belgenin model/insan kanıt adı var"
+                     " (derleme belgelerin parça adı soruldu)")
     d = work_dir(ws)
     pk = {json.loads(x.read_text(encoding="utf-8"))["doc_id"]: x for x in _pkgs(d)}
     nopkg = missing - set(pk)
-    if nopkg:
+    # parça adı bekleyen belgenin paketi eski bir adlandırmadan kalmış olabilir: istemde güncel
+    # derleme bilgisi yoksa prepare yeniler (cevaplanmış eski paket apply ile parça adı almaz)
+    stale = {x for x in parca & set(pk)
+             if compilation_hint(_text(ws, x)) not in json.loads(pk[x].read_text(encoding="utf-8")).get("istem", "")}
+    if nopkg or stale:
+        why = [f"{len(nopkg - parca)} belgenin adlandırma paketi yok" if nopkg - parca else "",
+               f"{len(parca)} derleme belgenin parça adı yok (birleşik belge)" if parca else ""]
         return Check(kim=KOMUT, ilerleme=prog, komutlar=[c.fmt(c.stage["komut"][0])],
-                     neden=f"{len(nopkg)} belgenin adlandırma paketi yok")
+                     neden=", ".join(x for x in why if x))
     old = [x for x in missing if str(json.loads(pk[x].read_text(encoding="utf-8")).get("surum")) != task_version()]
     if old:
-        return Check(kim=KOMUT, ilerleme=prog, komutlar=[c.fmt(c.stage["komut"][0]) + " --redo"],
+        return Check(kim=KOMUT, ilerleme=prog,
+                     komutlar=[c.fmt(c.stage["komut"][0]) + ("" if set(old) <= parca else " --redo")],
                      neden=f"{len(old)} paket görevin eski sürümüyle: prepare yeniler")
     no_out = {x for x in missing if not (d / f"{x}.out.json").exists()}
     bad = _invalid_keys(d / "GECERSIZ.md", r"^- `([^`]+)\.json`") & missing
