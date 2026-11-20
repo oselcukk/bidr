@@ -1,0 +1,225 @@
+"""bidr ihtiyac: referans set, karşılık eşleştirme, öncelik, çıktılar ve iç taslak (sentetik veri)."""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+from openpyxl import load_workbook
+
+from bidr.cli import main
+from bidr.ihtiyac import rapor as R
+from bidr.ihtiyac.eslestir import ESKI, VAR, YOK
+from bidr.ihtiyac.referans import build_reference, from_csv, load_reference, write_reference
+from bidr.ihtiyac.tablolar import Sorumlular, Turler
+
+HECE = ["lar", "ler", "dan", "den", "nin", "nun", "ile", "ise", "dir", "tir", "mak", "mek"]
+
+
+def _metin(baslik: str, *konu: str, n: int = 30) -> str:
+    """Sentetik belge metni: başlık + konuya özgü uydurma sözcüklerden satırlar."""
+    out = [baslik]
+    for i in range(n):
+        out.append(" ".join(f"{k}{HECE[(i + j) % len(HECE)]}" for j, k in enumerate(konu)) + " sentetik metin satiri")
+    return "\n".join(out)
+
+
+ANKET = _metin("DERS DEGERLENDIRME ANKETI SONUCLARI", "zorvak", "pelim", "tuskar", "melvo", "darnik")
+ANKET_ESKI = _metin("DERS DEGERLENDIRME ANKETI SONUCLARI", "zorvak", "pelim", "tuskar", "melvo", "ferlin")
+YONERGE = _metin("SENTETIK DANISMANLIK YONERGESI", "kalvor", "nespir", "lodrak", "vimel", "toskan")
+SEMINER = _metin("BOLUM SEMINER PROGRAMI", "brenta", "sikor", "palvu", "derom", "hiskel")
+PLAN = _metin("BOLUM KURULU KARARI", "gonsur", "lepra", "vaskit", "mordel", "tunik")
+
+
+def _m(olcut, yuva, asama, od, guven="orta"):
+    return {"olcut": olcut, "yuva": yuva, "asama": asama, "od_onerisi": od, "alinti": "x" * 30, "gerekce": "g",
+            "guven": guven, "denetim": {"red": [], "isaret": []}, "od_kabul": od, "kabul": True}
+
+
+def _ws(root: Path, donem: int, docs: dict) -> Path:
+    """docs: doc_id → (tür, dönem içi, tarih, ad, metin, eşleşmeler, inceleme kararı|None)."""
+    root.mkdir(parents=True)
+    (root / "text").mkdir()
+    with open(root / "decisions.jsonl", "w", encoding="utf-8") as fd, \
+            open(root / "documents.jsonl", "w", encoding="utf-8") as fo, \
+            open(root / "review-decisions.jsonl", "w", encoding="utf-8") as fr:
+        for did, (t, ici, tarih, ad, metin, ms, karar) in docs.items():
+            (root / "text" / f"{did}.txt").write_text(metin, encoding="utf-8")
+            fo.write(json.dumps({"doc_id": did, "doc_type": t, "donem_ici": ici, "donem": donem, "tarih": tarih,
+                                 "calisma_adi": ad, "baslik": ad}, ensure_ascii=False) + "\n")
+            if ms:
+                fd.write(json.dumps({"doc_id": did, "durum": "ok", "asama": "ince", "karar": "olcut_var",
+                                     "ince": {"karar": "olcut_var", "kanit_adi": {"ad": ad, "durum": "kabul"}},
+                                     "eslesmeler": ms}, ensure_ascii=False) + "\n")
+                for m in ms:
+                    if karar:
+                        fr.write(json.dumps({"satir": f"{did}|{m['yuva']}", "doc_id": did, "olcut": m["olcut"],
+                                             "yuva": m["yuva"], "karar": karar}, ensure_ascii=False) + "\n")
+    return root
+
+
+@pytest.fixture
+def ref_ws(tmp_path):
+    return _ws(tmp_path / "onceki", 2024, {
+        "r_anket": ("anket_sonucu", True, "2024-06-01", "Ders Degerlendirme Anketi Sonuclari 2024", ANKET,
+                    [_m("B.1.1", "B.1.1/6", "kontrol_et", 4)], "kabul"),
+        "r_yon": ("yonerge", None, "2020-01-01", "Sentetik Danismanlik Yonergesi", YONERGE,
+                  [_m("B.2.3", "B.2.3/1", "planla", 2)], "kabul"),
+        "r_sem": ("etkinlik_duyurusu", True, "2024-03-01", "Bolum Seminer Programi 2024", SEMINER,
+                  [_m("A.1.1", "A.1.1/2", "uygula", 3)], "kabul"),
+        "r_dusuk": ("toplanti_tutanagi", True, "2024-05-01", "Dusuk Guvenli Tutanak", PLAN,
+                    [_m("B.1.1", "B.1.1/3", "uygula", 3, guven="dusuk")], "kabul"),
+        "r_ret": ("bolum_kurulu_karari", True, "2024-05-02", "Reddedilen Karar", PLAN,
+                  [_m("B.1.2", "B.1.2/1", "planla", 2)], "ret"),
+        "r_karsiz": ("bolum_kurulu_karari", True, "2024-05-03", "Karari Verilmemis Karar", PLAN,
+                     [_m("B.1.3", "B.1.3/1", "planla", 2)], None),
+    })
+
+
+@pytest.fixture
+def tgt_ws(tmp_path):
+    return _ws(tmp_path / "guncel", 2025, {
+        "t_yon": ("yonerge", None, "2020-01-01", "Danismanlik Yonergesi", YONERGE,
+                  [_m("B.2.3", "B.2.3/1", "planla", 2)], "kabul"),
+        "t_anket": ("anket_sonucu", False, "2024-06-01", "Ders Degerlendirme Anketi 2024", ANKET_ESKI, [], None),
+        "t_plan": ("bolum_kurulu_karari", True, "2025-02-01", "Bolum Kurulu Karari 2025", PLAN,
+                   [_m("B.1.1", "B.1.1/1", "planla", 2)], "kabul"),
+    })
+
+
+def _snapshot(ws: Path) -> dict:
+    return {p.relative_to(ws): p.read_bytes() for p in ws.rglob("*") if p.is_file()}
+
+
+# -- referans -----------------------------------------------------------------------------------
+
+def test_reference_selects_only_good_evidence(ref_ws):
+    before = _snapshot(ref_ws)
+    ref = build_reference(ref_ws)
+    assert _snapshot(ref_ws) == before                          # salt okunur
+    by = {it["doc_id"]: it for it in ref["ogeler"]}
+    assert set(by) == {"r_anket", "r_yon", "r_sem"}             # düşük güven, ret, kararsız dışarıda
+    a = by["r_anket"]
+    assert a["tekrarlayan"] == "ders_degerlendirme" and a["asama"] == "kontrol_et" and a["olcut"] == "B.1.1"
+    assert by["r_yon"]["tekrarlayan"] == ""                     # yönerge tekrarlamaz
+    assert by["r_sem"]["tekrarlayan"] == "seminer_programi"
+    assert "zorvak" in " ".join(a["anahtar"])
+    assert ref["belgeler"]["r_yon"]["parmak_izi"]               # karma sayılar, metin değil
+    assert "kalvor" not in json.dumps(ref["belgeler"])
+
+
+def test_reference_csv(tmp_path):
+    p = tmp_path / "ek.csv"
+    p.write_text("olcut,belge_turu,ad,yuva\nC.1.1,anket_sonucu,Mezun Anketi Sonuclari,\n,yonerge,Bos olcut,\n",
+                 encoding="utf-8")
+    items, uy = from_csv(p, Turler())
+    assert len(items) == 1 and items[0]["kaynak"] == "elle" and items[0]["tekrarlayan"] == "memnuniyet_anketi"
+    assert "mezun" in items[0]["anahtar"] and uy
+    bad = tmp_path / "kotu.csv"
+    bad.write_text("olcut,ad\nC.1.1,x\n", encoding="utf-8")
+    with pytest.raises(ValueError):
+        from_csv(bad, Turler())
+    ref = build_reference(None, ek=p)
+    assert [it["id"] for it in ref["ogeler"]] == ["R001"]
+
+
+# -- eşleştirme + rapor --------------------------------------------------------------------------
+
+def _run(ref_ws, tgt_ws, tmp_path, **kw):
+    p = write_reference(build_reference(ref_ws), tmp_path / "referans.json")
+    return R.run(tgt_ws, referans=load_reference(p), out=tmp_path / "out", **kw)
+
+
+def test_counterpart_status(ref_ws, tgt_ws, tmp_path):
+    before = _snapshot(tgt_ws)
+    res = _run(ref_ws, tgt_ws, tmp_path)
+    assert _snapshot(tgt_ws) == before                          # hedef çalışma alanına yazılmaz
+    g = {x["doc_id"]: x for x in res["gecen"]}
+    # yapı belgesi: içerik kopyası, tarihi dönemle bağlanamadı → var + doğrulanmalı
+    assert g["r_yon"]["durum"] == VAR and g["r_yon"]["karsilik_doc_id"] == "t_yon"
+    assert g["r_yon"]["kopya"] and g["r_yon"]["donem_dogrulanmali"]
+    assert g["r_yon"]["olcute_eslesmis"].startswith("evet")
+    # tekrarlayan tür: yalnız önceki yılın anketi var → eski sürüm
+    assert g["r_anket"]["durum"] == ESKI and g["r_anket"]["karsilik_doc_id"] == "t_anket"
+    assert "önceki" in g["r_anket"]["gerekce"]
+    # seminer programının karşılığı yok → istenmeli
+    assert g["r_sem"]["durum"] == YOK and "bulunamadı" in g["r_sem"]["gerekce"]
+
+
+def test_priorities_and_outputs(ref_ws, tgt_ws, tmp_path):
+    res = _run(ref_ws, tgt_ws, tmp_path)
+    t = res["talepler"]
+    assert [x["puan"] for x in t] == sorted((x["puan"] for x in t), reverse=True)
+    s = {x["olcut"]: x for x in res["satirlar"]}
+    # B.1.1: plan var (OD2) → tek uygulama belgesi OD3; geçen yılın anketi eski sürüm → istenmeli
+    b11 = [x for x in t if x["olcut"] == "B.1.1"]
+    assert b11[0]["oncelik"] == "tek belgeyle OD artışı" and b11[0]["halka"] == "uygula" and b11[0]["hedef_od"] == 3
+    assert any(x["puan"] == R.P_REF_ESKI and "anket" in x["istenecek"].lower() for x in b11)
+    assert s["B.1.1"]["od"] == 2 and s["B.1.1"]["kanit_sayisi"] == 1 and "uygulama" in s["B.1.1"]["eksik_halkalar"]
+    assert any("B.1.1/" in g for g in s["B.1.1"]["gereken"])       # kılavuz yuva metinleri
+    # A.1.1: hiç kanıt yok → kanıtsız ölçüt (100) önce; geçen yılın semineri istenir
+    a11 = [x for x in t if x["olcut"] == "A.1.1"]
+    assert a11[0]["puan"] == R.P_KANITSIZ and any(x["puan"] == R.P_REF for x in a11)
+    assert t[0]["puan"] == R.P_KANITSIZ
+    # kimden istenir: belge türü tablosundan
+    sem = next(x for x in a11 if x["puan"] == R.P_REF)
+    assert sem["kimden"] == Sorumlular().belge_turu["etkinlik_duyurusu"]
+    # çıktılar
+    wb = load_workbook(res["paths"]["xlsx"])
+    assert wb.sheetnames[:3] == ["Öncelikli talepler", "Ölçüt özeti", "Geçen yıl karşılıkları"]
+    assert wb["Öncelikli talepler"]["A1"].value == "Sıra"
+    md = res["paths"]["md"].read_text(encoding="utf-8")
+    assert "Kanıt ihtiyaç raporu" in md and "yok (istenmeli) 1" in md
+
+
+def test_out_of_scope_criteria_not_listed(ref_ws, tgt_ws, tmp_path):
+    (tgt_ws / "config.yaml").write_text("rapor:\n  kapsam:\n    A.1.1: baska_birim\n", encoding="utf-8")
+    res = _run(ref_ws, tgt_ws, tmp_path)
+    assert "A.1.1" not in {x["olcut"] for x in res["satirlar"]}
+    assert "A.1.1" not in {x["olcut"] for x in res["talepler"]}
+    assert "r_sem" not in {x["doc_id"] for x in res["gecen"]}
+
+
+def test_without_reference(tgt_ws, tmp_path):
+    res = R.run(tgt_ws, out=tmp_path / "o")
+    assert res["gecen"] == [] and res["talepler"]
+    assert "Referans set verilmedi" in res["paths"]["md"].read_text(encoding="utf-8")
+
+
+def test_responsible_lookup_order():
+    s = Sorumlular()
+    assert s.kim("anket_sonucu", "planla", "A.1.1") == s.belge_turu["anket_sonucu"]
+    assert s.kim("", "planla", "A.1.1") == s.asama["planla"]
+    assert s.kim("", "", "C.1.1") == s.alan["C"]
+    assert s.kim() == s.varsayilan
+
+
+# -- iç taslak + CLI -----------------------------------------------------------------------------
+
+def test_internal_draft_never_touches_report(ref_ws, tgt_ws, tmp_path):
+    import docx
+    from test_render import make_template
+
+    from bidr.ihtiyac.taslak import write_draft
+    src = make_template(tgt_ws / "report.docx", ids=(("A.1.1", "Yönetişim"), ("B.1.1", "Program tasarımı")))
+    orig = src.read_bytes()
+    res = _run(ref_ws, tgt_ws, tmp_path)
+    dst, n, _ = write_draft(src, tmp_path / "out", res["satirlar"], res["talepler"])
+    assert src.read_bytes() == orig and dst.name == "report-ic.docx" and n == 2
+    text = "\n".join(p.text for t in docx.Document(str(dst)).tables for r in t.rows for c in r.cells
+                     for p in c.paragraphs)
+    assert "[EKSİK:" in text
+    with pytest.raises(ValueError):                          # kaynağın üstüne yazmaz
+        write_draft(dst, dst.parent, [], [])
+
+
+def test_cli(ref_ws, tgt_ws, tmp_path, capsys):
+    rp = tmp_path / "ref.json"
+    assert main(["ihtiyac", "referans", "-w", str(ref_ws), "--out", str(rp)]) == 0
+    assert "3 iyi kanıt" in capsys.readouterr().out
+    out = tmp_path / "cikti"
+    before = _snapshot(tgt_ws)
+    assert main(["ihtiyac", "-w", str(tgt_ws), "--referans", str(rp), "--out", str(out)]) == 0
+    assert (out / "ihtiyac.xlsx").exists() and (out / "ihtiyac.md").exists()
+    assert _snapshot(tgt_ws) == before
+    assert main(["ihtiyac", "referans", "--out", str(rp)]) == 2      # -w ya da --ek gerekli

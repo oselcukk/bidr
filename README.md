@@ -111,6 +111,19 @@ yazar), `hazirlayanlar` (kapak; answers.yaml ile), `onceki_rapor` (geçen yılı
   yayımlanmamış belge `kanit_kok_baglanti` altındaki yoluna bağlanır; bağlantısızlar gaps.md'de
   listelenir ve `bidr denetle`'de uyarıdır. Yükleme sizin işinizdir; bidr hiçbir yere dosya göndermez.
 
+**Kanıt ihtiyaç raporu** (`bidr ihtiyac`; hat aşaması değil, model yok, çalışma alanını salt
+okur): belgeler parça parça gelirken neyin eksik olduğunu, hangi belgenin raporu en çok
+güçlendireceğini (kanıtsız ölçüt > tek belgeyle OD artışı > geçen yılın karşılığı olmayan iyi
+kanıtı) ve belgenin kimden isteneceğini `ihtiyac.xlsx` / `ihtiyac.md` olarak yazar. Geçen yılın
+iyi kanıtları önceki çalışma alanından referans sete çıkarılır ve bu yılki karşılıkları aranır;
+`--ic-taslak` report.docx'in kopyasına "[EKSİK: …]" işaretleri koyar. Hatırlatma aracıdır, kesin
+kontrol listesi değildir. Ayrıntı: `docs/IHTIYAC.md`.
+
+```
+bidr ihtiyac referans -w ~/bidr-calisma/birim2024 --out ~/bidr-calisma/referans-2024.json
+bidr ihtiyac -w ~/bidr-calisma/birim2025 --referans ~/bidr-calisma/referans-2024.json [--ic-taslak]
+```
+
 **Kurala dönüşmüş kararlar veri dosyasıdır, kod değil.** Kanıt ilkeleri
 (`bidr/data/profiles/kanit_ilkeleri.yaml`: ör. kurum geneli yönerge yalnız plan kanıtıdır),
 dönem kuralı (`bidr/data/profiles/donem_kurali.yaml`: yapı belgesi yürürlükteyse, olay belgesi
