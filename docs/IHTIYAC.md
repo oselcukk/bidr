@@ -159,7 +159,7 @@ Komisyon dışındaki okur (bölüm sekreterliği, komisyon başkanları, öğre
   "Örnek Kanıtlar" maddesi → bölüm düzeyinde 1–2 somut belge; `{yil}` rapor yılı; özgün uygulama
   maddeleri ortak metinle ve yalnız son düzey istendiğinde). (3)+(4) satır başına en çok 6 madde;
   öneriyle kapsanan kılavuz maddesi ayrıca yazılmaz. Tam liste `ihtiyac.xlsx`'tedir; (5) **kurumun
-  bu maddeyle eşlenmiş belgeleri** (bkz. 6): `• Belge adı (kod)` (bağlantı yalnız `kurum-katalog.json`'da), en çok 10 (fazlası
+  bu maddeyle eşlenmiş belgeleri** (bkz. 6): `• Belge adı (kod)` (yalnız yönetmelik, yönerge, usul-esas ve iş akışı; form ve anket girmez; bağlantı yalnız `kurum-katalog.json`'da), en çok 10 (fazlası
   "… ve N belgesi daha"); geçen yılki raporda kullanılan kurum belgesi katalogda bulunursa (2)'de
   ayrıca yazılmaz, bağlantısıyla burada ilk sıradadır. Kimden: `ihtiyac_sorumlular.yaml` belge türü
   satırı (yönetmelik, yönerge, usul_esas, iş akışı, form, anket).

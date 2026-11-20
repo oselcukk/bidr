@@ -206,20 +206,18 @@ def test_sade_lists_institution_documents(ref_ws_yok, tmp_path):
     res = R.run(tgt, referans=build_reference(ref_ws), out=tmp_path / "o", kurum=es)
     r = {x["olcut"]: x for x in res["sade"]}
     b11 = r["B.1.1"]
-    satir = "• Sınav Notu İtiraz Dilekçesi (FR-0784)"                # bağlantı listeye yazılmaz
-    assert satir in b11["belgeler"].split("\n")
-    m = next(x for x in b11["maddeler"] if x["tur"] == "kurum")
-    assert m["kimden"] == R.Sorumlular().kim(belge_turu="form")
-    # geçen yılın kurum yönergesi katalogda bulundu: bağlantısıyla, ayrı "ya da güncel hâli" satırı yok
+    assert "FR-0784" not in b11["belgeler"]                          # form/anket sade listeye girmez
+    # geçen yılın kurum yönergesi katalogda bulundu: ad ve kodla (bağlantı yazılmaz), "ya da güncel hâli" yok
     b23 = r["B.2.3"]["belgeler"]
-    assert "Sentetik Danışmanlık Yönergesi (YZ-0001) — https://ornek.example/dosya/" in b23
-    assert "«Sentetik Danismanlik Yonergesi»" not in b23
+    assert "• Sentetik Danışmanlık Yönergesi (YZ-0001)" in b23.split("\n")
+    assert "https://" not in b23 and "«Sentetik Danismanlik Yonergesi»" not in b23
+    m = next(x for x in r["B.2.3"]["maddeler"] if x["tur"] == "kurum")
     # ayrım yok: sütunlar ve sayfalar aynı; kime gönderilecek sayfasında sorumlusunun listesinde
     wb = load_workbook(res["paths"]["sade"])
     assert wb.sheetnames == list(S.SHEETS)
     assert [c.value for c in wb[S.SHEETS[0]][1]] == [h for _, h, _ in S.COLS]
     kime = [(row[0].value, row[3].value) for row in wb[S.SHEETS[1]].iter_rows(min_row=2)]
-    assert any(k == m["kimden"] and "FR-0784" in (b or "") for k, b in kime)
+    assert any(k == m["kimden"] and "YZ-0001" in (b or "") for k, b in kime)
     # eşleme yokken satırlar değişmez
     res0 = R.run(tgt, referans=build_reference(ref_ws), out=tmp_path / "o0")
     assert all(x["tur"] != "kurum" for row in res0["sade"] for x in row["maddeler"])

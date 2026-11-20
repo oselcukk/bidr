@@ -33,6 +33,8 @@ FILE = "istenen-kanitlar.xlsx"
 KILAVUZ_EN_COK = 6          # kılavuz/öneri kaynaklı madde sayısı (satır başına)
 ELDE_EN_COK = 4
 KURUM_EN_COK = 10           # kurum belge kataloğundan madde sayısı (satır başına)
+# Sade listeye giren kurum belgesi türleri: düzenlemeler ve iş akışları (form/anket girmez; kullanıcı kararı)
+KURUM_TURLER = {"yonetmelik", "yonerge", "usul_esas", "mevzuat", "is_akisi"}
 KURUM_REF_TURLER = frozenset({"yonetmelik", "yonerge", "usul_esas", "is_akisi", "senato_karari", "anket_formu"})
 _KURUM_SIRA = {t: i for i, t in enumerate(("yonetmelik", "yonerge", "usul_esas", "is_akisi", "anket", "form",
                                            "talimat"))}
@@ -357,7 +359,8 @@ def satirlar_kur(cs, tags, sor, talepler: list[dict], satirlar: list[dict], gece
                 ekle(x, _kim(sor, tags, somut, y, cid), "kilavuz")
                 n_klv += len(maddeler) > n0
         # 5. kurumun bu maddeyle ilgili belgeleri (katalog eşlemesi; geçen yıl kullanılanlar önce)
-        kb = list({o["id"]: o for o in k_ref + k_by.get(cid, [])}.values())
+        kb = [o for o in {o["id"]: o for o in k_ref + k_by.get(cid, [])}.values()
+              if (o.get("tur") or "") in KURUM_TURLER]
         n_kur = 0
         for o in kb:
             if n_kur >= KURUM_EN_COK:
