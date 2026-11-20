@@ -334,3 +334,48 @@ def test_part_date_birlesik_belge():
     assert part_date(doc, ["Staj değerlendirme yazısı 21.11.2025 tarihli"], lambda: text) == "2025-11-21"
     assert part_date({"tarih": "2025-01-02"}, ["x"], lambda: text) == "2025-01-02"          # parçasız
     assert part_date(doc, ["metinde olmayan alıntı"], lambda: text) == "2025-11-21"         # yerleşmedi: belge tarihi
+
+
+def test_combined_file_parts_get_own_numbers():
+    """Kullanıcı kararı 2026-11-20: "aynı dosyadan çıktı" ≠ "aynı belge". Birleşik dosyanın farklı
+    parçalarına (farklı parça adı) düşen yuvalar ayrı kanıt numarası alır; gerçek kopyalar (sürüm
+    grubu) numara paylaşmaya devam eder."""
+    from bidr.file.naming import number_sources, source_key
+    from bidr.file.run import Item, split_parts
+
+    def row(did, yuva, od, alinti, asama):
+        return {"doc_id": did, "yuva": yuva, "yuva_model": yuva, "od": od, "sayilir": True, "karar": "kabul",
+                "zayif": False, "flags": ["guncellik_dogrulanmali"], "etkin_asama": asama, "alinti": alinti,
+                "_span": [0, 5], "_own": True}
+    paket = Item(olcut="B.1.5", doc_id="paket", od=4, yuvalar=["B.1.5/5", "B.1.5/7"], alintilar=["a", "b"],
+                 spans=[[0, 5], [9, 12]], sayilir=True, inceleme="kabul", isaretler=["guncellik_dogrulanmali"],
+                 yuvalar_model=["B.1.5/5", "B.1.5/7"], kopyalar_surum=["eski"],
+                 satirlar=[row("paket", "B.1.5/5", 3, "a", "uygula"), row("paket", "B.1.5/7", 4, "b", "kontrol_et")])
+    paket.kaynak_grubu = "kapsama:x"
+    tek = Item(olcut="B.1.5", doc_id="tek", od=2, yuvalar=["B.1.5/1"], alintilar=["c"], spans=[None],
+               sayilir=True, inceleme="kabul", yuvalar_model=["B.1.5/1"], satirlar=[row("tek", "B.1.5/1", 2, "c", "planla")])
+    kopya1 = Item(olcut="B.1.5", doc_id="k1", od=2, yuvalar=["B.1.5/2"], alintilar=["d"], spans=[None],
+                  sayilir=True, inceleme="kabul", yuvalar_model=["B.1.5/2"])
+    kopya2 = Item(olcut="B.1.5", doc_id="k2", od=2, yuvalar=["B.1.5/2"], alintilar=["d"], spans=[None],
+                  sayilir=True, inceleme="kabul", yuvalar_model=["B.1.5/2"])
+    parts = {"paket": {"B.1.5/7": "Sentetik Değerlendirme Formu"}}
+    out = split_parts([paket, tek, kopya1, kopya2], lambda i: parts.get(i.doc_id),
+                      lambda i: next((y for y in i.yuvalar_model if y in parts.get(i.doc_id, {})), None))
+    assert len(out) == 5
+    a, b = out[0], out[1]
+    # adı veren parça önce; kopya bağını ve sürüm üyelerini o korur
+    assert (a.parca, a.yuvalar, a.alintilar, a.od, a.parca_anahtar) == (
+        "Sentetik Değerlendirme Formu", ["B.1.5/7"], ["b"], 4, "")
+    assert a.kaynak_grubu == "kapsama:x" and a.kopyalar_surum == ["eski"] and a.asamalar == {"kontrol_et"}
+    # adsız parça (belgenin kendi adı) kendi satırının OD'siyle ayrılır
+    assert (b.yuvalar, b.alintilar, b.od, b.kopyalar_surum, b.asamalar) == (["B.1.5/5"], ["a"], 3, [], {"uygula"})
+    assert "parca_ayrildi" in a.isaretler and "parca_ayrildi" in b.isaretler
+    assert out[2] is tek
+    docs = {"k1": {"surum_grubu": "g"}, "k2": {"surum_grubu": "g"}}
+    num = number_sources(out, key=lambda i: source_key(i.doc_id, docs, i), od=lambda i: i.od)
+    nos = {(i.doc_id, i.parca): s for s, _, i in num}
+    assert nos[("paket", "Sentetik Değerlendirme Formu")] != nos[("paket", "-")]   # aynı dosya, ayrı belge
+    assert nos[("k1", "")] == nos[("k2", "")]                                       # gerçek kopya: tek numara
+    assert len({s for s, _, _ in num}) == 4
+    # tek parçaya düşen kalem bölünmez
+    assert split_parts([tek], lambda i: {"B.1.5/1": "Ad"}) == [tek]

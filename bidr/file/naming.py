@@ -160,12 +160,16 @@ def evidence_od(rows: list[dict], criterion_od: int | dict | None = None) -> int
 def source_key(doc_id: str, docs: dict | None = None, item=None) -> str:
     """Numaralamada aynı kaynak: aynı içerik (doc_id = sha önekidir), aynı sürüm grubu (identify;
     OCR'lı tarama kopyaları ve kontrollü belgenin sayfaları dahil) ya da kalemin seçimde aldığı
-    kapsanan kopya bağı (`item.kaynak_grubu`, bkz. select.merge_contained)."""
+    kapsanan kopya bağı (`item.kaynak_grubu`, bkz. select.merge_contained). Yalnız gerçek kopya ve
+    sürümler numara paylaşır: birleşik dosyanın farklı parçası (`item.parca_anahtar`) ayrı kaynaktır."""
     k = getattr(item, "kaynak_grubu", "") if item is not None else ""
-    if k:
-        return k
-    g = ((docs or {}).get(doc_id) or {}).get("surum_grubu")
-    return f"surum:{g}" if g else f"sha:{doc_id}"
+    if not k:
+        g = ((docs or {}).get(doc_id) or {}).get("surum_grubu")
+        k = f"surum:{g}" if g else f"sha:{doc_id}"
+    # birleşik dosyanın ayrılan parçası (file.run.split_parts): aynı dosyadan çıkmak aynı belge
+    # olmak değildir; parça kendi numarasını alır (ilk parça kalemin anahtarını ve kopya bağını korur)
+    p = getattr(item, "parca_anahtar", "") if item is not None else ""
+    return f"{k}#parca:{p}" if p else k
 
 
 def number_sources(items: list, key, od) -> list[tuple[int, int, object]]:

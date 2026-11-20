@@ -6,7 +6,7 @@ alt ölçüt bloklarının "Açıklamalar" ve "Kanıtlar" hücreleri, öz değer
 dört alanın "Güçlü Yönler" / "Gelişmeye Açık Yönler" hücreleri ve (gerekirse) üstbilgideki
 TASLAK satırı. Altbilgi (form no, yayın/değişiklik bilgisi, sayfa numarası) değişmez.
 
-TASLAK nedenleri: doğrulanmamış metin; boş ya da şablon yönergesi kalan güçlü/gelişmeye açık
+TASLAK nedenleri: doğrulanmamış metin; doğrulamada reddedilmiş yön alanı; boş ya da şablon yönergesi kalan güçlü/gelişmeye açık
 yön hücresi; kapakta kalan hazırlayan yer tutucusu (`rapor.hazirlayanlar` boş); kapsam kararı
 gereken (`karar_gerekli`) ölçüt. Kapsam: bidr/render/kapsam.py.
 """
@@ -671,6 +671,13 @@ def render(template: Path, out: Path, *, texts_dir: Path, audit_path: Path | Non
                      if t.get("durum") == "taslak" and any(res.yonler.get(f"{a} {x}") == "dolu" for x in (GUCLU, GELISME)))
     if unver_y:
         N.append("doğrulanmamış güçlü/gelişmeye açık yön maddeleri: " + ", ".join(unver_y))
+    # Doğrulamada reddedilmiş (son turdan sonra hâlâ) alan: desteklenen maddeler basılsa da alanın
+    # yönleri doğrulanmış değildir; rapor her durumda TASLAK (kullanıcı kararı 2026-11-20)
+    rej_y = sorted(a for a, t in load_yonler(yonler_dir).items()
+                   if t.get("durum") == "reddedildi" and any(f"{a} {x}" in res.yonler for x in (GUCLU, GELISME)))
+    if rej_y:
+        N.append("doğrulamada reddedilen güçlü/gelişmeye açık yön alanı: " + ", ".join(rej_y)
+                 + " (yalnız desteklenen maddeler basıldı; gerekçe verify-yonler.jsonl)")
     if res.yon_kapsam_kaybi:
         N.append("doğrulamada reddedilen yön maddesi çıkarıldı, ölçüt hiçbir yön hücresinde kalmadı: "
                  + "; ".join(f"{a}: {', '.join(cs)}" for a, cs in sorted(res.yon_kapsam_kaybi.items()))

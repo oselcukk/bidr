@@ -19,6 +19,7 @@ import re
 import shutil
 import zipfile
 from collections import Counter
+import dataclasses
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -174,6 +175,12 @@ class Item:
     donem_disi: str = ""                                       # sayılmayan: "sonra" | "gecmis" (select.donem_disi)
     birim_bekliyor: bool = False                               # birim aitliği insanca onaylanmadı
     yuvalar_model: list[str] = field(default_factory=list)     # temsilcinin model yuvaları (karar sırası; ad/işaret)
+    # birleşik dosyanın farklı parçaları ayrı kanıttır (split_parts): kalemin audit satırları (yuva
+    # → alıntı, konum, OD) ve ölçüt kaydı parçaya bölünürken OD'yi parçanın satırlarından hesaplamak için
+    satirlar: list[dict] = field(default_factory=list, repr=False)
+    olcut_kaydi: dict | None = field(default=None, repr=False)
+    parca: str = ""                                            # bölünen kalemin parça adı ("" bölünmedi)
+    parca_anahtar: str = ""                                    # kaynak anahtarına eklenen parça (naming.source_key)
 
 
 def _names_sha(ws_root: Path, review_dir: Path) -> str:
@@ -282,13 +289,79 @@ def plan(ws_root: Path, *, review_dir: Path | None = None, profile: str | None =
             dolayli=bool(dol) and all(dol),
             donem_disi="" if counted else S.donem_disi(rows),
             birim_bekliyor=all(r.get("birim_onay_bekliyor") for r in rows),
-            yuvalar_model=list(dict.fromkeys(r["yuva_model"] for r in own if r.get("yuva_model")))))
+            yuvalar_model=list(dict.fromkeys(r["yuva_model"] for r in own if r.get("yuva_model"))),
+            satirlar=[{**r, "_span": spans.get((r["doc_id"], r.get("yuva_model"))), "_own": r["doc_id"] == rep}
+                      for r in rows],
+            olcut_kaydi=crit.get(olcut)))
     meta = {"inceleme": reviewed, "review": str(rpath) if reviewed else None,
             "kararlar_sha": _sha(ws.root / "decisions.jsonl"), "inceleme_sha": _sha(rpath),
             "profil": a.profile, "secim_sha": settings.sha(), "secim": None}
     if select:
         items, meta["secim"] = _select(ws, items, settings, prev_index or ws.root / INDEX)
     return items, meta
+
+
+def split_parts(items: list[Item], parts_of, chosen_of=None) -> list[Item]:
+    """Birleşik dosyanın farklı parçaları ayrı kanıttır (kullanıcı kararı 2026-11-20: "aynı dosyadan
+    çıktı" ≠ "aynı belge"). Bir kalemin model yuvaları farklı parça adlarına (`parts_of(kalem)` →
+    {model yuvası: parça adı}; adı olmayan yuva belgenin kendi adına) düşüyorsa kalem parça başına
+    bölünür: her parça kendi yuvaları, alıntıları, alıntı konumları (kesilen sayfalar), aşamaları ve
+    kendi satırlarından hesaplanan kod OD'siyle (bölünmemiş kalemin OD'sini aşmaz) ayrı numara alır.
+    Önceki adı taşıyan parça (`chosen_of(kalem)`: tek dosyanın adını veren yuva) ilk sıradadır ve
+    kalemin kaynak anahtarını (sürüm/kopya bağı) korur; diğerleri anahtara parça adını ekler
+    (`parca_anahtar`, bkz. naming.source_key). Gerçek kopyalar/sürümler numara paylaşmaya devam eder."""
+    out: list[Item] = []
+    for it in items:
+        pa = parts_of(it) or {}
+        own = [r for r in it.satirlar if r.get("_own")]
+        if not pa or not own:
+            out.append(it)
+            continue
+        groups: dict[str, list[dict]] = {}
+        for r in own:
+            groups.setdefault(pa.get(r.get("yuva_model"), ""), []).append(r)
+        if len(groups) < 2:
+            out.append(it)
+            continue
+        first = chosen_of(it) if chosen_of else None
+        first_key = pa.get(first, "") if first else next(iter(groups))
+        order = [first_key, *[k for k in groups if k != first_key]] if first_key in groups else list(groups)
+        all_yuva = {r["yuva"] for r in own}
+        all_asama = {r["etkin_asama"] for r in own if r.get("etkin_asama")}
+        row_flags = {f for r in it.satirlar for f in r["flags"]}
+        keep_flags = [f for f in it.isaretler if f not in row_flags
+                      and f not in ("od_sayilmadi", "dusuk_guven_od_disi")]
+        for i, key in enumerate(order):
+            g = groups[key] + ([r for r in it.satirlar if not r.get("_own")] if i == 0 else [])
+            counted = [r for r in g if r["sayilir"] and r["od"] and not _weak(r)]
+            weak = [r for r in g if r["sayilir"] and r["od"] and _weak(r)]
+            od = evidence_od(g, it.olcut_kaydi) or it.od
+            flags = sorted({f for r in g for f in r["flags"]}) + keep_flags
+            if weak:
+                flags.append("dusuk_guven_od_disi")
+            if not counted:
+                flags.append("od_sayilmadi")
+            flags.append("parca_ayrildi")
+            yuv = {r["yuva"] for r in g} | ((set(it.yuvalar) - all_yuva) if i == 0 else set())
+            asm = {r["etkin_asama"] for r in counted}
+            asm_tum = {r["etkin_asama"] for r in g if r.get("etkin_asama")}
+            sub = dataclasses.replace(
+                it, od=min(od, it.od),
+                yuvalar=sorted(yuv, key=lambda y: (y.split("/")[0], int(y.split("/")[1]))),
+                alintilar=list(dict.fromkeys(r["alinti"] for r in g if r.get("_own") and r["alinti"])),
+                spans=[r.get("_span") for r in g if r.get("_own")],
+                sayilir=bool(counted) and it.sayilir,
+                isaretler=list(dict.fromkeys(flags)),
+                asamalar=asm | ((it.asamalar - all_asama) if i == 0 else set()),
+                asamalar_tum=asm_tum | ((it.asamalar_tum - all_asama) if i == 0 else set()),
+                kopyalar_surum=list(it.kopyalar_surum) if i == 0 else [],
+                yuvalar_model=list(dict.fromkeys(r["yuva_model"] for r in g
+                                                 if r.get("_own") and r.get("yuva_model"))),
+                satirlar=g, parca=key or "-", parca_anahtar="" if i == 0 else (key or "-"))
+            if getattr(it, "kaynak_grubu", ""):         # seçimin kopya bağı (alan değil, öznitelik)
+                sub.kaynak_grubu = it.kaynak_grubu
+            out.append(sub)
+    return out
 
 
 def _select(ws: Workspace, items: list[Item], settings, prev_index: Path) -> tuple[list[Item], dict]:
@@ -384,24 +457,28 @@ def run(ws_root: Path, *, out: Path | None = None, source: str | Path | None = N
         return part_date(docs.get(it.doc_id), it.alintilar, lambda: linker.text_of(it.doc_id))
 
     for olcut in sorted(by_c, key=id_key):
+        # birleşik dosyanın farklı parçaları (farklı parça adı) ayrı numara alır (split_parts)
+        by_c[olcut] = split_parts(
+            by_c[olcut], lambda i: resolver.parts(i.doc_id, i.kopyalar),
+            lambda i: next((y for y in i.yuvalar_model if y in resolver.parts(i.doc_id, i.kopyalar)), None))
         lst = sorted(by_c[olcut], key=lambda i: (i.od, (docs.get(i.doc_id) or {}).get("calisma_adi") or "",
                                                  i.doc_id))
         numbered = number_sources(lst, key=lambda i: source_key(i.doc_id, docs, i), od=lambda i: i.od)
-        item_names: dict[str, tuple[str, str]] = {}
+        item_names: dict[int, tuple[str, str]] = {}
         for it in lst:
             if it.doc_id not in names:       # öncelik: insan > model > kural (bidr/name/resolve.py)
                 ad, src, uy = resolver.resolve(it.doc_id, it.kopyalar)
                 names[it.doc_id] = (ad, src)
                 uyarilar.extend(uy)
             # derleme belgede kalemin (yuvalarının) parça adı belge adının önüne geçer (insan hariç)
-            item_names[it.doc_id] = resolver.item_name(it.doc_id, it.yuvalar_model, names[it.doc_id],
+            item_names[id(it)] = resolver.item_name(it.doc_id, it.yuvalar_model, names[it.doc_id],
                                                        it.kopyalar)
         groups: dict[int, list[Item]] = {}
         for sira, _, it in numbered:
             groups.setdefault(sira, []).append(it)
         # listede görünen ad numaranın adıdır (grubun ilk üyesi); farklı numaralarda aynı ad tarihle
         # (yoksa kısa kimlikle) ayrılır
-        shown = {sira: item_names[mem[0].doc_id][0] for sira, mem in groups.items()}
+        shown = {sira: item_names[id(mem[0])][0] for sira, mem in groups.items()}
         seen = Counter(shown.values())
         for sira, mem in groups.items():
             if seen[shown[sira]] > 1:
@@ -414,7 +491,7 @@ def run(ws_root: Path, *, out: Path | None = None, source: str | Path | None = N
             mem = groups[sira]
             ad = shown[sira]
             fad = ad if len(mem) == 1 else safe_name(
-                f"{item_names[it.doc_id][0]} ({item_date(it) or it.doc_id[:6]})")
+                f"{item_names[id(it)][0]} ({item_date(it) or it.doc_id[:6]})")
             inv_row = inv.get(it.doc_id)
             flags = list(it.isaretler)
             # model adının dayanağı (ad_dogrulanmali, ad_parca_uyumsuz) ve tek dosyada birden çok parça adı
@@ -460,7 +537,7 @@ def run(ws_root: Path, *, out: Path | None = None, source: str | Path | None = N
                 "doc_id": it.doc_id, "sayfalar": pages_txt, "yuvalar": "; ".join(it.yuvalar),
                 "alintilar": json.dumps(it.alintilar, ensure_ascii=False), "inceleme": it.inceleme,
                 "kopyalar": "; ".join(dict.fromkeys([*it.kopyalar, *it.kopyalar_surum])), "kaynak": (inv_row or {}).get("rel_path", ""),
-                "isaretler": ", ".join(dict.fromkeys(flags)), "ad_kaynagi": item_names[mem[0].doc_id][1],
+                "isaretler": ", ".join(dict.fromkeys(flags)), "ad_kaynagi": item_names[id(mem[0])][1],
                 "baglanti": link, "baglanti_kaynagi": link_src})
         _share_links(crows)
         rows += crows
