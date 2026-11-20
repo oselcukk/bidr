@@ -1,0 +1,52 @@
+# Kanıt ihtiyaç raporu (`bidr ihtiyac`): "kimden istenir" tablosu. Varsayılanlar geneldir; birimin
+# kendi düzenine göre bu dosyanın kopyası `--sorumlular` ile verilebilir.
+#
+# Arama sırası: belge_turu (doc_types.yaml tür adı) → asama (eksik PUKÖ halkası) → alan (ölçüt
+# alanının harfi) → varsayilan.
+surum: 1
+varsayilan: Bölüm sekreterliği
+belge_turu:
+  bolum_kurulu_karari: Bölüm sekreterliği (kurul kararları)
+  anabilim_dali_kurulu_karari: İlgili anabilim dalı başkanlığı
+  toplanti_tutanagi: Bölüm sekreterliği
+  komisyon_tutanagi: İlgili komisyon başkanı
+  danisma_kurulu_tutanagi: Bölüm başkanlığı (danışma kurulu sekretaryası)
+  stratejik_plan: Bölüm başkanlığı
+  stratejik_plan_izleme: Bölüm başkanlığı / bölüm kalite komisyonu
+  anket_sonucu: Bölüm kalite komisyonu
+  anket_formu: Bölüm kalite komisyonu
+  degerlendirme_raporu: Bölüm kalite komisyonu
+  faaliyet_raporu: İlgili komisyon / etkinliği düzenleyen öğretim elemanı
+  etkinlik_duyurusu: Etkinliği düzenleyen öğretim elemanı / bölüm web sorumlusu
+  web_sayfasi: Bölüm web sorumlusu
+  ekran_goruntusu: İlgili sistem sorumlusu
+  ders_bilgi_formu: Dersi veren öğretim elemanı / eğitim-öğretim komisyonu
+  ders_izlencesi: Dersi veren öğretim elemanı
+  akts_bilgi_paketi: Eğitim-öğretim komisyonu (Bologna sorumlusu)
+  mufredat: Eğitim-öğretim komisyonu
+  ders_programi: Bölüm sekreterliği / ders programı sorumlusu
+  acilan_dersler: Bölüm sekreterliği / ders programı sorumlusu
+  staj_belgesi: Staj komisyonu
+  ogrenim_anlasmasi: Değişim programları koordinatörü
+  proje_listesi: Araştırma komisyonu
+  yayin_listesi: Araştırma komisyonu
+  istatistik_tablosu: Bölüm sekreterliği (öğrenci işleri verisi)
+  gorev_dagilimi: Bölüm başkanlığı
+  altyapi_listesi: Bölüm sekreterliği (taşınır/altyapı sorumlusu)
+  mali_belge: Bölüm sekreterliği (mali işler)
+  yonetmelik: Kurum mevzuat sayfası (bölüm sekreterliği indirir)
+  yonerge: Kurum mevzuat sayfası (bölüm sekreterliği indirir)
+  is_akisi: Kurum kalite birimi sayfası (bölüm kalite sorumlusu)
+  fotograf: Etkinliği düzenleyen öğretim elemanı
+  sertifika: İlgili öğretim elemanı
+asama:
+  planla: Bölüm başkanlığı
+  uygula: İlgili komisyon
+  kontrol_et: Bölüm kalite komisyonu
+  onlem_al: Bölüm kurulu (bölüm sekreterliği aracılığıyla)
+  ozgun: Bölüm başkanlığı
+alan:
+  A: Bölüm başkanlığı
+  B: Eğitim-öğretim komisyonu
+  C: Araştırma komisyonu
+  D: Toplumsal katkı komisyonu

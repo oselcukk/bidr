@@ -1,0 +1,75 @@
+# Kanıt ihtiyaç raporu (`bidr ihtiyac`): her yıl/dönem yeniden üretilen (tekrarlayan) belge türleri.
+#
+# Geçen yılın iyi kanıtı bu türlerden biriyse bu yıl için yeni bir karşılığı beklenir; aynı belgenin
+# önceki dönem kopyası "eski sürüm" sayılır. Tekrarlamayan türlerde (yönetmelik, yönerge, iş akışı…)
+# yürürlükteki aynı belge yeterlidir.
+#
+# Alanlar:
+#   id            kısa kimlik (rapor sütununda görünür)
+#   ad            insan okur adı
+#   belge_turleri bidr/data/doc_types.yaml tür adları; belgenin türü bunlardan biri olmalı
+#   desen         (isteğe bağlı) kanıt adı / başlık / metnin başında aranan desenlerden biri
+#                 eşleşmeli. Küçük harf, Türkçe harfsiz yazılır (ı→i, ş→s, ğ→g, ü→u, ö→o, ç→c).
+#   siklik        yillik | donemlik (yalnız bilgi)
+# Sıra önemlidir: ilk uyan kayıt kullanılır (özel olanlar önce).
+surum: 1
+turler:
+  - id: ders_degerlendirme
+    ad: Ders değerlendirme anketi
+    belge_turleri: [anket_sonucu, anket_formu]
+    desen: ['ders degerlendirme', 'ders ve ogretim elemani', 'ogretim elemani degerlendirme']
+    siklik: donemlik
+  - id: memnuniyet_anketi
+    ad: Yıllık memnuniyet / geri bildirim anketi
+    belge_turleri: [anket_sonucu, anket_formu]
+    siklik: yillik
+  - id: danisma_kurulu
+    ad: Danışma kurulu toplantısı
+    belge_turleri: [danisma_kurulu_tutanagi, toplanti_tutanagi, komisyon_tutanagi, bolum_kurulu_karari]
+    desen: ['danisma kurulu']
+    siklik: yillik
+  - id: stratejik_plan_izleme
+    ad: Stratejik plan izleme / performans göstergeleri
+    belge_turleri: [stratejik_plan_izleme]
+    siklik: yillik
+  - id: bolum_kurulu_karari
+    ad: Bölüm kurulu kararı
+    belge_turleri: [bolum_kurulu_karari, anabilim_dali_kurulu_karari]
+    siklik: yillik
+  - id: komisyon_toplantisi
+    ad: Komisyon toplantı tutanağı
+    belge_turleri: [komisyon_tutanagi]
+    siklik: yillik
+  - id: bolum_toplantisi
+    ad: Bölüm toplantı tutanağı
+    belge_turleri: [toplanti_tutanagi]
+    siklik: yillik
+  - id: seminer_programi
+    ad: Seminer / kolokyum programı
+    belge_turleri: [etkinlik_duyurusu, web_sayfasi, faaliyet_raporu]
+    desen: ['seminer', 'kolokyum', 'colloquium', 'seminar', 'calistay', 'workshop']
+    siklik: donemlik
+  - id: faaliyet_raporu
+    ad: Faaliyet / etkinlik raporu
+    belge_turleri: [faaliyet_raporu, degerlendirme_raporu]
+    siklik: yillik
+  - id: ders_programi
+    ad: Ders programı / açılan dersler
+    belge_turleri: [ders_programi, acilan_dersler]
+    siklik: donemlik
+  - id: gorev_dagilimi
+    ad: Görev dağılımı / komisyon listesi
+    belge_turleri: [gorev_dagilimi]
+    siklik: yillik
+  - id: proje_yayin_listesi
+    ad: Proje / yayın listesi
+    belge_turleri: [proje_listesi, yayin_listesi, istatistik_tablosu]
+    siklik: yillik
+  - id: staj
+    ad: Staj belgeleri
+    belge_turleri: [staj_belgesi]
+    siklik: yillik
+  - id: birim_raporu
+    ad: Birim iç değerlendirme / öz değerlendirme raporu
+    belge_turleri: [bidr_raporu, oz_degerlendirme_raporu]
+    siklik: yillik
