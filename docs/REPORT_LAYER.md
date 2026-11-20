@@ -75,7 +75,29 @@ Bağlantısı olmayan kanıtlar `gaps.md`'nin "Bağlantısı olmayan kanıtlar" 
 ## file → `evidence-index.csv` + `evidence/`
 Sözleşme sütunları: `kanit_no` (ölçüt içinde sıra + OD, kılavuz gösterimi: `1_OD3`),
 `olcut`, `od`, `ad` (insan okur kanıt adı), `dosya` (evidence/'e göre göreli yol), `doc_id`,
-`sayfalar` (boş = tüm belge), `yuvalar`, `alintilar` (JSON liste).
+`sayfalar` (kaynak dosyadan alınan sayfalar; boş = dosyanın tamamı), `yuvalar`, `alintilar` (JSON liste).
+
+**Kanıt dosyası tamdır** (kalite komisyonu kararı 2026-11-21). Kanıt alıntı sayfasına göre
+kesilmez: dosya olduğu gibi kopyalanır. Gerekçe: gerçek raporda 133 kanıtın 106'sı alıntı
+sayfasına kesilmiş, web sayfası PDF'lerinden "1/3" gibi tek sayfalar kalmıştı; okur belgeyi
+bütün olarak görmeli. Alıntı sayfasına kesme seçeneği kaldırıldı (isteğe bağlı olarak da yok:
+belgeyi yarım gösteren çıktı üretmemeli; birleşik dosyanın meşru ihtiyacı aşağıdaki parça kuralıyla
+karşılanır). Tek istisna **birleşik dosya**: tek PDF'e birden çok ayrı belge taranmışsa (identify
+`documents.jsonl` `parcalar`) her belge kendi sayfalarının TAMAMIYLA kanıttır; `sayfalar` o
+belgenin sayfa aralığıdır, işaret `birlesik_dosyadan_ayrildi`. Bir belge hiçbir zaman yarım
+kesilmez: parça sınırı yalnız güvenilir kaynaktan (`sinir: kod` sayfa başındaki doküman kodu
+değişti, `sinir: baslik` tarihi farklı resmî üst bilgi) gelirse kesilir. ingest'in sezgisel sınırı
+(`coklu_belge_suphesi`: "konu ve başlık değişti", "sayfa no 1'e döndü") kesmez: o sınırın iki yanı
+aynı belge sayılır (gerçek veride bu sınırlar imza sayfasını, kararın ekli başvuru/transkriptlerini,
+tutanağın gündemini ayırıyordu). Alıntıların düştüğü parçalar bu yüzden komşularıyla birleşir;
+sonuç dosyanın tamamıysa, alıntının parçası bulunamıyorsa ya da PDF ile metnin sayfa sayısı
+tutmuyorsa tam dosya kopyalanır ve satır `parca_araligi_belirsiz_tum_dosya` (ya da
+`sayfa_sayisi_uyusmuyor_tum_dosya`) işareti alır. Model parça adları (`split_parts`) kalemi ayrı
+numaralara bölse de her numaranın dosyası bu kurala uyar (parça aralığı bilinmiyorsa iki numara da
+tam dosyadır, işaretli). `bidr file --tum-belge` birleşik dosyayı da bölmez. Manifest `kesim`
+(`belge` | `tum`) alanı olmayan eski kanıt klasörü (alıntı sayfasına kesilmiş) güncel sayılmaz:
+`file_tamam` yeniden dosyalatır. Maskeleme ve teslim dosya dosya çalışır; `sayfalar` yalnız
+bilgidir (maskeli dizine aynen geçer).
 Ek sütunlar: `inceleme`, `kopyalar`, `kaynak`, `isaretler`, `ad_kaynagi` (insan|model_parca|model|kural),
 `baglanti` (raporda kanıt adının adresi; boş olabilir), `baglanti_kaynagi`
 (insan|belge_metni|klasor|boş).
@@ -104,6 +126,17 @@ metin atıflarının belge eşlemesi ve ayarlar.
 alanları dizinle eşitler (`sync_text_names`; metin, durum ve doğrulama değişmez). Kör test
 2026-11-20: metin adlandırmadan önce yazıldığı için rapor, dizinde ve dosya adında doğru olan parça
 adı yerine birleşik PDF'in ilk parçasının adını basıyordu (Mat B.4.1, C.2.1; Kimya C.1.1, C.2.1).
+**Metin atıfları yeniden dosyalamada** (`bidr/file/renumber.py`): numaralar değişirse metinler
+eskir (`write_tamam`, `girdi_sha`). Çıktı çalışma alanıysa `bidr file`, girdisi önceki dizinle
+tutan metinde değişiklik yalnız numaralamadaysa — yeni dizindeki her numaranın belgeleri ve kod
+OD'si önceki dizinde tek numarayla aynı (yeni kanıt yok), atıf yapılan her kanıt duruyor — atıfları
+kodla günceller: cümleler değişmez; `[n_ODk]`, `atiflar`, `kanitlar`, `girdi_sha` güncellenir;
+`numara_haritasi` (şimdiki → yazıldığı atıf) `text_sha`'yı koruduğu için doğrulama ve yönler
+eskimez; değişiklik `yeniden_numaralama` günlüğüne yazılır. Yeni kanıt eklendiyse, atıf yapılan
+kanıt çıktıysa/bölündüyse ya da kod OD'si değiştiyse metin yeniden yazılır (`bidr file` çıktısı
+`metin_yeniden_yazilacak`, `bidr next` write aşamasında "N ölçütün metni eski"). write'ın kaynak
+yolları (`work/write/kaynaklar.json`) çalışma alanına göreli kaydedilir: kopyalanan çalışma alanı
+asıl alanın dizinini okumaz (gerçek veri 2026-11-21: kopyada `next` bu yüzden eski metni görmedi).
 
 ### Kanıt seçimi (`bidr/file/select.py`)
 Eşleşme kümesi audit'le aynıdır ve audit OD'si bütün kabul edilmiş eşleşmelerden hesaplanır;
@@ -131,7 +164,8 @@ belgenin sürümleri listeyi şişirir. Ölçüt ölçüt iki adım:
    dışı metninin ≥ %90'ı aynı tarihli başka kalemde ve bu ölçütteki bütün alıntıları da oradaysa
    kapsayan temsilci olur (neden `kapsanan_kopya`); atıflı kalem listede kalır ama numarayı paylaşır.
    Farklı tarihli toplantı/dönem belgesi bu yollarla birleşmez (K20).
-2. **İlgililik.** (a) write sonrası metinde atıf yapılan kanıt her zaman girer, sınıra sayılmaz
+2. **İlgililik.** (a) write sonrası metinde atıf yapılan kanıt her zaman girer; sınır yüzünden
+   düşmez ama sınırdan yer tutar
    (atıf `texts/<ölçüt>.json`'dan; numara önceki dizinle, dizin değiştiyse `evidence-secim.json`
    atıf eşlemesiyle belgeye bağlanır). (b) Atıfsız kanıt yalnız doğrudan ilgiliyse girer: güven
    ≥ `en_dusuk_guven` ve sayılan eşleşmelerinden en az biri `dolayli_isaretler`'den
@@ -159,7 +193,10 @@ audit korur) ve `evidence-secim.json`'da görünür. Ayarlar `bidr/data/profiles
 (kurum `BIDR_PROFILES_DIR` ile değiştirir), çalışma alanı config.yaml `rapor.kanit_secimi`
 (anahtar anahtar üstüne yazar); varsayılan (2026-11-19): ölçüt başına 10 atıfsız kanıt, kurum
 geneli 3, geçmiş kanıt 1, en düşük güven `orta`, sürüm birleştirme açık. Metinde atıf yapılan
-kanıt sınıra sayılmaz.
+kanıt sınırdan yer tutar ama sınır yüzünden düşmez: write sonrası yeniden dosyalama listeyi
+büyütmez. Gerçek veri 2026-11-21: atıf sınıra sayılmadığı için write sonrası `bidr file`
+üst sınırla elenmiş 16 kanıtı geri aldı (133 → 149; kesimle ilgisi yok), üç ölçütte 30 numara
+başka belgeye kaydı.
 
 write sonrası (`texts/` var) gaps.md "Kanıt seçimi" bölümü ölçüt başına "Listede olup metinde atıf
 almayan kanıtlar" alt listesini de yazar: yayımlanan ama metinde atıf almamış kanıt,

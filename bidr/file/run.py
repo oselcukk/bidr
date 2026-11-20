@@ -8,6 +8,10 @@ hesaplanır (ret düşer, duzelt düzeltilmiş ölçüt/yuva/aşamayla girer). Y
 kümeden kanıt seçimiyle (`select.py`: sürüm/kopya birleştirme, ilgililik, üst sınırlar) seçilir;
 audit OD'si seçimden etkilenmez, elenenler `evidence-secim.json` ve gaps.md "Kanıt seçimi"nde.
 
+Kanıt dosyası tamdır: alıntı sayfasına kesilmez; yalnız birleşik dosyada (tek PDF'te birden çok
+belge) her belge kendi bütün sayfalarıyla ayrılır (bkz. `part_pages`). Çıktı çalışma alanıysa
+yalnız numarası değişen metin atıfları kodla güncellenir (`renumber.py`).
+
 Kaynak dosyalara yalnız okumak için dokunulur; çıktı klasörü kaynağın içinde olamaz.
 """
 from __future__ import annotations
@@ -28,6 +32,10 @@ from bidr.common import Workspace, read_jsonl
 from .naming import date_of, evidence_od, file_name, number_sources, safe_name, source_key
 
 SURUM = 1
+# Dosya kesim kuralı (manifest `kesim`): "belge" = dosya olduğu gibi, birleşik dosyada belgenin bütün
+# sayfaları (2026-11-21); "tum" = --tum-belge. Alanı olmayan eski klasör alıntı sayfasına kesilmişti:
+# güncel sayılmaz, yeniden dosyalanır (status).
+KESIM = ("belge", "tum")
 INDEX = "evidence-index.csv"
 EVIDENCE = "evidence"
 ZIP = "evidence.zip"
@@ -305,8 +313,8 @@ def split_parts(items: list[Item], parts_of, chosen_of=None) -> list[Item]:
     """Birleşik dosyanın farklı parçaları ayrı kanıttır (kullanıcı kararı 2026-11-20: "aynı dosyadan
     çıktı" ≠ "aynı belge"). Bir kalemin model yuvaları farklı parça adlarına (`parts_of(kalem)` →
     {model yuvası: parça adı}; adı olmayan yuva belgenin kendi adına) düşüyorsa kalem parça başına
-    bölünür: her parça kendi yuvaları, alıntıları, alıntı konumları (kesilen sayfalar), aşamaları ve
-    kendi satırlarından hesaplanan kod OD'siyle (bölünmemiş kalemin OD'sini aşmaz) ayrı numara alır.
+    bölünür: her parça kendi yuvaları, alıntıları, alıntı konumları (dosyalanacak belge sayfaları:
+    `part_pages`), aşamaları ve kendi satırlarından hesaplanan kod OD'siyle (bölünmemiş kalemin OD'sini aşmaz) ayrı numara alır.
     Önceki adı taşıyan parça (`chosen_of(kalem)`: tek dosyanın adını veren yuva) ilk sıradadır ve
     kalemin kaynak anahtarını (sürüm/kopya bağı) korur; diğerleri anahtara parça adını ekler
     (`parca_anahtar`, bkz. naming.source_key). Gerçek kopyalar/sürümler numara paylaşmaya devam eder."""
@@ -449,6 +457,7 @@ def run(ws_root: Path, *, out: Path | None = None, source: str | Path | None = N
     if ev.exists():
         shutil.rmtree(ev)
     ev.mkdir(parents=True)
+    prev_rows = _read_index(out / INDEX) if out == ws.root else []
     rows, n_cut, n_missing = [], 0, 0
     names: dict[str, tuple[str, str]] = {}
     suspicious: dict[str, dict[str, str]] = {}      # doc_id → belge metnindeki şüpheli adresler
@@ -511,19 +520,20 @@ def run(ws_root: Path, *, out: Path | None = None, source: str | Path | None = N
                     n_missing += 1
                 else:
                     pages = None
-                    if ext == PDF and not whole:
-                        pages, why = _select_pages(ws, it, srcf)
-                        if why:
+                    if ext == PDF and not whole:      # yalnız birleşik dosyanın belgesi ayrılır
+                        pages, why = _part_pages(ws, it, srcf, docs.get(it.doc_id))
+                        if why and not pages:
                             flags.append(why)
                     try:
                         if pages:
                             cut_pdf(srcf, dst, pages)
                             pages_txt = page_ranges(pages)
+                            flags.append(PARCA_KESILDI)
                             n_cut += 1
                         else:
                             shutil.copyfile(srcf, dst)
-                    except Exception as e:      # bozuk PDF: tüm belgeyi kopyala
-                        flags.append(f"sayfa_kesilemedi:{type(e).__name__}")
+                    except Exception as e:      # bozuk PDF: tüm dosyayı kopyala
+                        flags.append(f"{PARCA_BELIRSIZ}:{type(e).__name__}")
                         shutil.copyfile(srcf, dst)
                         pages_txt = ""
                     rel_out = dst.relative_to(ev).as_posix()
@@ -563,18 +573,27 @@ def run(ws_root: Path, *, out: Path | None = None, source: str | Path | None = N
             "elenen_kurum_geneli": sum(1 for d in secim["dropped"] if d["kurum_geneli"]),
             "surum_birlesen": sum(len(m["uyeler"]) for m in secim["merges"])}
     manifest = {"surum": SURUM, "calisma_alani": str(ws.root), **meta, "secim": ozet, "tum_belge": whole,
-                "kanit": len(rows), "index_sha": _sha(idx)}
+                "kesim": "tum" if whole else "belge", "kanit": len(rows), "index_sha": _sha(idx)}
     (ev / MANIFEST).write_text(json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8")
     zpath = None
     if make_zip:
         zpath = out / ZIP
         write_zip(ev, zpath)
-    adlari_guncellenen = sync_text_names(ws.root, rows) if out == ws.root else []
+    renum = {"yeniden_numaralanan": [], "yeniden_yazilacak": {}}
+    adlari_guncellenen: list[str] = []
+    if out == ws.root:
+        from .renumber import renumber_texts
+        renum = renumber_texts(ws.root, prev_rows, rows)
+        adlari_guncellenen = sync_text_names(ws.root, rows)
     return {"kanit": len(rows), "olcut": len(by_c), "belge": len({r["doc_id"] for r in rows}), **ozet,
             "metin_adlari_guncellenen": adlari_guncellenen,
+            "metin_numaralari_guncellenen": renum["yeniden_numaralanan"],
+            "metin_yeniden_yazilacak": renum["yeniden_yazilacak"],
             "baglantili": sum(1 for r in rows if r["baglanti"]),
             "baglanti_kaynagi": dict(sorted(Counter(r["baglanti_kaynagi"] or "yok" for r in rows).items())),
-            "kesilen_pdf": n_cut, "eksik_dosya": n_missing, "inceleme": meta["inceleme"],
+            "birlesik_dosyadan_ayrilan": n_cut,
+            "birlesik_tum_dosya": sum(1 for r in rows if PARCA_BELIRSIZ in r["isaretler"]),
+            "eksik_dosya": n_missing, "inceleme": meta["inceleme"],
             "index": str(idx), "evidence": str(ev), "zip": str(zpath) if zpath else None,
             "uyarilar": list(dict.fromkeys(uyarilar))}
 
@@ -679,23 +698,84 @@ def _unique(used: set[str], olcut: str, sira: int, od: int, ad: str, ext: str, d
     return cand
 
 
-def _select_pages(ws: Workspace, it: Item, srcf: Path) -> tuple[list[int] | None, str | None]:
+# -- birleşik dosyanın parçası ----------------------------------------------------------------
+# Kalite komisyonu kararı (2026-11-21): kanıt dosyası alıntı sayfasına göre KESİLMEZ; dosya olduğu
+# gibi kanıttır. Gerçek raporda 133 kanıtın 106'sı alıntı sayfasına kesilmiş, web sayfası
+# PDF'lerinden "1/3" gibi tek sayfalar kalmıştı. Tek istisna birleşik dosya: tek PDF'e birden çok
+# ayrı belge taranmışsa (identify `parcalar`) her belge kendi sayfalarının TAMAMIYLA kanıttır. Bir
+# belge hiçbir zaman yarım kesilmez: parça sınırı yalnız güvenilir kaynaktan (sayfa başındaki
+# doküman kodu değişti, ya da tarihi farklı resmî üst bilgi) gelirse kesilir; ingest'in sezgisi
+# ("konu ve başlık değişti", "sayfa no 1'e döndü": imza sayfası, ek transkript) kesmez, o sınırın
+# iki yanı aynı belge sayılır. Parça bilinemezse tam dosya kopyalanır ve işaretlenir.
+
+GUVENILIR_SINIR = ("kod", "baslik")
+PARCA_BELIRSIZ = "parca_araligi_belirsiz_tum_dosya"
+PARCA_KESILDI = "birlesik_dosyadan_ayrildi"
+
+
+def quote_pages(text: str, rows: list[dict]) -> list[int | None]:
+    """Kalemin kendi satırlarının alıntı sayfaları (1 tabanlı; konum yoksa alıntı metinde aranır;
+    bulunamazsa None)."""
+    from bidr.identify.parca import quote_page
+    out: list[int | None] = []
+    for r in rows:
+        sp = r.get("_span")
+        pg = None
+        if sp:
+            pg = (pages_of_spans(text, [sp]) or [None])[0]
+        if pg is None and r.get("alinti"):
+            q = quote_page(text, r["alinti"])
+            pg = q + 1 if q is not None else None
+        out.append(pg)
+    return out
+
+
+def part_pages(parts: list[dict], qpages: list[int | None]) -> tuple[list[int] | None, str | None]:
+    """Birleşik dosyada kalemin belgesinin sayfaları → (sayfalar | None = tüm dosya, işaret).
+    `parts`: documents.jsonl `parcalar` ([{sayfa: [ilk, son], sinir}], 1 tabanlı). Alıntıların
+    düştüğü parçalar, güvenilir olmayan sınırların öbür yanındaki parçalarla birleştirilir (aynı
+    belge olabilir); sonuç bütün dosyaysa ya da bir alıntının parçası bilinmiyorsa tüm dosya."""
+    from bidr.identify.parca import part_of_page
+    if len(parts) < 2:
+        return None, None
+    if not qpages or any(p is None for p in qpages):
+        return None, PARCA_BELIRSIZ
+    sel: set[int] = set()
+    for pg in qpages:
+        j = part_of_page(parts, pg - 1)
+        if j is None:
+            return None, PARCA_BELIRSIZ
+        sel.add(j)
+    for j in sorted(sel):                 # güvenilir olmayan sınır iki yanı ayırmaz
+        a = j
+        while a > 0 and parts[a].get("sinir") not in GUVENILIR_SINIR:
+            a -= 1
+        b = j
+        while b + 1 < len(parts) and parts[b + 1].get("sinir") not in GUVENILIR_SINIR:
+            b += 1
+        sel.update(range(a, b + 1))
+    if len(sel) == len(parts):
+        return None, PARCA_BELIRSIZ
+    pages = sorted({p for j in sel for p in range(parts[j]["sayfa"][0], parts[j]["sayfa"][1] + 1)})
+    return pages, PARCA_KESILDI
+
+
+def _part_pages(ws: Workspace, it: Item, srcf: Path, doc: dict | None) -> tuple[list[int] | None, str | None]:
+    parts = (doc or {}).get("parcalar") or []
+    if len(parts) < 2:
+        return None, None                   # tek belgeli dosya: olduğu gibi
     tp = ws.text_path(it.doc_id)
     if not tp.exists():
-        return None, "metin_yok_tum_belge"
+        return None, PARCA_BELIRSIZ
     text = tp.read_text(encoding="utf-8", errors="replace")
     n_text = text.count("\f") + 1
-    if n_text <= 1:
-        return None, None
-    pages = pages_of_spans(text, it.spans)
-    if not pages:
-        return None, "alinti_konumu_yok_tum_belge"
-    n_pdf = pdf_pages(srcf)
-    if n_pdf != n_text:
-        return None, "sayfa_sayisi_uyusmuyor_tum_belge"
-    if len(pages) >= n_pdf:
-        return None, None
-    return pages, None
+    if parts[-1]["sayfa"][1] != n_text:     # parçalar başka bir metinden hesaplanmış
+        return None, PARCA_BELIRSIZ
+    own = [r for r in it.satirlar if r.get("_own")] or [{"_span": sp} for sp in it.spans]
+    pages, why = part_pages(parts, quote_pages(text, own))
+    if pages and pdf_pages(srcf) != n_text:
+        return None, "sayfa_sayisi_uyusmuyor_tum_dosya"
+    return pages, why
 
 
 def write_zip(ev: Path, zpath: Path) -> None:
@@ -708,6 +788,13 @@ def write_zip(ev: Path, zpath: Path) -> None:
                 zi.flag_bits |= 0x800          # UTF-8 dosya adı (Türkçe karakter)
                 z.writestr(zi, p.read_bytes())
     tmp.replace(zpath)
+
+
+def _read_index(p: Path) -> list[dict]:
+    if not p.exists():
+        return []
+    with open(p, encoding="utf-8", newline="") as f:
+        return list(csv.DictReader(f))
 
 
 def _links_sha(ws_root: Path, review_dir: Path) -> str:
@@ -730,12 +817,13 @@ def status(out: Path, ws_root: Path | None = None, review_dir: Path | None = Non
     review_dir = Path(review_dir or ws_root)
     ev, idx = out / EVIDENCE, out / INDEX
     st = {"index": idx.exists(), "manifest": (ev / MANIFEST).exists(), "guncel": False,
-          "inceleme": False, "kanit": 0, "eksik_dosya": 0, "baglantisiz": 0}
+          "inceleme": False, "kanit": 0, "eksik_dosya": 0, "baglantisiz": 0, "eski_kesim": False}
     if not (st["index"] and st["manifest"]):
         return st
     m = json.loads((ev / MANIFEST).read_text(encoding="utf-8"))
     st["inceleme"] = bool(m.get("inceleme"))
-    st["guncel"] = (m.get("kararlar_sha") == _sha(ws_root / "decisions.jsonl")
+    st["eski_kesim"] = m.get("kesim") not in KESIM          # alıntı sayfasına kesilmiş (eski kural)
+    st["guncel"] = (not st["eski_kesim"] and m.get("kararlar_sha") == _sha(ws_root / "decisions.jsonl")
                     and m.get("inceleme_sha") == _sha(review_dir / REVIEW)
                     and m.get("index_sha") == _sha(idx)
                     and m.get("adlar_sha", _names_sha(ws_root, review_dir)) == _names_sha(ws_root, review_dir)

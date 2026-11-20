@@ -43,7 +43,9 @@ def register(sub):
     p.add_argument("--review", default=None,
                    help="review-decisions.jsonl'in klasörü (audit --out; varsayılan çalışma alanı)")
     p.add_argument("--tum-belge", action="store_true",
-                   help="PDF'te alıntı sayfalarını kesmek yerine tüm belgeyi kopyala")
+                   help="birleşik PDF'i de (tek dosyada birden çok belge) bölmeden tam kopyala; "
+                        "varsayılan: her dosya tam, birleşik dosyada her belge kendi bütün sayfalarıyla "
+                        "(alıntı sayfasına kesilmez)")
     p.add_argument("--zip", action="store_true", help="evidence.zip de üret")
     p.add_argument("--profile", default=None, help="varsayılan: config.yaml profili, yoksa akademik_bolum")
     p.set_defaults(func=_run)

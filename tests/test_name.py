@@ -462,6 +462,15 @@ def _make_compilation(ws):
                 _m("A.1.1", "A.1.1/2", "uygula", 3, "staj çalışmaları bu yönerge ile düzenlenir", P_DER)]
     (ws / "decisions.jsonl").write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in recs),
                                         encoding="utf-8")
+    # identify'ın parça kaydı (doküman kodu değişti: güvenilir sınır)
+    from bidr.identify.parca import part_ranges
+    docs = [json.loads(x) for x in (ws / "documents.jsonl").read_text(encoding="utf-8").splitlines()]
+    for r in docs:
+        if r["doc_id"] == "d_karar":
+            r["parcalar"] = [{"sayfa": [a + 1, b + 1], "sinir": k} for a, b, k in part_ranges(P_DER.split("\f"))]
+            assert [x["sinir"] for x in r["parcalar"]] == ["ilk", "kod"]
+    (ws / "documents.jsonl").write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in docs),
+                                        encoding="utf-8")
 
 
 def test_file_part_names_and_name_flags(env, tmp_path, capsys):
@@ -489,14 +498,15 @@ def test_file_part_names_and_name_flags(env, tmp_path, capsys):
     rec = {r["doc_id"]: r for r in read_jsonl(ws / NAMES)}["d_karar"]
     assert rec["parca_adlari"] == {"A.1.1/2": "Staj Yönergesi"} and "dogrulanmali" not in rec
     assert any("B.1.1/1" in n and "ayni parca tek ad" in n for n in rec["parca_not"])
-    # 3) dosyalama: A.1.1 kesimi parça adını alır, B.1.1 belge adında; işaret kalmaz
+    # 3) dosyalama: A.1.1 parçası (kendi bütün sayfalarıyla: s.3) parça adını alır, B.1.1 belge
+    # adında (s.1-2, ilk belgenin tamamı; alıntı sayfası s.2'ye kesilmez); işaret kalmaz
     out = tmp_path / "o2"
     FR.run(ws, out=out, source=src)
     by = {(r["olcut"], r["doc_id"]): r for r in _index(out)}
     a, b = by[("A.1.1", "d_karar")], by[("B.1.1", "d_karar")]
     assert (a["ad"], a["ad_kaynagi"], a["sayfalar"]) == ("Staj Yönergesi", "model_parca", "3")
     assert a["dosya"] == "A/A.1/A.1.1/[2-OD3]. Staj Yönergesi.pdf" and (out / "evidence" / a["dosya"]).is_file()
-    assert (b["ad"], b["ad_kaynagi"]) == ("Bölüm Kurulu Uygulama Kararı", "model")
+    assert (b["ad"], b["ad_kaynagi"], b["sayfalar"]) == ("Bölüm Kurulu Uygulama Kararı", "model", "1-2")
     assert "ad_" not in a["isaretler"] and "parca_adi_coklu" not in a["isaretler"]
     # 4) insan adı parça adının önüne geçer
     rev = tmp_path / "rev"

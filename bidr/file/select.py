@@ -31,8 +31,8 @@ Sözleşme ve gerekçe: docs/REPORT_LAYER.md "Kanıt seçimi"; ayarlar
    kimlikleri uyumlu ve ortak, dönem ayrımı yok; kalıp türünde sıkı eşik + kardeş denetimi +
    belge düzeyinde yıl) tek kanıttır; temsilci parçanın belgedeki payı en büyük olandır (yazının
    kendisi, paket değil).
-2. **İlgililik (K18).** (a) write sonrası metinde atıf yapılan kanıt her zaman girer ve üst
-   sınıra sayılmaz; (b) atıfsız kanıt yalnız doğrudan ilgiliyse girer: OD'ye sayılır, güveni
+2. **İlgililik (K18).** (a) write sonrası metinde atıf yapılan kanıt her zaman girer; üst sınır
+   yüzünden düşmez ama sınırdan yer tutar (yeniden dosyalama listeyi büyütmez, 2026-11-21); (b) atıfsız kanıt yalnız doğrudan ilgiliyse girer: OD'ye sayılır, güveni
    ≥ `en_dusuk_guven`, sayılan eşleşmelerinden en az biri `dolayli_isaretler` taşımıyor; ölçüt
    başına `olcut_basina_en_fazla` (sıra: OD'ye sayılan önce, sonra OD, güven, tarih; dönem kuralı
    yüzünden sayılmayan aday elenmez ama sona kalır); (c) kurum geneli düzenleme bir ölçütte en çok
@@ -693,7 +693,11 @@ def select(items: list, s: Settings, cited: set[str], docs: dict) -> tuple[list,
             keep[id(it)] = "atif"
         elif it.insan:
             keep[id(it)] = "insan"
-    n_open = sum(1 for it in items if id(it) in keep and keep[id(it)] != "atif")   # atıf sınıra sayılmaz
+    # atıf yapılan kanıt sınır yüzünden düşmez ama sınırdan yer tutar: yeniden dosyalama write'tan
+    # önceki listeyi korur. Gerçek veri 2026-11-21: atıf sınıra sayılmadığı için write sonrası
+    # dosyalama A.1.5/B.1.6/B.2.3'te üst sınırla elenmiş 16 kanıtı geri aldı (133 → 149), 30 numara
+    # başka belgeye kaydı, metinler eskidi.
+    n_open = sum(1 for it in items if id(it) in keep)
     n_kg = sum(1 for it in items if id(it) in keep and it.kurum_geneli)
     cap = s.olcut_en_fazla
     direct, kg = [], []

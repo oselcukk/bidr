@@ -127,12 +127,12 @@ def test_file_basic(env, tmp_path):
         ("1_OD2", "d_kom"), ("2_OD3", "d_karar")]
     k = by[("B.1.1", "d_karar")]
     assert k["dosya"] == "B/B.1/B.1.1/[1-OD3]. Bölüm Kurulu Kararları.pdf"
-    assert k["sayfalar"] == "2"
-    pr = PdfReader(str(out / "evidence" / k["dosya"]))
-    assert len(pr.pages) == 1 and float(pr.pages[0].mediabox.width) == 201   # 2. sayfa
-    assert by[("A.1.1", "d_karar")]["sayfalar"] == "3"
+    # kalite komisyonu kararı 2026-11-21: alıntı sayfasına kesilmez, dosya olduğu gibi kanıttır
+    assert k["sayfalar"] == ""
+    assert (out / "evidence" / k["dosya"]).read_bytes() == (src / "klasör/karar.pdf").read_bytes()
+    assert by[("A.1.1", "d_karar")]["sayfalar"] == ""
     an = by[("B.1.1", "d_anket")]
-    assert an["sayfalar"] == ""                            # iki sayfa da alıntılı: tüm belge
+    assert an["sayfalar"] == ""
     kom = by[("A.1.1", "d_kom")]
     assert (out / "evidence" / kom["dosya"]).read_bytes() == (src / "belgeler/komisyon.docx").read_bytes()
     assert kom["dosya"].endswith(".docx") and "Deneme" not in kom["ad"]    # kişi adı yok
@@ -141,7 +141,7 @@ def test_file_basic(env, tmp_path):
     # inceleme yok → işaretli
     assert not st["inceleme"] and {r["inceleme"] for r in rows} == {"yapilmadi"}
     assert (out / "evidence" / R.NO_REVIEW).exists()
-    assert st["kanit"] == 4 and st["kesilen_pdf"] == 2
+    assert st["kanit"] == 4 and st["birlesik_dosyadan_ayrilan"] == 0 and st["birlesik_tum_dosya"] == 0
     s = R.status(out, ws)
     assert s["guncel"] and s["kanit"] == 4 and s["eksik_dosya"] == 0
 
@@ -219,17 +219,86 @@ def test_source_resolution_and_safety(env, tmp_path):
     assert (foreign / "evidence" / "elle.pdf").exists()
 
 
+def _set_parts(ws: Path, did: str, parts: list[tuple[int, int, str]]) -> None:
+    recs = [json.loads(x) for x in (ws / "documents.jsonl").read_text(encoding="utf-8").splitlines()]
+    for r in recs:
+        if r["doc_id"] == did:
+            r["parcalar"] = [{"sayfa": [a, b], "sinir": s} for a, b, s in parts]
+    (ws / "documents.jsonl").write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in recs),
+                                        encoding="utf-8")
+
+
+def test_combined_file_document_keeps_all_its_pages(env, tmp_path):
+    """Birleşik dosyada (tek PDF'te iki ayrı belge) her belge kendi bütün sayfalarıyla kanıttır:
+    alıntı s.2'de olsa da 2. belgenin s.2-3'ü birlikte gelir; 1. belge (s.1) ayrı dosyadır."""
+    ws, src = env
+    _set_parts(ws, "d_karar", [(1, 1, "ilk"), (2, 3, "baslik")])
+    out = tmp_path / "out"
+    st = R.run(ws, out=out, source=src)
+    by = {(r["olcut"], r["doc_id"]): r for r in _index(out)}
+    k = by[("B.1.1", "d_karar")]                   # alıntılar s.2 (ve s.2'deki ikinci yuva)
+    assert k["sayfalar"] == "2-3" and "birlesik_dosyadan_ayrildi" in k["isaretler"]
+    pr = PdfReader(str(out / "evidence" / k["dosya"]))
+    assert [float(pg.mediabox.width) for pg in pr.pages] == [201, 202]      # s.2 ve s.3, yarım değil
+    a = by[("A.1.1", "d_karar")]                   # alıntı s.3: aynı belge (s.2-3)
+    assert a["sayfalar"] == "2-3"
+    assert st["birlesik_dosyadan_ayrilan"] == 2
+    # sınır sezgiselse (ingest) iki yanı aynı belge sayılır: tam dosya, işaretli
+    _set_parts(ws, "d_karar", [(1, 1, "ilk"), (2, 3, "ingest")])
+    st = R.run(ws, out=out, source=src)
+    k = next(r for r in _index(out) if r["olcut"] == "B.1.1" and r["doc_id"] == "d_karar")
+    assert k["sayfalar"] == "" and "parca_araligi_belirsiz_tum_dosya" in k["isaretler"]
+    assert len(PdfReader(str(out / "evidence" / k["dosya"])).pages) == 3
+    assert st["birlesik_dosyadan_ayrilan"] == 0 and st["birlesik_tum_dosya"] == 2
+    # güvenilir sınırın öbür yanında güvenilmez sınır: o komşu da belgeye katılır
+    _set_parts(ws, "d_karar", [(1, 1, "ilk"), (2, 2, "kod"), (3, 3, "ingest")])
+    R.run(ws, out=out, source=src)
+    k = next(r for r in _index(out) if r["olcut"] == "B.1.1" and r["doc_id"] == "d_karar")
+    assert k["sayfalar"] == "2-3"
+    # --tum-belge: birleşik dosya da bölünmez
+    _set_parts(ws, "d_karar", [(1, 1, "ilk"), (2, 3, "baslik")])
+    R.run(ws, out=out, source=src, whole=True)
+    assert all(r["sayfalar"] == "" for r in _index(out))
+
+
+def test_part_pages_rules():
+    parts = [{"sayfa": [1, 2], "sinir": "ilk"}, {"sayfa": [3, 5], "sinir": "kod"},
+             {"sayfa": [6, 6], "sinir": "ingest"}, {"sayfa": [7, 9], "sinir": "baslik"}]
+    assert R.part_pages(parts, [1]) == ([1, 2], R.PARCA_KESILDI)
+    assert R.part_pages(parts, [4, 6]) == ([3, 4, 5, 6], R.PARCA_KESILDI)   # ingest sınırı ayırmaz
+    assert R.part_pages(parts, [1, 8]) == ([1, 2, 7, 8, 9], R.PARCA_KESILDI)
+    assert R.part_pages(parts, [1, 3, 7]) == (None, R.PARCA_BELIRSIZ)       # bütün dosya
+    assert R.part_pages(parts, [None]) == (None, R.PARCA_BELIRSIZ)          # alıntının sayfası yok
+    assert R.part_pages(parts, []) == (None, R.PARCA_BELIRSIZ)
+    assert R.part_pages(parts[:1], [1]) == (None, None)                     # tek belgeli dosya
+
+
 def test_page_mismatch_and_missing_file(env, tmp_path):
     ws, src = env
+    _set_parts(ws, "d_karar", [(1, 1, "ilk"), (2, 3, "baslik"), (4, 4, "baslik")])
     (ws / "text" / "d_karar.txt").write_text(P1 + "\fdördüncü", encoding="utf-8")   # PDF 3 sayfa, metin 4
     (src / "belgeler/komisyon.docx").unlink()
     R.run(ws, out=tmp_path / "out", source=src)
     rows = _index(tmp_path / "out")
     k = next(r for r in rows if r["olcut"] == "B.1.1" and r["doc_id"] == "d_karar")
-    assert k["sayfalar"] == "" and "sayfa_sayisi_uyusmuyor" in k["isaretler"]
+    assert k["sayfalar"] == "" and "sayfa_sayisi_uyusmuyor_tum_dosya" in k["isaretler"]
     kom = next(r for r in rows if r["doc_id"] == "d_kom")
     assert kom["dosya"] == "" and "kaynak_dosya_yok" in kom["isaretler"]
     assert R.status(tmp_path / "out", ws)["eksik_dosya"] == 1
+
+
+def test_old_cut_folder_is_stale(env, tmp_path):
+    """Alıntı sayfasına kesilmiş (manifestte `kesim` yok) eski kanıt klasörü güncel sayılmaz."""
+    ws, src = env
+    out = tmp_path / "out"
+    R.run(ws, out=out, source=src)
+    assert R.status(out, ws)["guncel"]
+    mp = out / "evidence" / R.MANIFEST
+    m = json.loads(mp.read_text(encoding="utf-8"))
+    m.pop("kesim")
+    mp.write_text(json.dumps(m), encoding="utf-8")
+    st = R.status(out, ws)
+    assert not st["guncel"] and st["eski_kesim"]
 
 
 def test_naming():
@@ -379,3 +448,102 @@ def test_combined_file_parts_get_own_numbers():
     assert len({s for s, _, _ in num}) == 4
     # tek parçaya düşen kalem bölünmez
     assert split_parts([tek], lambda i: {"B.1.5/1": "Ad"}) == [tek]
+
+
+# -- yeniden dosyalamada metin atıfları (bidr/file/renumber.py) ------------------------------------
+
+def _text(ws: Path, olcut: str, rows: list[dict], cites: list[str], od: int = 1) -> dict:
+    from bidr.write.run import girdi_sha
+    first = {}
+    for r in rows:
+        first.setdefault(r["kanit_no"], r)
+    t = {"olcut": olcut, "od_onerisi": 3, "durum": "dogrulandi", "tur": 0,
+         "girdi_sha": girdi_sha([r for r in rows if r["olcut"] == olcut], od),
+         "paragraflar": [{"metin": "Sentetik uygulama yürütülmektedir " + " ".join(f"[{c}]" for c in cites) + ".",
+                          "atiflar": cites}],
+         "kanitlar": [{"no": c, "ad": first[c]["ad"], "dosya": first[c]["dosya"]} for c in cites],
+         "dogrulama": {"model": "m"}}
+    (ws / "texts").mkdir(exist_ok=True)
+    (ws / "texts" / f"{olcut}.json").write_text(json.dumps(t, ensure_ascii=False), encoding="utf-8")
+    return t
+
+
+def test_refile_renumbers_citations_in_code(env):
+    """Gerçek veri 2026-11-21: yeniden dosyalama numaraları kaydırdı, metin eski numaralarla kaldı.
+    Değişiklik yalnız numaralamadaysa (aynı belgeler, aynı kod OD'si, yeni kanıt yok) atıflar kodla
+    güncellenir; metnin özeti (text_sha) ve doğrulaması korunur. Yeni kanıt eklenirse yeniden yazım."""
+    from bidr.write.run import text_sha
+    ws, src = env
+    (ws / "config.yaml").write_text(f"bidr:\n  kaynak: {src}\n", encoding="utf-8")
+    R.run(ws, source=src)
+    rows = _index(ws)
+    assert [r["kanit_no"] for r in rows if r["olcut"] == "B.1.1"] == ["1_OD3", "2_OD4"]
+    t0 = _text(ws, "B.1.1", rows, ["2_OD4"])
+    sha0 = text_sha(t0)
+    # atıfsız kanıt (karar) incelemede reddedilir: anket 2 → 1
+    with open(ws / R.REVIEW, "w", encoding="utf-8") as f:
+        for y in ("B.1.1/1", "B.1.1/3"):
+            f.write(json.dumps({"satir": f"d_karar|{y}", "doc_id": "d_karar", "olcut": "B.1.1", "yuva": y,
+                                "karar": "ret", "duzelt": None, "etiket": None, "not": ""}) + "\n")
+    st = R.run(ws, source=src)
+    assert st["metin_numaralari_guncellenen"] == ["B.1.1"] and st["metin_yeniden_yazilacak"] == {}
+    t = json.loads((ws / "texts" / "B.1.1.json").read_text(encoding="utf-8"))
+    assert t["paragraflar"][0]["metin"].endswith("[1_OD4].") and t["paragraflar"][0]["atiflar"] == ["1_OD4"]
+    assert [k["no"] for k in t["kanitlar"]] == ["1_OD4"] and t["kanitlar"][0]["dosya"].startswith("B/B.1/B.1.1/[1-OD4]")
+    assert t["numara_haritasi"] == {"1_OD4": "2_OD4"} and t["yeniden_numaralama"][0]["harita"] == {"2_OD4": "1_OD4"}
+    assert text_sha(t) == sha0 and t["durum"] == "dogrulandi" and t["dogrulama"] == {"model": "m"}
+    from bidr.write.run import girdi_sha
+    assert t["girdi_sha"] == girdi_sha([r for r in _index(ws) if r["olcut"] == "B.1.1"], 1)   # write_tamam: güncel
+    assert R.run(ws, source=src)["metin_numaralari_guncellenen"] == []                       # kararlı
+    # metinde atfı başka kanıta çevirmek özeti değiştirir (harita doğrulamayı kör etmez)
+    assert text_sha({**t, "paragraflar": [{"metin": "Sentetik uygulama yürütülmektedir [2_OD4]."}]}) != sha0
+    # ret geri alınır: karar yeniden listeye girer (yeni kanıt) → kodla düzeltilmez, yeniden yazım
+    (ws / R.REVIEW).unlink()
+    st = R.run(ws, source=src)
+    assert st["metin_numaralari_guncellenen"] == [] and "B.1.1" in st["metin_yeniden_yazilacak"]
+    assert json.loads((ws / "texts" / "B.1.1.json").read_text(encoding="utf-8"))["paragraflar"] == t["paragraflar"]
+
+
+def test_number_map_rules():
+    from bidr.file.renumber import number_map
+
+    def rows(*xs):
+        return [{"kanit_no": no, "doc_id": d, "yuvalar": y} for no, d, y in xs]
+    old = rows(("1_OD2", "a", "B.1.1/1"), ("2_OD3", "b", "B.1.1/2"), ("3_OD3", "c", "B.1.1/3"),
+               ("3_OD3", "c2", "B.1.1/3"))
+    # yalnız sıra değişti + atıfsız kanıt çıktı: eşlenir
+    m, _ = number_map(old, rows(("1_OD3", "c", "B.1.1/3"), ("1_OD3", "c2", "B.1.1/3"), ("2_OD3", "b", "B.1.1/2")),
+                      ["2_OD3", "3_OD3"])
+    assert m == {"3_OD3": "1_OD3", "2_OD3": "2_OD3"}
+    # atıf yapılan kanıt çıktı
+    assert number_map(old, rows(("1_OD3", "b", "B.1.1/2")), ["1_OD2"])[0] is None
+    # kod OD'si değişti
+    assert number_map(old, rows(("1_OD2", "a", "B.1.1/1"), ("2_OD4", "b", "B.1.1/2")), ["2_OD3"])[0] is None
+    # yeni kanıt
+    assert number_map(old, rows(("1_OD2", "a", "B.1.1/1"), ("2_OD3", "z", "B.1.1/9")), ["1_OD2"])[0] is None
+    # aynı dosyanın iki parçası (aynı belge, iki numara): yuvalarla ayrılır
+    po = rows(("1_OD3", "p", "B.1.1/1"), ("2_OD3", "p", "B.1.1/2"))
+    pn = rows(("1_OD3", "p", "B.1.1/2"), ("2_OD3", "p", "B.1.1/1"))
+    assert number_map(po, pn, ["1_OD3", "2_OD3"])[0] == {"2_OD3": "1_OD3", "1_OD3": "2_OD3"}
+
+
+def test_write_source_paths_follow_copied_workspace(tmp_path):
+    """Kopyalanan çalışma alanında write'ın kaydı asıl alanın dizinini göstermez (gerçek veri 2026-11-21)."""
+    from bidr.write import run as W
+    asil, kopya = tmp_path / "asil", tmp_path / "kopya"
+    for d in (asil, kopya):
+        (d / "work" / "write").mkdir(parents=True)
+        (d / "config.yaml").write_text("bidr: {}\n", encoding="utf-8")
+        (d / "evidence-index.csv").write_text("", encoding="utf-8")
+        (d / "audit-olcutler.json").write_text("[]", encoding="utf-8")
+    (kopya / "work" / "write" / W.SOURCES_FILE).write_text(json.dumps(
+        {"index": str(asil / "evidence-index.csv"), "audit": str(asil / "audit-olcutler.json"),
+         "onceki": str(asil / "onceki.docx"), "notlar": None}), encoding="utf-8")
+    sp = W.source_paths(kopya)
+    assert sp["index"] == str(kopya.resolve() / "evidence-index.csv")
+    assert sp["audit"] == str(kopya.resolve() / "audit-olcutler.json")
+    assert sp["onceki"] == str(asil / "onceki.docx")                 # başka dosya: olduğu gibi
+    assert W._rel(kopya, kopya / "evidence-index.csv") == "evidence-index.csv"
+    (kopya / "work" / "write" / W.SOURCES_FILE).write_text(json.dumps({"index": "evidence-index.csv"}),
+                                                            encoding="utf-8")
+    assert W.source_paths(kopya)["index"] == str(kopya.resolve() / "evidence-index.csv")
