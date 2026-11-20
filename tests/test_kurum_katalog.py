@@ -206,7 +206,7 @@ def test_sade_lists_institution_documents(ref_ws_yok, tmp_path):
     res = R.run(tgt, referans=build_reference(ref_ws), out=tmp_path / "o", kurum=es)
     r = {x["olcut"]: x for x in res["sade"]}
     b11 = r["B.1.1"]
-    assert "FR-0784" not in b11["belgeler"]                          # form/anket sade listeye girmez
+    assert "FR-0784" not in b11["belgeler"]                          # form sade listeye girmez
     # geçen yılın kurum yönergesi katalogda bulundu: ad ve kodla (bağlantı yazılmaz), "ya da güncel hâli" yok
     b23 = r["B.2.3"]["belgeler"]
     assert "• Sentetik Danışmanlık Yönergesi (YZ-0001)" in b23.split("\n")

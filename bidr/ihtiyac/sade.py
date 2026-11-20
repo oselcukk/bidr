@@ -33,8 +33,8 @@ FILE = "istenen-kanitlar.xlsx"
 KILAVUZ_EN_COK = 6          # kılavuz/öneri kaynaklı madde sayısı (satır başına)
 ELDE_EN_COK = 4
 KURUM_EN_COK = 10           # kurum belge kataloğundan madde sayısı (satır başına)
-# Sade listeye giren kurum belgesi türleri: düzenlemeler ve iş akışları (form/anket girmez; kullanıcı kararı)
-KURUM_TURLER = {"yonetmelik", "yonerge", "usul_esas", "mevzuat", "is_akisi"}
+# Sade listeye giren kurum belgesi türleri: düzenlemeler ve iş akışları (form girmez; kullanıcı kararı)
+KURUM_TURLER = {"yonetmelik", "yonerge", "usul_esas", "mevzuat", "is_akisi", "anket"}
 KURUM_REF_TURLER = frozenset({"yonetmelik", "yonerge", "usul_esas", "is_akisi", "senato_karari", "anket_formu"})
 _KURUM_SIRA = {t: i for i, t in enumerate(("yonetmelik", "yonerge", "usul_esas", "is_akisi", "anket", "form",
                                            "talimat"))}
