@@ -320,3 +320,67 @@ def test_cli_ve_hat_durumu(tmp_path, monkeypatch, capsys):
     (ws / MANIFEST).unlink()
     (ws / "config.yaml").write_text("rapor:\n  teslim: baglanti\n", encoding="utf-8")
     assert durum(ctx).atlandi
+
+
+def _maskele(ws: Path, kayitlar: dict[str, str]) -> None:
+    """`bidr maskele` çıktısı taklidi: rapor + maskeli kopyalar (durum tamam olanlar)."""
+    import os
+    import time
+    mk = ws / "evidence-maskeli"
+    recs = []
+    for rel, d in kayitlar.items():
+        recs.append({"dosya": rel, "durum": d, "neden": "" if d == "tamam" else "kalan: eposta×1"})
+        if d == "tamam":
+            (mk / rel).parent.mkdir(parents=True, exist_ok=True)
+            src = (ws / "evidence" / rel).read_bytes()
+            (mk / rel).write_bytes(src.replace(b"Sentetik", b"MASKELI").replace(b"sentetik", b"MASKELI"))
+    (ws / "maskeleme-raporu.json").write_text(json.dumps({"surum": 1, "maskeli_klasor": str(mk),
+                                                          "dosyalar": recs}), encoding="utf-8")
+    t = time.time() + 5                                  # rapor kanıt dosyalarından sonra
+    os.utime(ws / "maskeleme-raporu.json", (t, t))
+
+
+def test_paket_maskeleme(tmp_path):
+    ws = _ws(tmp_path)
+    _render(ws, tmp_path, "dekanlik")
+    _maskele(ws, {"A/A.1/A.1.1/[1-OD3]. Sentetik kanıt bir.pdf": "tamam",
+                  "A/A.1/A.1.1/[2-OD2]. Sentetik web sayfası.html": "tamam",
+                  "A/A.1/A.1.2/[1-OD3]. Kurul kararı.pdf": "basarisiz"})   # A.1.2 html raporda yok
+    arac = Sahte()
+    res = build(ws, arac=arac, zip_yap=False)
+    k = ws / "teslim" / "kanitlar" / "A" / "A.1"
+    assert (k / "A.1.1" / "[1-OD3]. Sentetik kanıt bir.pdf").read_bytes() == b"%PDF-1.4 MASKELI"
+    assert any(b"MASKELI duyuru" in h for h in arac.htmls)                 # web PDF maskeli HTML'den
+    assert (k / "A.1.2" / "[1-OD3]. Kurul kararı.pdf").read_bytes() == b"%PDF-1.4 sentetik"   # çıkarılmaz
+    assert res.eksik == []
+    rows = {(r["Ölçüt"], r["Kanıt no"]): r["Maskeleme"] for r in _rows(ws / "teslim" / "kanit-dizini.csv")}
+    assert rows == {("A.1.1", "1_OD3"): "tamam", ("A.1.1", "2_OD2"): "tamam",
+                    ("A.1.2", "1_OD3"): "eksik: elle bakılmalı", ("A.1.2", "2_OD2"): "eksik: elle bakılmalı"}
+    ne = {x["dosya"].rsplit("/", 1)[1]: x["neden"] for x in res.elle_bakilacak}
+    assert "basarisiz" in ne["[1-OD3]. Kurul kararı.pdf"] and "raporunda yok" in ne["[2-OD2]. Adressiz sayfa.html"]
+    m = json.loads((ws / MANIFEST).read_text(encoding="utf-8"))
+    assert m["maskeleme"] == {"rapor": True, "tamam": 2, "eksik: elle bakılmalı": 2, "yapılmadı": 0}
+    ctx = Ctx(Workspace(ws), None, lambda s: s, {"komut": ["bidr teslim -w {ws}"]})
+    c = durum(ctx)
+    assert c.bitti and any("elle bakılmalı" in u for u in c.uyarilar)
+    # kanıt maskelemeden sonra yeniden yazıldı: maskeli kopya eski → özgün dosya, elle bakılmalı
+    f = ws / "evidence" / "A" / "A.1" / "A.1.1" / "[1-OD3]. Sentetik kanıt bir.pdf"
+    import os
+    t = (ws / "maskeleme-raporu.json").stat().st_mtime + 10
+    os.utime(f, (t, t))
+    res = build(ws, arac=Sahte(), zip_yap=False)
+    assert (k / "A.1.1" / "[1-OD3]. Sentetik kanıt bir.pdf").read_bytes() == b"%PDF-1.4 sentetik"
+    assert any("eski" in x["neden"] for x in res.elle_bakilacak)
+    # maskeleme raporu değişince paket eskir
+    (ws / "maskeleme-raporu.json").write_text("{}", encoding="utf-8")
+    assert durum(ctx).kim == "komut"
+
+
+def test_paket_maskeleme_yapilmadi(tmp_path):
+    ws = _ws(tmp_path)
+    _render(ws, tmp_path, "dekanlik")
+    res = build(ws, arac=Sahte(), zip_yap=False)
+    assert {r["Maskeleme"] for r in _rows(ws / "teslim" / "kanit-dizini.csv")} == {"yapılmadı"}
+    assert res.elle_bakilacak == [] and not res.maskeleme
+    c = durum(Ctx(Workspace(ws), None, lambda s: s, {"komut": ["bidr teslim -w {ws}"]}))
+    assert c.bitti and any("maskelemesi yapılmadı" in u for u in c.uyarilar)

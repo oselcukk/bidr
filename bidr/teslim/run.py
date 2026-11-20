@@ -13,6 +13,14 @@ Eşleşme: raporun "Kanıtlar" listesindeki her satır (ölçüt, sıra no, OD) 
 kanıtlar girer; listede olmayan dosya pakete alınmaz (uyarı). Eşleşmeyen satır, birden çok aday ya da
 üretilemeyen web PDF'i paketi "eksik" yapar: paket yine yazılır, eksikler listelenir.
 
+Kişisel veri maskeleme (`bidr maskele` çıktısı; yalnız okunur): `maskeleme-raporu.json` ve
+`evidence-maskeli/` varsa kanıtın maskeli kopyası pakete girer (web kanıtının PDF'i de maskeli
+HTML'den basılır). Maskeli kopya yoksa, eskiyse (kanıt dosyası rapordan sonra yeniden yazıldı) ya da
+maskeleme başarısız / hata / desteklenmiyor ise özgün dosya girer: maskelenemedi diye hiçbir kanıt
+paketten çıkarılmaz (kullanıcı kararı, 2026-11-20). Dizinin "Maskeleme" sütunu: `tamam` |
+`eksik: elle bakılmalı` | `yapılmadı` (maskeleme çalıştırılmamış); elle bakılacak dosyalar paket
+özetinde (`elle_bakilacak`) listelenir.
+
 Kaynak ve çalışma alanı dosyalarına yalnız okumak için dokunulur; çıktı klasörü yalnız daha önce
 bidr teslim'in yazdığı bir klasörse (işaret dosyası) silinip yeniden yazılır.
 """
@@ -40,9 +48,12 @@ RAPOR = "report.docx"
 DIZIN = "kanit-dizini"
 EKSIK = "EKSIK.txt"
 SUTUNLAR = ["olcut", "kanit_no", "od", "ad", "dosya", "pdf_kopya", "ozgun_baglanti", "baglanti_kaynagi",
-            "alinma_tarihi", "durum"]
+            "alinma_tarihi", "maskeleme", "durum"]
 BASLIKLAR = ["Ölçüt", "Kanıt no", "OD", "Kanıt adı", "Paketteki dosya", "PDF kopyası", "Özgün bağlantı",
-             "Bağlantı kaynağı", "Alınma tarihi", "Durum"]
+             "Bağlantı kaynağı", "Alınma tarihi", "Maskeleme", "Durum"]
+# bidr maskele çıktısı (bidr/mask/run.py; yalnız okunur)
+MASKE_RAPOR, MASKE_KLASOR = "maskeleme-raporu.json", "evidence-maskeli"
+MASKE_TAMAM, MASKE_ELLE, MASKE_YOK = "tamam", "eksik: elle bakılmalı", "yapılmadı"
 RE_DOSYA = re.compile(r"^\[(\d+)-OD([1-5])\]\. (.+)\.([A-Za-z0-9]+)$")
 RE_OLCUT = re.compile(r"^[A-D]\.\d+\.\d+$")
 
@@ -62,6 +73,8 @@ class Sonuc:
     uyarilar: list[str] = field(default_factory=list)
     pdf_araci: str | None = None
     taslak: bool = False
+    maskeleme: bool = False                                        # maskeleme raporu bulundu mu
+    elle_bakilacak: list[dict] = field(default_factory=list)       # {dosya, neden}
 
     def ozet(self) -> dict:
         web = [r for r in self.satirlar if r["_web"]]
@@ -69,7 +82,11 @@ class Sonuc:
                 "kanit": len(self.satirlar), "web": len(web), "web_pdf": sum(1 for r in web if r["pdf_kopya"]),
                 "baglanti_bilinmiyor": sum(1 for r in web if r["ozgun_baglanti"] == BILINMIYOR),
                 "eksik": self.eksik, "uyarilar": self.uyarilar, "pdf_araci": self.pdf_araci,
-                "taslak": self.taslak}
+                "taslak": self.taslak,
+                "maskeleme": {"rapor": self.maskeleme,
+                              **{d: sum(1 for r in self.satirlar if r["maskeleme"] == d)
+                                 for d in (MASKE_TAMAM, MASKE_ELLE, MASKE_YOK)}},
+                "elle_bakilacak": self.elle_bakilacak}
 
 
 def sha(p: Path) -> str:
@@ -100,6 +117,46 @@ def _dizin(index: Path) -> dict[tuple[str, int], dict]:
             if m and r.get("olcut"):
                 out.setdefault((r["olcut"].strip(), int(m.group(1))), r)
     return out
+
+
+class Maske:
+    """`bidr maskele` çıktısının okunur görünümü (rapor yoksa `var` False)."""
+
+    def __init__(self, ws: Path, ev: Path):
+        self.ev = ev
+        self.rapor_yolu = ws / MASKE_RAPOR
+        self.kayit: dict[str, dict] = {}
+        self.klasor = ws / MASKE_KLASOR
+        self.var = False
+        try:
+            js = json.loads(self.rapor_yolu.read_text(encoding="utf-8")) if self.rapor_yolu.exists() else None
+        except (OSError, ValueError):
+            js = None
+        if isinstance(js, dict):
+            self.var = True
+            if js.get("maskeli_klasor"):
+                self.klasor = Path(js["maskeli_klasor"])
+            self.kayit = {unicodedata.normalize("NFC", str(r.get("dosya"))): r
+                          for r in js.get("dosyalar") or [] if r.get("dosya")}
+            self.zaman = self.rapor_yolu.stat().st_mtime
+
+    def sec(self, f: Path) -> tuple[Path, str, str]:
+        """(pakete girecek dosya, Maskeleme değeri, elle bakma nedeni)."""
+        if not self.var:
+            return f, MASKE_YOK, ""
+        rel = f.relative_to(self.ev).as_posix()
+        r = self.kayit.get(unicodedata.normalize("NFC", rel))
+        if r is None:
+            return f, MASKE_ELLE, "maskeleme raporunda yok (maskelemeden sonra dosyalandı mı? bidr maskele yeniden)"
+        d = r.get("durum")
+        if d != "tamam":
+            return f, MASKE_ELLE, f"maskeleme {d or 'bilinmiyor'}: {r.get('neden') or ''}".strip()
+        m = self.klasor / rel
+        if not m.is_file():
+            return f, MASKE_ELLE, "maskeli kopya bulunamadı"
+        if f.stat().st_mtime > self.zaman:
+            return f, MASKE_ELLE, "maskeli kopya eski (kanıt maskelemeden sonra yeniden dosyalandı; bidr maskele yeniden)"
+        return m, MASKE_TAMAM, ""
 
 
 def _tarih(s: str | None) -> dt.date:
@@ -158,6 +215,8 @@ def build(ws: Path, out: Path | None = None, *, docx_path: Path | None = None, t
     dosyalar = _kanit_dosyalari(ev)
     dizin = _dizin(index)
     res = Sonuc(str(out), None, gun.isoformat(), mod, taslak=taslak)
+    maske = Maske(ws, ev)
+    res.maskeleme = maske.var
     if not any(listeler.values()):
         res.eksik.append("raporda tanınan kanıt listesi satırı yok ('[1-OD3]. Ad' ya da '1_OD3: Ad')")
 
@@ -195,7 +254,8 @@ def build(ws: Path, out: Path | None = None, *, docx_path: Path | None = None, t
         no = f"{k.no}_OD{k.od}"
         ad = (r.get("ad") or "").strip() or _ad_sade(k.ad, k.baglanti)
         row = {"olcut": k.olcut, "kanit_no": no, "od": k.od, "ad": ad, "dosya": "", "pdf_kopya": "",
-               "ozgun_baglanti": "", "baglanti_kaynagi": "", "alinma_tarihi": "", "durum": "tamam", "_web": False}
+               "ozgun_baglanti": "", "baglanti_kaynagi": "", "alinma_tarihi": "", "maskeleme": "",
+               "durum": "tamam", "_web": False}
         res.satirlar.append(row)
         if f is None:
             row["durum"] = f"eksik: {neden}"
@@ -205,8 +265,11 @@ def build(ws: Path, out: Path | None = None, *, docx_path: Path | None = None, t
         rel = Path(unicodedata.normalize("NFC", f.relative_to(ev).as_posix()))
         dst = kok / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(f, dst)
+        kaynak, row["maskeleme"], elle = maske.sec(f)    # maskelenemedi diye kanıt çıkarılmaz
+        shutil.copyfile(kaynak, dst)
         row["dosya"] = f"{KANITLAR}/{rel.as_posix()}"
+        if elle:
+            res.elle_bakilacak.append({"dosya": row["dosya"], "neden": elle})
         url_dizin, src = (r.get("baglanti") or "").strip(), (r.get("baglanti_kaynagi") or "").strip()
         if not is_web(f):
             if url_dizin and (src != "klasor" or mod == BAGLANTI):
@@ -222,7 +285,7 @@ def build(ws: Path, out: Path | None = None, *, docx_path: Path | None = None, t
             res.eksik.append(f"{k.olcut} [{no}] {ad}: PDF kopyası adı çakışıyor ({pdf_dst.name})")
             continue
         try:
-            web_pdf(f, pdf_dst, url=url, tarih=damga_tarihi, arac=pdf, canli=canli)
+            web_pdf(kaynak, pdf_dst, url=url, tarih=damga_tarihi, arac=pdf, canli=canli and kaynak == f)
         except PdfHatasi as e:
             row["durum"] = f"eksik: PDF kopyası üretilemedi ({e})"
             res.eksik.append(f"{k.olcut} [{no}] {ad}: PDF kopyası üretilemedi ({e})")
@@ -249,7 +312,7 @@ def build(ws: Path, out: Path | None = None, *, docx_path: Path | None = None, t
         _zip(out, z)
         res.zip = str(z)
     man = {"surum": SURUM, **res.ozet(), "report": str(rep), "report_sha": sha(rep), "index_sha": sha(index),
-           "evidence_sha": sha(ev / ".bidr-evidence.json")}
+           "evidence_sha": sha(ev / ".bidr-evidence.json"), "maske_sha": sha(ws / MASKE_RAPOR)}
     (ws / MANIFEST).write_text(json.dumps(man, ensure_ascii=False, indent=1), encoding="utf-8")
     return res
 
@@ -289,12 +352,12 @@ def _dizin_yaz(out: Path, satirlar: list[dict]) -> None:
             cell = ws.cell(row=ws.max_row, column=SUTUNLAR.index("ozgun_baglanti") + 1)
             cell.hyperlink = url
             cell.font = Font(color="0563C1", underline="single")
-    widths = [9, 9, 5, 50, 60, 60, 50, 16, 13, 30]
+    widths = [9, 9, 5, 50, 60, 60, 50, 16, 13, 22, 30]
     for i, wdt in enumerate(widths, start=1):
         ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = wdt
     for row in ws.iter_rows(min_row=2):
         for c in row:
-            c.alignment = Alignment(vertical="top", wrap_text=c.column in (4, 5, 6, 10))
+            c.alignment = Alignment(vertical="top", wrap_text=c.column in (4, 5, 6, 11))
     ws.freeze_panes = "A2"
     ws.auto_filter.ref = ws.dimensions
     wb.save(out / f"{DIZIN}.xlsx")
@@ -346,9 +409,9 @@ def durum(c):
         return Check(kim=KOMUT, komutlar=[cmd], neden="teslim paketi klasörü ya da zip'i yok: yeniden üret")
     if (m.get("report_sha") != sha(rep) or m.get("index_sha") != sha(ws / "evidence-index.csv")
             or m.get("evidence_sha") != sha(ws / "evidence" / ".bidr-evidence.json")
-            or m.get("teslim_modu") != mod):
-        return Check(kim=KOMUT, komutlar=[cmd], neden="teslim paketi eski: rapor, kanıt klasörü ya da teslim modu "
-                                                      "değişti")
+            or m.get("teslim_modu") != mod or m.get("maske_sha", "") != sha(ws / MASKE_RAPOR)):
+        return Check(kim=KOMUT, komutlar=[cmd], neden="teslim paketi eski: rapor, kanıt klasörü, maskeleme raporu "
+                                                      "ya da teslim modu değişti")
     prog = {k: m.get(k) for k in ("kanit", "web", "web_pdf", "baglanti_bilinmiyor")}
     if m.get("taslak"):
         return Check(kim=KOMUT, komutlar=[cmd], ilerleme=prog,
@@ -359,6 +422,12 @@ def durum(c):
                      neden=f"paket eksik ({len(e)}): " + "; ".join(e[:3]) + (" …" if len(e) > 3 else "")
                            + " — kaynağı düzelt (kanıt klasörü / PDF aracı) ve yeniden üret")
     uy = []
+    if m.get("elle_bakilacak"):
+        e = m["elle_bakilacak"]
+        uy.append(f"{len(e)} kanıt maskelenmeden (özgün haliyle) pakette: elle bakılmalı (kanıt dizini 'Maskeleme'; "
+                  f"{MANIFEST} elle_bakilacak): " + ", ".join(x["dosya"] for x in e[:3]) + (" …" if len(e) > 3 else ""))
+    if (m.get("maskeleme") or {}).get("rapor") is False:
+        uy.append("kişisel veri maskelemesi yapılmadı (kanıt dizini 'Maskeleme: yapılmadı'): bidr maskele")
     if m.get("baglanti_bilinmiyor"):
         uy.append(f"{m['baglanti_bilinmiyor']} web kanıtının özgün adresi bulunamadı (kanıt dizininde "
                   f"'{BILINMIYOR}'); biliniyorsa review.xlsx 'bağlantı' sütununa yazılır")

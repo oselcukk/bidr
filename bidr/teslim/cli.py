@@ -33,6 +33,13 @@ def _run(args) -> int:
     for u in res.uyarilar:
         print(f"uyarı: {u}")
     print(ozet_json(res))
+    if res.elle_bakilacak:
+        print(f"ELLE BAKILACAK ({len(res.elle_bakilacak)}): maskelenemedi ya da maskeli kopyası yok; özgün dosya "
+              "pakette (kanıt çıkarılmadı):")
+        for x in res.elle_bakilacak:
+            print(f"  - {x['dosya']}: {x['neden']}")
+    elif not res.maskeleme:
+        print("bilgi: kişisel veri maskelemesi yapılmadı (bidr maskele); dizinde 'Maskeleme: yapılmadı'")
     if res.taslak:
         print("Paket TASLAK: biçim denetimi geçmeden üretildi (EKSIK.txt); teslimden önce yeniden üretin.")
     if res.eksik:

@@ -345,7 +345,7 @@ WS/teslim/                       (--out; zip: aynı adla .zip, kökünde klasör
   kanitlar/A/A.1/A.1.1/[1-OD3]. Ad.pdf
   kanitlar/A/A.1/A.1.4/[3-OD2]. Sayfa.html + [3-OD2]. Sayfa.pdf   (web kanıtı + damgalı PDF kopyası)
   kanit-dizini.xlsx / .csv       Ölçüt, Kanıt no, OD, Kanıt adı, Paketteki dosya, PDF kopyası,
-                                 Özgün bağlantı, Bağlantı kaynağı, Alınma tarihi, Durum
+                                 Özgün bağlantı, Bağlantı kaynağı, Alınma tarihi, Maskeleme, Durum
   EKSIK.txt                      yalnız eksik ya da --taslak paket
 WS/.bidr-teslim.json             özet (teslim_tamam): report_sha, index_sha, evidence_sha, eksik, …
 ```
@@ -361,6 +361,14 @@ WS/.bidr-teslim.json             özet (teslim_tamam): report_sha, index_sha, ev
   sayılmaz) → sayfanın kendi kaydı; yoksa damgada ve dizinde "bağlantı bilinmiyor" (uydurma yok,
   uyarı). Alınma tarihi raporlama (teslim) tarihidir (`--tarih`, vars. bugün). `--canli`: adres
   biliniyorsa sayfa özgün adresten yeniden indirilip basılır.
+- **Kişisel veri maskeleme** (`bidr maskele` çıktısı, yalnız okunur): `maskeleme-raporu.json` ve
+  `evidence-maskeli/` varsa kanıtın maskeli kopyası pakete girer (web PDF'i maskeli HTML'den basılır).
+  Maskelenemedi diye hiçbir kanıt rapordan ya da paketten çıkarılmaz (kullanıcı kararı, 2026-11-20):
+  maskeleme başarısız / hata / desteklenmiyor, dosya raporda yok ya da maskeli kopya eski (kanıt
+  maskelemeden sonra yeniden dosyalandı) ise özgün dosya girer. "Maskeleme" sütunu: `tamam` |
+  `eksik: elle bakılmalı` | `yapılmadı` (maskeleme çalıştırılmamış; paket yine üretilir). Elle
+  bakılacak dosyalar nedenleriyle komut çıktısında ve `.bidr-teslim.json` `elle_bakilacak`'ta;
+  `teslim_tamam` bunları (ve hiç maskeleme yapılmadıysa onu) uyarı olarak gösterir, engellemez.
 - **PDF aracı** (ücretsiz, kurulu olanı): Google Chrome / Chromium / Edge headless `--print-to-pdf`
   (standart yerde değilse `BIDR_CHROME`), yoksa Python `weasyprint` (isteğe bağlı). Web kanıtı varken
   araç yoksa komut hiçbir şey yazmadan kurulum notuyla durur (çıkış 2).
@@ -370,7 +378,7 @@ WS/.bidr-teslim.json             özet (teslim_tamam): report_sha, index_sha, ev
 
 **Hat aşaması `teslim`** (D; isteğe bağlı; önkoşul `denetle`). `checks.teslim_tamam`
 (`teslim.run.durum`): `baglanti` modunda paket yoksa atlandi; `dekanlik`'ta paket yoksa ya da rapor,
-kanıt dizini, kanıt klasörü ya da teslim modu değiştiyse `bidr teslim`; `--taslak` paketi bitmiş
+kanıt dizini, kanıt klasörü, maskeleme raporu ya da teslim modu değiştiyse `bidr teslim`; `--taslak` paketi bitmiş
 sayılmaz; eksik paket KULLANICI gerekli; tamamsa bitti, özgün adresi bulunamayan web kanıtı uyarı.
 Kapı: biçim denetimi geçmeden komut çıkış 3 ile durur; `--taslak` kapıyı atlar, paketi TASLAK işaretler.
 

@@ -98,7 +98,9 @@ yazar), `hazirlayanlar` (kapak; answers.yaml ile), `onceki_rapor` (geçen yılı
   `report.docx`, `kanitlar/A/A.1/A.1.1/[1-OD3]. Ad.pdf` düzeninde kanıtlar, her web kanıtının
   yanında aynı adla "Kaynak: <URL> · Alınma (erişim) tarihi: <tarih>" damgalı PDF kopyası ve
   `kanit-dizini.xlsx`/`.csv` (ölçüt, kanıt no, OD, ad, paketteki dosya, özgün bağlantı, alınma
-  tarihi). Raporun kanıt listesindeki her satır paketteki bir dosyayla birebir eşleşir; eşleşmeyen
+  tarihi, maskeleme). `bidr maskele` çalıştırıldıysa kanıtların maskeli kopyası girer; maskelenemeyen
+  kanıt çıkarılmaz, özgün haliyle girer ve dizinde "eksik: elle bakılmalı" yazar (maskeleme hiç
+  yapılmadıysa "yapılmadı"). Raporun kanıt listesindeki her satır paketteki bir dosyayla birebir eşleşir; eşleşmeyen
   ya da PDF'i üretilemeyen satır varsa paket `EKSIK.txt` ile yazılır ve çıkış kodu 1 olur.
   Web PDF'i için kurulu bir araç gerekir (ücretsiz): Google Chrome / Chromium / Edge (yolu
   standart değilse `BIDR_CHROME`) ya da `pip install weasyprint`; ikisi de yoksa komut kurulum
