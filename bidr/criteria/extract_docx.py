@@ -1,5 +1,9 @@
 """FR-0833 BİDR şablonundan (docx) ölçüt şemasını ve kılavuz kurallarını çıkarır.
 
+Çıktılar: `yokak-2025.yaml` (ölçütler), `guide.yaml` (kılavuz bölümleri) ve `ornek-uygulamalar.yaml`
+(şablon sonundaki "Örnek Uygulama ve Kanıtlar Listesi" tabloları: alan, uygulama, kanıt; alt ölçüt
+eşlemesi elle `bidr/data/ihtiyac_ornek_uygulama.yaml`'dadır).
+
 Kullanım:
     python -m bidr.criteria.extract_docx ŞABLON.docx [--out bidr/data/criteria]
     python -m bidr.criteria.extract_docx ŞABLON.docx --stdout   # yazmadan JSON döker
@@ -51,6 +55,10 @@ GUIDE_STOP = "ÖLÇÜTLER VE KANITLAR"
 ANNEX_HEADING = "Örnek Uygulama ve Kanıtlar Listesi"
 ANNEX_STOP_SUFFIX = "ÖRNEK UYGULAMALAR VE OLASI KANITLAR"
 GUIDE_PARENT = "BİDR Hazırlarken Dikkat Edilmesi Gereken Hususlar"
+# Ek tabloları: "<ALAN> ÖRNEK UYGULAMALAR VE OLASI KANITLAR" başlığından sonra "Uygulama | Kanıt" tablosu.
+ANNEX_TABLE_HEAD = ("Uygulama", "Kanıt")
+ANNEX_AREAS = (("LİDERLİK", "A"), ("EĞİTİM", "B"), ("ARAŞTIRMA", "C"), ("TOPLUMSAL", "D"))
+ORNEK_FILE = "ornek-uygulamalar.yaml"
 
 
 class Redactor:
@@ -269,6 +277,66 @@ def extract(path: Path) -> tuple[dict, dict, list[str]]:
     return criteria, guide, warnings
 
 
+def extract_annex(path: Path) -> tuple[dict, list[str]]:
+    """Kılavuz eki "Örnek Uygulama ve Kanıtlar Listesi" tabloları: alan başına "Uygulama | Kanıt"
+    satırları. Satır kimliği `<alan>/<sıra>` (alan içinde 1'den, şablon sırası; ör. `C/2`). Metinler
+    birebir (hücre içi satır sonları boşlukla birleşir; kurum adı yer tutucuyla)."""
+    import docx  # python-docx
+
+    doc = docx.Document(str(path))
+    red = Redactor()
+    warnings: list[str] = []
+    alanlar: dict[str, str] = {}
+    satirlar: list[dict] = []
+    heading = ""
+    for t, el in _iter_body(doc):
+        if t == "p":
+            txt = _ptext(el).strip()
+            if txt:
+                heading = txt
+            continue
+        rows = list(el.iter(W + "tr"))
+        if not rows:
+            continue
+        hdr = tuple(" ".join(_cell_lines(c)) for c in _row_cells(rows[0]))
+        if hdr[:2] != ANNEX_TABLE_HEAD:
+            continue
+        alan = next((a for k, a in ANNEX_AREAS if heading.startswith(k)), None)
+        if alan is None or not heading.endswith(ANNEX_STOP_SUFFIX):
+            warnings.append(f"ek tablosunun alan başlığı tanınmadı: {heading[:60]!r}")
+            continue
+        alanlar[alan] = heading[: -len(ANNEX_STOP_SUFFIX)].strip()
+        n = sum(1 for x in satirlar if x["alan"] == alan)
+        for tr in rows[1:]:
+            cl = [" ".join(_cell_lines(c)) for c in _row_cells(tr)]
+            if len(cl) < 2 or not (cl[0] or cl[1]):
+                continue
+            n += 1
+            rid = f"{alan}/{n}"
+            satirlar.append({"id": rid, "alan": alan, "uygulama": red(cl[0], rid, "uygulama"),
+                             "kanit": red(cl[1], rid, "kanit")})
+    if not satirlar:
+        warnings.append(f"kılavuz eki tabloları bulunamadı ({ANNEX_HEADING})")
+    sha = hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    return {
+        "meta": {
+            "schema_version": 1,
+            "source_form": "FR-0833 Birim İç Değerlendirme Raporu (BİDR) şablonu, R0",
+            "source_section": ANNEX_HEADING,
+            "source_sha256": sha,
+            "extracted_by": "bidr.criteria.extract_docx",
+            "text_policy": ("Hücre metinleri birebir; hücre içi satır sonları boşlukla birleşti, "
+                            "kurum adı yer tutucuyla değiştirildi (bkz. redactions)."),
+            "counts": {a: sum(1 for x in satirlar if x["alan"] == a) for a in alanlar},
+            "notes": ["Satırlar alan düzeyindedir (şablonda alt ölçüt verilmez); alt ölçüt eşlemesi "
+                      "elle yapılmıştır: bidr/data/ihtiyac_ornek_uygulama.yaml."],
+            "redactions": red.report(),
+        },
+        "alanlar": alanlar,
+        "satirlar": satirlar,
+    }, warnings
+
+
 def extract_guide(body, red: Redactor, sha: str, warnings: list[str]) -> dict:
     paras = [(i, _ptext(el).strip()) for i, (t, el) in enumerate(body) if t == "p"]
     sections: list[dict] = []
@@ -356,10 +424,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--stdout", action="store_true", help="dosya yazma; JSON'u bas")
     a = ap.parse_args(argv)
     criteria, guide, warnings = extract(a.template)
+    ornek, w2 = extract_annex(a.template)
+    warnings += w2
     for w in warnings:
         print(f"UYARI: {w}", file=sys.stderr)
     if a.stdout:
-        json.dump({"criteria": criteria, "guide": guide}, sys.stdout,
+        json.dump({"criteria": criteria, "guide": guide, "ornek_uygulamalar": ornek}, sys.stdout,
                   ensure_ascii=False, indent=1)
         return 0
     from .loader import DEFAULT_DIR
@@ -368,9 +438,11 @@ def main(argv: list[str] | None = None) -> int:
            "# Elle düzenlemeyin; şablon değişince yeniden üretin.\n")
     _dump_yaml(criteria, out / "yokak-2025.yaml", hdr)
     _dump_yaml(guide, out / "guide.yaml", hdr)
+    _dump_yaml(ornek, out / ORNEK_FILE, hdr)
     c = criteria["meta"]["counts"]
     print(f"{out}: {c['areas']} alan, {c['criteria']} ölçüt, {c['sub_criteria']} alt ölçüt, "
-          f"{len(guide['sections'])} kılavuz bölümü, {len(warnings)} uyarı")
+          f"{len(guide['sections'])} kılavuz bölümü, {len(ornek['satirlar'])} ek örnek uygulama satırı, "
+          f"{len(warnings)} uyarı")
     return 0
 
 

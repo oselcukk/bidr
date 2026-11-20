@@ -128,7 +128,7 @@ komisyon, bölüm başkanlığı, kalite komisyonu…); birimin kendi düzenine 
 
 | Dosya | İçerik |
 |---|---|
-| `ihtiyac.xlsx` | "Öncelikli talepler" (puan sırasıyla; Kaynak, PUKÖ halkası, ölçüt açıklamasından sütunları), "Ölçüt özeti" (karşılanmamış kılavuz yuvaları, bir üst düzeyin tanımı), "Geçen yıl karşılıkları", "Açıklama" |
+| `ihtiyac.xlsx` | "Öncelikli talepler" (puan sırasıyla; Kaynak, PUKÖ halkası, ölçüt açıklamasından sütunları), "Ölçüt özeti" (karşılanmamış kılavuz yuvaları, bir üst düzeyin tanımı), "Geçen yıl karşılıkları", "Kılavuz eki örnekleri" (142 satırın eşlemesi, karşılanmamış yuvası, belirsizliği ve sade listede nerede kaldığı; bkz. 5.1), "Açıklama" |
 | `istenen-kanitlar.xlsx` | sade liste (bölüme iletilecek; bkz. 5) |
 | `kurum-katalog.json`, `kurum-katalog-esleme.json` | `bidr kurum-katalog` çıktıları (bkz. 6); `ihtiyac` yalnız okur |
 | `ihtiyac.md` | sayılar (önceliğe ve kaynağa göre), ilk 15 talep (kaynakla), kılavuz önerileri (ölçüt başına yuva kimlikleri), karşılığı bulunmayan iyi kanıtlar |
@@ -158,7 +158,10 @@ Komisyon dışındaki okur (bölüm sekreterliği, komisyon başkanları, öğre
   karşılanmamış kılavuz maddelerinin **somut karşılıkları** (`bidr/data/ihtiyac_somut.yaml`: her
   "Örnek Kanıtlar" maddesi → bölüm düzeyinde 1–2 somut belge; `{yil}` rapor yılı; özgün uygulama
   maddeleri ortak metinle ve yalnız son düzey istendiğinde). (3)+(4) satır başına en çok 6 madde;
-  öneriyle kapsanan kılavuz maddesi ayrıca yazılmaz. Tam liste `ihtiyac.xlsx`'tedir; (5) **kurumun
+  öneriyle kapsanan kılavuz maddesi ayrıca yazılmaz. Tam liste `ihtiyac.xlsx`'tedir; (4b) **kılavuz
+  ekinin örnek uygulamaları** (bkz. 5.1): `• {kanıt} — {uygulama}` (ör. "• Toplantı gündemleri —
+  Akademik/Bölüm Kurullarında araştırma ve geliştirmeye ilişkin gündem maddesinin bulunması"), satır
+  başına en çok 3; (5) **kurumun
   bu maddeyle eşlenmiş belgeleri** (bkz. 6): `• Belge adı (kod)` (yalnız yönetmelik, yönerge, usul-esas, iş akışı ve anket; form girmez; bağlantı yalnız `kurum-katalog.json`'da), en çok 10 (fazlası
   "… ve N belgesi daha"); geçen yılki raporda kullanılan kurum belgesi katalogda bulunursa (2)'de
   ayrıca yazılmaz, bağlantısıyla burada ilk sıradadır. Kimden: `ihtiyac_sorumlular.yaml` belge türü
@@ -170,13 +173,44 @@ Komisyon dışındaki okur (bölüm sekreterliği, komisyon başkanları, öğre
   (4) çıkmak için … gerekiyor." Aşamalar düz Türkçe: plan/kural, gerçekten yapıldığı, izleme sonucu,
   iyileştirme, özgün uygulama.
 - **Kılavuzdaki örnek kanıtlar**: maddenin henüz karşılanmamış "Örnek Kanıtlar" metinleri (kılavuzdan
-  birebir, madde madde; kod yok).
+  birebir, madde madde; kod yok); altında "Kılavuz ekindeki örnek uygulamalar": bu maddenin karşılanmamış
+  yuvalarına eşlenmiş ama İstenen belgeler'e alınmamış ek satırları, `uygulama (kanıt)` kısaltılarak, en çok 4
+  ("… ve N örnek daha").
 - **Kimden istenebilir**: maddelerin sorumluları (en çok 3); `ihtiyac_sorumlular.yaml`, kayıtta varsa
   `ihtiyac_somut.yaml`'daki `kimden`. Belirsiz "İlgili komisyon" yerine alanın sorumlusu yazılır.
 - **Not / örnek**: dosyada zaten olan belgeler (en çok 4) ve geçen yıl bu amaçla kullanılan belge.
 - **Sayfalar**: "İstenen kanıtlar", "Kime gönderilecek" (aynı istekler kişi/birim × madde),
   "Nasıl okunur" (5 satır). Hücreler kaydırmalı, başlık satırı dondurulmuş ve her sayfada yinelenir,
   yatay A4'e genişlikte sığar.
+
+### 5.1 Kılavuz eki: "Örnek Uygulama ve Kanıtlar Listesi"
+
+Boş FR-0833 şablonunun sonunda dört alan için (Liderlik-Yönetişim-Kalite, Eğitim-Öğretim,
+Araştırma-Geliştirme, Toplumsal Katkı) "Uygulama | Kanıt" tabloları vardır (25 + 80 + 21 + 16 = 142 satır).
+
+- **Veri**: `python -m bidr.criteria.extract_docx ŞABLON.docx` tabloları da çıkarır →
+  `bidr/data/criteria/ornek-uygulamalar.yaml` (satır kimliği `<alan>/<sıra>`, ör. `C/2`; metin birebir,
+  hücre içi satır sonu boşluk; kurum adı yer tutucu). Yükleyici `bidr.criteria.load_ornek_uygulamalar`.
+- **Eşleme** (`bidr/data/ihtiyac_ornek_uygulama.yaml`, elle; gerekçe satır sonu yorumunda): şablon satırları
+  alan düzeyindedir, alt ölçüt yazmaz. Her satır uygulama/kanıt metni kılavuz başlığı ve "Örnek Kanıtlar"
+  maddeleriyle karşılaştırılarak 1–3 **yuvaya** eşlendi (özgün uygulama yuvasına değil); alt ölçüt yuvadan
+  çıkar. 85 satır tek, 54 satır iki, 3 satır üç alt ölçüte; 22 satır kendi alanı dışındaki bir ölçüte de
+  gider (ör. eğitim tablosundaki mezun, akreditasyon, lisansüstü satırları A.4.3, A.1.3, C.1.3'e).
+  `belirsiz: true` 23 satır (kılavuzda doğrudan karşılığı olmayan: iç kontrol eylem planı, staj denetimi,
+  burs/konaklama, akademik dergi, patent…); `sade: false` 9 satır kurum/kampüs/enstitü düzeyidir
+  (yeşil alan, GreenMetric, mezun bilgi sistemi kurulması, YÖK öncelikli doktora…) ve sade listeye girmez.
+  A.1.2, A.3.1, A.3.3, A.5.2'ye eşlenen satır yoktur.
+- **Sade listede**: satır, eşlendiği yuvalardan biri bu maddede karşılanmamışsa (ve geçen yılın iyi kanıtı
+  o yuvayı zaten istemiyorsa) aday olur. Sıra: listede henüz maddesi olmayan yuvaların satırları önce, sonra
+  yuvanın önceliği, sonra şablon sırası. **Tekrar yok**: uygulama metninin sözcük köklerinin (ilk 4 harf,
+  dolgu sözcükleri hariç) ≥ %50'si önceki bir maddede (elle istek, geçen yıl, öneri, somut) geçiyorsa yazılmaz;
+  eşlendiği yuvaların hepsi listede zaten istenmişse eşik %34. Madde başına en çok 3 (`ORNEK_EN_COK`);
+  kılavuz/öneri sınırı (6) ve kurum belgesi sınırı (10) değişmedi. Kimden: yuvanın sorumlusu (somut tablo
+  ile aynı kural). Metin: `{kanıt} — {uygulama}`; uygulamanın baş harfi küçültülür (kısaltma ya da ad öbeği
+  "Ana Bilim Dalı", "Birim/Program" ise olduğu gibi).
+- **Uygun/uygun olmayan kanıt notu**: "Nasıl okunur" sayfasında şablonun uyarısı kısaca yinelenir (Excel/Word
+  ekran görüntüsü ve ilgisiz dosya yığını kanıt sayılmaz; web sayfası PDF olarak da eklenir; kişisel veri
+  maskelenir). Araç bu kuralları ayrıca denetlemez; bkz. Sınırlar.
 
 **Elle istekler** (`--istenecekler`): inceleme sırasında komisyonun söylediği istekler.
 Markdown: yalnız madde işaretli satırlar okunur, `- B.3.2 — 2026 ders izlenceleri (syllabus)`
@@ -233,6 +267,14 @@ arar; yoksa sade liste kurum belgeleri olmadan üretilir.
 - Kurum belgeleri yalnız adlarından eşlenir (içerik okunmaz): bir belge adında geçmeyen bir ölçüte
   ilgili olabilir ya da adı ilgili görünüp içeriği başka olabilir. Liste sayfasının yapısı değişirse
   `cek` "öğe bulunamadı" uyarısı verir.
+- Kılavuz eki eşlemesi elle yapılmıştır ve yoruma açıktır (`belirsiz` satırlar); örtüşme denetimi sözcük
+  köküne dayanır: aynı belgeyi farklı sözlerle isteyen satır kaçabilir, ilgili bir satır da örtüşme yüzünden
+  düşebilir (teknik ihtiyac.xlsx "Kılavuz eki örnekleri" sayfasında durumu yazar).
+- Şablonun "UYGUN OLMAYAN KANITLAR" kuralları kısmen uygulanır: web sayfası kanıtının PDF kopyası
+  `bidr teslim` (`bidr/teslim/web.py`, alınma tarihli damga), kişisel veri maskeleme `bidr mask`, kanıt
+  numaralandırma render/teslim, bilgi içermeyen ekran/bağlantı sayfası `audit` savunması (`bilgisiz_ekran`)
+  ile. Excel/Word dosyasının ekran görüntüsü ve "istenilen verinin hâricinde veri içeren dosya yığını"
+  için ayrı bir denetim yoktur.
 - Sade listedeki somut belge adları ve öneri eşlemesi geneldir (her birim için doğru değildir); birimin
   düzenine göre `--somut` / `--oneriler` ile kopyası verilebilir. Elle istek ile öneri aynı belgeyi
   farklı sözlerle isteyebilir (metin karşılaştırması yapılmaz).

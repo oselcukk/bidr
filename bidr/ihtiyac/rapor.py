@@ -318,7 +318,11 @@ G_COLS = [("id", "No", 6), ("olcut", "Ölçüt", 8), ("yuva", "Yuva", 9), ("asam
           ("karsilik_ad", "Bu yılki karşılık", 44), ("karsilik_tarih", "Karşılığın tarihi", 11),
           ("benzerlik", "Benzerlik", 9), ("olcute_eslesmis", "Bu ölçüte eşleşmiş mi", 16),
           ("gerekce", "Eşleştirme gerekçesi", 70)]
-SHEETS = ("Öncelikli talepler", "Ölçüt özeti", "Geçen yıl karşılıkları", "Açıklama")
+SHEETS = ("Öncelikli talepler", "Ölçüt özeti", "Geçen yıl karşılıkları", "Açıklama", "Kılavuz eki örnekleri")
+E_COLS = [("id", "Satır", 7), ("uygulama", "Uygulama (kılavuz eki)", 60), ("kanit", "Kanıt (kılavuz eki)", 40),
+          ("olcutler", "Eşlenen alt ölçüt", 14), ("yuvalar", "Kılavuz yuvaları", 18),
+          ("acik", "Karşılanmamış yuvası", 18), ("belirsiz", "Eşleme belirsiz", 9),
+          ("sade", "istenen-kanitlar.xlsx", 24)]
 DURUM_AD = {VAR: "var", ESKI: "eski sürüm", YOK: "yok — istenmeli"}
 ACIKLAMA = [
     "Kanıt ihtiyaç raporu (bidr ihtiyac). Hatırlatma ve öncelik aracıdır, kesin kontrol listesi değildir.",
@@ -338,6 +342,10 @@ ACIKLAMA = [
     "'var' satırlarını gözle doğrulayın.",
     "Kimden istenir: bidr/data/ihtiyac_sorumlular.yaml (genel varsayılanlar; --sorumlular ile değiştirilir).",
     "Kapsam dışı (başka birimin doldurduğu) ölçütler listelenmez.",
+    "Kılavuz eki örnekleri: boş FR-0833 şablonunun sonundaki 'Örnek Uygulama ve Kanıtlar Listesi' satırları "
+    "(alan düzeyinde; alt ölçüt eşlemesi elle: bidr/data/ihtiyac_ornek_uygulama.yaml). Satır, eşlendiği "
+    "yuvalardan biri karşılanmamışsa sade listeye öneri olur (madde başına en çok 3, önceki maddelerle "
+    "örtüşmeyen); son sütun satırın bu çalışmada nerede kaldığını gösterir.",
 ]
 
 
@@ -349,15 +357,37 @@ def _cell(v):
     return v
 
 
-def write_xlsx(path: Path, talepler: list[dict], satirlar: list[dict], gecen: list[dict]) -> Path:
+def ornek_satirlari(ornekler: list[dict], satirlar: list[dict], sade_rows: list[dict]) -> list[dict]:
+    """Kılavuz eki örnek uygulamalarının bu çalışma alanındaki durumu (teknik liste)."""
+    acik = {s["olcut"]: set(s.get("karsilanmamis_yuvalar") or []) for s in satirlar}
+    listede: dict[str, list[str]] = {}
+    for r in sade_rows:
+        for i in r.get("ornek_idler") or []:
+            listede.setdefault(i, []).append(r["olcut"])
+    out = []
+    for o in ornekler:
+        a = [y for y in o["yuvalar"] if y in acik.get(y.split("/")[0], set())]
+        sd = ("listede (" + ", ".join(listede[o["id"]]) + ")" if o["id"] in listede
+              else "kurum düzeyi: sade listeye girmez" if not o["sade"]
+              else "yuvası karşılanmış (ya da madde listede yok)" if not a else "sınır ya da örtüşme nedeniyle yazılmadı")
+        out.append({"id": o["id"], "uygulama": o["uygulama"], "kanit": o["kanit"],
+                    "olcutler": ", ".join(o["olcutler"]), "yuvalar": ", ".join(o["yuvalar"]),
+                    "acik": ", ".join(a), "belirsiz": "evet" if o["belirsiz"] else "", "sade": sd})
+    return out
+
+
+def write_xlsx(path: Path, talepler: list[dict], satirlar: list[dict], gecen: list[dict],
+               ornek: list[dict] | None = None) -> Path:
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill
     from openpyxl.utils import get_column_letter
     wb = Workbook()
     wb.remove(wb.active)
     head_fill = PatternFill("solid", fgColor="DDE7F0")
-    for name, cols, rows in ((SHEETS[0], T_COLS, talepler), (SHEETS[1], O_COLS, satirlar),
-                             (SHEETS[2], G_COLS, gecen)):
+    sayfalar = [(SHEETS[0], T_COLS, talepler), (SHEETS[1], O_COLS, satirlar), (SHEETS[2], G_COLS, gecen)]
+    if ornek:
+        sayfalar.append((SHEETS[4], E_COLS, ornek))
+    for name, cols, rows in sayfalar:
         sh = wb.create_sheet(name)
         sh.append([h for _, h, _ in cols])
         for i, (_, _, w) in enumerate(cols, 1):
@@ -435,7 +465,7 @@ def md_ozet(meta: dict, talepler: list[dict], satirlar: list[dict], gecen: list[
 
 def run(ws_root: Path, *, referans: dict | None = None, out: Path | None = None, sorumlular=None,
         turler=None, istekler: list[dict] | None = None, somut=None, oneriler: list[dict] | None = None,
-        kurum: dict | None = None) -> dict:
+        kurum: dict | None = None, ornekler: list[dict] | None = None) -> dict:
     """Raporu üretir; {"paths", "talepler", "satirlar", "gecen", "meta", "sade"} döner. `istekler`:
     elle istekler (`sade.istekler_oku`); `somut`/`oneriler`: sade liste tabloları (vars. bidr/data);
     `kurum`: kurum belge kataloğu eşlemesi (`kurum-katalog-esleme.json`, bkz. katalog_esle)."""
@@ -483,12 +513,13 @@ def run(ws_root: Path, *, referans: dict | None = None, out: Path | None = None,
             "uyarilar": uy}
     paths = {"xlsx": out / FILES["xlsx"], "md": out / FILES["md"]}
     gecen_x = [{**x, "durum": DURUM_AD.get(x["durum"], x["durum"])} for x in gecen]
-    write_xlsx(paths["xlsx"], talepler, satirlar, gecen_x)
-    paths["md"].write_text(md_ozet(meta, talepler, satirlar, gecen), encoding="utf-8")
     from . import sade
+    ornekler = ornekler if ornekler is not None else sade.ornekler_yukle()
     sade_rows = sade.satirlar_kur(a.cs, tags, sor, talepler, satirlar, gecen, yil=a.donem,
                                   ref_yil=(referans or {}).get("donem"), istekler=istekler, somut=somut,
-                                  oneriler=oneriler, kurum=kurum)
+                                  oneriler=oneriler, kurum=kurum, ornekler=ornekler)
+    write_xlsx(paths["xlsx"], talepler, satirlar, gecen_x, ornek_satirlari(ornekler, satirlar, sade_rows))
+    paths["md"].write_text(md_ozet(meta, talepler, satirlar, gecen), encoding="utf-8")
     paths["sade"] = sade.write_xlsx(out / sade.FILE, sade_rows,
                                     baslik=f"İstenen kanıtlar ({a.donem})" if a.donem else "İstenen kanıtlar")
     return {"paths": paths, "talepler": talepler, "satirlar": satirlar, "gecen": gecen, "meta": meta,
