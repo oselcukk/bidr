@@ -29,12 +29,15 @@ from . import ikinci as I
 
 WORK = "ikinci_arama"
 ISARET = "ikinci_arama"
+REVIEW = "review-decisions.jsonl"
 
 README = """# bidr ikinci arama paketleri: classify_fine (sürüm {version})
 
 Bu klasördeki her `<doc_id>.json` bir ince karar paketidir; `bidr decide`'ın ince karar
-paketleriyle aynı görev ve aynı kurallar. Fark: aday ölçütler, ilk geçişte bu belge için
-aday olmamış, kanıtsız ya da zayıf kalmış ölçütlerdir (ikinci arama). Uymuyorsa
+paketleriyle aynı görev ve aynı kurallar. Fark: aday ölçütler kanıtsız ya da zayıf kalmış
+ölçütlerdir (ikinci arama): ya ilk geçişte bu belge için aday olmamışlardır ya da belge başka
+bir ölçütte kanıt olarak kabul edilmiştir ve aynı belgenin bu ölçüte de kanıt olup olmadığı
+sorulur. Belgenin öteki ölçütteki kabulü bu ölçüt için kanıt değildir; yalnız metne bak. Uymuyorsa
 "olcut_yok" ya da "kanit_degil" geçerli ve beklenen cevaptır; zorlama.
 
 1. Paketi oku; `istem` görevin tamamı, `sema` cevabın JSON şeması.
@@ -108,6 +111,43 @@ def eligible_map(ctx, recs: dict[str, dict], weak: set[str], *, redo: bool = Fal
     return out, st
 
 
+def cross_pool(ctx, recs: dict[str, dict], weak: set[str], review: dict[str, dict], *,
+               redo: bool = False) -> dict[str, dict]:
+    """Çapraz yolun havuzu: {doc_id: {"acik": zayıf ölçütler, "kabul": başka ölçütler}}.
+    Belge ince kararı sonuçlanmış, hariç tutulmamış, devralan mükerrer değil, birimin kendi
+    belgesi (`ikinci.unit_own`, insan birim kararı öncelikli) ve en az bir ölçütte kabul edilmiş
+    (insan reddetmemiş) olmalı. Açık ölçüt: ilk geçişte o belgeyle eşleşmesi olmayan, ikinci
+    aramayla bakılmamış (`redo` değilse) zayıf ölçüt; ilk geçişin adayı olmuş olabilir."""
+    from bidr.decide.run import unit_view
+
+    allowed = set(ctx.allowed)
+    out: dict[str, dict] = {}
+    for did in sorted(p.stem for p in ctx.ws.text_dir.glob("*.txt")):
+        rec = recs.get(did)
+        if not rec or rec.get("durum") != "ok" or rec.get("asama") != "ince" or ctx.skip_reason(did):
+            continue
+        if (rec.get("mukerrer") or {}).get("durum") == "devralindi":
+            continue
+        view = unit_view(rec, ctx.pins, ctx.tags)
+        if not I.unit_own(view, ctx.docs.get(did)):
+            continue
+        kabul = I.accepted_elsewhere(rec, view, review)
+        if not kabul:
+            continue
+        skip = I.first_pass_matched(rec) | (set() if redo else done_criteria(rec))
+        acik = {c for c in weak if c in allowed and c not in skip}
+        if acik:
+            out[did] = {"acik": acik, "kabul": kabul}
+    return out
+
+
+def load_review(ws_root: Path) -> dict[str, dict]:
+    """review-decisions.jsonl (`bidr audit apply`): {"<doc_id>|<yuva>": karar}; yoksa boş."""
+    from bidr.common import read_jsonl
+    p = Path(ws_root) / REVIEW
+    return {r["satir"]: r for r in read_jsonl(p) if r.get("satir")} if p.exists() else {}
+
+
 def _write_readme(d: Path) -> int:
     from bidr.decide.run import FINE, _pkg_paths, task_version
     pending = sum(1 for p in _pkg_paths(d) if not (d / f"{p.stem}.out.json").exists())
@@ -117,9 +157,11 @@ def _write_readme(d: Path) -> int:
 
 def prepare(ws_root: Path, *, profile: str | None = "akademik_bolum", n: int = I.N_BELGE,
             max_aday: int = 6, od_esik: int = I.OD_ESIK, olcutler: list[str] | None = None,
-            synonyms: bool = True, redo: bool = False, backend=None, ctx=None) -> dict:
+            synonyms: bool = True, redo: bool = False, capraz: bool = True, backend=None,
+            ctx=None) -> dict:
     """Zayıf ölçütleri bulur, arşivde arar, belge başına bir ince karar paketi yazar.
-    `olcutler` verilirse zayıflık hesaplanmaz, yalnız bu ölçütler aranır."""
+    `olcutler` verilirse zayıflık hesaplanmaz, yalnız bu ölçütler aranır. `capraz`: başka
+    ölçütte kabul edilmiş birim belgeleri de zayıf ölçütlere aday olur (çapraz yol)."""
     from bidr.decide.run import FINE, Backend, Context, _write_pkg, fine_inputs, load_decisions, work_dir
 
     backend = backend or Backend()
@@ -135,18 +177,34 @@ def prepare(ws_root: Path, *, profile: str | None = "akademik_bolum", n: int = I
     elig, est = eligible_map(ctx, recs, set(weak), redo=redo)
     searcher = I.Searcher(ctx.cs, I.Archive.load(ctx.ws.root), synonyms=synonyms)
     picks = I.select(searcher, weak, elig, n=n)
-    by_doc: dict[str, list[dict]] = {}
+    by_doc: dict[str, dict[str, dict]] = {}
     for c, rows in picks.items():
         for r in rows:
-            by_doc.setdefault(r["doc_id"], []).append({"olcut": c, "puan": r["puan"], "sira": r["sira"],
-                                                       "sinyaller": r["sinyaller"],
-                                                       "nedenler": weak[c]["nedenler"]})
+            by_doc.setdefault(r["doc_id"], {})[c] = {
+                "olcut": c, "puan": r["puan"], "sira": r["sira"], "sinyaller": r["sinyaller"],
+                "nedenler": weak[c]["nedenler"], "kaynak": ["arsiv"]}
+    pool = cross_pool(ctx, recs, set(weak), load_review(ctx.ws.root), redo=redo) if capraz else {}
+    cross = I.select_cross(searcher, weak, pool, max_aday=max_aday)
+    for did, rows in cross.items():
+        slot = by_doc.setdefault(did, {})
+        for r in rows:
+            row = slot.setdefault(r["olcut"], {
+                "olcut": r["olcut"], "puan": r["puan"], "sira": r["sira"], "sinyaller": r["sinyaller"],
+                "nedenler": weak[r["olcut"]]["nedenler"], "kaynak": []})
+            row["kaynak"].append("capraz")
+            row["kabul_olcutler"] = pool[did]["kabul"]
     d = work_dir(ctx.ws, WORK)
     d.mkdir(parents=True, exist_ok=True)
+    secim_capraz: dict[str, list[str]] = {}
+    for did, rows in cross.items():
+        for r in rows:
+            secim_capraz.setdefault(r["olcut"], []).append(did)
     st = {"zayif": weak, "audit": audit is not None, "paket": 0, "yeni": 0, "kesilen": 0,
-          "secim": {c: [r["doc_id"] for r in rows] for c, rows in picks.items()}, **est}
+          "secim": {c: [r["doc_id"] for r in rows] for c, rows in picks.items()},
+          "secim_capraz": secim_capraz, "capraz_havuz": len(pool), "capraz_paket": len(cross),
+          "capraz_cift": sum(len(v) for v in cross.values()), **est}
     for did in sorted(by_doc):
-        rows = sorted(by_doc[did], key=lambda r: (-r["puan"], id_key(r["olcut"])))
+        rows = sorted(by_doc[did].values(), key=lambda r: (-r["puan"], id_key(r["olcut"])))
         st["kesilen"] += max(0, len(rows) - max_aday)
         rows = rows[:max_aday]
         crits = [r["olcut"] for r in rows]
@@ -200,7 +258,8 @@ def merge(ctx, did: str, rec: dict, out: dict, pkg: dict, model: str, verify, ce
     oc = dict(ia.get("olcutler") or {})
     for c in crits:
         oc[c] = {"puan": info.get(c, {}).get("puan"), "sira": info.get(c, {}).get("sira"),
-                 "nedenler": info.get(c, {}).get("nedenler", []), "istem_sha": pkg["istem_sha"],
+                 "nedenler": info.get(c, {}).get("nedenler", []),
+                 "kaynak": info.get(c, {}).get("kaynak", ["arsiv"]), "istem_sha": pkg["istem_sha"],
                  "cevap_sha": cevap_sha, "model": model,
                  "eslesme": sum(m["olcut"] == c for m in new),
                  "kabul": sum(m["olcut"] == c and m["kabul"] for m in new)}

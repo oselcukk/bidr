@@ -33,14 +33,19 @@ def _run(args) -> int:
     if args.action == "prepare":
         olc = [x for x in (args.olcut or "").replace(" ", ",").split(",") if x] or None
         st = A.prepare(ws.root, profile=args.profile or None, n=args.n, max_aday=args.max_aday,
-                       od_esik=args.od_esik, olcutler=olc, synonyms=not args.no_esanlam, redo=args.redo)
+                       od_esik=args.od_esik, olcutler=olc, synonyms=not args.no_esanlam, redo=args.redo,
+                       capraz=not args.no_capraz)
         z = st["zayif"]
         print(f"zayıf ölçüt: {len(z)} (kaynak: {'audit-olcutler.json' if st['audit'] else 'decisions.jsonl, yaklaşık'})")
         for c, info in z.items():
             sec = st["secim"].get(c) or []
-            print(f"  {c}: {', '.join(info['nedenler'])} → {len(sec)} belge")
+            cap = [d for d in st["secim_capraz"].get(c) or [] if d not in sec]
+            print(f"  {c}: {', '.join(info['nedenler'])} → {len(sec)} belge"
+                  + (f" + {len(cap)} çapraz" if cap else ""))
         print(f"{st['paket']} paket ({st['yeni']} yeni/değişen), bekleyen {st['bekleyen']} → {st['klasor']}"
               + (f"; belge başına sınırdan kesilen ölçüt {st['kesilen']}" if st["kesilen"] else ""))
+        print(f"çapraz yol: başka ölçütte kabul edilmiş birim belgesi {st['capraz_havuz']}, "
+              f"paketlenen {st['capraz_paket']} belge / {st['capraz_cift']} (belge, ölçüt) çifti")
         print(f"seçilmeyen belge: ince kararı yok={st['ince_yok']} hariç tür/metin={st['haric']} "
               f"başka birim={st['baska_birim']} devralan={st['devralan']}")
         print(f"Ajan: {st['klasor']}/README.md")
@@ -68,6 +73,8 @@ def register(sub):
     a.add_argument("--olcut", help="zayıflık hesaplama, yalnız bu ölçütleri ara (virgülle)")
     a.add_argument("--no-esanlam", action="store_true", help="eşanlamlı genişletmeyi kapat")
     a.add_argument("--redo", action="store_true", help="ikinci aramayla bakılmış (belge, ölçüt) çiftlerini de paketle")
+    a.add_argument("--no-capraz", action="store_true",
+                   help="çapraz yolu kapat (başka ölçütte kabul edilmiş birim belgelerini zayıf ölçütlere sorma)")
     a.set_defaults(func=_run)
     a = act.add_parser("apply", help="<doc_id>.out.json cevaplarını denetle, işaretli eşleşme olarak ekle")
     a.add_argument("--workspace", "-w", required=True)

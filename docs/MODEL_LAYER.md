@@ -226,6 +226,20 @@ işlenmiş arşivin bütün belgeleri derlem. Kod: `bidr/candidates/ikinci.py` (
   kararı devralan mükerrer belge seçilmez. Ölçüt başına en iyi `--n` (vars. 5) belge; belge
   başına en çok `--max-aday` (vars. 6) ölçüt. Çoklu ölçüt korunur: bir belgeye seçilen bütün
   zayıf ölçütler aynı pakette sorulur.
+- **Çapraz yol** (vars. açık; `--no-capraz` kapatır): bir belge bir ölçüte atanınca başka
+  ölçüte de kanıt olabileceği arşiv sıralamasında çoğu zaman görünmez (bütçe cümlesi etkinlik
+  raporunun içinde, bölüm izleme tablosu başka ölçüte atanmış; gerçek veride hedef belge arşivde
+  76–145. sırada). Havuz: ince kararı sonuçlanmış, hariç/devralan olmayan, birimin kendi belgesi
+  sayılan (`ikinci.unit_own`, `_unit_stats` ile aynı kural) ve en az bir ölçütte ilk geçişte
+  kabul edilmiş, insanın reddetmediği (`review-decisions.jsonl`) belgeler. İkinci aramanın kendi
+  kabulleri havuz nedeni sayılmaz (zincirleme yok). Belgeye sorulan: ilk geçişte o belgeyle
+  eşleşmesi olmayan (kabul ya da ret) zayıf ölçütler; ölçüt ilk geçişin adayı olup ince karar
+  eşleşme vermediyse de sorulur (dar aday listesi, ölçüte odaklı kesit). Belge başına en çok
+  `--max-aday` ölçüt, sıra ölçüt sorgusunun belgeye puanı. Arşiv yolunun aynı belgeye seçtikleriyle
+  tek pakette birleşir; satırın `kaynak`'ı `arsiv`/`capraz`, çapraz satırda `kabul_olcutler`
+  (kayıtta `ikinci_arama.olcutler.<ölçüt>.kaynak`). Ölçüm (2026-11-20, model çağrısı yok):
+  Matematik havuz 29 belge → 29 ek paket, 174 çift (arşiv yolu 32 paket); Kimya havuz 105 → 105
+  ek paket (biri arşiv yoluyla ortak), 628 çift (arşiv yolu 27).
 - **Paket** (`bidr arama prepare -w WS`; yönetilen çalışma alanında aşama kapısı: audit bitmeden
   çıkış 3 ve `bidr next` önerisi, paket yazılmaz): `work/ikinci_arama/<doc_id>.json`, `classify_fine`
   görevi, `decide prepare`'inkiyle aynı biçim ve istem (`fine_inputs`; aday listesi yalnız
