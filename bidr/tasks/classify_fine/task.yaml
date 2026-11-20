@@ -45,6 +45,8 @@ description: >-
   alıntıla. Kod yalnız tablo başlığından oluşan alıntıyı ("Komisyon Adı … Görev Tanımı …") reddeder
   (`alinti_tablo_basligi`, GECERSIZ.md'de gerekçesiyle). Komisyon/görev tanımı tablosunda aday listesi
   komisyon görevlerinin ölçütleriyle genişler, en çok 8 (bidr/candidates/komisyon.py).
+  v10 açıklama (sürüm değişmedi, şema aynı; 2026-11-20): "guven" tanımı istemde yazılı: yüksek =
+  alıntı yuvayı doğrudan karşılar, belge birime ait ve dönem içi; orta = ilgili ama dolaylı; düşük = zayıf bağ.
 inputs:
   adaylar: "aday alt ölçütler: başlık, rubrik 1-5, yuvalar `[aşama → OD]` etiketiyle"
   belge_bilgisi: "documents.jsonl içerik alanları (tür tahmini, tarih, sayfa); yol/ad yok"

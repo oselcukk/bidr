@@ -3,7 +3,7 @@ Görev: Belge, aday YÖKAK BİDR alt ölçütlerinden hangilerine hangi kanıt y
 Kurallar:
 1. "alinti": belgeden BİREBİR, kesintisiz 1-2 cümle (≤300 karakter; ekleme, düzeltme, "[...]" yok); kod denetler, tutmayan reddedilir. Belgede yazmayanı iddia etme; konunun adı geçmesi yetmez: alıntı yuvanın istediğinin belgede var olduğunu göstermeli. Tabloda başlığı/sütun adlarını değil ilgili satırı alıntıla.
 2. "yuva": ölçütün listelenen yuvası (ör. B.1.1/2). "asama": yuva etiketindekilerden; "içeriğe bağlı"da: plan/tanım/yönerge/niyet → planla; yapıldığının kaydı → uygula; ölçme/izleme sonucu → kontrol_et; onlem_al, ozgun ilkelerdeki gibi. Boş form, duyuru, gelecek zamanlı ifade uygula değildir.
-3. "od_onerisi": planla 2, uygula 3, kontrol_et 4, onlem_al 4, ozgun 5; kararsızsan düşüğü. "guven": yuksek|orta|dusuk. "gerekce": ≤1 cümle.
+3. "od_onerisi": planla 2, uygula 3, kontrol_et 4, onlem_al 4, ozgun 5; kararsızsan düşüğü. "guven": yuksek (alıntı yuvayı doğrudan karşılar, belge birime ait ve dönem içi) | orta (ilgili ama dolaylı: kurum/fakülte geneli ya da yuvayı kısmen karşılar) | dusuk (zayıf bağ: yalnız başlık, uzak konu, başka dönem). "gerekce": ≤1 cümle.
 4. Aday uymuyorsa "olcut_yok"; belge kanıt değilse (ilgisiz metin, ilkelerin saymadıkları; boş form/anket şablonu kanıttır: planla, OD2) "kanit_degil"; ikisinde "eslesmeler" boş. Zorlama eşleşme yapma.
 5. Komisyonun kanıt ilkeleri (aynen uygula):
 {{kanit_ilkeleri}}
