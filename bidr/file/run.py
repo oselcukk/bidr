@@ -378,6 +378,11 @@ def run(ws_root: Path, *, out: Path | None = None, source: str | Path | None = N
     ev.mkdir(parents=True)
     rows, n_cut, n_missing = [], 0, 0
     names: dict[str, tuple[str, str]] = {}
+    suspicious: dict[str, dict[str, str]] = {}      # doc_id → belge metnindeki şüpheli adresler
+
+    def item_date(it) -> str | None:
+        return part_date(docs.get(it.doc_id), it.alintilar, lambda: linker.text_of(it.doc_id))
+
     for olcut in sorted(by_c, key=id_key):
         lst = sorted(by_c[olcut], key=lambda i: (i.od, (docs.get(i.doc_id) or {}).get("calisma_adi") or "",
                                                  i.doc_id))
@@ -400,7 +405,7 @@ def run(ws_root: Path, *, out: Path | None = None, source: str | Path | None = N
         seen = Counter(shown.values())
         for sira, mem in groups.items():
             if seen[shown[sira]] > 1:
-                shown[sira] = safe_name(f"{shown[sira]} ({date_of(docs.get(mem[0].doc_id)) or mem[0].doc_id[:6]})")
+                shown[sira] = safe_name(f"{shown[sira]} ({item_date(mem[0]) or mem[0].doc_id[:6]})")
         cdir = ev / _criterion_dir(olcut)
         cdir.mkdir(parents=True, exist_ok=True)
         used: set[str] = set()                 # klasördeki adlar (büyük/küçük harf duyarsız dosya sistemi)
@@ -409,7 +414,7 @@ def run(ws_root: Path, *, out: Path | None = None, source: str | Path | None = N
             mem = groups[sira]
             ad = shown[sira]
             fad = ad if len(mem) == 1 else safe_name(
-                f"{item_names[it.doc_id][0]} ({date_of(docs.get(it.doc_id)) or it.doc_id[:6]})")
+                f"{item_names[it.doc_id][0]} ({item_date(it) or it.doc_id[:6]})")
             inv_row = inv.get(it.doc_id)
             flags = list(it.isaretler)
             # model adının dayanağı (ad_dogrulanmali, ad_parca_uyumsuz) ve tek dosyada birden çok parça adı
@@ -446,6 +451,10 @@ def run(ws_root: Path, *, out: Path | None = None, source: str | Path | None = N
                         pages_txt = ""
                     rel_out = dst.relative_to(ev).as_posix()
             link, link_src = linker.resolve(it.doc_id, rel_out, it.kopyalar)
+            bad_links = linker.suspicious(it.doc_id, it.kopyalar)
+            if bad_links:
+                suspicious[it.doc_id] = bad_links
+                flags.append("baglanti_supheli")
             crows.append({
                 "kanit_no": f"{sira}_OD{g_od}", "olcut": olcut, "od": g_od, "ad": ad, "dosya": rel_out,
                 "doc_id": it.doc_id, "sayfalar": pages_txt, "yuvalar": "; ".join(it.yuvalar),
@@ -466,7 +475,7 @@ def run(ws_root: Path, *, out: Path | None = None, source: str | Path | None = N
             "İNCELEME YAPILMADI\n\nBu kanıt klasörü review-decisions.jsonl olmadan (bidr audit apply "
             "çalıştırılmadan) üretildi.\nDosyalar modelin kabul edilmiş eşleşmeleridir; insan onayı yoktur.\n",
             encoding="utf-8")
-    update_gaps(out / GAPS, gaps_block(rows))
+    update_gaps(out / GAPS, gaps_block(rows, suspicious))
     from . import select as S
     S.record(out / S.SECIM, secim["settings"], secim["kept"], secim["dropped"], secim["merges"],
              secim["uyarilar"], secim["atiflar"])
@@ -483,12 +492,84 @@ def run(ws_root: Path, *, out: Path | None = None, source: str | Path | None = N
     if make_zip:
         zpath = out / ZIP
         write_zip(ev, zpath)
+    adlari_guncellenen = sync_text_names(ws.root, rows) if out == ws.root else []
     return {"kanit": len(rows), "olcut": len(by_c), "belge": len({r["doc_id"] for r in rows}), **ozet,
+            "metin_adlari_guncellenen": adlari_guncellenen,
             "baglantili": sum(1 for r in rows if r["baglanti"]),
             "baglanti_kaynagi": dict(sorted(Counter(r["baglanti_kaynagi"] or "yok" for r in rows).items())),
             "kesilen_pdf": n_cut, "eksik_dosya": n_missing, "inceleme": meta["inceleme"],
             "index": str(idx), "evidence": str(ev), "zip": str(zpath) if zpath else None,
             "uyarilar": list(dict.fromkeys(uyarilar))}
+
+
+def part_date(doc: dict | None, quotes: list[str], text_of) -> str | None:
+    """Dosya adındaki tarih: birleşik belgede (`parcalar` ≥2) alıntının parçasının tarihi (parça
+    tarihsizse None: belge tarihi başka parçanındır), değilse belge tarihi (`date_of`). Kör test
+    2026-11-20: "Toplumsal Katkı Faaliyetleri Yazısı (2025-01-06)" adındaki tarih aynı PDF'teki
+    başka bir yazınındı."""
+    parts = (doc or {}).get("parcalar") or []
+    if len(parts) >= 2 and quotes:
+        from bidr.identify.parca import part_of_page, quote_page
+        text = text_of()
+        for q in quotes:
+            pg = quote_page(text or "", q)
+            j = part_of_page(parts, pg) if pg is not None else None
+            if j is not None:
+                t = parts[j].get("tarih")
+                return t if isinstance(t, str) and re.match(r"\d{4}-\d{2}-\d{2}$", t) else None
+    return date_of(doc)
+
+
+def sync_text_names(ws_root: Path, rows: list[dict]) -> list[str]:
+    """Yazılmış ölçüt metinlerinin (`texts/<ölçüt>.json`) kanıt listesindeki ad ve dosya, dizinin
+    kopyasıdır: dosyalama sonrası dizindekiyle eşitlenir → güncellenen ölçütler.
+
+    Kör test 2026-11-20: parça adı adımı (bidr name) ve dosyalama doğru adı (AYDEK Usul ve Esasları,
+    Araştırma Politikası) dizine ve dosya adına yazdı; ama metin adlandırmadan önce yazılmıştı, metnin
+    girdisi (`girdi_sha`: kanıt no + doc_id + OD) değişmediği için eskimedi ve rapor metindeki eski
+    belge adını (birleşik PDF'in ilk parçası) bastı. Yalnız girdisi güncel metin eşitlenir (numara aynı
+    belgeleri gösteriyor); metnin kendisi, durumu ve doğrulaması değişmez (`text_sha` adları kapsamaz)."""
+    from bidr.write import run as W
+    from bidr.write.sources import AUDIT, load_audit
+    td = Path(ws_root) / W.TEXTS
+    if not td.is_dir():
+        return []
+    try:
+        audit = load_audit(Path(ws_root) / AUDIT) if (Path(ws_root) / AUDIT).exists() else {}
+    except (OSError, ValueError, KeyError, TypeError):
+        audit = {}
+    by_c: dict[str, list[dict]] = {}
+    for r in rows:
+        by_c.setdefault(r["olcut"], []).append(r)
+    out = []
+    for p in sorted(td.glob("*.json")):
+        try:
+            t = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        c = t.get("olcut") if isinstance(t, dict) else None
+        crow = by_c.get(c or "")
+        if not crow or not t.get("kanitlar") or not t.get("girdi_sha"):
+            continue
+        ods = {int((audit.get(c) or {}).get("od") or 0), int(t.get("od_onerisi") or 0)}
+        if t["girdi_sha"] not in {W.girdi_sha(crow, od) for od in ods if od}:
+            continue                     # girdi değişti: metin eskidir, yeniden yazılır (write_tamam)
+        first: dict[str, dict] = {}
+        for r in crow:
+            first.setdefault(r["kanit_no"], r)
+        changed = False
+        for k in t["kanitlar"]:
+            r = first.get(str(k.get("no")))
+            if r is None:
+                continue
+            for f in ("ad", "dosya"):
+                if r.get(f) and k.get(f) != r[f]:
+                    k[f] = r[f]
+                    changed = True
+        if changed:
+            p.write_text(json.dumps(t, ensure_ascii=False, indent=1), encoding="utf-8")
+            out.append(c)
+    return out
 
 
 _LINK_RANK = {"insan": 0, "belge_metni": 1, "klasor": 2}

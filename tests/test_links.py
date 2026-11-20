@@ -11,7 +11,8 @@ from bidr.audit.run import FILES, audit
 from bidr.cli import main
 from bidr.common import read_jsonl
 from bidr.file import run as FR
-from bidr.file.links import LINKS, clean_url, folder_url, gaps_block, published_url, update_gaps
+from bidr.file.links import (LINKS, clean_url, folder_url, gaps_block, published_url, published_url_checked,
+                             update_gaps, url_issue)
 
 from test_audit import _fill
 from test_file import _index, env  # noqa: F401  (env: fixture)
@@ -179,3 +180,50 @@ def test_render_links_and_commission_marker(tmp_path):
     hl = d.element.body.findall(".//" + "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hyperlink")
     assert len(hl) == 1 and "Sentetik kanıt bir" in "".join(t.text for t in hl[0].iter(
         "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t"))
+
+
+# -- OCR'dan gelen şüpheli adresler (kör test 2026-11-20) -----------------------------------------
+
+@pytest.mark.parametrize("u,after,neden", [
+    ("https://Wwww.ornekgazete.con/haber/77/", "", "alan adı biçimi"),
+    ("https://www.ornekgazete.con/haber/77/", "", "bilinmeyen üst alan adı"),
+    ("https://posta.ornek.com/mail/id/[okunamadı", "", "OCR yer tutucusu"),
+    ("https://www.ornek.edu.tr/icerik/8/123/d", " isplay.aspx", "kesik yol"),
+    ("https://www.ornek.edu.tr/icerik/8/123/d", "", "kesik yol"),
+    ("https://abl.ornek.edu.tr/ects/?modul=ders&dno=KİM", " 197&bolum=216&dil=tr", "kesik yol"),
+    ("https://www.ornek.edu.tr/Files/Y%C3%96-", "", "kesik yol"),
+    ("https://abl.ornek.edu.tr/dogrulama/OturumAc?git=/x/", "", "oturum"),
+    ("https://posta.ornek.com/mail/id/AAk123", "", "oturum"),
+])
+def test_url_issue_supheli(u, after, neden):
+    assert neden in (url_issue(u, after) or "")
+
+
+@pytest.mark.parametrize("u,after", [
+    ("https://www.ornek.edu.tr/icerik/8/123/display.aspx", ""),
+    ("https://abl.ornek.edu.tr/tr/ders-plani", " 1/2"),
+    ("https://ornek.gov.tr/ebd?eK=5&eS=1", " adresinden ulaşılabilir."),
+    ("https://www.ornek.de/a/b/", ""),
+    ("https://www.ornek.org/haber/42", ""),
+])
+def test_url_issue_gecerli(u, after):
+    assert url_issue(u, after) is None
+
+
+def test_published_url_supheli_adres_kullanilmaz():
+    ocr = ("Etkinlik raporu\nmetin\nmetin\nhttps://Wwww.ornekgazete.con/haber/77/\f"
+           "ikinci sayfa\nmetin\nmetin\nhttps://www.ornek.edu.tr/icerik/8/123/d isplay.aspx")
+    u, bad = published_url_checked(ocr, ["ornek.edu.tr"])
+    assert u is None and published_url(ocr) is None
+    assert bad == {"https://Wwww.ornekgazete.con/haber/77/": "alan adı biçimi (wwww)",
+                   "https://www.ornek.edu.tr/icerik/8/123/d": "kesik yol (adres metinde bölünmüş)"}
+    # geçerli aday varsa o seçilir; şüpheli olan yine raporlanır ama kanıtın bağlantısı vardır
+    ok = ocr + "\nhttps://www.ornek.edu.tr/icerik/9/5/display.aspx"
+    assert published_url_checked(ok, ["ornek.edu.tr"])[0] == "https://www.ornek.edu.tr/icerik/9/5/display.aspx"
+    from bidr.file.links import LinkResolver
+    L = LinkResolver({}, {"a": ocr, "b": ok}.get)
+    assert L.resolve("a", None) == ("", "") and "https://Wwww.ornekgazete.con/haber/77/" in L.suspicious("a")
+    assert L.suspicious("b") == {}                                         # bağlantısı var: doğrulama listesi değil
+    g = gaps_block([{"olcut": "D.1.1", "kanit_no": "7_OD3", "ad": "Rapor", "doc_id": "a", "baglanti": ""}],
+                   {"a": L.suspicious("a")})
+    assert "Doğrulanmalı" in g and "Wwww.ornekgazete.con" in g and "kesik yol" in g

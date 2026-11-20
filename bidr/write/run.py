@@ -127,13 +127,17 @@ class Sources:
                 continue
             doc = self.docs.get(r.get("doc_id")) or {}
             txt = self.doc_text(r.get("doc_id"))
+            # birleşik belgede pencere alıntının parçasıyla sınırlı (başka parçanın bilgisi kanıta mal edilmesin)
+            part = None
+            if self.verify:
+                txt, part = S.part_scope(txt, doc.get("parcalar") or [], r["alintilar"], self.verify)
             cov = S.quote_spans(txt, r["alintilar"], self.verify) if self.verify else []
             # kurum geneli düzenlemenin dönem bilgisi künye tarihidir; yalnız birime ait belgeye eklenir
             ext = "kurum_geneli" not in (r.get("isaretler") or "")
             out.append({"no": r["kanit_no"], "ad": r.get("ad", ""), "dosya": r.get("dosya", ""),
                         "doc_id": r.get("doc_id", ""), "od": r.get("od"), "yuvalar": r["yuvalar"],
                         "belge_turu": doc.get("doc_type_etiket") or doc.get("doc_type") or "",
-                        "tarih": doc.get("tarih") or "",
+                        "tarih": (part or {}).get("tarih") or doc.get("tarih") or "",
                         "donem_ici": S.period_snippets(txt, self.donem, cov) if ext else [],
                         "konu": S.topic_snippets(txt, self._description(olcut), cov) if ext else [],
                         "alintilar": S.evidence_context(txt, r["alintilar"], self.verify)})

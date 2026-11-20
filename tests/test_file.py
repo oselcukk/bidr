@@ -290,3 +290,47 @@ def test_same_source_gets_one_number():
     assert all(n.startswith("[2-OD3]. ") for n in names) and len(names) == 4
     # sürüm grubu yoksa sha (doc_id) ayırır
     assert source_key("a", {}) != source_key("b", {}) and source_key("a", None) == source_key("a", {})
+
+
+def test_sync_text_names_from_index(tmp_path):
+    """Metin adlandırmadan önce yazıldıysa (girdisi değişmedi, eskimedi) kanıt adı ve dosyası dizinden
+    eşitlenir: rapor birleşik PDF'in ilk parçasının adını değil dosyalanan parça adını basar."""
+    from bidr.file.run import sync_text_names
+    from bidr.write.run import girdi_sha
+    rows = [{"kanit_no": "1_OD2", "olcut": "B.4.1", "doc_id": "d1", "ad": "Sentetik Usul ve Esaslar",
+             "dosya": "B/B.4/B.4.1/[1-OD2]. Sentetik Usul ve Esaslar.pdf"},
+            {"kanit_no": "2_OD3", "olcut": "B.4.1", "doc_id": "d2", "ad": "Kurul Kararı",
+             "dosya": "B/B.4/B.4.1/[2-OD3]. Kurul Kararı (2025-01-02).pdf"},
+            {"kanit_no": "2_OD3", "olcut": "B.4.1", "doc_id": "d3", "ad": "Kurul Kararı",
+             "dosya": "B/B.4/B.4.1/[2-OD3]. Kurul Kararı (2025-02-03).pdf"}]
+    td = tmp_path / "texts"
+    td.mkdir()
+    old = [{"no": "1_OD2", "ad": "Sentetik Transkript Yönergesi", "dosya": "eski.pdf"},
+           {"no": "2_OD3", "ad": "Kurul Kararı", "dosya": "B/B.4/B.4.1/[2-OD3]. Kurul Kararı (2025-01-02).pdf"}]
+    base = {"olcut": "B.4.1", "od_onerisi": 3, "durum": "dogrulandi", "paragraflar": [{"metin": "x [1_OD2]."}],
+            "kanitlar": old, "dogrulama": {"model": "m"}}
+    (td / "B.4.1.json").write_text(json.dumps({**base, "girdi_sha": girdi_sha(rows, 3)}, ensure_ascii=False),
+                                   encoding="utf-8")
+    assert sync_text_names(tmp_path, rows) == ["B.4.1"]
+    t = json.loads((td / "B.4.1.json").read_text(encoding="utf-8"))
+    assert t["kanitlar"][0] == {"no": "1_OD2", "ad": "Sentetik Usul ve Esaslar",
+                                "dosya": "B/B.4/B.4.1/[1-OD2]. Sentetik Usul ve Esaslar.pdf"}
+    assert t["kanitlar"][1]["dosya"].endswith("(2025-01-02).pdf")          # numaranın ilk dosyası
+    assert t["durum"] == "dogrulandi" and t["dogrulama"] == {"model": "m"}  # metin ve doğrulama korunur
+    assert sync_text_names(tmp_path, rows) == []                           # ikinci kez: değişiklik yok
+    # girdisi değişmiş (numara başka belgeyi gösteriyor) metin eşitlenmez: eskidir, yeniden yazılır
+    (td / "B.4.1.json").write_text(json.dumps({**base, "girdi_sha": "baska"}, ensure_ascii=False), encoding="utf-8")
+    assert sync_text_names(tmp_path, rows) == []
+    assert json.loads((td / "B.4.1.json").read_text(encoding="utf-8"))["kanitlar"] == old
+
+
+def test_part_date_birlesik_belge():
+    """Dosya adındaki tarih alıntının parçasınındır; parça tarihsizse belge tarihi (başka parçanın) yazılmaz."""
+    from bidr.file.run import part_date
+    text = ("Mezun bilgi formu ad soyad iletişim çalıştığı kurum alanları.\f"
+            "Staj değerlendirme yazısı 21.11.2025 tarihli sentetik yazıdır ve dekanlığa gönderilmiştir.")
+    doc = {"tarih": "2025-11-21", "parcalar": [{"sayfa": [1, 1], "tarih": None}, {"sayfa": [2, 2], "tarih": "2025-11-21"}]}
+    assert part_date(doc, ["Mezun bilgi formu ad soyad iletişim"], lambda: text) is None
+    assert part_date(doc, ["Staj değerlendirme yazısı 21.11.2025 tarihli"], lambda: text) == "2025-11-21"
+    assert part_date({"tarih": "2025-01-02"}, ["x"], lambda: text) == "2025-01-02"          # parçasız
+    assert part_date(doc, ["metinde olmayan alıntı"], lambda: text) == "2025-11-21"         # yerleşmedi: belge tarihi
