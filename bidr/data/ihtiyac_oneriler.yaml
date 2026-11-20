@@ -1,0 +1,41 @@
+# Sade "İstenen kanıtlar" listesi (`bidr ihtiyac` → istenen-kanitlar.xlsx): komisyonun "istenebilecek
+# kanıtlar" önerileri. Her öneri kılavuzun (FR-0833) "Örnek Kanıtlar" maddelerine (`B.1.3/2` = B.1.3'ün
+# 2. örnek kanıtı) eşlenir; öneri, eşlendiği maddelerden biri henüz karşılanmamışsa o ölçütün "İstenen
+# belgeler" listesinde gösterilir (somut karşılıklar ihtiyac_somut.yaml'dan önce). Genel ifadeler;
+# kurum/kişi adı yok. Birimin kendi listesi `--oneriler` ile verilebilir. `{yil}` raporun yılı.
+surum: 1
+oneriler:
+  - metin: "Ders izlencesi (syllabus) örnekleri ({yil})"
+    yuvalar: [B.1.1/3, B.2.1/1, B.2.2/4, B.3.2/3]
+  - metin: "Ders izlencesinin öğrencilerle paylaşıldığını gösteren örnek (ders yönetim sistemi ya da Teams dosyası/gönderisi ekran görüntüsü)"
+    yuvalar: [B.3.1/4, B.3.1/5, B.3.2/3]
+  - metin: "AKTS–TYYÇ eşleme örnekleri ve TYYÇ–program çıktıları matrisi"
+    yuvalar: [B.1.1/3, B.1.4/1]
+  - metin: "Ders–program çıktıları ilişki matrisleri"
+    yuvalar: [B.1.3/2, B.1.3/3, B.1.3/4]
+  - metin: "Ders bilgi paketi örnekleri"
+    yuvalar: [B.1.2/2, B.1.4/1, B.2.1/1]
+  - metin: "Ders bilgi paketinden ölçme-değerlendirmenin nasıl yapılacağını gösteren örnekler (sınav, ödev, proje ağırlıkları)"
+    yuvalar: [B.2.2/2, B.2.2/4]
+  - metin: "Farklı değerlendirme biçimleri (yazılı sınav, ödev, sunum vb.) kullanan derslerin içerik örnekleri"
+    yuvalar: [B.2.1/3, B.2.2/2, B.2.2/3]
+  - metin: "Bölüme kabul ve kayıt koşulları"
+    yuvalar: [B.2.3/1, B.2.3/4, B.2.4/2]
+  - metin: "Önceki öğrenmenin tanınması (muafiyet, intibak) kuralları ve örnek kararlar"
+    yuvalar: [B.1.4/3, B.2.3/1, B.2.3/2]
+  - metin: "Derece koşulları ve mezuniyet koşulları"
+    yuvalar: [B.2.4/1]
+  - metin: "Diploma eki örneği (kişisel bilgiler kapatılmış)"
+    yuvalar: [B.1.4/5]
+  - metin: "Program tanımı ve program öğrenme çıktıları"
+    yuvalar: [B.1.1/3]
+  - metin: "Ders kataloğu ve öğretim planı (zorunlu/seçmeli dersler, dönemlere dağılım)"
+    yuvalar: [B.1.2/1, B.1.2/2]
+  - metin: "Bölüm olanakları: fiziki imkânları gösteren fotoğraflar ya da belgeler (derslik, laboratuvar, envanter listesi)"
+    yuvalar: [B.3.1/1, B.3.3/2, B.3.3/3]
+  - metin: "Seminer duyuruları (web, Instagram, X/Twitter) ve seminerin yapıldığını gösteren sonrası görseller ({yil})"
+    yuvalar: [B.3.5/2, C.2.1/1, D.1.1/3]
+  - metin: "Ders değerlendirme anketleri ve sonuçları (öğrenci bilgi sisteminden alınan anket sonuçları dahil, {yil})"
+    yuvalar: [A.4.2/2, B.3.1/6, B.4.2/5]
+  - metin: "Ders anketi sonuçlarının değerlendirildiğini gösteren belgeler (toplantı tutanağı, değerlendirme raporu, alınan önlemler)"
+    yuvalar: [A.4.2/3, A.4.2/5, B.1.6/5]

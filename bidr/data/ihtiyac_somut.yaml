@@ -1,0 +1,464 @@
+# Sade "İstenen kanıtlar" listesi (`bidr ihtiyac` → istenen-kanitlar.xlsx): kılavuzun (FR-0833)
+# "Örnek Kanıtlar" maddelerinin bölüm düzeyinde, somut belge adlarıyla karşılıkları.
+#
+# Genel ve kurumdan bağımsızdır (kişi/kurum adı yok); birimin düzenine göre bu dosyanın kopyası
+# `--somut` ile verilebilir. Her kayıt: kılavuz maddesi kimliği (`B.3.2/3` = B.3.2'nin 3. örnek
+# kanıtı) → 1–3 somut belge. `{yil}` raporun yılıyla değiştirilir. İsteğe bağlı biçim:
+#   B.3.2/3: {belgeler: [...], kimden: "Dersi veren öğretim elemanları"}
+# Kaydı olmayan madde kılavuz metniyle yazılır. `ozgun`: "özgün uygulama" maddelerinin ortak metni.
+surum: 1
+ozgun:
+  - "Bölüme özgü, örnek gösterilebilir bir uygulamanın belgesi (bölümün kendi başlattığı bir program, anket, etkinlik dizisi ya da çalışma yöntemi): ne yapıldığını ve sonucunu gösteren karar, rapor ya da duyuru"
+yuva:
+  # A. Liderlik, yönetişim ve kalite
+  A.1.1/1:
+    - Bölümün organizasyon şeması (bölüm başkanı, yardımcılar, anabilim dalları, komisyonlar)
+    - Bölüm komisyonlarının listesi ve görev tanımları ({yil})
+  A.1.1/2:
+    - "Bölüm kurulu kararları ya da toplantı tutanakları ({yil}): bölümün hedefleriyle ilgili alınan kararlar ve yapılan işler"
+  A.1.1/3:
+    - "Bölüm yönetiminin işleyişinin değerlendirildiği toplantı tutanağı ya da rapor ve buna göre yapılan değişiklik (ör. komisyon yapısının güncellenmesi)"
+  A.1.2/1:
+    - "Bölüm yönetimine ilişkin geri bildirim anketinin sonuçları (öğretim elemanları ve personel görüşü) ve bu sonuçların görüşüldüğü toplantı tutanağı"
+  A.1.2/2:
+    - "Kalite çalışmalarına katılımı gösteren belgeler: kalite toplantıları, eğitimler, katılım listeleri ({yil})"
+    - Kalite kültürüne ilişkin anket ya da değerlendirme sonucu ve buna göre alınan önlemler
+  A.1.3/1:
+    - "Bölümde değişikliklerin nasıl planlandığını anlatan belge (ör. değişiklik önerisi → komisyon → bölüm kurulu akışı)"
+  A.1.3/2:
+    - "Bölümün yol haritası ya da eylem planı (önümüzdeki dönemde yapılacak değişiklikler, sorumlular, tarihler)"
+  A.1.3/3:
+    - "Alandaki değişimlerin (yeni programlar, teknolojik gelişmeler, öğrenci talebi) bölüm için değerlendirildiği rapor ya da toplantı tutanağı"
+  A.1.3/4:
+    - Bölümün gelecek planlamasına ilişkin çalıştay ya da toplantı notları (senaryolar, hedefler)
+  A.1.3/5:
+    - "Bölümün benzer bölümlerle karşılaştırıldığı rapor (program yapısı, kontenjan, akademik kadro, başarı göstergeleri)"
+  A.1.3/6:
+    - "Yeni fikir ve önerilerin toplandığı, değerlendirildiği ve hayata geçirildiği uygulamaların belgesi"
+  A.1.3/7:
+    - "Bir değişiklik için kurulan çalışma grubunun görevlendirme kararı ve toplantı tutanakları"
+  A.1.4/1:
+    - "Bölüm kalite komisyonunun kuruluş kararı, üyeleri ve çalışma usul ve esasları"
+  A.1.4/2:
+    - "Bölüm iş akış şemaları, yıllık iş takvimi ve görev-sorumluluk dağılımı ({yil})"
+  A.1.4/3:
+    - "Bölümde kullanılan bilgi sistemlerinin ekran görüntüleri (öğrenci bilgi sistemi, ders yönetim sistemi, kalite/belge yönetimi) ve hangi işte kullanıldığı"
+  A.1.4/4:
+    - "Bölüm risk planı ya da risk değerlendirme tablosu (riskler, olasılık/etki, alınacak önlemler)"
+  A.1.4/5:
+    - "Geri bildirim araçlarının listesi ve örnekleri: ders değerlendirme anketi, öğrenci görüşme toplantısı, öneri kutusu/formu, mezun anketi"
+  A.1.4/6:
+    - "Paydaşların (öğrenci, mezun, işveren, danışma kurulu) katıldığı toplantıların davet, katılım listesi ve tutanakları ({yil})"
+  A.1.4/7:
+    - "Bölümün yıllık kalite değerlendirme raporu ya da öz değerlendirme raporu ({yil}) ve rapora göre yapılan iyileştirmeler"
+  A.1.5/1:
+    - "Bölümün kamuoyunu nasıl bilgilendirdiğini gösteren ilkeler ve ilan edildiği yer (web sayfası bölümü, duyuru)"
+  A.1.5/2:
+    - "Bölüm web sayfasının güncel ekran görüntüleri ({yil}): duyurular, akademik kadro, ders programı, kalite sayfası"
+  A.1.5/3:
+    - "Bölümün paylaştığı faaliyet raporu, kalite raporu ya da istatistiklerin web sayfasındaki yayını ({yil})"
+  A.1.5/4:
+    - "Bilgilendirme ve web sayfası hakkında öğrenci/paydaş görüşlerini içeren anket sonucu ya da geri bildirimler"
+  A.1.5/5:
+    - "Web sayfası ve duyuruların düzenli kontrol edildiğini ve geri bildirimlere göre güncellendiğini gösteren belge (ör. güncelleme kaydı, toplantı kararı)"
+  A.2.1/1:
+    - Bölümün misyon ve vizyonu (web sayfası ekran görüntüsü ya da bölüm kurulu kararı)
+  A.2.1/2:
+    - "Bölümün eğitim, araştırma ve toplumsal katkı politikaları (ya da kurum politikalarını bölümde benimseyen karar)"
+  A.2.1/3:
+    - "Politikaların hazırlanmasında paydaş görüşünün alındığını gösteren toplantı tutanağı ya da e-posta/anket"
+  A.2.1/4:
+    - "Politikaların bölüm uygulamalarına yansıdığını gösteren örnekler (ör. derslerde araştırma projesi, öğrencilerin katıldığı topluma yönelik etkinlik)"
+  A.2.1/5:
+    - "Politikaların uygulanma durumunun değerlendirildiği toplantı tutanağı ya da rapor ({yil})"
+  A.2.2/1:
+    - "Bölümün stratejik planı ya da hedefler belgesi (amaçlar, hedefler, göstergeler) ve kabul edildiği bölüm kurulu kararı"
+  A.2.2/2:
+    - "Stratejik planın hazırlanması ve izlenmesinde öğrenci, mezun ve dış paydaş katılımını gösteren toplantı tutanakları"
+  A.2.2/3:
+    - "Bölüm hedeflerinin sürdürülebilir kalkınma amaçlarıyla ilişkisini gösteren tablo ya da açıklama"
+  A.2.2/4:
+    - "Stratejik plan göstergelerinin {yil} gerçekleşme tablosu (hedef–gerçekleşen) ve iyileştirme önerileri"
+  A.2.2/5:
+    - "Paydaş talep ve şikâyetlerinin değerlendirildiği ve sonuçlarına göre yapılan iyileştirmeleri anlatan rapor"
+  A.2.3/1:
+    - "Bölümde performansın nasıl izleneceğini tanımlayan belge (göstergeler, veri kaynağı, sorumlular, izleme takvimi)"
+  A.2.3/2:
+    - "Bölümün performans göstergeleri listesi (ör. mezuniyet oranı, yayın sayısı, öğrenci memnuniyeti) ve hedef değerleri"
+  A.2.3/3:
+    - "Göstergelerin {yil} yılında toplandığını ve görüşüldüğünü gösteren tablo ve toplantı tutanağı"
+  A.2.3/4:
+    - "Bölümün yıllık performans raporu ya da faaliyet raporundaki göstergeler bölümü ({yil})"
+  A.2.3/5:
+    - "Performans sonuçlarına göre hedeflerin ya da uygulamaların değiştirildiğini gösteren karar"
+  A.3.1/1:
+    - "Bölümde kullanılan bilgi sistemlerinin (öğrenci bilgi sistemi, ders yönetim sistemi, belge yönetimi) ekran görüntüleri ve kullanım amaçları"
+  A.3.1/2:
+    - "Kişisel verilerin korunmasına ilişkin bölümde uygulanan kurallar (aydınlatma metni, açık rıza formu örneği, sınav kâğıtlarının saklanması)"
+  A.3.1/3:
+    - "Bilgi sistemlerinin kullanımına ilişkin sorunların değerlendirildiği ve iyileştirildiği belge (ör. destek talebi, güncelleme duyurusu)"
+  A.3.1/4:
+    - "Bölümde bilgi güvenliği uygulamaları (yetkilendirme, yedekleme, arşivleme kuralları)"
+  A.3.1/5:
+    - "Bilgi güvenliği risk değerlendirmesi ya da denetim/test sonucu ve alınan önlemler (genellikle kurumun bilgi işlem birimi)"
+  A.3.2/1:
+    - "Bölümde öğretim elemanı alımı, görevlendirme, hizmet içi eğitim ve ödüllendirme uygulamalarının belgeleri ({yil})"
+  A.3.2/2:
+    - "Akademik ve idari personel memnuniyet anketi ve sonuçları ({yil})"
+  A.3.2/3:
+    - "Personel anket sonuçlarının görüşüldüğü toplantı tutanağı ve sonucunda yapılan değişiklikler"
+  A.3.3/1:
+    - "Bölüme ayrılan bütçe ve kullanımına ilişkin belgeler (ör. alım talepleri, bütçe dağılım tablosu)"
+  A.3.3/2:
+    - "Bölüm harcamalarının stratejik hedeflerle ilişkisini gösteren planlama belgesi"
+  A.3.3/3:
+    - "Bölüm bütçesinin kullanımına ilişkin yıllık değerlendirme ve sonraki yıl için yapılan düzenleme"
+  A.3.4/1:
+    - "Bölüm süreçlerinin listesi ve süreç tanımları (ör. ders programı hazırlama, sınav, danışmanlık süreçleri)"
+  A.3.4/2:
+    - "Süreç kartları/iş akış şemaları ve süreç sorumlularının katıldığı eğitimlerin belgeleri"
+  A.3.4/3:
+    - "Süreçlerin {yil} yılında uygulandığını gösteren örnekler (ör. iş akışına uygun yürütülen bir işin yazışmaları, formları)"
+  A.3.4/4:
+    - "Süreçlerin tasarımı ya da güncellenmesine öğrenci/personel katılımını gösteren toplantı tutanağı"
+  A.3.4/5:
+    - "Süreçlerin gözden geçirildiği ve güncellendiği toplantı tutanağı ya da süreç revizyon kaydı"
+  A.4.1/1:
+    - "Bölümün iç ve dış paydaş listesi (öğrenciler, mezunlar, işverenler, diğer üniversiteler, meslek kuruluşları) ve öncelikleri"
+  A.4.1/2:
+    - "Paydaş görüşü alma araçları: anket formları, odak grup/çalıştay davetleri, danışma kurulu toplantı gündemi"
+  A.4.1/3:
+    - "Paydaş görüşüyle alınmış bir kararın tutanağı (ör. öğrenci temsilcisinin katıldığı bölüm kurulu, danışma kurulu önerisiyle değişen ders)"
+  A.4.1/4:
+    - "Paydaş katılımının değerlendirildiği ve buna göre değiştirildiği belge (ör. anket katılımını artırma önlemleri)"
+  A.4.2/1:
+    - "Öğrenci geri bildirimlerinin nasıl toplanacağını belirleyen kurallar (anket takvimi, kimlerin değerlendireceği)"
+  A.4.2/2:
+    - "{yil} ders değerlendirme anketi formu ve sonuçları; öğrenci görüşme toplantıları ya da öneri formu örnekleri"
+  A.4.2/3:
+    - "Öğrenci geri bildirimine göre yapılan bir değişikliğin belgesi (ör. ders içeriği, sınav takvimi, laboratuvar saatleri değişikliği kararı)"
+  A.4.2/4:
+    - "Öğrenci temsilcisinin bölüm kurulu ya da komisyon toplantılarına katıldığını gösteren tutanaklar ({yil})"
+  A.4.2/5:
+    - "Anket katılım oranlarının ve geri bildirim sürecinin değerlendirildiği toplantı tutanağı ya da rapor"
+  A.4.3/1:
+    - "Mezun izleme yöntemi: mezun anketi, mezun veritabanı, mezun iletişim grubu ya da mezunlar sayfası"
+  A.4.3/2:
+    - "{yil} mezun anketi sonuçları (iş/lisansüstü durumu, programdan memnuniyet)"
+  A.4.3/3:
+    - "Mezun görüşlerine göre programda yapılan değişikliği gösteren bölüm kurulu kararı"
+  A.4.3/4:
+    - "Mezunlardan gelen görüş ve önerilerin toplandığı belge (anket, mezun buluşması tutanağı, e-postalar)"
+  A.5.1/1:
+    - "Bölüm Erasmus/uluslararası ilişkiler koordinatörünün görevlendirme yazısı ve görev tanımı"
+  A.5.1/2:
+    - "{yil} uluslararası işler kayıtları: değişim programı başvuru/seçim duyuruları, öğrenim anlaşmaları"
+  A.5.1/3:
+    - "Uluslararasılaşma çalışmalarının değerlendirildiği toplantı tutanağı ve alınan önlemler"
+  A.5.2/1:
+    - "Bölümün uluslararası faaliyetleri için planladığı kaynaklar (Erasmus kontenjanları, ikili anlaşmalar listesi)"
+  A.5.2/2:
+    - "{yil} değişim programı hareketlilik sayıları ve kullanılan bütçe/hibe bilgisi"
+  A.5.2/3:
+    - "Hareketlilik ve kaynak kullanımının değerlendirilip anlaşmaların güncellendiğini gösteren belge"
+  A.5.3/1:
+    - "Bölümün uluslararasılaşma göstergeleri ve hedefleri (giden/gelen öğrenci-öğretim elemanı sayısı, uluslararası yayın)"
+  A.5.3/2:
+    - "{yil} uluslararası faaliyetler: değişim programına katılanlar, uluslararası toplantı/konuk akademisyen, imzalanan anlaşmalar"
+  A.5.3/3:
+    - "Uluslararasılaşma göstergelerinin izlendiği tablo (hedef–gerçekleşen)"
+  A.5.3/4:
+    - "Uluslararasılaşmaya ilişkin yıllık değerlendirme raporu ve iyileştirme çalışmaları"
+  # B. Eğitim ve öğretim
+  B.1.1/1:
+    - "Yeni program açma ya da program değiştirme sürecini tanımlayan belge (yönerge, usul ve esaslar, iş akışı)"
+  B.1.1/2:
+    - "Program tasarımıyla görevli komisyonun (eğitim-öğretim/müfredat komisyonu) üyeleri ve görev tanımı"
+  B.1.1/3:
+    - "Program çıktıları ile Türkiye Yükseköğretim Yeterlilikler Çerçevesi (TYÇ) eşleştirme tablosu"
+    - "Güncel ders izlence (syllabus) örnekleri ({yil})"
+  B.1.1/4:
+    - "Varsa uzaktan/karma yürütülen dersler için bölümde yapılan düzenlemeler (karar, ders listesi)"
+  B.1.1/5:
+    - "Program tasarımında öğrenci, mezun ve işveren görüşünün alındığını gösteren toplantı tutanağı ya da anket"
+  B.1.1/6:
+    - "Program tasarım ve onay sürecinin gözden geçirildiği ve buna göre değişiklik yapıldığını gösteren karar"
+  B.1.2/1:
+    - "Zorunlu–seçmeli ders ve alan–alan dışı ders dengesini gösteren müfredat tablosu ve buna ilişkin ilkeler"
+  B.1.2/2:
+    - "Ders bilgi paketinden (Bologna sayfası) zorunlu/seçmeli ders dağılımını gösteren ekran görüntüsü ({yil})"
+  B.1.2/3:
+    - "Müfredat değişikliğine ilişkin eğitim komisyonu, bölüm kurulu ya da senato kararı"
+  B.1.2/4:
+    - "Ders dağılımının gözden geçirildiği ve dengelendiği toplantı tutanağı ya da karar"
+  B.1.3/1:
+    - "Ders kazanımlarının nasıl ölçüleceğini ve program çıktılarıyla ilişkisini tanımlayan yönerge ya da plan"
+  B.1.3/2:
+    - "Ders kazanımları – program çıktıları ilişki matrisi (ders bilgi paketlerinden)"
+  B.1.3/3:
+    - "Başka bölümlerden alınan derslerin (servis/seçmeli) program çıktılarıyla ilişkisini gösteren tablo"
+  B.1.3/4:
+    - "Program çıktılarına ulaşma düzeyinin ölçüldüğü değerlendirme (ör. ders bazında kazanım anketi/analizi) ve sonuçlara göre yapılan düzenleme"
+  B.1.4/1:
+    - "Derslerin AKTS ders bilgi paketleri (iş yükü tablosu görünen sayfa örnekleri, {yil})"
+  B.1.4/2:
+    - "Staj, proje ve bitirme çalışmalarının AKTS kredilerini gösteren müfredat sayfası ya da staj yönergesi"
+  B.1.4/3:
+    - "Kredi transferi ve ders muafiyeti/intibak kurallarını içeren yönerge ve bunun uygulandığı intibak komisyonu kararı"
+  B.1.4/4:
+    - "Ders iş yükü belirlenirken öğrenci görüşünün alındığını gösteren anket ya da toplantı tutanağı"
+  B.1.4/5:
+    - Örnek diploma eki (kişisel bilgileri kapatılmış)
+  B.1.4/6:
+    - "AKTS kredilerinin gözden geçirildiği komisyon tutanağı ya da kredi takip tablosu"
+  B.1.4/7:
+    - "Ders bazında öğrenci iş yükü hesap tabloları ve AKTS iş yükü anketi sonuçları ({yil})"
+  B.1.4/8:
+    - "İş yükü anketi ya da geri bildirime göre ders kredisinin değiştirildiğini gösteren bölüm kurulu kararı"
+  B.1.5/1:
+    - "Programın her yıl ve dönem sonunda nasıl gözden geçirileceğini belirleyen ilkeler ve izleme planı"
+  B.1.5/2:
+    - "Program güncelleme için kurulan komisyon ya da çalışma grubunun görevlendirmesi ve çalışmaları"
+  B.1.5/3:
+    - "Programın {yil} yıllık öz değerlendirme raporu (program çıktılarına ulaşma açısından)"
+  B.1.5/4:
+    - "Program çıktılarına ulaşmanın izlendiği sistemden ekran görüntüsü ya da rapor (ör. ders kazanım değerlendirme modülü)"
+  B.1.5/5:
+    - "İzleme sonuçlarına göre programda yapılan değişikliklerin bölüm kurulu kararları ({yil})"
+  B.1.5/6:
+    - "Program değişikliklerinin öğrencilere ve paydaşlara duyurulduğunu gösteren duyuru, e-posta ya da toplantı"
+  B.1.5/7:
+    - "Programın amaçlarına ulaşıp ulaşmadığına ilişkin öğrenci, mezun ve işveren görüşleri (anket ya da toplantı sonuçları)"
+  B.1.5/8:
+    - "Olağanüstü durumlarda (afet, salgın) derslerin nasıl sürdürüleceğini belirleyen karar ya da plan"
+  B.1.6/1:
+    - "Eğitim-öğretim işlerinden sorumlu yapı (eğitim-öğretim komisyonu, koordinatörler) ve iş akış şemaları"
+  B.1.6/2:
+    - "Akademik takvim, sınav takvimi ve ölçme-değerlendirme kuralları ({yil})"
+  B.1.6/3:
+    - "Eğitim-öğretimde kullanılan bilgi sistemlerinin ekran görüntüleri (öğrenci bilgi sistemi, ders yönetim sistemi)"
+  B.1.6/4:
+    - "Eğitim-öğretim süreçlerinin değerlendirildiği toplantı tutanağı ve sonucunda yapılan değişiklik"
+  B.1.6/5:
+    - "Ders değerlendirme/geri bildirim sonuçlarının analiz edildiği rapor ve rapora dayanarak yapılan düzenlemeler"
+  B.2.1/1:
+    - "Öğrenci merkezli yöntemleri (proje, sunum, grup çalışması, problem çözme) gösteren ders bilgi paketi/izlence örnekleri"
+  B.2.1/2:
+    - "Uzaktan eğitim materyali ve yöntemlerine ilişkin ilkeler (varsa bölümde uzaktan yürütülen dersler için)"
+  B.2.1/3:
+    - "Aktif öğrenme uygulamalarının örnekleri: proje ödevleri, öğrenci sunumları, uygulamalı oturumlar ({yil})"
+  B.2.1/4:
+    - "Öğretim elemanlarının katıldığı öğrenci merkezli öğretim eğitimlerinin katılım belgeleri"
+  B.2.1/5:
+    - "Öğretim yöntemlerinin değerlendirildiği (ör. anket sonuçlarına göre) ve iyileştirildiği toplantı tutanağı"
+  B.2.2/1:
+    - "Ölçme-değerlendirme kurallarını ve sorumluları belirleyen belge (sınav yönergesi, komisyon görev tanımı)"
+  B.2.2/2:
+    - "Farklı ölçme araçlarının kullanıldığını gösteren örnekler: ödev, proje, sunum, ara sınav, quiz ({yil})"
+  B.2.2/3:
+    - "Örnek sınav kâğıtları/soruları (öğrenci adları kapatılmış), farklı ders türlerinden"
+  B.2.2/4:
+    - "Değerlendirme araçlarının ders kazanımlarıyla ilişkisini gösteren ders bilgi paketi örnekleri"
+  B.2.2/5:
+    - "Engelli öğrenciler ve çevrimiçi sınavlar için uygulanan özel sınav düzenlemeleri"
+  B.2.2/6:
+    - "Sınav güvenliği önlemleri (gözetmen görevlendirmesi, sınav salonu düzeni, çevrimiçi sınav kuralları)"
+  B.2.2/7:
+    - "Ölçme-değerlendirme uygulamalarının gözden geçirildiği ve öğrenci geri bildirimine göre iyileştirildiği belge"
+  B.2.3/1:
+    - "Öğrenci kabulü, yatay geçiş, muafiyet ve intibak kuralları (ilgili yönetmelik/yönerge maddeleri)"
+  B.2.3/2:
+    - "Muafiyet/intibak komisyonu kararları ({yil}): önceki derslerin AKTS'ye göre tanındığı örnekler"
+  B.2.3/3:
+    - "Öğrenci kabul ve tanıma işlemlerinin kurallara uygun yürütüldüğünü gösteren belgeler (lisansüstü mülakat sonuç/kabul listesi, yatay geçiş sonuçları)"
+  B.2.3/4:
+    - "Kabul koşullarının ilan edildiği duyurular ve web sayfası ekran görüntüleri ({yil})"
+  B.2.4/1:
+    - "Mezuniyet onayı süreci (mezuniyet komisyonu kararı, mezuniyet koşulları kontrol listesi) ({yil})"
+  B.2.4/2:
+    - "Yatay geçiş, çift anadal, yan dal ve yabancı uyruklu öğrenci kabul kriterleri ve başvuru duyuruları ({yil})"
+  B.2.4/3:
+    - "Değişim programından dönen öğrencilerin derslerinin tanındığını gösteren intibak kararı ve öğrenim anlaşması"
+  B.3.1/1:
+    - "Bölümün öğrenme kaynakları (kütüphane, bilgisayar laboratuvarı, yazılım lisansları, ders kitapları) ve geliştirilmesine ilişkin plan/talep"
+  B.3.1/2:
+    - "Öğrenci el kitabı ya da öğrenci rehberi (öğrencilere sunulan olanakları anlatan)"
+  B.3.1/3:
+    - "Kütüphane, laboratuvar ya da çevrimiçi kaynakların kullanım istatistikleri"
+  B.3.1/4:
+    - "Öğrenme kaynaklarına erişim bilgisi (kampüs dışı erişim, ders materyallerinin yayın yeri)"
+  B.3.1/5:
+    - "Ders yönetim sisteminden (ör. Moodle) ders sayfası ekran görüntüleri ({yil})"
+  B.3.1/6:
+    - "Öğrenme kaynaklarına ilişkin öğrenci anketi ya da geri bildirim sonuçları"
+  B.3.1/7:
+    - "Öğrenme kaynaklarının değerlendirildiği ve geliştirildiği belge (ör. yeni kitap/yazılım alımı, laboratuvar yenileme kararı)"
+  B.3.2/1:
+    - "Akademik danışmanlık kuralları (danışmanlık yönergesi) ve danışmanın görevleri"
+  B.3.2/2:
+    - "Varsa uzaktan eğitimde öğrencilere akademik ve teknik destek yolları (yardım masası, çevrimiçi danışmanlık)"
+  B.3.2/3:
+    - "Ders izlenceleri (syllabus) ya da bölüm web sayfası: öğretim elemanlarının ofis/görüşme saatlerini gösteren ({yil})"
+    - "Danışman atama listesi (öğrencilerin danışmanları; kişisel bilgiler kapatılmış)"
+  B.3.2/4:
+    - "Kurumun psikolojik danışmanlık ve kariyer merkezinin tanıtımı ve bölüm öğrencilerine duyurusu"
+  B.3.2/5:
+    - "Rehberlik, kariyer ve psikolojik danışmanlık hizmetlerine ilişkin {yil} duyuruları ve etkinlik programı"
+  B.3.2/6:
+    - "Bölüm öğrencilerine yönelik kariyer etkinlikleri ({yil}): kariyer günü, sektör tanıtımı, mezun söyleşisi duyuruları"
+  B.3.2/7:
+    - "Danışmanlık görüşmeleri ve kariyer etkinliklerine öğrenci katılımını gösteren belgeler (katılım listesi, fotoğraf, görüşme kaydı)"
+  B.3.2/8:
+    - "Danışmanlık ve destek hizmetleri hakkında öğrenci anketi sonuçları ({yil})"
+  B.3.2/9:
+    - "Öğrenci geri bildirimine göre danışmanlık uygulamasında yapılan değişikliği gösteren karar ya da duyuru"
+  B.3.3/1:
+    - "Derslik, laboratuvar ve çalışma alanlarının kullanım kuralları (rezervasyon, çalışma saatleri)"
+  B.3.3/2:
+    - "Bölüm derslik ve laboratuvar kullanım çizelgeleri ({yil})"
+  B.3.3/3:
+    - "Öğrenci/personel sayısındaki artışa göre fiziksel alanların durumunu gösteren tablo (alan, kapasite)"
+  B.3.3/4:
+    - "Varsa uzaktan eğitim altyapısı (çevrimiçi ders platformu, kayıt donanımı)"
+  B.3.3/5:
+    - "Altyapı ihtiyaçlarının belirlendiği ve giderildiği belgeler (ör. bakım/onarım talebi, yeni donanım alımı)"
+  B.3.4/1:
+    - "Engelli ve dezavantajlı öğrencilere yönelik bölüm uygulamaları (engelli öğrenci temsilcisi, erişilebilir derslik, sınav düzenlemesi)"
+  B.3.4/2:
+    - "Engelli/dezavantajlı öğrencilerden alınan geri bildirimler ve bunlara göre yapılan düzenleme"
+  B.3.4/3:
+    - "Erişilebilirlik uygulamalarının değerlendirildiği ve iyileştirildiği belge (ör. engelsiz üniversite birimi raporu, bölüm düzenlemesi)"
+  B.3.5/1:
+    - "Öğrenci topluluklarının ve sosyal/kültürel etkinliklerin planlandığını gösteren belge (etkinlik takvimi, topluluk danışmanı görevlendirmesi)"
+  B.3.5/2:
+    - "{yil} yılında öğrencilere yönelik sosyal, kültürel ve sportif etkinliklerin listesi (tarih, konu, katılımcı sayısı)"
+  B.3.5/3:
+    - "Etkinliklerin herkese açık olduğunu gösteren duyurular (ücretsiz, erişilebilir mekân)"
+  B.3.5/4:
+    - "Öğrenci önerileriyle düzenlenen etkinliklere örnekler"
+  B.3.5/5:
+    - "Etkinliklerin değerlendirildiği belge (katılım sayıları, öğrenci memnuniyeti) ve sonraki yıl için yapılan değişiklik"
+  B.4.1/1:
+    - "Öğretim elemanı atama ve yükseltme kriterleri (kurum yönergesi) ve ilanların yayımlandığı yer"
+  B.4.1/2:
+    - "{yil} ders görevlendirmeleri: öğretim elemanlarının uzmanlık alanlarıyla verdikleri derslerin uyumunu gösteren tablo"
+  B.4.1/3:
+    - "Atama ve ders görevlendirme uygulamalarının değerlendirildiği ve değiştirildiği belge"
+  B.4.2/1:
+    - "Öğretim elemanlarına yönelik eğitim planı (konu, yöntem, tarih) ({yil})"
+  B.4.2/2:
+    - "Kurumun öğrenme-öğretme merkezinin düzenlediği eğitimlere bölüm öğretim elemanlarının katılımı"
+  B.4.2/3:
+    - "Öğretim elemanlarının katıldığı eğitici eğitimi programlarının katılım belgeleri ve içerikleri ({yil})"
+  B.4.2/4:
+    - "Öğretim becerilerini geliştirmeye yönelik diğer uygulamalar (seminer, atölye, ders gözlemi, yeni öğretim üyesi uyum programı)"
+  B.4.2/5:
+    - "Öğretim elemanlarının eğitim performansının izlendiği belge (ders değerlendirme anketi sonuçlarının öğretim elemanı bazında değerlendirilmesi)"
+  B.4.2/6:
+    - "Öğretim elemanlarının değerlendirme ve iyileştirme toplantılarına katıldığını gösteren tutanaklar"
+  B.4.2/7:
+    - "Öğretim yetkinliği eğitimlerinin değerlendirildiği ve buna göre yeni eğitimlerin planlandığı belge"
+  B.4.3/1:
+    - "Eğitimde başarılı öğretim elemanlarını ödüllendirme ya da takdir etme kuralları (ödül yönergesi, teşvik ilkeleri)"
+  B.4.3/2:
+    - "{yil} yılında yapılan takdir/ödül uygulamalarına örnekler (teşekkür belgesi, ödül töreni duyurusu)"
+  B.4.3/3:
+    - "Eğitim faaliyetleri nedeniyle verilen ödül, teşekkür ya da teşvik belgeleri"
+  B.4.3/4:
+    - "Ödüllendirme uygulamalarının değerlendirildiği ve geliştirildiği belge"
+  # C. Araştırma ve geliştirme
+  C.1.1/1:
+    - "Bölümde araştırma işlerinin nasıl yönetildiğini gösteren belge: araştırma komisyonunun kuruluşu, üyeleri ve görev dağılımı ({yil})"
+  C.1.1/2:
+    - "Bölümün araştırma öncelikleri ve bunların uygulandığını gösteren belgeler (araştırma grupları, öncelikli alanlar kararı)"
+  C.1.1/3:
+    - "Araştırma yönetiminin değerlendirildiği toplantı tutanağı ve buna göre yapılan değişiklik"
+  C.1.2/1:
+    - "Bölümün araştırma kaynakları: BAP ve dış destekli proje bütçeleri tablosu ({yil})"
+  C.1.2/2:
+    - "Kamu ya da özel kuruluşlarla araştırma iş birliği protokolleri"
+  C.1.2/3:
+    - "Araştırma kaynaklarının bölümün öncelikli alanlarına göre kullanıldığını gösteren belge"
+  C.1.2/4:
+    - "Araştırma kaynaklarının yeterliliğinin değerlendirildiği ve yeni kaynak arayışlarının belgesi"
+  C.1.2/5:
+    - "Kurum içi araştırma desteği kuralları (BAP yönergesi) ve bölümdeki duyurusu"
+  C.1.2/6:
+    - "Bölüm öğretim elemanlarının {yil} BAP projeleri listesi"
+  C.1.2/7:
+    - "Dış destekli proje başvurularına destek olan yapı ya da duyurular (proje ofisi, TÜBİTAK çağrı duyuruları)"
+  C.1.2/8:
+    - "Bölümün dış destekli projeleri listesi (TÜBİTAK, AB vb.; {yil})"
+  C.1.2/9:
+    - "Dış destekli proje sayısı ve bütçesinin yıllara göre değişimini gösteren tablo"
+  C.1.3/1:
+    - "Bölümün doktora programı ve doktora sonrası araştırmacı olanakları (program sayfası, burs/ilanlar)"
+  C.1.3/2:
+    - "Doktora öğrencisi ve doktora sonrası araştırmacı sayıları ({yil})"
+  C.1.3/3:
+    - "Doktora programının değerlendirildiği ve iyileştirildiği belge (ör. yeterlik sınavı düzenlemesi, program güncellemesi)"
+  C.2.1/1:
+    - "Öğretim elemanlarının araştırma becerilerini geliştirmeye yönelik etkinlikler ({yil}): bölüm seminerleri, proje yazma eğitimleri, iş birliği toplantıları"
+  C.2.1/2:
+    - "Araştırma destekleri hakkında öğretim elemanı görüşleri (anket ya da toplantı tutanağı)"
+  C.2.1/3:
+    - "Araştırma etkinliklerinin değerlendirildiği ve sonraki dönem için planlandığı belge"
+  C.2.2/1:
+    - "Ulusal/uluslararası ortak program ya da ortak araştırma kurmaya yönelik kurallar veya girişimler"
+  C.2.2/2:
+    - "Ortak araştırmalar için imzalanmış iş birliği anlaşmaları ve protokoller"
+  C.2.2/3:
+    - "Bölümün yer aldığı araştırma ağları ve ortak projeler/yayınlar listesi ({yil})"
+  C.2.2/4:
+    - "İş birliği yapılan kurumlardan alınan geri bildirimler"
+  C.2.2/5:
+    - "Ortak araştırma faaliyetlerinin değerlendirildiği ve geliştirildiği belge"
+  C.3.1/1:
+    - "Bölümün araştırma performansını nasıl izlediğini tanımlayan belge (göstergeler: yayın, proje, atıf; izleme takvimi)"
+  C.3.1/2:
+    - "Araştırma hedeflerinin izlendiği tablo (yıllık yayın/proje sayıları, hedef–gerçekleşen) ({yil})"
+  C.3.1/3:
+    - "Araştırma performansına ilişkin paydaş görüşleri (öğretim elemanı/iş birliği yapılan kurum)"
+  C.3.1/4:
+    - "Araştırma performansının değerlendirildiği toplantı tutanağı ve alınan önlemler"
+  C.3.2/1:
+    - "Öğretim elemanlarının araştırma performansının izlenme kuralları (akademik teşvik, performans değerlendirme ölçütleri)"
+  C.3.2/2:
+    - "Öğretim elemanlarının araştırma performansı analiz raporu (yayın/proje tablolarının değerlendirmesi, {yil})"
+  C.3.2/3:
+    - "Araştırma performansı değerlendirmesine ilişkin öğretim elemanı görüşleri"
+  C.3.2/4:
+    - "Araştırma performansı sonuçlarına göre alınan önlemlerin belgesi (ör. destek programı, yayın teşvik kararı)"
+  # D. Toplumsal katkı
+  D.1.1/1:
+    - "Bölümde toplumsal katkı çalışmalarından sorumlu yapı (komisyon/koordinatör görevlendirmesi ve görevleri)"
+  D.1.1/2:
+    - "Toplumsal katkı faaliyetlerinin nasıl planlanıp yürütüleceğini anlatan belge"
+  D.1.1/3:
+    - "{yil} toplumsal katkı faaliyetleri: halka açık etkinlik, okul ziyareti, popüler bilim söyleşisi (duyuru, fotoğraf, haber)"
+  D.1.1/4:
+    - "Toplumsal katkı çalışmalarının değerlendirildiği ve iyileştirildiği toplantı tutanağı"
+  D.1.2/1:
+    - "Toplumsal katkı faaliyeti yürüten merkez ya da bölüm birimlerine ilişkin belgeler"
+  D.1.2/2:
+    - "Toplumsal katkı faaliyetleri için ayrılan bütçe ve yıllara göre dağılımı"
+  D.1.2/3:
+    - "Toplumsal katkı kaynaklarının hedeflere göre kullanıldığını gösteren belge"
+  D.1.2/4:
+    - "Toplumsal katkı kaynaklarının yeterliliğinin değerlendirildiği belge"
+  D.2.1/1:
+    - "{yil} yılında bölümün yaptığı toplumsal katkı faaliyetleri listesi (tarih, konu, katılımcı)"
+  D.2.1/2:
+    - "Toplumsal katkı performansının nasıl izleneceğini tanımlayan belge (göstergeler)"
+  D.2.1/3:
+    - "Toplumsal katkı hedeflerinin izlendiği tablo (hedef–gerçekleşen)"
+  D.2.1/4:
+    - "Toplumsal katkı faaliyetlerinin değerlendirildiği rapor ({yil})"
+  D.2.1/5:
+    - "Değerlendirmeye göre faaliyetlerde yapılan değişikliği gösteren belge"
+  D.2.1/6:
+    - "Toplumsal katkı amaçlı iş birliği protokolleri (okullar, belediyeler, sivil toplum kuruluşları)"
+  D.2.1/7:
+    - "Toplumsal katkı faaliyetlerine katılanlardan alınan geri bildirimler (anket, teşekkür yazısı)"
+  D.2.1/8:
+    - "Toplumsal katkı performansının değerlendirildiği ve iyileştirildiği toplantı tutanağı"
