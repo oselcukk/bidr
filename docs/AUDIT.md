@@ -463,6 +463,7 @@ kanıt listesine de girmez (`bidr file`, neden işaretin kendisi; gaps.md "Kanı
 | `niyet_onlem_degil` | onlem_al alıntısı öneri/niyet ("önerilmiştir", "önümüzdeki", gelecek zaman) | kontrol_et |
 | `bilgilendirme_onlem_degil` | onlem_al alıntısı "bilgisine sunulmuştur / bilgi verilmiştir" | uygula |
 | `surum_notu_onlem_degil` | onlem_al alıntısı sürüm notu ("revize edilmiş halidir"), izleme sözcüğü yok | uygula |
+| `yonlendirme_onlem_degil` | onlem_al alıntısı yalnız yönlendirme/talep: karardaki "-mesine/-masına" fiillerinin hepsi iletme/bildirme/gönderme ("Başkanlığa iletilmesine karar"), ya da üst yazı/talep ("gereğini arz ederiz") ve değişiklik sözcüğü yok (kanıt ilkesi `iyilestirme_kaniti`) | kontrol_et (izleme sözcüğü varsa), yoksa uygula |
 | `birim_iliskisi_kod` | birim adı biliniyor, model `kendi`/`ust_birim…` dedi, metinde birimin adı hiç yok: başka birim adı varsa `belirsiz` (insan onaylayana dek sayılmaz), bütün birimleri kapsayan belge ise (rektörlük, senato, "fakültemizin") `kurum_geneli`/`fakulte_geneli` (OD2 tavanı). Birim sayfasında modelin ilişkisi `birim_iliskisi_model` olarak görünür; insan birim kararı kodu aşar | ilişki değişir |
 
 **Tür tavanı ve bölümün kendi usul belgesi.** `yonerge`/`yonetmelik` türü kurum geneli

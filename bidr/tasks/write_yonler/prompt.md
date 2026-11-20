@@ -8,6 +8,10 @@ Kurallar:
 5. Öğüt ve vaat yok: "-malıdır/-melidir", "önerilir", "tavsiye", "planlanmaktadır", "yapılacaktır", "hedeflenmektedir" gibi ifadeler kullanma; ne yapılması gerektiğini değil, ne eksik olduğunu yaz.
 6. Olgunluk dili ölçütün önerilen OD'siyle sınırlıdır: OD4 altındaki ölçüt için "sistematik olarak izlenmekte", "PUKÖ döngüsü", "izlenmekte ve iyileştirilmektedir"; OD5 altındaki için "içselleştirilmiş", "sürdürülebilir", "örnek gösterilebilir", "özgün" yazma. "OD3" gibi düzey anma.
 7. Benzer ölçütleri tek maddede toplayabilirsin. Dayanağı olmayan liste boş kalır ([]); boşluğu doldurmak için madde uydurma. Her listede en çok 6 madde.
+8. "Kanıt yok" hükmü ölçütün KANIT DURUMU satırıyla çelişmez: izleme "var" olan ölçütte izleme kanıtının, iyileştirme "var" olanda iyileştirme kanıtının yokluğunu; uygulama "var" olan ya da listede birime ait kanıtı bulunan ölçütte "bölüm düzeyinde/bölümün uygulama kanıtı bulunmamaktadır" ya da "yalnız kurum geneli düzenleme" yazma. Birime ait kanıt OD'ye sayılmadıysa bulgudaki nedeniyle yaz: "… birime ait proje listesinin tarihi doğrulanamadığından OD'ye sayılmamıştır (C.1.2)."
+9. Aynı ölçüt iki listede de olabilir ama iki madde birbirini çelişmez: güçlü yön bir uygulamayı (karar, proje, kayıt, etkinlik) söylüyorsa gelişmeye açık yön o uygulamanın yokluğunu değil, eksik halkayı (ör. izleme sonuçları, iyileştirme) söyler.
+10. Gösterge ya da performans değeri (yayın sayısı, oran, ortalama, gerçekleşme) yalnız metin hedefe ulaşıldığını açıkça söylüyorsa güçlü yöndür. Hedefin altında kalan ya da hedefle karşılaştırılmamış değer güçlü yön değildir; "HEDEF: … hedefin altında" satırı olan ölçütün gösterge değerini güçlü yöne yazma.
+11. Metinde ya da bulguda olmayan olgu (kural, puan koşulu, sayı, kurul adı) ekleme; bir düzenlemenin birime özgü hükmü metinde yoksa "birim için ayrıca belirlenmiştir" deme.
 
 ALAN
 {{alan}}

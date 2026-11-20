@@ -228,7 +228,7 @@ def plan(ws_root: Path, *, review_dir: Path | None = None, profile: str | None =
             if m.get("kabul") or restorable(m):     # insan birim kararıyla geri alınabilen de
                 spans[(did, m["yuva"])] = (m.get("denetim") or {}).get("alinti_konum")
     settings = S.load_settings(ws.root)
-    crit_od = {c["olcut"]: c.get("od") for c in a.criteria}
+    crit = {c["olcut"]: c for c in a.criteria}     # kanıt kodunun OD'si ölçüt OD'si ve zinciriyle tutarlı
     can = _canonical(recs)
     groups: dict[tuple[str, str], list[dict]] = {}
     for row in a.rows:
@@ -248,7 +248,7 @@ def plan(ws_root: Path, *, review_dir: Path | None = None, profile: str | None =
             continue
         # kanıt kodunun OD'si: kodun düşüşleri (kurum geneli OD2, od_kabul düşüşü) yansır; ölçüt
         # OD'sine sayılmayan kanıt ölçüt OD'sinin üstünü göstermez (naming.evidence_od)
-        od = evidence_od(rows, crit_od.get(olcut)) or max(ods)
+        od = evidence_od(rows, crit.get(olcut)) or max(ods)
         own = [r for r in rows if r["doc_id"] == rep]
         flags = sorted({f for r in rows for f in r["flags"]})
         if weak:            # audit'le aynı: düşük güven önerilen OD'ye katılmaz; işaret kalır
@@ -379,7 +379,7 @@ def run(ws_root: Path, *, out: Path | None = None, source: str | Path | None = N
     for olcut in sorted(by_c, key=id_key):
         lst = sorted(by_c[olcut], key=lambda i: (i.od, (docs.get(i.doc_id) or {}).get("calisma_adi") or "",
                                                  i.doc_id))
-        numbered = number_sources(lst, key=lambda i: source_key(i.doc_id, docs), od=lambda i: i.od)
+        numbered = number_sources(lst, key=lambda i: source_key(i.doc_id, docs, i), od=lambda i: i.od)
         for it in lst:
             if it.doc_id not in names:       # öncelik: insan > model > kural (bidr/name/resolve.py)
                 ad, src, uy = resolver.resolve(it.doc_id, it.kopyalar)

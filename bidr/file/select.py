@@ -16,6 +16,15 @@ Sözleşme ve gerekçe: docs/REPORT_LAYER.md "Kanıt seçimi"; ayarlar
    dolu form (kanıt ilkesi `bos_form_zinciri`: yalnız planla olan ile uygula/üstü olan, ya da
    doldurulacak boşluklu metin ile dolu metin). Dönem kanıtı yoksa ve sayılar da aynı değilse
    emin olunamaz: tek sayılır, `surum_belirsiz` işaretlenir ve gaps.md'de listelenir.
+   **Kopyalar:** aynı yazının taramaları ve kontrollü belgenin sayfaları (identify'ın OCR'a
+   dayanıklı kopya bağı, `bidr/identify/versions.py`) sürüm değil kopyadır: modelin iki kopyaya
+   farklı aşama vermesi (planla ↔ uygula) onları ayırmaz; yalnız dönem/tarih/boş form ayırır.
+   **Kapsanan kopya** (`merge_contained`, ölçüt içinde): bir kalemin metni (şablon dışı kısmı)
+   aynı tarihli başka bir kalemin içinde neredeyse bütünüyle varsa (ör. yazının tek taraması ↔
+   yazı + ekleri) ve kalemin bu ölçütteki bütün alıntıları da o belgede geçiyorsa, kapsayan
+   belge temsilci olur; kapsanan ayrı numara almaz. Kapsama simetrik olmadığından identify'da
+   değil, ölçüt içinde ve alıntı denetimiyle uygulanır (iki farklı ek, aynı derlemeyi
+   kapsıyor diye birleşmez).
 2. **İlgililik (K18).** (a) write sonrası metinde atıf yapılan kanıt her zaman girer ve üst
    sınıra sayılmaz; (b) atıfsız kanıt yalnız doğrudan ilgiliyse girer: OD'ye sayılır, güveni
    ≥ `en_dusuk_guven`, sayılan eşleşmelerinden en az biri `dolayli_isaretler` taşımıyor; ölçüt
@@ -80,6 +89,8 @@ SURUM_NEDEN = {
     "farkli_yil": "farklı yıl",
     "bos_form_dolu_form": "boş şablon / dolu form",
     "parca_grubu": "aynı belgenin parçaları (tek kaynak)",
+    "kopya": "aynı belgenin kopyası (OCR'lı tarama ya da aynı kontrollü belge)",
+    "kapsanan_kopya": "metni ve alıntıları kapsayan belgede bütünüyle var",
 }
 
 
@@ -243,36 +254,70 @@ class Version:
         return self._marks
 
 
-def relation(a: Version, b: Version) -> tuple[str, str]:
+def relation(a: Version, b: Version, kopya: bool = False) -> tuple[str, str]:
     """(ayni | ayri | belirsiz, neden). `ayri` dışı → tek kanıt. Aynı parça grubundaki belgeler
     (ingest `parca_grubu`: tek belgenin bölünmüş parçaları) tek kaynaktır: dönem/tarih/sayı ve boş
-    form karşılaştırması atlanır (parçaların tarihi ve sayıları doğal olarak farklıdır)."""
+    form karşılaştırması atlanır (parçaların tarihi ve sayıları doğal olarak farklıdır).
+    `kopya`: iki belge aynı yazının kopyası (bkz. `is_copy_pair`): aşama farkı (model gürültüsü)
+    ayırmaz, OCR'ın bozduğu sayılar belirsizlik yaratmaz; dönem/yıl ve boş form yine ayırır."""
     pa, pb = a.doc.get("parca_grubu"), b.doc.get("parca_grubu")
     if pa and pa == pb:
         return "ayni", "parca_grubu"
-    if (_top(a.stages) == 2) != (_top(b.stages) == 2) or _blank(a.text) != _blank(b.text):
+    if _blank(a.text) != _blank(b.text) or (not kopya and (_top(a.stages) == 2) != (_top(b.stages) == 2)):
         return "ayri", "bos_form_dolu_form"
     ma, mb = a.marks, b.marks
     common = [k for k in ma if k in mb]
     if common:
         if any(not (ma[k] & mb[k]) for k in common):
             return "ayri", "farkli_donem"
-        if all(ma[k] <= mb[k] or mb[k] <= ma[k] for k in common):
+        if all(ma[k] <= mb[k] or mb[k] <= ma[k] for k in common) and not kopya:
             return "ayni", "ayni_donem"     # alt küme: daha kapsamlı (birikimli) sürüm
     ta, tb = a.doc.get("tarih"), b.doc.get("tarih")
     if ta and tb:
-        if ta == tb:
-            return "ayni", "ayni_tarih"
         if str(ta)[:4] != str(tb)[:4]:
             return "ayri", "farkli_yil"
+        if kopya:
+            return "ayni", "kopya"
+        if ta == tb:
+            return "ayni", "ayni_tarih"
+    if kopya:
+        return "ayni", "kopya"
     if Counter(_NUM.findall(a.text)) == Counter(_NUM.findall(b.text)):
         return "ayni", "ayni_veri"
     return "belirsiz", "donem_belirsiz"
 
 
+def is_copy_pair(a: Version, b: Version) -> bool:
+    """İki sürüm grubu üyesi aynı yazının kopyası mı: aynı kontrollü belge imzası (doküman no +
+    revizyon) ya da aynı tarihli, iki yönde yüksek OCR'a dayanıklı kapsama (identify'ın kopya
+    bağıyla aynı eşikler; şablon süzgeci derlem gerektirdiğinden burada ham parmak izi)."""
+    from bidr.identify import versions as V
+    sa, sb = V.control_signature(a.text), V.control_signature(b.text)
+    if sa and sa == sb:
+        return True
+    da, db = a.doc.get("tarih"), b.doc.get("tarih")
+    if not da or da != db or not V.ids_compatible(V.head_ids(a.text), V.head_ids(b.text)):
+        return False
+    lo, hi = V.containment(V.fingerprint(a.text), V.fingerprint(b.text))
+    return lo >= V.COPY_LO and hi >= V.COPY_HI
+
+
 def _date_num(doc: dict) -> int:
     t = str((doc or {}).get("tarih") or "")
     return int(t.replace("-", "")) if re.fullmatch(r"\d{4}-\d{2}-\d{2}", t) else 0
+
+
+def _absorb(rep, it) -> None:
+    """`it` kalemini temsilciye katar (yuva, aşama, güven, inceleme izleri birleşir)."""
+    rep.kopyalar_surum.extend([it.doc_id, *it.kopyalar, *it.kopyalar_surum])
+    rep.yuvalar = sorted(set(rep.yuvalar) | set(it.yuvalar),
+                         key=lambda y: (y.split("/")[0], int(y.split("/")[1])))
+    rep.asamalar |= it.asamalar
+    rep.asamalar_tum |= it.asamalar_tum
+    rep.insan = rep.insan or it.insan
+    rep.onay = rep.onay or it.onay
+    if GUVEN.get(it.guven, 1) > GUVEN.get(rep.guven, 1):
+        rep.guven = it.guven
 
 
 def merge_versions(items: list, docs: dict, text_of, cited: set[str]) -> tuple[list, list[dict]]:
@@ -290,14 +335,15 @@ def merge_versions(items: list, docs: dict, text_of, cited: set[str]) -> tuple[l
             continue
         ver = {id(it): Version(it.doc_id, docs.get(it.doc_id) or {}, text_of(it.doc_id),
                                frozenset(it.asamalar_tum)) for it in mem}
-        mem = sorted(mem, key=lambda it: (not it.sayilir, -it.od, it.doc_id not in cited, -_date_num(docs.get(it.doc_id)),
+        mem = sorted(mem, key=lambda it: (not it.sayilir, -_level(it), it.doc_id not in cited, -_date_num(docs.get(it.doc_id)),
                                           -len(ver[id(it)].text), it.doc_id))
         clusters: list[list[tuple]] = []        # [(kalem, (karar, neden) | None)]
         for it in mem:
             placed = False
             if it.doc_id not in cited:
                 for cl in clusters:
-                    rels = [relation(ver[id(it)], ver[id(x)]) for x, _ in cl]
+                    rels = [relation(ver[id(it)], ver[id(x)], kopya=is_copy_pair(ver[id(it)], ver[id(x)]))
+                            for x, _ in cl]
                     if any(r[0] == "ayri" for r in rels):
                         continue
                     worst = next((r for r in rels if r[0] == "belirsiz"), rels[0])
@@ -315,21 +361,115 @@ def merge_versions(items: list, docs: dict, text_of, cited: set[str]) -> tuple[l
             uyeler = []
             for it, (karar, neden) in cl[1:]:
                 gone.add(id(it))
-                rep.kopyalar_surum.extend([it.doc_id, *it.kopyalar, *it.kopyalar_surum])
-                rep.yuvalar = sorted(set(rep.yuvalar) | set(it.yuvalar),
-                                     key=lambda y: (y.split("/")[0], int(y.split("/")[1])))
-                rep.asamalar |= it.asamalar
-                rep.asamalar_tum |= it.asamalar_tum
-                rep.insan = rep.insan or it.insan
-                rep.onay = rep.onay or it.onay
-                if GUVEN.get(it.guven, 1) > GUVEN.get(rep.guven, 1):
-                    rep.guven = it.guven
+                _absorb(rep, it)
                 uyeler.append({"doc_id": it.doc_id, "karar": karar, "neden": neden})
                 if karar == "belirsiz" and "surum_belirsiz" not in rep.isaretler:
                     rep.isaretler.append("surum_belirsiz")
             rep.isaretler.append("surum_temsilcisi")
             merges.append({"olcut": rep.olcut, "grup": g, "temsilci": rep.doc_id, "uyeler": uyeler})
-    return [it for it in items if id(it) not in gone], merges
+    rest = [it for it in items if id(it) not in gone]
+    rest, cm = merge_contained(rest, docs, text_of, cited)
+    return rest, merges + cm
+
+
+# -- kapsanan kopya (ölçüt içinde) ----------------------------------------------------------------
+
+CONTAIN_MIN = 0.9           # kapsananın şablon dışı parçacıklarının kapsayanda bulunma oranı
+CONTAIN_UNDATED = 0.95      # iki belge de tarihsizse
+QUOTE_MIN = 0.6             # alıntının (OCR'ı farklı) kapsayan belgede bulunma oranı
+_COPY_INDEX: list = []      # derlem özeti önbelleği: [(docs nesnesi, CopyIndex)] (tek giriş)
+
+
+def copy_index(docs: dict, text_of):
+    """Çalışma alanındaki bütün belgelerin kopya özeti (şablon parçacıkları derlem sıklığından).
+    Bir `file` koşusunda (aynı `docs` nesnesi) bir kez kurulur; önbellek nesnenin kendisini
+    tutar (id yeniden kullanımı başka koşunun özetini döndürmesin)."""
+    from bidr.identify.versions import CopyIndex
+    if not _COPY_INDEX or _COPY_INDEX[0][0] is not docs:
+        _COPY_INDEX[:] = [(docs, CopyIndex({d: text_of(d) for d in docs}))]
+    return _COPY_INDEX[0][1]
+
+
+def _quotes_in(quotes: list[str], fp: frozenset) -> bool:
+    from bidr.identify.versions import quote_fingerprint
+    qs = [quote_fingerprint(q) for q in quotes if q]
+    qs = [q for q in qs if len(q) >= 10]
+    return bool(qs) and all(len(q & fp) / len(q) >= QUOTE_MIN for q in qs)
+
+
+def merge_contained(items: list, docs: dict, text_of, cited: set[str]) -> tuple[list, list[dict]]:
+    """Ölçüt içinde kapsanan kopyaları kapsayan kaleme bağlar → (kalan kalemler, birleştirme kayıtları).
+    Koşullar: aynı birincil tarih (ikisi de tarihsizse daha yüksek eşik ve ortak bir kimlik: ders
+    kodu, sayı, tarih), uyumlu tür, kapsananın baş bölge kimlikleri kapsayanda, şablon dışı metnin ≥ CONTAIN_MIN'i kapsayanda, kalemin bu ölçütteki bütün alıntıları
+    kapsayanda, dönem/boş form ayrımı yok (`relation`). Atıfsız kapsanan kalem kapsayana katılır
+    (listeden çıkar); atıf yapılan kalem listede kalır ama kapsayanla aynı kaynak anahtarını
+    (`kaynak_grubu`, bkz. naming.source_key) alır: ikisi tek numara ve tek kod OD'si taşır."""
+    from bidr.identify import versions as V
+
+    from .naming import source_key
+    if len(items) < 2:
+        return items, []
+    ix = None
+    gone: set[int] = set()
+    merges: list[dict] = []
+    parent: dict[str, str] = {}
+
+    def find(k: str) -> str:
+        parent.setdefault(k, k)
+        while parent[k] != k:
+            parent[k] = parent[parent[k]]
+            k = parent[k]
+        return k
+
+    nat = {id(it): source_key(it.doc_id, docs, it) for it in items}
+    order = sorted(items, key=lambda it: (len(text_of(it.doc_id)), it.doc_id))   # küçükten büyüğe
+    for x in order:
+        if id(x) in gone:
+            continue
+        dx = docs.get(x.doc_id) or {}
+        for y in sorted(items, key=lambda it: (-len(text_of(it.doc_id)), it.doc_id)):
+            if y is x or id(y) in gone or find(nat[id(y)]) == find(nat[id(x)]):
+                continue
+            dy = docs.get(y.doc_id) or {}
+            if (dx.get("tarih") or None) != (dy.get("tarih") or None):
+                continue
+            if not V.types_compatible(dx.get("doc_type"), dy.get("doc_type")):
+                continue
+            if ix is None:
+                ix = copy_index(docs, text_of)
+            if not ix.usable(x.doc_id) or y.doc_id not in ix.inf:
+                continue
+            need = CONTAIN_MIN if dx.get("tarih") else CONTAIN_UNDATED
+            if ix.contained(x.doc_id, y.doc_id) < need:
+                continue
+            if not ix.ids_within(x.doc_id, y.doc_id, shared=not dx.get("tarih")):
+                continue
+            if not _quotes_in(x.alintilar, ix.fp[y.doc_id]):
+                continue
+            vx = Version(x.doc_id, dx, text_of(x.doc_id), frozenset(x.asamalar_tum))
+            vy = Version(y.doc_id, dy, text_of(y.doc_id), frozenset(y.asamalar_tum))
+            if relation(vx, vy, kopya=True)[0] == "ayri":
+                continue
+            merges.append({"olcut": y.olcut, "grup": "kapsama:" + y.doc_id, "temsilci": y.doc_id,
+                           "uyeler": [{"doc_id": x.doc_id, "karar": "ayni", "neden": "kapsanan_kopya"}]})
+            if x.doc_id in cited:               # metin numarasına atıf yapıyor: listede kalır, numarayı paylaşır
+                parent[find(nat[id(x)])] = find(nat[id(y)])
+            else:
+                gone.add(id(x))
+                _absorb(y, x)
+                if x.od > y.od:                 # aynı içerik: kodun OD'si kopyalarınkinin en yükseği
+                    y.od = x.od
+                y.sayilir = y.sayilir or x.sayilir
+                if "surum_temsilcisi" not in y.isaretler:
+                    y.isaretler.append("surum_temsilcisi")
+            break
+    rest = [it for it in items if id(it) not in gone]
+    size = Counter(find(k) for k in list(parent))
+    for it in rest:
+        k = nat[id(it)]
+        if k in parent and size[find(k)] > 1:
+            it.kaynak_grubu = find(k)
+    return rest, merges
 
 
 # -- ilgililik --------------------------------------------------------------------------------
@@ -366,13 +506,20 @@ def donem_disi(rows: list[dict]) -> str:
     return ""
 
 
+def _level(it) -> int:
+    """Sıralama düzeyi: kanıtın taşıdığı en yüksek sayılan halka (kodun OD'si ölçüt zinciriyle
+    sınırlanmış olabilir, naming.evidence_od; üst halkayı taşıyan kanıt yine önce gelir)."""
+    return max(it.od, _top(it.asamalar))
+
+
 def _rank_direct(it, docs) -> tuple:
     # OD'ye sayılmayan (dönem kuralı: tarihsiz/geçmiş olay) aday sona: sınır önce onları eler
-    return (not it.sayilir, -it.od, -GUVEN.get(it.guven, 1), -_date_num(docs.get(it.doc_id)), it.doc_id)
+    return (not it.sayilir, -_level(it), -GUVEN.get(it.guven, 1), -_date_num(docs.get(it.doc_id)), it.doc_id)
 
 
 def _rank_kg(it, docs) -> tuple:
-    return (not it.sayilir, not it.madde, -GUVEN.get(it.guven, 1), -it.od, -_date_num(docs.get(it.doc_id)), it.doc_id)
+    return (not it.sayilir, not it.madde, -GUVEN.get(it.guven, 1), -_level(it), -_date_num(docs.get(it.doc_id)),
+            it.doc_id)
 
 
 def select(items: list, s: Settings, cited: set[str], docs: dict) -> tuple[list, list[dict]]:

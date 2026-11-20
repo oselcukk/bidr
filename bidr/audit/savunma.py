@@ -8,7 +8,8 @@ metin sezgileri uygulanmaz (insan kararı kuralı aşar; tür ve birim kurallar�
 
 Satır düzeyi (`row`): hariç tür, bilgisiz ekran, yürürlükten kaldırılmış düzenleme, madde
 ilkesi, boş form, duyuru/gelecek zaman, kurum geneli ifade, faaliyet aşaması, aşama
-sözcük denetimleri (katılım ≠ izleme; niyet, bilgilendirme ve sürüm notu ≠ iyileştirme).
+sözcük denetimleri (katılım ≠ izleme; niyet, bilgilendirme, sürüm notu ve yönlendirme/talep —
+"Başkanlığa iletilmesine karar" — ≠ iyileştirme).
 Belge düzeyi (`unit_relation`): metinde birimin açık sinyali (adı, program adı, bölüm sayfası
 yolu, ders kodu öneki) hiç yokken başka birim adı geçen belge `belirsiz`, bütün birimleri kapsayan
 belge kurum/fakülte geneli sayılır; model `belirsiz` dediyse ve metinde birimin sinyali varsa
@@ -50,6 +51,26 @@ GELECEK = re.compile(r"\b(?!gelecek)\w{2,}(?:acak|ecek)(?:lar|ler)?(?:tir|dir)\b
 NIYET = re.compile(r"oneril|onumuzdeki|planlanmakta|planlanmistir|dusunulmekte|hedeflenmekte|tavsiye edil")
 BILGI = re.compile(r"bilgi(?:si)?(?:ne|ye) sunul|bilgi veril|bilgilendiril|bilgi edinil")
 SURUM = re.compile(r"revize|\bsurum|versiyon|guncellenmis hali|duzeltilmis hali")
+# Yönlendirme/talep: geri bildirimin ya da talebin bir makama iletilmesi kararı, üst yazı ("gereğini
+# arz ederiz"), talep. Kanıt ilkesi `iyilestirme_kaniti`: iyileştirme değildir (izleme sonucu
+# değerlendirilip iletildiyse kontrol_et). Karar alıntısındaki "…-mesine/-masına" fiillerinin hepsi
+# yönlendirme fiiliyse yönlendirmedir; aynı alıntıda başka bir fiille alınmış karar (ör. "soruların ayrı
+# hazırlanmasına karar") yapılmış değişikliktir.
+KARAR_FIIL = re.compile(r"\b(\w+?)(?:ma|me)s[iı]n[ae]\b")
+YONLENDIRME_FIIL = ("iletil", "ilet", "bildiril", "bildir", "gonderil", "gonder", "sunul", "havale",
+                    "aktaril", "yazil", "talep", "istenil", "isten", "duyurul", "paylasil")
+YONLENDIRME = re.compile(r"iletil\w*|bildiril\w*|gonderil\w*|havale edil\w*|arz eder|talep edil\w*"
+                         r"|talebinde bulun\w*|talep olunur")
+DEGISIKLIK = re.compile(r"degistiril|degisiklik yapil|guncellen|eklen|cikaril|kaldiril|acil|"
+                        r"yeniden duzenlen|yeniden yapilandir|uygulamaya kon|baslatil")
+
+
+def yonlendirme(q: str) -> bool:
+    """Katlanmış alıntı yalnız yönlendirme/talep mi (yapılmış bir değişiklik söylemiyor)."""
+    fiil = KARAR_FIIL.findall(q) if "karar" in q else []
+    if fiil:
+        return all(v.startswith(YONLENDIRME_FIIL) for v in fiil)
+    return bool(YONLENDIRME.search(q)) and not DEGISIKLIK.search(q)
 # izleme/ölçme sonucunu gösteren sözcükler (kontrol_et alıntısında aranır)
 IZLEME = re.compile(r"anket|sonuc|bulgu|degerlendir|izlen|incelen|olcul|olcme|ortalama|%|\boran|hedef"
                     r"|memnuniyet|geri ?bildirim|analiz|tespit|belirlen|gorul|yetersiz|zayif|oneril"
@@ -363,6 +384,9 @@ class Savunma:
                 down("uygula", "bilgilendirme_onlem_degil", "kurula bilgi verilmesi iyileştirme değil")
             elif SURUM.search(q) and not IZLEME.search(q):
                 down("uygula", "surum_notu_onlem_degil", "sürüm notu (revize): izlemeye dayanan iyileştirme değil")
+            elif yonlendirme(q):
+                down("kontrol_et" if IZLEME.search(q) else "uygula", "yonlendirme_onlem_degil",
+                     "talebin/geri bildirimin bir makama iletilmesi (yönlendirme, talep): yapılmış iyileştirme değil")
         out["etkin"] = e
         return out
 

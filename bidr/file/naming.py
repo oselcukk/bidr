@@ -108,29 +108,62 @@ def file_name(olcut: str, sira: int, od: int, ad: str, ext: str) -> str:
 # FR-0833 kanıt gösterimi (`[1-OD3]. Ad.pdf`, metinde `[1_OD3]`): koddaki OD kanıtın gösterdiği
 # düzeydir, ölçütün nihai OD'si değil; kanıt ölçütün önerilen OD'sinin üstünde olabilir (kılavuz
 # örneği: metin OD2, kanıt [2_OD4]). Ama kodun kendi düşüşleri yansır: audit satırının `od`'si
-# etkin aşamadan gelir (kurum geneli düzenleme → planla → OD2; `od_kabul` düşüşü). Ölçütün
-# OD'sine sayılmayan kanıt (dönem kuralı: geçmiş/tarihsiz olay; düşük güven) ölçütün önerilen
-# OD'sinin üstünde düzey göstermez. Modelin ham OD'si (`od_kabul`, `od_onerisi`) kullanılmaz.
+# etkin aşamadan gelir (kurum geneli düzenleme → planla → OD2; `od_kabul` düşüşü; savunmanın
+# "yönlendirme/bilgilendirme iyileştirme değil" düşüşü). Ölçütün OD'sine sayılmayan kanıt (dönem
+# kuralı: geçmiş/tarihsiz olay; düşük güven) ölçütün önerilen OD'sinin üstünde düzey göstermez.
+# Modelin ham OD'si (`od_kabul`, `od_onerisi`) kullanılmaz.
+#
+# Tutarlılık (kanıt ilkesi `iyilestirme_kaniti`, kör test 2026-11-20): kod ölçüt OD'sinin üstünde
+# bir düzeyi yalnız o düzey ölçütte kurulmuşsa gösterir: düzeyin bütün halkaları (OD4: izleme VE
+# iyileştirme) audit zincirinde kanıtlı. Yalnız izleme (K) olan ölçütte "OD4" etiketli kanıt
+# okura "izleniyor ve iyileştiriliyor" der ve "iyileştirme kanıtı yok" bulgusuyla çelişir; böyle
+# kanıtın kodu ölçüt OD'sine iner. Kılavuz örneği (alt halka eksik ama K+Ö kurulmuş: metin OD2,
+# kanıt OD4) korunur.
 
 def _zayif(row: dict) -> bool:
     return bool(row.get("zayif")) and row.get("karar") not in ("kabul", "duzelt")
 
 
-def evidence_od(rows: list[dict], criterion_od: int | None = None) -> int | None:
-    """Bir ölçütte bir kanıtın (audit satırları) kodundaki OD. `criterion_od`: audit'in
-    önerdiği ölçüt OD'si (`audit-olcutler.json` `od`). Düzey yoksa None."""
+def level_complete(criterion: dict | None, level: int) -> bool:
+    """Ölçütün audit zincirinde düzeyin bütün halkaları kanıtlı mı (yuvasız halka sayılmaz, en az
+    biri `var`). Zincir bilgisi yoksa True (eski çağrı: sınır uygulanmaz)."""
+    from bidr.audit.rules import LEVELS
+    z = (criterion or {}).get("zincir")
+    if not isinstance(z, dict):
+        return True
+    links = LEVELS.get(level, ())
+    durum = [(z.get(x) or {}).get("durum") for x in links]
+    return bool(links) and all(d in ("var", "yuvasiz") for d in durum) and "var" in durum
+
+
+def evidence_od(rows: list[dict], criterion_od: int | dict | None = None) -> int | None:
+    """Bir ölçütte bir kanıtın (audit satırları) kodundaki OD. `criterion_od`: audit'in önerdiği
+    ölçüt OD'si ya da ölçütün audit kaydı (`audit-olcutler.json` satırı: `od`, `zincir`). Kayıt
+    verilirse ölçüt OD'sinin üstündeki düzey yalnız o düzey ölçütte kurulmuşsa gösterilir
+    (`level_complete`). Düzey yoksa None."""
+    crit = criterion_od if isinstance(criterion_od, dict) else None
+    c_od = crit.get("od") if crit is not None else criterion_od
     sayilan = [r["od"] for r in rows if r.get("sayilir") and r.get("od") and not _zayif(r)]
     if sayilan:
-        return max(sayilan)
+        od = max(sayilan)
+        if crit is not None and c_od and od > c_od:
+            ok = [lv for lv in range(int(c_od) + 1, od + 1) if level_complete(crit, lv)]
+            od = max([int(c_od), *ok])
+        return od
     etkin = [r["od"] for r in rows if r.get("od")]
     if not etkin:
         return None
     od = max(etkin)
-    return min(od, criterion_od) if criterion_od else od
+    return min(od, c_od) if c_od else od
 
 
-def source_key(doc_id: str, docs: dict | None = None) -> str:
-    """Numaralamada aynı kaynak: aynı içerik (doc_id = sha önekidir) ya da aynı sürüm grubu."""
+def source_key(doc_id: str, docs: dict | None = None, item=None) -> str:
+    """Numaralamada aynı kaynak: aynı içerik (doc_id = sha önekidir), aynı sürüm grubu (identify;
+    OCR'lı tarama kopyaları ve kontrollü belgenin sayfaları dahil) ya da kalemin seçimde aldığı
+    kapsanan kopya bağı (`item.kaynak_grubu`, bkz. select.merge_contained)."""
+    k = getattr(item, "kaynak_grubu", "") if item is not None else ""
+    if k:
+        return k
     g = ((docs or {}).get(doc_id) or {}).get("surum_grubu")
     return f"surum:{g}" if g else f"sha:{doc_id}"
 
