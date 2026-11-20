@@ -186,11 +186,13 @@ _TWORD = re.compile(r"[a-z]{4,}")
 _STRIP = ".,;:()[]{}\"'!?-/|*“”‘’«»"
 _ALNUM = re.compile(r"[^a-z0-9]")
 # baş bölge kimlikleri: tarih (gg.aa.yyyy), ders kodu (chem 202, mat101), sayı (e.184506, 2025/14),
-# doküman no (yo-0058)
+# doküman no (yo-0058), iş akışı no (ia-0133)
 _HID_DATE = re.compile(r"\b(\d{1,2})[./-](\d{1,2})[./-]((?:19|20)\d\d)\b")
 _HID_CODE = re.compile(r"\b([a-z]{2,5})\s?-?(\d{3})\b")
 _HID_NO = re.compile(r"\b(?:sayi|sayisi|karar)\s*[:.]?\s*([a-z]?[.\-]?\s?\d[\d/.\-]{2,})")
 _HID_CODE_SKIP = frozenset({"madde", "sayfa", "tel", "fax", "faks", "oda", "no"})
+# iş akışı numarası ("İŞ AKIŞ NO: İA-0133"): kardeş iş akışları (gelen/giden öğrenci) yalnız bunda ayrışır
+_HID_AKIS = re.compile(r"\bis akis(?:i)? (?:no|numarasi)\s*[:.]?\s*([a-z]{1,3}\s?[-.]?\s?\d{2,5})")
 # kontrollü belge başlığı: "doküman no yo-0058 … revizyon tarihi 04.09.2024 … revizyon no 5". Form
 # numarası ("form no: fr-0044") kullanılmaz: dolu formların hepsinde aynıdır.
 _CTRL_NO = re.compile(r"\b(?:dokuman|belge)\s*(?:no|numarasi|kodu)\s*[:.]?\s*([a-z]{1,4}\s?[-.]\s?\d{2,5})")
@@ -248,6 +250,7 @@ def head_ids(text: str, chars: int | None = HEAD_ID_CHARS) -> frozenset[str]:
     out |= {f"k:{a}{n}" for a, n in _HID_CODE.findall(h) if a not in _HID_CODE_SKIP}
     out |= {"n:" + re.sub(r"\D", "", x) for x in _HID_NO.findall(h) if len(re.sub(r"\D", "", x)) >= 3}
     out |= {"d:" + re.sub(r"[\s.\-]", "", x) for x in _CTRL_NO.findall(h)}
+    out |= {"d:" + re.sub(r"[\s.\-]", "", x) for x in _HID_AKIS.findall(h)}
     return frozenset(out)
 
 

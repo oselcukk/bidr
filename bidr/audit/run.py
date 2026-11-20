@@ -88,6 +88,29 @@ def _tag_text(t: SlotTag | None) -> str:
     return ", ".join(t.stages) + " → OD" + "/".join(str(x) for x in t.od)
 
 
+def lifted_od(m: dict, tags: dict) -> int | None:
+    """decide'ın kurum geneli tavanından (`uygulama_kaniti_eksik`, OD2) önceki OD: modelin OD'si ile
+    aşamanın (yuva etiketine göre) kod OD'sinin küçüğü. Tavan yoksa None. Kod kurum geneli
+    olmadığını gösterdiğinde (birime özgü belge/sayfa) kullanılır."""
+    from bidr.decide.run import _od_code
+    if "uygulama_kaniti_eksik" not in ((m.get("denetim") or {}).get("isaret") or []) or not m.get("kabul"):
+        return None
+    od_model = m.get("od_onerisi")
+    cands = [x for x in (od_model if isinstance(od_model, int) else None,
+                         _od_code(m.get("asama"), tags.get(m.get("yuva")))) if x]
+    return min(cands) if cands else None
+
+
+def _lift(m: dict, tags: dict) -> dict:
+    """Eşleşmenin kurum geneli tavanını kaldırır (kopya; işaret `kurum_tavani_kaldirildi`)."""
+    od = lifted_od(m, tags)
+    if od is None:
+        return m
+    den = dict(m.get("denetim") or {})
+    den["isaret"] = [x for x in den.get("isaret") or [] if x != "uygulama_kaniti_eksik"] + ["kurum_tavani_kaldirildi"]
+    return {**m, "od_kabul": od, "denetim": den}
+
+
 def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | None = None,
          link: tuple | None = None, betimleme: bool = False, dosya: str | None = None,
          surum: dict | None = None, sv=None) -> dict:
@@ -126,6 +149,19 @@ def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | 
         tur_kg = dtype in KURUM_GENELI_TURLER and not (
             rel == "ust_birim_bu_birim_hakkinda" and dtype in KARAR_TURLERI) and not (
             rel == "kendi" and dtype not in KARAR_TURLERI and sv is not None and sv.own_regulation(did))
+        # Birleşik PDF: tür (yönerge) bütün belgeye verilmiş ama alıntı birimin kendi belgesinin
+        # sayfasından (ör. bölümün ders değerlendirme sonucu): tür tavanı o satıra uygulanmaz.
+        sayfa = (sv.unit_page(did, m.get("alinti") or "") if tur_kg and rel in ("kendi", "ust_birim_bu_birim_hakkinda")
+                 and sv is not None else "")
+        if sayfa:
+            tur_kg = False
+            od2 = lifted_od(m, tags)
+            if od2 is not None:
+                etkin = effective_stage(asama, od2)
+                flags = [x for x in flags if x not in ("uygulama_kaniti_eksik", "asama_dusuruldu")]
+                if etkin != asama:
+                    flags.append("asama_dusuruldu")
+            flags.append("birim_sayfasi")
         if tur_kg or rel in GENEL_ILISKI:
             flags.append("kurum_geneli")
             if rel == "fakulte_geneli":
@@ -176,9 +212,16 @@ def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | 
             sayilir = False
             flags += ["birim_aitligi_dogrulanmali", "birim_onay_bekliyor"]
             vurgu.insert(0, "BİRİM AİTLİĞİ DOĞRULANMALI: onaylanana dek sayılmaz")
-    if (rec.get("ince") or {}).get("birim_iliskisi_kod") == "kendi" and karar not in ("kabul", "duzelt", "ret"):
-        # model `belirsiz` dedi; kod metindeki birim sinyaliyle `kendi` önerdi (bidr/audit/savunma.py)
-        vurgu.insert(0, "birim kodca önerildi (metinde birim sinyali; model belirsiz dedi): doğrulanmalı")
+    ince_ = rec.get("ince") or {}
+    if ince_.get("birim_iliskisi_kod") in ("kendi", "ust_birim_bu_birim_hakkinda") \
+            and karar not in ("kabul", "duzelt", "ret"):
+        # kod metindeki birim sinyaliyle ilişkiyi düzeltti (bidr/audit/savunma.py unit_relation)
+        if ince_.get("birim_iliskisi_model") in GENEL_ILISKI:
+            vurgu.insert(0, "birim kodca düzeltildi (model kurum/fakülte geneli dedi; metin birime özgü): doğrulanmalı")
+        else:
+            vurgu.insert(0, "birim kodca önerildi (metinde birim sinyali; model belirsiz dedi): doğrulanmalı")
+    if "birim_sayfasi" in flags:
+        vurgu.append("alıntı birleşik belgede birimin kendi sayfasından: tür (kurum geneli) tavanı uygulanmadı")
     if sv_out:
         vurgu.extend(sv_out["vurgu"])
     if betimleme:
@@ -574,10 +617,16 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
             ov = sv.unit_relation(rec, record_unit_relation(rec))
             if ov:
                 ince = dict(rec.get("ince") or {})
-                ince["birim_iliskisi_model"] = ince.get("birim_iliskisi_model") or record_unit_relation(rec)
+                old_rel = record_unit_relation(rec)
+                ince["birim_iliskisi_model"] = ince.get("birim_iliskisi_model") or old_rel
                 ince["birim_iliskisi"] = ince["birim_iliskisi_kod"] = ov[0]
                 ince["gerekce"] = "; ".join(x for x in (ov[1], ince.get("gerekce")) if x)
                 rec = orig = {**rec, "ince": ince}
+                kg = ince.get("kurum_geneli")
+                tur = isinstance(kg, dict) and bool(kg.get("tur"))
+                if old_rel in GENEL_ILISKI and ov[0] not in GENEL_ILISKI and not tur:
+                    # model kurum/fakülte geneli dedi, kod birime özgü buldu: decide'ın tavanı kalkar
+                    rec = orig = {**rec, "eslesmeler": [_lift(m, tags) for m in rec.get("eslesmeler") or []]}
         if pin or record_unit_relation(orig) in (BIRIM_DISI, BIRIM_BELIRSIZ):
             sayfa.append(_unit_row(orig, rec, pin, docs, names(orig["doc_id"])[0]))
         rel = record_unit_relation(rec)

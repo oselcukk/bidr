@@ -109,9 +109,33 @@ _GENEL_SOZ = frozenset({"her", "ilgili", "bu", "ayni", "diger", "hangi", "bir", 
 ADRES = re.compile(r"(?:©|\(c\)|copyright)[^|]{0,80}?rektorlug\w*|rektorlug\w*\s*,?\s*(?:p\.?\s?k\b|\d{5})")
 # ders kodu: 2-5 büyük harf önek + 3 hane ("MATH407", "MAT 113"); 4 haneli sayı (yıl, proje no) değil
 DERS_KODU = re.compile(r"(?<![A-Za-zÇĞİÖŞÜçğıöşü0-9-])([A-ZÇĞİÖŞÜ]{2,5})[ \t]?(\d{3})(?![\d])")
+# hitap: "X Bölüm(ü) Başkanlığına" (katlanmış; "Başkanlığı' na" OCR'ı dahil). Kök tek sözcük.
+HITAP = re.compile(r"\b([a-z]+)\s+bolum\w*\s+baskanlig\w*\W{0,3}n?[ae]\b")
+HITAP_SATIR = 12               # baş bölge (satır): hitap burada aranır
+BAS_ODAK = 600                 # baş bölge (karakter): ders kodu / program adı
+# "Birim Bölümü:" kaydının altındaki satır başka bir kaydın etiketi değilse içeriktir
+BLOK_ETIKET = re.compile(r"^[a-z ]+\s+bolum\w*\s*:$|^(?:dekanlik|rektorluk)\w*\s*:$")
 # fakülte başlığı (fakülteye göre maddeli düzenleme): büyük harfli satırda "… FAKÜLTESİ"
 _BUYUK = re.compile(r"[A-ZÇĞİÖŞÜ]")
 _HARF = re.compile(r"[A-Za-zÇĞİÖŞÜçğıöşüâîû]")
+
+
+# görselli belge: gömülü görsel işareti (docx/pdf çıkarımı) ya da bidr describe betimlemesi
+GORSEL = re.compile(r"\[gömülü görsel|GÖRSEL BETİMLEME|Betimleme\s*:")
+ALTYAZI_SOZCUK = 8
+# yüklem (cümle) sonu: -dır/-tır, -mış, -yor, -acak/-ecek (katlanmış). "-di/-ti" iyelik ekiyle
+# karışır ("Tuvaleti"): yüklem sayılmaz.
+YUKLEM = re.compile(r"(?:[dt][iu]r(?:lar|ler)?|m[iu]s(?:tir)?|yor|[ae]c[ae]k)$")
+
+
+def altyazi(q: str, text: str) -> bool:
+    """Alıntı bir fotoğraf altyazısı mı: en çok ALTYAZI_SOZCUK sözcük, yüklemle/noktayla bitmiyor ve
+    metinde kendi satırı (ya da en çok 10 sözcüklük bir satırın parçası)."""
+    fq = f(q).strip(" .,;:")
+    w = fq.split()
+    if not w or len(w) > ALTYAZI_SOZCUK or q.strip().endswith(".") or YUKLEM.search(w[-1]):
+        return False
+    return any(fq == x or (fq in x and len(x.split()) <= 10) for x in (f(y) for y in text.splitlines() if y.strip()))
 
 
 def f(s: str | None) -> str:
@@ -259,6 +283,12 @@ class Savunma:
         if not self.birim:
             return None
         s = self.sig(rec["doc_id"])
+        if rel in ("kurum_geneli", "fakulte_geneli"):
+            odak = self.unit_focus(rec["doc_id"])
+            if not odak:
+                return None
+            rel2 = "ust_birim_bu_birim_hakkinda" if s["kurum"] or s["fakulte"] else "kendi"
+            return rel2, "kod: bütün birimleri kapsamıyor, birime özgü (" + ", ".join(odak) + ")"
         if rel == "belirsiz":
             if s["own"] and not s["baska"] and not (s["kurum"] or s["fakulte"]):
                 return ("kendi", "kod: metinde birim sinyali (" + ", ".join(s["own"]) + "), başka birim adı yok")
@@ -274,6 +304,85 @@ class Savunma:
             rel2 = "fakulte_geneli" if s["fakulte"] and not s["kurum"] else "kurum_geneli"
             return rel2, "kod: metinde birimin adı yok; bütün birimleri kapsayan belge"
         return None
+
+    # -- birime özgü odak (kurum/fakülte geneli dendiğinde) -------------------------------------
+    def _hitap(self, raw: str) -> tuple[set[str], bool]:
+        """(belgede "X Bölüm(ü) Başkanlığına" hitabı geçen birim kökleri, birimin hitabı baş
+        bölgede mi). Dağıtım listesinde bütün bölümler geçer: birden çok kök = hitap değil."""
+        roots, head = set(), False
+        stem = _stem(self.birim)
+        for line in raw.splitlines():
+            for m in HITAP.finditer(f(line)):
+                roots.add(m.group(1))
+        lines = [x for x in raw.splitlines() if x.strip()][:HITAP_SATIR]
+        if stem and any(re.search(rf"\b{re.escape(stem)}\s+bolum\w*\s+baskanlig", f(x)) for x in lines):
+            head = True
+        return roots, head
+
+    def unit_focus(self, did: str) -> list[str]:
+        """Bütün birimleri kapsayan görünen belgede birime özgü odak: belge yalnız birime hitap
+        ediyor (baş bölgede "Birim Başkanlığına", başka bölüme hitap yok), birimin adı bir kaydın
+        başlığı ("Birim Bölümü:" satırı ve altında içerik: üst birim yazısında birime ait kayıt;
+        madde ilkesi) ya da baş bölgede birimin ders kodu/program adı (birimin ders/program
+        belgesi). Boşsa odak yok."""
+        if not self.birim:
+            return []
+        raw = self.text(did)
+        stem = _stem(self.birim)
+        out = []
+        roots, head = self._hitap(raw)
+        if head and len(roots) == 1:
+            out.append("hitap birime")
+        lines = [x for x in raw.splitlines() if x.strip()]
+        lab = re.compile(rf"^{re.escape(stem)}\s+bolum\w*\s*:$")
+        for i, x in enumerate(lines[:-1]):
+            if lab.match(f(x)) and not BLOK_ETIKET.match(f(lines[i + 1])):
+                out.append("birimin kaydı (\"" + x.strip() + "\")")
+                break
+        bas = raw[:BAS_ODAK]
+        kod = self._course_codes(bas)
+        if kod:
+            out.append(f"baş bölgede ders kodu ({kod})")
+        fb = f(bas)
+        for ad, pat in own_patterns(self.birim):
+            if ad == "program adı" and pat.search(fb):
+                out.append("baş bölgede program adı")
+        return out
+
+    def unit_page(self, did: str, q: str) -> str:
+        """Birleşik (çok sayfalı) belgede alıntının sayfası birimin kendi belgesi mi: o sayfada
+        birim sinyali (ders kodu, program adı, birim adı) var; madde yapısı (düzenleme), bütün
+        birimleri kapsayan ifade ve başka birim adı yok. Gerekçe ya da ""."""
+        if not self.birim or not q:
+            return ""
+        pages = self.text(did).split("\f")
+        if len([p for p in pages if p.strip()]) < 2:
+            return ""
+        key = f(q)[:60]
+        page = next((p for p in pages if key and key in f(p)), None)
+        if page is None:
+            return ""
+        t = f(page)
+        if re.search(r"(?m)^\s*madde\s*\d", fold(page)):
+            return ""                         # düzenleme sayfası (madde yapısı): kurum geneli kalır
+        if KURUM_BELGE.search(ADRES.sub(" ", t)) or FAKULTE_BELGE.search(t) or GENEL_IFADE.search(t):
+            return ""
+        stem = _stem(self.birim)
+        last = stem.split()[-1] if stem else ""
+        if any(f(m.group(1)) not in _GENEL_SOZ and f(m.group(1)) != last and f(m.group(1)) not in stem.split()
+               for m in BIRIM_ADI.finditer(page)):
+            return ""
+        sig = []
+        kod = self._course_codes(page)
+        if kod:
+            sig.append(f"ders kodu ({kod})")
+        for ad, pat in own_patterns(self.birim):
+            if pat.search(t):
+                sig.append(ad)
+        bp = birim_pattern(self.birim)
+        if bp and bp.search(t):
+            sig.append("birim adı")
+        return ", ".join(sig)
 
     def own_regulation(self, did: str) -> bool:
         """Bölümün kendi usul belgesi: başlığında birimin adı var, bütün birimleri kapsamıyor."""
@@ -472,11 +581,14 @@ class Savunma:
                 r["sayilir"] = False
             r["vurgu"] = "; ".join(x for x in (r["vurgu"], why) if x)
 
-        # fotoğraf tek başına uygulama değildir (destekleyici kanıt)
+        # fotoğraf tek başına uygulama değildir (destekleyici kanıt; kullanıcı kuralı: tek fotoğraf OD3
+        # vermez). Fotoğraf: tür `fotograf` ya da görselli belgede (gömülü görsel, betimleme) alıntının
+        # bir fotoğraf altyazısı olması. İnceleme `kabul`ü eşleşmeyi onaylar, fotoğrafı uygulama
+        # kanıtına çevirmez; yalnız insanın aşamayı yerleştirdiği `duzelt` aşar.
         u = [r for r in rows if r["sayilir"] and r["etkin_asama"] == "uygula" and not r["zayif"]]
-        if u and all(r["belge_turu"] in FOTOGRAF_TURLER for r in u):
+        if u and all(self.photo_row(r) for r in u):
             for r in u:
-                if r.get("karar") not in ("kabul", "duzelt"):
+                if r.get("karar") != "duzelt":
                     drop(r, "fotograf_destekleyici", "fotoğraf destekleyici kanıttır: tek başına uygulama sayılmaz")
             if any("fotograf_destekleyici" in r["flags"] for r in u):
                 notlar.append("uygulama kanıtı yalnız fotoğraf: destekleyici sayıldı, OD3 için belge gerekir")
@@ -535,6 +647,18 @@ class Savunma:
             r["isaretler"] = ", ".join(dict.fromkeys(r["flags"]))
         return {"notlar": notlar, "uygulama_yayilimi": yayilim,
                 "dongu_kapali": kapali, "dongu_ayri": ayri}
+
+    def photo_row(self, r: dict) -> bool:
+        """Satırın uygulama dayanağı fotoğraf mı: tür `fotograf` (incelemede kabul edilmiş uzun metin
+        alıntısı hariç), ya da görselli belgede (gömülü görsel / görsel betimleme) ya da betimlemeden
+        alınmış alıntı bir fotoğraf altyazısı (kısa, yüklemsiz, metinde kendi satırı)."""
+        if r.get("belge_turu") in FOTOGRAF_TURLER:
+            # incelemede kabul edilmiş uzun metin alıntısı (afiş/katalog yazısı) fotoğraf değildir
+            return r.get("karar") != "kabul" or len(f(r.get("alinti")).split()) <= ALTYAZI_SOZCUK
+        t = self.text(r["doc_id"])
+        if not (GORSEL.search(t) or r.get("alinti_kaynagi") == "betimleme"):
+            return False
+        return altyazi(r.get("alinti") or "", t)
 
     # -- faaliyet özetleri ----------------------------------------------------------------------
     def activities_for(self, rows: list[dict]) -> list[dict]:

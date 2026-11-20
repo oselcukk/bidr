@@ -25,6 +25,12 @@ Sözleşme ve gerekçe: docs/REPORT_LAYER.md "Kanıt seçimi"; ayarlar
    belge temsilci olur; kapsanan ayrı numara almaz. Kapsama simetrik olmadığından identify'da
    değil, ölçüt içinde ve alıntı denetimiyle uygulanır (iki farklı ek, aynı derlemeyi
    kapsıyor diye birleşmez).
+   **Parça kopyası** (`merge_parts`, ölçüt içinde; kör test 2026-11-20b): paket PDF'te (birkaç
+   yazının tek taraması; birincil tarih ilk parçanın) bu ölçütte alıntılanan sayfalar başka bir
+   kalemin alıntılanan sayfalarıyla aynı yazıysa (iki yönlü OCR'a dayanıklı kapsama, baş bölge
+   kimlikleri uyumlu ve ortak, dönem ayrımı yok; kalıp türünde sıkı eşik + kardeş denetimi +
+   belge düzeyinde yıl) tek kanıttır; temsilci parçanın belgedeki payı en büyük olandır (yazının
+   kendisi, paket değil).
 2. **İlgililik (K18).** (a) write sonrası metinde atıf yapılan kanıt her zaman girer ve üst
    sınıra sayılmaz; (b) atıfsız kanıt yalnız doğrudan ilgiliyse girer: OD'ye sayılır, güveni
    ≥ `en_dusuk_guven`, sayılan eşleşmelerinden en az biri `dolayli_isaretler` taşımıyor; ölçüt
@@ -91,6 +97,7 @@ SURUM_NEDEN = {
     "parca_grubu": "aynı belgenin parçaları (tek kaynak)",
     "kopya": "aynı belgenin kopyası (OCR'lı tarama ya da aynı kontrollü belge)",
     "kapsanan_kopya": "metni ve alıntıları kapsayan belgede bütünüyle var",
+    "parca_kopyasi": "bu ölçütte alıntılanan sayfalar aynı yazının kopyası (paket PDF)",
 }
 
 
@@ -268,7 +275,7 @@ def relation(a: Version, b: Version, kopya: bool = False) -> tuple[str, str]:
     ma, mb = a.marks, b.marks
     common = [k for k in ma if k in mb]
     if common:
-        if any(not (ma[k] & mb[k]) for k in common):
+        if any(not _overlap(ma[k], mb[k]) for k in common):
             return "ayri", "farkli_donem"
         if all(ma[k] <= mb[k] or mb[k] <= ma[k] for k in common) and not kopya:
             return "ayni", "ayni_donem"     # alt küme: daha kapsamlı (birikimli) sürüm
@@ -285,6 +292,12 @@ def relation(a: Version, b: Version, kopya: bool = False) -> tuple[str, str]:
     if Counter(_NUM.findall(a.text)) == Counter(_NUM.findall(b.text)):
         return "ayni", "ayni_veri"
     return "belirsiz", "donem_belirsiz"
+
+
+def _overlap(a: frozenset, b: frozenset) -> bool:
+    """Dönem işaretleri ortak mı. Yarıyılı okunmamış akademik yıl ("2024-2025"; OCR "Büar") o yılın
+    yarıyılıyla ("2024-2025 bahar") çelişmez."""
+    return bool(a & b) or any(x.startswith(y + " ") or y.startswith(x + " ") for x in a for y in b)
 
 
 def is_copy_pair(a: Version, b: Version) -> bool:
@@ -369,7 +382,8 @@ def merge_versions(items: list, docs: dict, text_of, cited: set[str]) -> tuple[l
             merges.append({"olcut": rep.olcut, "grup": g, "temsilci": rep.doc_id, "uyeler": uyeler})
     rest = [it for it in items if id(it) not in gone]
     rest, cm = merge_contained(rest, docs, text_of, cited)
-    return rest, merges + cm
+    rest, pm = merge_parts(rest, docs, text_of, cited)
+    return rest, merges + cm + pm
 
 
 # -- kapsanan kopya (ölçüt içinde) ----------------------------------------------------------------
@@ -470,6 +484,146 @@ def merge_contained(items: list, docs: dict, text_of, cited: set[str]) -> tuple[
         if k in parent and size[find(k)] > 1:
             it.kaynak_grubu = find(k)
     return rest, merges
+
+
+# -- alıntılanan parçanın kopyası (paket PDF'ler, ölçüt içinde) ------------------------------------
+
+PART_MIN = 60               # alıntılanan parçanın en az şablon dışı parçacığı
+
+
+def _page_raw(page: str) -> frozenset:
+    from bidr.identify.versions import _ALNUM, _fold, shingles
+    return shingles(_ALNUM.sub("", _fold(page)))
+
+
+@dataclass
+class Part:
+    """Kalemin bu ölçütte alıntılanan parçası: alıntıların geçtiği sayfalar (form feed ile
+    ayrılmış; tek sayfalı metinde bütün metin)."""
+    text: str
+    fp: frozenset               # şablon dışı OCR'a dayanıklı parçacıklar
+    kapsam: float               # parçanın belgedeki payı (1: tek belge, paket değil)
+
+
+def quoted_part(did: str, quotes: list[str], text: str, ix) -> Part | None:
+    """Alıntıların geçtiği sayfalar → Part; bir alıntı hiçbir sayfada bulunamazsa None."""
+    from bidr.identify.versions import fingerprint, quote_fingerprint
+    inf = ix.inf.get(did) or frozenset()
+    if not inf:
+        return None
+    pages = text.split("\f")
+    qs = [q for q in (quote_fingerprint(x) for x in quotes if x) if len(q) >= 10]
+    if not qs:
+        return None
+    if len([p for p in pages if p.strip()]) <= 1:
+        return Part(text, inf, 1.0)
+    pfp = [_page_raw(p) for p in pages]
+    sel = set()
+    for q in qs:
+        i = max(range(len(pages)), key=lambda j: len(q & pfp[j]))
+        if len(q & pfp[i]) / len(q) < QUOTE_MIN:
+            return None
+        sel.add(i)
+    part = "\n".join(pages[i] for i in sorted(sel))
+    fp = fingerprint(part) & inf
+    return Part(part, fp, len(fp) / len(inf))
+
+
+def part_copy(a: Part, b: Part, strict: bool = False) -> bool:
+    """İki alıntılanan parça aynı yazının kopyası mı: iki yönlü OCR'a dayanıklı kapsama (identify'ın
+    kopya eşikleri; `strict`: kalıp türü, iki yönde COPY_STRICT), baş bölge kimlikleri (tarih,
+    sayı, ders kodu) ayrık değil ve en az biri ortak (kimliksizse kapsama ≥ CONTAIN_MIN); dönem
+    işaretleri ve boş form ayrımı (`relation`) yok."""
+    from bidr.identify import versions as V
+    if min(len(a.fp), len(b.fp)) < PART_MIN:
+        return False
+    lo, hi = V.containment(a.fp, b.fp)
+    need_lo, need_hi = (V.COPY_STRICT, V.COPY_STRICT) if strict else (V.COPY_LO, V.COPY_HI)
+    if lo < need_lo or hi < need_hi:
+        return False
+    ha, hb = V.head_ids(a.text), V.head_ids(b.text)
+    if not V.ids_compatible(ha, hb):
+        return False
+    if not (ha & hb) and lo < CONTAIN_MIN:
+        return False                # kimliksiz parça: neredeyse bütünüyle örtüşmeli
+    va, vb = Version("", {}, a.text, frozenset()), Version("", {}, b.text, frozenset())
+    return relation(va, vb, kopya=True)[0] != "ayri"
+
+
+def merge_parts(items: list, docs: dict, text_of, cited: set[str]) -> tuple[list, list[dict]]:
+    """Ölçüt içinde aynı yazının kopyası olan alıntılanan parçaları tek kanıtta toplar → (kalan
+    kalemler, birleştirme kayıtları). Paket PDF (birkaç yazının tek taramada birleşmesi) ile o
+    yazının ayrı taraması, ya da aynı yazıyı içeren iki paket: belge düzeyinde ne sürüm grubu ne
+    kapsama tutar (tarih paketin ilk parçasının, metnin çoğu başka yazı), ama bu ölçütte
+    alıntılanan sayfalar aynı yazıdır. Her üye kümenin temsilcisiyle kopya olmalı (üyeden üyeye
+    geçişli zincir iki ayrı toplantıyı birleştirmesin). Kalıp türünde (iş akışı, yönerge, form) identify'ın
+    sıkı kuralları geçerlidir. Temsilci: OD'ye sayılan, sonra parçanın belgedeki payı en büyük
+    olan (paket değil, yazının kendisi), düzeyi yüksek, atıf yapılan, güncel. Atıfsız üye temsilciye katılır; atıf
+    yapılan üye listede kalır ama temsilciyle aynı kaynak anahtarını alır (tek numara)."""
+    from bidr.identify import versions as V
+
+    from .naming import source_key
+    if len(items) < 2:
+        return items, []
+    ix = copy_index(docs, text_of)
+    parts = {}
+    for it in items:
+        p = quoted_part(it.doc_id, it.alintilar, text_of(it.doc_id), ix)
+        if p is not None:
+            parts[id(it)] = p
+    cand = [it for it in items if id(it) in parts]
+    cand.sort(key=lambda it: (not it.sayilir, -round(parts[id(it)].kapsam, 1), -_level(it), it.doc_id not in cited,
+                              -_date_num(docs.get(it.doc_id)), it.doc_id))
+    nat = {id(it): source_key(it.doc_id, docs, it) for it in items}
+
+    def copy(x, y) -> bool:
+        if nat[id(x)] == nat[id(y)]:
+            return False                # zaten tek kaynak (numaralama birleştirir)
+        dx, dy = docs.get(x.doc_id) or {}, docs.get(y.doc_id) or {}
+        kalip = any(d.get("doc_type") in V.TEMPLATE_TYPES or d.get("doc_type") in V._UNKNOWN_TYPES
+                    for d in (dx, dy))
+        if not part_copy(parts[id(x)], parts[id(y)], strict=kalip):
+            return False
+        if kalip:
+            # kalıp türü (iş akışı, yönerge, form…): kardeş belgeler yalnız başlıkta ayrışır; identify'ın
+            # sıkı eşiği, kardeş denetimi ve belge düzeyinde dönem/yıl ayrımı da aranır
+            vx = Version(x.doc_id, dx, text_of(x.doc_id), frozenset(x.asamalar_tum))
+            vy = Version(y.doc_id, dy, text_of(y.doc_id), frozenset(y.asamalar_tum))
+            if relation(vx, vy, kopya=True)[0] == "ayri" or ix.siblings(x.doc_id, y.doc_id):
+                return False
+        return True
+
+    clusters: list[list] = []
+    for it in cand:
+        for cl in clusters:
+            if copy(it, cl[0]):
+                cl.append(it)
+                break
+        else:
+            clusters.append([it])
+    gone: set[int] = set()
+    merges: list[dict] = []
+    for cl in clusters:
+        if len(cl) < 2:
+            continue
+        rep, uyeler = cl[0], []
+        key = getattr(rep, "kaynak_grubu", "") or nat[id(rep)]
+        for x in cl[1:]:
+            uyeler.append({"doc_id": x.doc_id, "karar": "ayni", "neden": "parca_kopyasi"})
+            if x.doc_id in cited:
+                x.kaynak_grubu = key
+                rep.kaynak_grubu = key
+                continue
+            gone.add(id(x))
+            _absorb(rep, x)
+            if x.od > rep.od:
+                rep.od = x.od
+            rep.sayilir = rep.sayilir or x.sayilir
+        if "surum_temsilcisi" not in rep.isaretler:
+            rep.isaretler.append("surum_temsilcisi")
+        merges.append({"olcut": rep.olcut, "grup": "parca:" + rep.doc_id, "temsilci": rep.doc_id,
+                       "uyeler": uyeler})
+    return [it for it in items if id(it) not in gone], merges
 
 
 # -- ilgililik --------------------------------------------------------------------------------

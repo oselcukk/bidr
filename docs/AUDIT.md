@@ -465,6 +465,8 @@ kanıt listesine de girmez (`bidr file`, neden işaretin kendisi; gaps.md "Kanı
 | `surum_notu_onlem_degil` | onlem_al alıntısı sürüm notu ("revize edilmiş halidir"), izleme sözcüğü yok | uygula |
 | `yonlendirme_onlem_degil` | onlem_al alıntısı yalnız yönlendirme/talep: karardaki "-mesine/-masına" fiillerinin hepsi iletme/bildirme/gönderme ("Başkanlığa iletilmesine karar"), ya da üst yazı/talep ("gereğini arz ederiz") ve değişiklik sözcüğü yok (kanıt ilkesi `iyilestirme_kaniti`) | kontrol_et (izleme sözcüğü varsa), yoksa uygula |
 | `birim_iliskisi_kod` | birim adı biliniyor, model `kendi`/`ust_birim…` dedi, metinde birimin adı hiç yok: başka birim adı varsa `belirsiz` (insan onaylayana dek sayılmaz), bütün birimleri kapsayan belge ise (rektörlük, senato, "fakültemizin") `kurum_geneli`/`fakulte_geneli` (OD2 tavanı). Birim sayfasında modelin ilişkisi `birim_iliskisi_model` olarak görünür; insan birim kararı kodu aşar | ilişki değişir |
+| `birim_iliskisi_kod` (ters yön) | model `kurum_geneli`/`fakulte_geneli` dedi ama belge birime özgü: (a) baş bölgede (ilk 12 satır) birime hitap ("Örnek Bölüm Başkanlığına") ve belgede başka bölüme hitap yok (dağıtım listesi hitap değildir), (b) üst birim yazısında birime ait kayıt ("Örnek Bölümü:" satırı ve altında içerik; madde ilkesi), ya da (c) baş bölgede (ilk 600 karakter) birimin ders kodu ya da program adı. Belge rektörlük/dekanlık yazısıysa `ust_birim_bu_birim_hakkinda`, değilse `kendi`; decide'ın OD2 tavanı (`uygulama_kaniti_eksik`) kalkar (`kurum_tavani_kaldirildi`), tür tavanı varsa kalır. Satır "birim kodca düzeltildi … doğrulanmalı" vurgusu alır | ilişki değişir |
+| `birim_sayfasi` | tür tavanlı belge (yönerge/yönetmelik/senato kararı) birleşik PDF (form feed ile ≥2 sayfa); alıntının sayfasında birimin ders kodu/program adı/adı var, madde yapısı ("MADDE n"), bütün birimleri kapsayan ifade ve başka birim adı yok: o satıra tür tavanı uygulanmaz, decide'ın OD2 tavanı kalkar (ör. kurum yönergesiyle birleşmiş bölüm ders değerlendirme sonucu) | tavan yok |
 
 **Tür tavanı ve bölümün kendi usul belgesi.** `yonerge`/`yonetmelik` türü kurum geneli
 sayılır; ama model `kendi` dediyse ve başlıkta (ilk 300 karakter) birimin adı geçiyor, metin
@@ -490,8 +492,15 @@ tavanındadır (üst birim istisnası değişmedi). Birim adı yoksa bugünkü t
   ders programı, açılan dersler, görev dağılımı, istatistik tablosu) ölçüt `uygulama_yayilimi:
   "kismi"` ve "OD3 kısmi: tek uygulama örneği" notu alır; OD düşmez. Bölüm kurulu kararı bölüm
   uygulamasıdır (`yaygin`).
-- **Fotoğraf** destekleyicidir: ölçütün sayılan uygulamasının tamamı fotoğraf türündense bu
-  satırlar sayılmaz (`fotograf_destekleyici`), OD3 belge ister.
+- **Fotoğraf** destekleyicidir (kullanıcı kuralı: tek fotoğraf OD3 vermez): ölçütün sayılan
+  uygulamasının tamamı fotoğrafa dayanıyorsa bu satırlar sayılmaz (`fotograf_destekleyici`), OD3
+  belge ister. Fotoğraf dayanağı: tür `fotograf`, ya da görselli belgede (gömülü görsel işareti,
+  `bidr describe` betimlemesi) ya da betimlemeden alınmış alıntının bir **fotoğraf altyazısı**
+  olması (en çok 8 sözcük, yüklemle/noktayla bitmiyor, metinde kendi satırı; ör. tür
+  `altyapi_listesi` olan "Bölüm Engelli Tuvaleti" fotoğraf derlemesi). İnceleme `kabul`ü
+  eşleşmeyi onaylar, fotoğrafı uygulama kanıtına çevirmez; yalnız `duzelt` (insan aşamayı
+  yerleştirdi) aşar. `fotograf` türünde incelemede kabul edilmiş uzun metin alıntısı (afiş/katalog
+  yazısı) fotoğraf sayılmaz.
 - **OD5: sürdürülebilir ve örnek gösterilebilir.** Özgün (Z) satırı ancak (1) bağımsızsa —
   üst birimin bu birimi konu alan belgesi ya da öz beyan türü olmayan (web sayfası, faaliyet/öz
   değerlendirme raporu, duyuru, BİDR dışında) bir belgede dış tanınma ifadesi ("iyi uygulama",
