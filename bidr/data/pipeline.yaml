@@ -326,7 +326,9 @@ asamalar:
       denetim: file_tamam
       metin: >-
         evidence-index.csv ve evidence/ güncel kararlardan, inceleme kararlarından, kanıt adlarından ve
-        bağlantılardan üretilmiş (özetler tutuyor). Kopyalanamayan dosya ve bağlantısız kanıt uyarıdır.
+        bağlantılardan, güncel kesim kuralıyla (dosya tam; birleşik dosyada her belge kendi bütün
+        sayfalarıyla; alıntı sayfasına kesilmez) üretilmiş (özetler tutuyor). Kopyalanamayan dosya ve
+        bağlantısız kanıt uyarıdır.
     onay: yok
     skill: bidr-rapor
 

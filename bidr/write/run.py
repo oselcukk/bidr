@@ -352,21 +352,50 @@ def in_period_nos(ev: list[dict], donem: int | None) -> list[str]:
 SOURCES_FILE = "kaynaklar.json"      # work/write/: prepare'in kullandığı girdi yolları
 
 
+def _rel(ws_root: Path, p) -> str | None:
+    """Kayda yazılacak yol: çalışma alanının içindeyse ona göre göreli (klasör kopyalanır ya da
+    taşınırsa kopyanın kendi dosyasını gösterir), değilse mutlak."""
+    if not p:
+        return None
+    p, root = Path(p).expanduser().resolve(), Path(ws_root).resolve()
+    return p.relative_to(root).as_posix() if root == p or root in p.parents else str(p)
+
+
 def save_source_paths(src: "Sources", onceki, notes) -> None:
     d = work_dir(src.ws)
     d.mkdir(parents=True, exist_ok=True)
-    rec = {"index": str(src.index_path), "audit": str(src.audit_path),
-           "onceki": str(onceki) if onceki else None, "notlar": str(notes) if notes else None}
+    root = src.ws.root
+    rec = {"index": _rel(root, src.index_path), "audit": _rel(root, src.audit_path),
+           "onceki": _rel(root, onceki), "notlar": _rel(root, notes)}
     (d / SOURCES_FILE).write_text(json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def _saved_path(ws_root: Path, v) -> str | None:
+    """Kayıttaki yol → kullanılacak yol. Göreli yol çalışma alanına göredir. Eski kayıttaki mutlak
+    yol başka bir çalışma alanının (config.yaml'ı olan klasörün) kendi dosyasını gösteriyorsa bu
+    çalışma alanı o klasörün kopyasıdır: kopyanın aynı adlı dosyası kullanılır. Gerçek veri
+    2026-11-21: kopyada yeniden dosyalanan dizin yerine asıl çalışma alanının dizini okunuyor,
+    write_tamam kanıt numarası değişen metinleri eski saymıyordu."""
+    if not v:
+        return None
+    root = Path(ws_root).resolve()
+    p = Path(v).expanduser()
+    if not p.is_absolute():
+        return str(root / p)
+    if (p.name in (S.INDEX, S.AUDIT) and p.parent != root and (p.parent / "config.yaml").exists()
+            and (root / "config.yaml").exists() and (root / p.name).exists()):
+        return str(root / p.name)
+    return str(p)
 
 
 def source_paths(ws_root: Path, *, index=None, audit=None, onceki=None, notes=None) -> dict:
     """Komut satırında verilmeyen yollar son `write prepare`'in kaydından (yoksa varsayılan)."""
     f = work_dir(Workspace(Path(ws_root))) / SOURCES_FILE
     saved = json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
-    return {"index": index or saved.get("index"), "audit": audit or saved.get("audit"),
-            "onceki": onceki if onceki is not None else saved.get("onceki"),
-            "notes": notes or saved.get("notlar")}
+    return {"index": index or _saved_path(ws_root, saved.get("index")),
+            "audit": audit or _saved_path(ws_root, saved.get("audit")),
+            "onceki": onceki if onceki is not None else _saved_path(ws_root, saved.get("onceki")),
+            "notes": notes or _saved_path(ws_root, saved.get("notlar"))}
 
 
 # -- prepare / apply ------------------------------------------------------------------------------
@@ -592,10 +621,35 @@ def _cited(paragraphs: list[str], onceki: str) -> list[str]:
     return sorted(seen, key=lambda x: int(x.split("_")[0]))
 
 
+NUMARA_HARITASI = "numara_haritasi"     # {şimdiki atıf: metnin yazıldığı (doğrulandığı) atıf}
+
+
+def as_written(s: str, harita: dict | None) -> str:
+    """Metindeki atıfları yazıldıkları numaraya geri çevirir (`numara_haritasi`; bkz.
+    bidr.file.renumber). Harita birebirdir: ayrı atıflar ayrı kalır."""
+    if not harita:
+        return s
+    hedef = set(harita.values())
+
+    def geri(m) -> str:
+        c = f"{m.group(1)}_OD{m.group(2)}"
+        if c in harita:
+            return f"[{harita[c]}]"
+        # haritada olmayan atıf, başka bir atfın yazıldığı numaraya denk geliyorsa ayrı tutulur
+        # (birebirlik: atfı başka kanıta çevirmek özeti değiştirir)
+        return f"[{c}*]" if c in hedef else f"[{c}]"
+    return T.ATIF.sub(geri, s)
+
+
 def text_sha(t: dict) -> str:
-    """Metnin içerik özeti (durum ve doğrulama alanları hariç)."""
-    body = json.dumps({"p": [p["metin"] for p in t.get("paragraflar") or []],
-                       "o": t.get("onceki_yila_gore") or "", "od": t.get("od_onerisi")},
+    """Metnin içerik özeti (durum ve doğrulama alanları hariç). Dosyalama yalnız numaraları
+    değiştirdiyse (aynı belgeler, aynı kod OD'si; `bidr.file.renumber`) atıflar yazıldıkları
+    numarayla özetlenir: kodla yeniden numaralama metnin doğrulamasını ve ona dayanan kayıtları
+    (verify, yönler) eskitmez; metinde başka her değişiklik (atfın başka kanıta çevrilmesi dahil)
+    özeti değiştirir."""
+    h = t.get(NUMARA_HARITASI) or {}
+    body = json.dumps({"p": [as_written(p["metin"], h) for p in t.get("paragraflar") or []],
+                       "o": as_written(t.get("onceki_yila_gore") or "", h), "od": t.get("od_onerisi")},
                       ensure_ascii=False, sort_keys=True)
     return K.sha(body)
 

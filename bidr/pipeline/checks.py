@@ -570,6 +570,10 @@ def file_tamam(c: Ctx) -> Check:
     prog = {"kanit": st["kanit"], "eksik_dosya": st["eksik_dosya"], "baglantisiz": st["baglantisiz"]}
     if not (st["index"] and st["manifest"]):
         return Check(kim=KOMUT, komutlar=[run_cmd], neden="evidence-index.csv / evidence/ yok: dosyalama yapılmadı")
+    if st.get("eski_kesim"):
+        return Check(kim=KOMUT, komutlar=[run_cmd], ilerleme=prog,
+                     neden="kanıt klasörü eski kuralla (alıntı sayfasına kesilerek) üretildi: yeniden dosyalayın "
+                           "(dosya tam; birleşik dosyada her belge kendi bütün sayfalarıyla)")
     if not st["guncel"]:
         return Check(kim=KOMUT, komutlar=[run_cmd], ilerleme=prog,
                      neden="kanıt klasörü eski: kararlar, inceleme, kanıt adları ya da bağlantılar değişti")
@@ -626,6 +630,8 @@ def write_tamam(c: Ctx) -> Check:
     old_pkg = {k for k in pending if str(pkgs[k].get("surum")) != ver}
     todo = (need - set(texts) - pending) | (stale - pending) | old_pkg
     prog = {"olcut": len(need), "metin": len(set(texts) - stale), "bekleyen_paket": len(pending)}
+    if stale - pending:
+        prog["eski_metin"] = len(stale - pending)
     rounds = sorted(k for k in pending if int((pkgs[k].get("meta") or {}).get("tur") or 0) > 0)
     if rounds:
         prog["yeniden_yazim"] = len(rounds)
@@ -639,8 +645,15 @@ def write_tamam(c: Ctx) -> Check:
         uy.append(f"{len(eski_surum)} metin eski yazım kuralıyla yazıldı ({_sample(eski_surum)}): geçerli kalır; "
                   f"isteğe bağlı yenileme (yalnız bunlar, sonra yeniden doğrulanır): `{prep} --eski-kurallar`")
     if todo:
+        yok = need - set(texts) - pending
+        eski = sorted(stale - pending, key=_crit_key)
+        parts = [x for x in (f"{len(yok)} ölçütün metni yok" if yok else "",
+                             f"{len(eski)} ölçütün metni eski ({_sample(eski)}): kanıt listesi ya da OD "
+                             "değişti, yalnız numara kayması `bidr file` sırasında kodla düzeltilir; "
+                             "belge/OD değiştiyse yeniden yazılır" if eski else "",
+                             f"{len(old_pkg)} paket eski görev sürümünde" if old_pkg else "") if x]
         return Check(kim=KOMUT, ilerleme=prog, uyarilar=uy, komutlar=[prep],
-                     neden=f"{len(todo)} ölçütün metni yok ya da eski (kanıt listesi/OD değişti): prepare")
+                     neden="; ".join(parts) + ": prepare")
     if pending:
         no_out = {k for k in pending if not (d / f"{k}.out.json").exists()}
         bad = _invalid_keys(d / "GECERSIZ.md", r"^- `([A-E]\.\d+\.\d+)\.json`") & pending

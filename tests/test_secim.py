@@ -172,12 +172,13 @@ def test_cited_and_human_override_cap(tmp_path):
     (ws / "config.yaml").write_text("rapor:\n  kanit_secimi:\n    olcut_basina_en_fazla: 1\n", encoding="utf-8")
     R.run(ws, out=out, source=src)
     sel = {s["doc_id"]: s["neden"] for s in _secim(out)["secilen"]}
-    assert sel[last["doc_id"]] == "atif" and len(sel) == 2       # atıf sınıra sayılmaz
+    # atıf sınırdan yer tutar (düşmez): write sonrası dosyalama elenmişleri geri alıp listeyi büyütmez
+    assert sel == {last["doc_id"]: "atif"}
     # toplu `kabul` (audit_tamam her satıra karar ister) seçimi devre dışı bırakmaz
     _review(ws, {d: "kabul" for d in first})
     R.run(ws, out=out, source=src)
     sel = {s["doc_id"]: s["neden"] for s in _secim(out)["secilen"]}
-    assert len(sel) == 2 and sel[last["doc_id"]] == "atif"
+    assert sel == {last["doc_id"]: "atif"}
     # insan yerleştirmesi (duzelt) sınır yüzünden düşmez; seçim yenilenince numara değişse de
     # metnin atfı aynı belgeye bağlı kalır (evidence-secim.json atıf eşlemesi)
     other = next(d for d in first if d not in sel)
