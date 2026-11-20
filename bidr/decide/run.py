@@ -11,6 +11,9 @@ Akış (belge başına):
   1. Öz-referans tür (`haric_turler.yaml`) ya da metinsiz belge → atlanır (kayda geçer).
   2. classify_coarse: profile göre süzülmüş alt ölçütler → en çok 5 ölçüt.
   3. Aday birleşimi: kaba seçim ∪ candidates.jsonl ilk k (profil içinde), en çok `max_aday`.
+     Komisyon/görev tanımı tablosunda ("Komisyon Adı … Görev Tanımı") komisyon görevlerinin
+     ölçütleri (bidr/candidates/komisyon.py) kaba seçimden sonra eklenir, tavan `KOMISYON_MAX_ADAY`;
+     istem bütçesi için belge metni payı aday listesinin uzadığı kadar kısalır.
   4. classify_fine: aday rubrik + yuvalar → eşleşmeler.
   5. Kod denetimi: aday dışı ölçüt, geçersiz yuva, tutmayan/çok kısa alıntı → eşleşme
      REDDEDİLİR (kayıtta kalır, `kabul: false`). Aşama yuva etiketine uymuyorsa ya da
@@ -32,12 +35,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
 import yaml
 
+from bidr.candidates.komisyon import committee_criteria
+from bidr.candidates.text import fold
 from bidr.common import Workspace, read_jsonl
 from bidr.criteria.loader import load_criteria
 from bidr.criteria.model import CriteriaSet
@@ -51,6 +57,21 @@ TASKS_DIR = Path(__file__).resolve().parents[1] / "tasks"
 COARSE, FINE = "classify_coarse", "classify_fine"
 MAX_COARSE = 5
 MIN_QUOTE = 20           # bundan kısa alıntı kanıt sayılmaz (ör. yalnız başlık sözcüğü)
+KOMISYON_MAX_ADAY = 8    # komisyon/görev tanımı tablosunda ince karar aday tavanı
+LISTE_BUTCE = 12100      # 6 en uzun adayın listesi (karakter): bunu aşan liste metin payından düşer
+KOMISYON_MIN_METIN = 4000  # komisyon tablosunda belge metni payının alt sınırı (karakter)
+# Tablo başlığı/sütun adı sözcükleri (katlanmış). Alıntının bütün sözcükleri bunlardansa alıntı yalnız
+# tablo başlığıdır (içerik satırı yok): eşleşme reddedilir (`alinti_tablo_basligi`).
+TABLO_BASLIK = frozenset("""
+komisyon komisyonu komisyonun komisyonlar komisyonlari adi ad adiniz soyadi soyad unvan unvani statu statusu
+gorev gorevi gorevleri tanim tanimi tanimlari uye uyesi uyeler uyeleri sira no numara numarasi tarih tarihi
+aciklama aciklamasi birim birimi sorumlu sorumlusu ders dersin kodu kod kredi akts donem donemi yariyil
+sayi sayisi imza imzasi posta eposta telefon konu konusu sure suresi ve ile
+""".split())
+RED_ACIKLAMA = {
+    "alinti_tablo_basligi": "alıntı yalnız tablo başlığı/sütun adları, içerik satırı yok: tablonun ilgili "
+                            "satırını alıntıla",
+}
 DECISIONS = "decisions.jsonl"
 SCHEMA = 1
 KURUM_OD = 2             # kurum geneli düzenleme tek başına en çok OD2 (komisyon ilkesi)
@@ -266,15 +287,23 @@ def _model_id(res, cfg) -> str:
 
 
 def merge_candidates(coarse: list[str], cand_row: dict | None, allowed: set[str], k: int,
-                     max_aday: int) -> tuple[list[str], list[str], list[str]]:
-    """(adaylar, belirleyici ilk k, kesilenler). Kaba seçim önde, sonra belirleyici sıra."""
+                     max_aday: int, extra: list[str] = ()) -> tuple[list[str], list[str], list[str]]:
+    """(adaylar, belirleyici ilk k, kesilenler). Kaba seçim önde, sonra `extra` (komisyon
+    görevlerinin ölçütleri), sonra belirleyici sıra."""
     det = [c["olcut"] for c in (cand_row or {}).get("adaylar", [])
            if c.get("olcut") in allowed][:k]
     order: list[str] = []
-    for x in [*coarse, *det]:
+    for x in [*coarse, *(e for e in extra if e in allowed), *det]:
         if x not in order:
             order.append(x)
     return order[:max_aday], det, order[max_aday:]
+
+
+def table_header_only(q: str) -> bool:
+    """Alıntı yalnız tablo başlığı/sütun adlarından mı oluşuyor (en az 3 sözcük, hepsi
+    `TABLO_BASLIK`'ta; ör. "Komisyon Adı Komisyon Üyeleri Görevi Görev Tanımı")."""
+    w = re.findall(r"[a-z]+", fold(q))
+    return len(w) >= 3 and all(x in TABLO_BASLIK for x in w)
 
 
 def check_matches(out: dict, cands: list[str], cs: CriteriaSet, tags: dict, text: str,
@@ -309,6 +338,8 @@ def check_matches(out: dict, cands: list[str], cs: CriteriaSet, tags: dict, text
             red.append("alinti_tutmuyor")
         if len(q) < MIN_QUOTE:
             red.append("alinti_cok_kisa")
+        elif table_header_only(q):
+            red.append("alinti_tablo_basligi")
         if (olcut, yuva) in seen:
             red.append("yinelenen")
         seen.add((olcut, yuva))
@@ -471,16 +502,28 @@ def apply_coarse(did: str, out: dict, meta: dict, model_id: str, extra: dict | N
                      "istem_token_tahmini": meta["istem_token_tahmini"], **(extra or {})}}
 
 
-def fine_inputs(ctx: Context, did: str, rec: dict, pin: bool = True) -> tuple[dict, dict] | None:
+def fine_inputs(ctx: Context, did: str, rec: dict, pin: bool = True,
+                komisyon: bool = True) -> tuple[dict, dict] | None:
     """Kaba kayıttan aday birleşimi; aday yoksa None. İnsan birim kararı varsa (`pin`) pakete
-    sabit bilgi olarak girer; model bunu değiştiremez (`apply_fine` alanı zorlar)."""
+    sabit bilgi olarak girer; model bunu değiştiremez (`apply_fine` alanı zorlar). `komisyon`:
+    komisyon/görev tanımı tablosunda komisyon görevlerinin ölçütleri eklenir (ikinci arama
+    yalnız kendi ölçütlerini sorar: kapalı)."""
+    text = ctx.text(did)
+    kom = committee_criteria(text, set(ctx.allowed)) if komisyon else []
     cands, det, cut = merge_candidates(rec["kaba"]["secilen"], ctx.cand.get(did), set(ctx.allowed),
-                                       ctx.k, ctx.max_aday)
+                                       ctx.k, max(ctx.max_aday, KOMISYON_MAX_ADAY) if kom else ctx.max_aday,
+                                       kom)
     meta = {"adaylar": cands, "belirleyici_ilk_k": det, "adaylar_kesilen": cut}
+    if kom:
+        meta["adaylar_komisyon"] = kom
     if not cands:
         return None, meta
-    body, ex = P.excerpt(ctx.text(did), P.FINE_CHARS, P.criteria_terms(ctx.cs, cands))
-    inputs = {"adaylar": P.fine_list(ctx.cs, cands, ctx.tags),
+    liste = P.fine_list(ctx.cs, cands, ctx.tags)
+    pay = P.FINE_CHARS
+    if kom:                                 # uzayan aday listesi metin payından düşer (istem bütçesi)
+        pay = min(pay, max(KOMISYON_MIN_METIN, pay - max(0, len(liste) - LISTE_BUTCE)))
+    body, ex = P.excerpt(text, pay, P.criteria_terms(ctx.cs, cands))
+    inputs = {"adaylar": liste,
               "belge_bilgisi": P.render_info(rec.get("belge_bilgisi") or {}), "belge_metni": body,
               "kanit_ilkeleri": P.evidence_principles(),
               "birim": P.render_unit(ctx.unit, ctx.pin(did) if pin else None)}
@@ -524,6 +567,10 @@ def apply_fine(ctx: Context, did: str, rec: dict, out: dict, meta: dict, model_i
     rec["gorev"] = {**rec.get("gorev", {}), FINE: task_version(FINE)}
     rec.update(asama="ince", adaylar=meta["adaylar"], belirleyici_ilk_k=meta["belirleyici_ilk_k"],
                adaylar_kesilen=meta["adaylar_kesilen"])
+    if meta.get("adaylar_komisyon"):
+        rec["adaylar_komisyon"] = meta["adaylar_komisyon"]
+    else:
+        rec.pop("adaylar_komisyon", None)
     rec["ince"] = {"karar": out.get("karar"), "gerekce": out.get("gerekce", ""), "kurum_geneli": kg,
                    "birim_iliskisi": rel, "birim_iliskisi_kaynagi": rel_src,
                    **({"birim_iliskisi_model": model_rel} if pin else {}),
@@ -740,6 +787,7 @@ def inherit(ctx: Context, recs: dict, stage: str, verify: Callable) -> dict:
         else:
             meta = {"adaylar": rep.get("adaylar", []), "belirleyici_ilk_k": rep.get("belirleyici_ilk_k", []),
                     "adaylar_kesilen": rep.get("adaylar_kesilen", []), "metin": rep["ince"].get("metin"),
+                    "adaylar_komisyon": rep.get("adaylar_komisyon", []),
                     "istem_token_tahmini": rep["ince"].get("istem_token_tahmini")}
             extra = {k: rep["ince"][k] for k in ("kip", "istem_sha") if k in rep["ince"]}
             extra["devralindi"] = rid
@@ -1056,6 +1104,8 @@ def apply(ws_root: Path, stage: str, *, model: str = "ajan:belirtilmemis",
     for did, bad in st["alinti_tutmayan"].items():
         lines.append(f"- `{did}.json` — reddedilen eşleşme (alıntı belgede birebir olmalı): "
                      + "; ".join(bad))
+        why = sorted({k for b in bad for k in RED_ACIKLAMA if k in b})
+        lines += [f"  - `{k}`: {RED_ACIKLAMA[k]}" for k in why]
     if d.exists():
         g = d / "GECERSIZ.md"
         if len(lines) > 2:

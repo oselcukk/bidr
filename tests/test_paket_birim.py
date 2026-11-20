@@ -117,12 +117,43 @@ def test_photo_caption_alone_is_not_implementation_even_if_accepted(tmp_path):
            "duzelt": None, "etiket": None, "not": ""}
     a = build(w, review={dec["satir"]: dec})
     r = a.by_key["foto|B.3.4/1"]
-    assert not r["sayilir"] and "fotograf_destekleyici" in r["flags"]
+    # mekân fotoğrafı (altyazı: tuvalet) süreç uygulaması değil: planla olarak kalır (OD2)
+    assert r["sayilir"] and r["etkin_asama"] == "planla" and r["od"] == 2 and "fotograf_mekan" in r["flags"]
+    assert "fotograf_destekleyici" not in r["flags"]
     # yanında belge dayanağı (gerçek uygulama metni) varsa fotoğraf düşürülmez
     t = "Örnek Bölümü engelli öğrenciler için rampa ve asansör düzenlemesini 2025 yılında tamamlamıştır."
     docs["rapor"] = ("faaliyet_raporu", "2025-06-01", t, [_m("B.3.4", "B.3.4/2", "uygula", t)])
     b = build(_cfg(_ws(tmp_path / "b", docs)))
-    assert b.by_key["foto|B.3.4/1"]["sayilir"] and "fotograf_destekleyici" not in b.by_key["foto|B.3.4/1"]["flags"]
+    fl = b.by_key["foto|B.3.4/1"]["flags"]
+    assert b.by_key["foto|B.3.4/1"]["sayilir"] and not {"fotograf_destekleyici", "fotograf_mekan"} & set(fl)
+
+
+BETIM = ("[GÖRSEL BETİMLEME · bidr describe] açıklama\n\n[Betimleme · görsel dosyası]\nGörsel türü: fotoğraf\n"
+         "Sahne: {sahne}\nEtkinlik: {etk}\nKalabalık: {kal}\nBetimleme: {bet}\n")
+
+
+def test_photo_scene_from_description():
+    from bidr.audit.savunma import sahne
+    ev = BETIM.format(sahne="Amfi tipi derslik", etk="Toplantı veya sunum dinletisi", kal="51-200 kişi",
+                      bet="Kademeli sıralarda oturan ~50 katılımcı.")
+    assert sahne("Kademeli sıralarda oturan ~50 katılımcı.", ev) == "etkinlik"
+    bos = BETIM.format(sahne="Boş derslik; sıralar", etk="yok", kal="kişi yok", bet="Kişi bulunmayan derslik.")
+    assert sahne("Kişi bulunmayan derslik.", bos) == "mekan"
+    afis = BETIM.format(sahne="Duyuru afişi", etk="seminer duyurusu", kal="kişi yok", bet="Afiş.").replace(
+        "Görsel türü: fotoğraf", "Görsel türü: afiş")
+    assert sahne("Afiş.", afis) == "belirsiz"
+    # betimleme yoksa altyazı sözcükleri; mekân adı ("Seminer Salonu") etkinlik değildir
+    assert sahne("Örnek Bölümü Seminer Salonu", "") == "mekan"
+    assert sahne("Mezuniyet Töreni 2025", "") == "etkinlik"
+    assert sahne("Tahtada çözülmüş örnek", "") == "belirsiz"
+
+
+def test_event_photo_counts_mekan_photo_planla(tmp_path):
+    ev = BETIM.format(sahne="Amfi tipi derslik", etk="Seminer; konuşmacı ve dinleyiciler", kal="21-50 kişi",
+                      bet="Seminer salonunda oturan dinleyiciler.")
+    docs = {"foto": ("fotograf", "2025-05-01", ev, [_m("B.3.5", "B.3.5/2", "uygula", "Seminer; konuşmacı ve dinleyiciler")])}
+    r = build(_cfg(_ws(tmp_path, docs))).by_key["foto|B.3.5/2"]
+    assert r["sayilir"] and r["etkin_asama"] == "uygula" and "fotograf_destekleyici" not in r["flags"]
 
 
 def test_caption_heuristic():

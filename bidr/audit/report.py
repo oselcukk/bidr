@@ -118,6 +118,7 @@ SAVUNMA = {
     "onlem_izlemeye_dayanmiyor": "iyileştirme bir izleme sonucuna dayanmıyor → uygula",
     "ozgun_kanitsiz": "özgünlük kanıtı yetersiz (bağımsız kanıt ve birden çok dönem gerekir): sayılmadı",
     "fotograf_destekleyici": "fotoğraf tek başına uygulama sayılmaz (destekleyici): sayılmadı",
+    "fotograf_mekan": "mekân/altyapı/ekipman fotoğrafı süreç uygulaması değil → planla",
     "madde_baska_fakulte": "alıntı fakülteye göre maddeli düzenlemede başka fakültenin maddesinden: sayılmadı",
     "birim_iliskisi_kod": "kod birim ilişkisini değiştirdi: metinde birimin sinyali yok (belirsiz ya da kurum/fakülte "
                           "geneli) ya da model belirsiz dedi ama metinde birimin sinyali var (kendi; doğrulanmalı)",

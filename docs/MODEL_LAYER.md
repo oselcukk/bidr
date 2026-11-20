@@ -43,7 +43,15 @@ ok, score, span = verify_quote(quote, text)   # Türkçe katlama, boşluk, OCR t
   rubrik ve kanıt yuvaları (PUKÖ etiketleriyle) → her uyan ölçüt için
   `{olcut, yuva, asama, od_onerisi, alinti, gerekce, guven}`. Alıntı belge
   metninden birebir olmalı; `verify_quote` ile denetlenir, tutmayan karar
-  işaretlenir.
+  işaretlenir. Yalnız tablo başlığı/sütun adlarından oluşan alıntı ("Komisyon Adı … Görev
+  Tanımı …", içerik satırı yok) reddedilir (`alinti_tablo_basligi`; GECERSIZ.md'de gerekçesiyle).
+- **Komisyon/görev tanımı tabloları.** Metinde "Komisyon Adı … Görev Tanımı" başlığı olan belgede
+  (bölüm kurul ve komisyon listesi, görev dağılımı) komisyon görev alanları ölçütlere eşlenir
+  (`bidr/candidates/komisyon.py`: değişim programları → A.5.1, danışmanlık/kariyer → B.3.2,
+  kalite kurulu → A.1.4, muafiyet/intibak → B.2.3 …) ve kaba seçimden sonra adaylara eklenir
+  (kayıtta `adaylar_komisyon`); aday tavanı 6 yerine `KOMISYON_MAX_ADAY` (8). Uzayan aday listesi
+  belge metni payından düşer (en az 4000 karakter), istem bütçesi korunur. Öteki belgelerin aday
+  listesi değişmez; ikinci arama bu eklemeyi yapmaz.
 - **Birim farkındalığı (classify_fine v8).** İnce karar istemine `{{birim}}` girer: çalışma
   alanı `config.yaml` `bidr.birim` ve `bidr.kurum` profilinin `ad`ı (`prompt.unit_info`;
   birim yoksa "belirtilmedi"). Kaba seçim istemi değişmez (aday seçimi; son söz ince kararın).

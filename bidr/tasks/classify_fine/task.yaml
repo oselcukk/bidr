@@ -41,6 +41,10 @@ description: >-
   birleştirilmiş dosyada ilk eşleşmenin alıntısının geldiği parça; metinde olmayan tür, yıl,
   nitelik ("ve Ekleri", "Derlemesi") eklenmez. Kod adın belgede dayanağını denetler
   (bidr/name/ground.py; dosyalamada `Resolver` uyarısı, ad `doğrulanmalı`).
+  v10 açıklama (sürüm değişmedi, şema aynı): tabloda başlığı/sütun adlarını değil ilgili satırı
+  alıntıla. Kod yalnız tablo başlığından oluşan alıntıyı ("Komisyon Adı … Görev Tanımı …") reddeder
+  (`alinti_tablo_basligi`, GECERSIZ.md'de gerekçesiyle). Komisyon/görev tanımı tablosunda aday listesi
+  komisyon görevlerinin ölçütleriyle genişler, en çok 8 (bidr/candidates/komisyon.py).
 inputs:
   adaylar: "aday alt ölçütler: başlık, rubrik 1-5, yuvalar `[aşama → OD]` etiketiyle"
   belge_bilgisi: "documents.jsonl içerik alanları (tür tahmini, tarih, sayfa); yol/ad yok"

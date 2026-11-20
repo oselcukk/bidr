@@ -213,10 +213,18 @@ def test_od3_spread_and_photo(tmp_path):
     kurul = {"kar": ("bolum_kurulu_karari", "2025-02-01", H + "Bütün derslerde sunum uygulanmasına karar verilmiştir.",
                      [_m("B.2.1", "B.2.1/1", "uygula", "Bütün derslerde sunum uygulanmasına karar verilmiştir.")])}
     assert _c(build(_ws(tmp_path / "b", kurul)), "B.2.1")["uygulama_yayilimi"] == "yaygin"
-    foto = {"foto": ("fotograf", "2025-05-01", H + "[GÖRSEL] Laboratuvarda öğrenciler çalışıyor.",
-                     [_m("B.2.1", "B.2.1/1", "uygula", "Laboratuvarda öğrenciler çalışıyor.")])}
+    # sahnesi belirsiz fotoğraf destekleyicidir: sayılmaz
+    foto = {"foto": ("fotograf", "2025-05-01", H + "[GÖRSEL] Tahtada çözülmüş bir örnek.",
+                     [_m("B.2.1", "B.2.1/1", "uygula", "Tahtada çözülmüş bir örnek.")])}
     a = build(_ws(tmp_path / "c", foto))
     assert "fotograf_destekleyici" in a.by_key["foto|B.2.1/1"]["flags"] and _c(a, "B.2.1")["od"] < 3
+    # etkinlik sahnesi (öğrenciler, sunum) gerçekleşmeyi kanıtlar: uygula sayılır
+    foto = {"foto": ("fotograf", "2025-05-01", H + "[GÖRSEL] Öğrenciler proje sunumu yapıyor.",
+                     [_m("B.2.1", "B.2.1/1", "uygula", "Öğrenciler proje sunumu yapıyor.")])}
+    a = build(_ws(tmp_path / "d", foto))
+    r = a.by_key["foto|B.2.1/1"]
+    assert r["sayilir"] and r["etkin_asama"] == "uygula" and not {"fotograf_destekleyici", "fotograf_mekan"} & set(r["flags"])
+    assert _c(a, "B.2.1")["od"] == 3
 
 
 # -- faaliyet → audit ----------------------------------------------------------------------

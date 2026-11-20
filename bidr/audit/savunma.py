@@ -16,7 +16,8 @@ belge kurum/fakülte geneli sayılır; model `belirsiz` dediyse ve metinde birim
 (başka birim adı, kurum geneli ifade yoksa) `kendi` önerilir. Fakülteye göre maddeli kurum
 düzenlemesinde başka fakültenin maddesinden alıntı sayılmaz (`madde_baska_fakulte`).
 Ölçüt düzeyi (`criterion`): iyileştirme–izleme bağı (K→Ö), özgünlük (bağımsız kanıt ve
-süreklilik), fotoğrafın tek başına uygulama sayılmaması, uygulamanın yayılımı (OD3 kısmi).
+süreklilik), fotoğrafın sahnesine göre değeri (etkinlik sayılır; mekân/altyapı planla; belirsiz
+destekleyici), uygulamanın yayılımı (OD3 kısmi).
 """
 from __future__ import annotations
 
@@ -122,6 +123,19 @@ _HARF = re.compile(r"[A-Za-zÇĞİÖŞÜçğıöşüâîû]")
 
 # görselli belge: gömülü görsel işareti (docx/pdf çıkarımı) ya da bidr describe betimlemesi
 GORSEL = re.compile(r"\[gömülü görsel|GÖRSEL BETİMLEME|Betimleme\s*:")
+# Fotoğrafın sahnesi (kullanıcı kararı 2026-11-20): etkinlik/seminer/toplantı/tören fotoğrafı
+# gerçekleşmeyi (uygula) kanıtlar; mekân/altyapı/ekipman fotoğrafı tek başına süreç uygulaması
+# değildir. Önce `bidr describe` bloğunun alanları (Görsel türü, Etkinlik, Kalabalık), yoksa sahne/
+# betimleme/altyazı sözcükleri (katlanmış). "Toplantı salonu" gibi mekân adları etkinlik sayılmaz.
+BETIMLEME_BLOK = re.compile(r"\[Betimleme · [^\]\n]*\]\n(.*?)(?=\n\s*\n|\n\[|\f|\Z)", re.S)
+MEKAN_ADI = re.compile(r"\b(?:toplanti|seminer|konferans|sunum|etkinlik|tore\w*)\s+(?:salon|oda|alan|merkez)\w*")
+SAHNE_ETKINLIK = re.compile(r"\b(?:seminer|konferans|konusma|konusmaci|katilimci|sunum|sunan|tore\w*|toplanti"
+                            r"|panel|soylesi|calistay|egitim programi|dinleyici|mezuniyet|kutlama|yarisma"
+                            r"|ogrenciler|ziyaret|gezi|etkinlik)\w*")
+SAHNE_MEKAN = re.compile(r"\b(?:(?:derslik|amfi|anfi|laboratuvar|koridor|bina|tuvalet|kantin|kutuphane"
+                         r"|alan|salon|ofis|asansor|rampa|otopark|bahce|cihaz|ekipman|makine|donanim"
+                         r"|bilgisayar|tabela|mekan|dinlenme|atolye|depo|sinif)\w*|lab|giris(?:i|leri)?|oda(?:si|lari)?)\b")
+DUYURU_SOZ = re.compile(r"duyuru|afis|tanitim|kapak|davet")
 ALTYAZI_SOZCUK = 8
 # yüklem (cümle) sonu: -dır/-tır, -mış, -yor, -acak/-ecek (katlanmış). "-di/-ti" iyelik ekiyle
 # karışır ("Tuvaleti"): yüklem sayılmaz.
@@ -136,6 +150,43 @@ def altyazi(q: str, text: str) -> bool:
     if not w or len(w) > ALTYAZI_SOZCUK or q.strip().endswith(".") or YUKLEM.search(w[-1]):
         return False
     return any(fq == x or (fq in x and len(x.split()) <= 10) for x in (f(y) for y in text.splitlines() if y.strip()))
+
+
+def sahne_sozcuk(text: str, kisi_yok: bool = False) -> str:
+    """Katlanmamış sahne/betimleme/altyazı metninden sahne türü: etkinlik | mekan | belirsiz."""
+    t = MEKAN_ADI.sub(" mekan ", f(text))
+    if not kisi_yok and SAHNE_ETKINLIK.search(t):
+        return "etkinlik"
+    return "mekan" if SAHNE_MEKAN.search(t) else "belirsiz"
+
+
+def sahne_blok(blok: str) -> str:
+    """`bidr describe` betimleme bloğundan sahne türü. Yalnız fotoğraf sınıflanır; afiş, ekran, şema,
+    diğer → belirsiz (afişteki etkinlik duyurudur). Etkinlik alanı dolu (yok/duyuru değil) → etkinlik."""
+    alan = {}
+    for x in blok.splitlines():
+        k, _, v = x.partition(":")
+        alan.setdefault(f(k), v.strip())
+    if f(alan.get("gorsel turu")) not in ("fotograf", ""):
+        return "belirsiz"
+    etk = f(alan.get("etkinlik"))
+    yok = not etk or etk.startswith(("yok", "etkinlik yok"))
+    if not yok and not DUYURU_SOZ.search(etk):
+        return "etkinlik"
+    return sahne_sozcuk(" ".join((alan.get("sahne", ""), alan.get("betimleme", ""), "" if yok else etk)),
+                        kisi_yok=yok or f(alan.get("kalabalik")).startswith("kisi yok"))
+
+
+def sahne(q: str, text: str) -> str:
+    """Fotoğraf alıntısının sahnesi: alıntıyı içeren betimleme bloğu, yoksa belgenin bütün blokları
+    (hepsi aynı türdeyse), blok yoksa alıntının (altyazının) kendisi."""
+    bloklar = [m.group(1) for m in BETIMLEME_BLOK.finditer(text)]
+    if not bloklar:
+        return sahne_sozcuk(q)
+    fq = f(q)
+    ilgili = [b for b in bloklar if fq and fq in f(b)] or bloklar
+    turler = {sahne_blok(b) for b in ilgili}
+    return turler.pop() if len(turler) == 1 else "belirsiz"
 
 
 def f(s: str | None) -> str:
@@ -581,15 +632,27 @@ class Savunma:
                 r["sayilir"] = False
             r["vurgu"] = "; ".join(x for x in (r["vurgu"], why) if x)
 
-        # fotoğraf tek başına uygulama değildir (destekleyici kanıt; kullanıcı kuralı: tek fotoğraf OD3
-        # vermez). Fotoğraf: tür `fotograf` ya da görselli belgede (gömülü görsel, betimleme) alıntının
-        # bir fotoğraf altyazısı olması. İnceleme `kabul`ü eşleşmeyi onaylar, fotoğrafı uygulama
-        # kanıtına çevirmez; yalnız insanın aşamayı yerleştirdiği `duzelt` aşar.
+        # fotoğrafın kanıt değeri sahnesine bağlıdır (kullanıcı kararı 2026-11-20). Ölçütün uygulaması
+        # yalnız fotoğrafa dayanıyorsa: etkinlik/seminer/toplantı/tören sahnesi gerçekleşmeyi kanıtlar
+        # (sayılır); mekân/altyapı/ekipman sahnesi süreç uygulaması değildir, planla olarak kalır
+        # (`fotograf_mekan`); sahnesi belirsiz fotoğraf destekleyicidir, sayılmaz
+        # (`fotograf_destekleyici`). Fotoğraf: tür `fotograf` ya da görselli belgede alıntının bir
+        # fotoğraf altyazısı olması. İnceleme `kabul`ü eşleşmeyi onaylar, fotoğrafı uygulama kanıtına
+        # çevirmez; yalnız insanın aşamayı yerleştirdiği `duzelt` aşar.
         u = [r for r in rows if r["sayilir"] and r["etkin_asama"] == "uygula" and not r["zayif"]]
         if u and all(self.photo_row(r) for r in u):
             for r in u:
-                if r.get("karar") != "duzelt":
+                if r.get("karar") == "duzelt":
+                    continue
+                sh = sahne(r.get("alinti") or "", self.text(r["doc_id"]))
+                if sh == "mekan":
+                    drop(r, "fotograf_mekan", "mekân/altyapı fotoğrafı süreç uygulaması kanıtlamaz: planla",
+                         to="planla")
+                elif sh != "etkinlik":
                     drop(r, "fotograf_destekleyici", "fotoğraf destekleyici kanıttır: tek başına uygulama sayılmaz")
+            if any("fotograf_mekan" in r["flags"] for r in u):
+                notlar.append("uygulama kanıtı yalnız mekân/altyapı fotoğrafı: planla sayıldı, OD3 için "
+                              "uygulama belgesi ya da etkinlik fotoğrafı gerekir")
             if any("fotograf_destekleyici" in r["flags"] for r in u):
                 notlar.append("uygulama kanıtı yalnız fotoğraf: destekleyici sayıldı, OD3 için belge gerekir")
         # K→Ö bağı: iyileştirme bir izleme sonucuna dayanmalı

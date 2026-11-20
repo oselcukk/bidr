@@ -492,9 +492,17 @@ tavanındadır (üst birim istisnası değişmedi). Birim adı yoksa bugünkü t
   ders programı, açılan dersler, görev dağılımı, istatistik tablosu) ölçüt `uygulama_yayilimi:
   "kismi"` ve "OD3 kısmi: tek uygulama örneği" notu alır; OD düşmez. Bölüm kurulu kararı bölüm
   uygulamasıdır (`yaygin`).
-- **Fotoğraf** destekleyicidir (kullanıcı kuralı: tek fotoğraf OD3 vermez): ölçütün sayılan
-  uygulamasının tamamı fotoğrafa dayanıyorsa bu satırlar sayılmaz (`fotograf_destekleyici`), OD3
-  belge ister. Fotoğraf dayanağı: tür `fotograf`, ya da görselli belgede (gömülü görsel işareti,
+- **Fotoğrafın değeri sahnesine bağlıdır** (kullanıcı kararı 2026-11-20). Ölçütün sayılan
+  uygulamasının tamamı fotoğrafa dayanıyorsa her satırın sahnesine bakılır: **etkinlik**
+  (seminer, konuşma, sunum, toplantı, tören, katılımcılar/öğrenciler, ziyaret…) gerçekleşmeyi
+  kanıtlar, satır `uygula` olarak sayılır; **mekân/altyapı/ekipman** (derslik, laboratuvar,
+  koridor, tuvalet, cihaz…; "toplantı salonu" gibi mekân adları dahil) süreç uygulaması değildir,
+  satır `planla` olarak kalır (`fotograf_mekan`); **belirsiz** sahne destekleyicidir, sayılmaz
+  (`fotograf_destekleyici`), OD3 belge ister. Sahne önce alıntıyı içeren `bidr describe` bloğundan
+  (yalnız "Görsel türü: fotoğraf"; "Etkinlik" alanı dolu ve duyuru/afiş değil → etkinlik; yoksa
+  sahne/betimleme sözcükleri, "Kalabalık: kişi yok" etkinliği dışlar), alıntı bir bloğa ait değilse
+  belgenin bütün blokları (hepsi aynıysa), blok yoksa altyazının kendi sözcükleri
+  (`bidr/audit/savunma.py` `sahne`). Fotoğraf dayanağı: tür `fotograf`, ya da görselli belgede (gömülü görsel işareti,
   `bidr describe` betimlemesi) ya da betimlemeden alınmış alıntının bir **fotoğraf altyazısı**
   olması (en çok 8 sözcük, yüklemle/noktayla bitmiyor, metinde kendi satırı; ör. tür
   `altyapi_listesi` olan "Bölüm Engelli Tuvaleti" fotoğraf derlemesi). İnceleme `kabul`ü

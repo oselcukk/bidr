@@ -140,7 +140,8 @@ def prepare(ws_root: Path, *, profile: str | None = "akademik_bolum", n: int = I
         rec = recs[did]
         sub = dataclasses.replace(ctx, cand={}, max_aday=len(crits))
         inputs, meta = fine_inputs(sub, did, {"kaba": {"secilen": crits},
-                                              "belge_bilgisi": rec.get("belge_bilgisi") or {}})
+                                              "belge_bilgisi": rec.get("belge_bilgisi") or {}},
+                                   komisyon=False)
         meta["ikinci_arama"] = {"olcutler": rows, "ince_parmak": first_pass_print(rec)}
         st["paket"] += 1
         st["yeni"] += _write_pkg(d, did, FINE, inputs, meta, backend, force=redo)
