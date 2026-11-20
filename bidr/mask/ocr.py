@@ -228,6 +228,14 @@ def find_pii(words: list[Word], rules: MaskRules):
     return Counter(k for k, _ in hits), [b for _, bs in hits for b in bs]
 
 
+def find_pii_typed(words: list[Word], rules: MaskRules):
+    """→ (Counter tür, kutular, kutu başına tür) — kutular `find_pii` ile aynı sırada."""
+    from collections import Counter
+    hits = pii_hits(words, rules)
+    return (Counter(k for k, _ in hits), [b for _, bs in hits for b in bs],
+            [k for k, bs in hits for _ in bs])
+
+
 def text_quality(words: list[Word]) -> tuple[int, float | None]:
     """(güvenilir kelime sayısı, harf ağırlıklı ortalama güven)."""
     good = 0

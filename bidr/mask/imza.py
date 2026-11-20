@@ -57,12 +57,24 @@ def is_strict_label(w: Word, line_len: int, line_words: list[str] | None = None,
     başlığında komşularından uzak); akış içindeki "… imza ile imzalanmıştır" (e-imza notu) değil."""
     if line_words is not None and not _line_ok(line_words):
         return False
+    if is_placeholder(w.text):
+        return False
     c = _core(w.text)
     for part in c.replace("/", " ").split():
         if (part in _STRICT or _STRICT_RE.match(part)) and (line_len <= 5 or isolated
                                                             or w.text.rstrip().endswith(":")):
             return True
     return False
+
+
+IMZA_LABEL = "[İMZA]"            # kapatılan imza bölgesine yazılan işaret (maskeleyicinin kendi yazısı)
+
+
+def is_placeholder(text: str) -> bool:
+    """Maskeleyicinin yazdığı yer tutucu (`[İMZA]`, `[TC_NO]` …; OCR köşeli ayraçlardan birini
+    düşürmüş olabilir): imza etiketi sayılmaz."""
+    t = text.strip()
+    return t.startswith("[") or t.endswith("]")
 
 
 def _isolated(ws: list[Word], j: int) -> bool:

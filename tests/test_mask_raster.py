@@ -135,8 +135,8 @@ def test_image_file_masked_and_rescanned(tmp_path):
     for v in (TC1, EMAIL, OGR):
         assert v not in txt
     assert "Karar" in txt                                    # içerik duruyor
-    # imza alanı karartıldı
-    assert out.convert("L").crop((300, 1130, 500, 1170)).getextrema()[1] < 60
+    # imza alanı karartıldı (içinde yalnız koyu gri "[İMZA]" etiketi; beyaz kâğıt kalmadı)
+    assert out.convert("L").crop((300, 1130, 500, 1170)).getextrema()[1] <= RA.LABEL_GRAY
     assert TC1 not in json.dumps(rep, ensure_ascii=False)
 
 
@@ -365,7 +365,7 @@ def test_docx_embedded_signature_image_covered_logo_kept(tmp_path):
     imgs = [Image.open(io.BytesIO(z.read(n))).convert("RGB") for n in sorted(z.namelist()) if "/media/" in n]
     by_size = {im.size: im for im in imgs}
     s_out = by_size[(400, 150)]
-    assert s_out.convert("L").crop((60, 50, 280, 90)).getextrema()[1] < 40      # imza karartıldı
+    assert s_out.convert("L").crop((60, 50, 280, 90)).getextrema()[1] <= RA.LABEL_GRAY   # imza karartıldı (etiketli)
     assert list(by_size[(300, 150)].getdata()) == list(logo.getdata())         # logo aynen
 
 

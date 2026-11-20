@@ -11,13 +11,14 @@ ya da mürekkepli sayfada güvenilir kelime çok az / güven çok düşük) dosy
 from __future__ import annotations
 
 import io
+import re
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import imza as IM
 from .detect import MaskRules
-from .ocr import OcrFailed, Word, find_pii, ink_ratio, ocr_available, ocr_words, text_quality
+from .ocr import OcrFailed, Word, find_pii_typed, ink_ratio, ocr_available, ocr_words, text_quality
 
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".webp"}
 SIG_DPI = 100                     # metin katmanlı sayfada imza çözümlemesi çözünürlüğü
@@ -30,6 +31,7 @@ INK_EMPTY = 0.004                 # bunun altı boş sayfa: OCR kalitesi aranmaz
 class ImageScan:
     bulgular: Counter = field(default_factory=Counter)
     kutular: list = field(default_factory=list)          # PII kutuları (görüntü pikseli)
+    turler: list = field(default_factory=list)           # kutu başına tür (yer tutucu etiketi için)
     imza: IM.Result | None = None
     taranamadi: str | None = None                        # neden (None: okundu)
     words: list = field(default_factory=list)
@@ -58,8 +60,7 @@ def _analyze_once(img, ppi, rules, ocr, extra_words, flag_unlabeled, need_text, 
             r.taranamadi = f"OCR çalışmadı: {str(e)[:120]}" if ocr_available() else "OCR yok (tesseract + tur dil verisi)"
             ow = []
         if ran:
-            c, boxes = find_pii(ow, rules)
-            r.bulgular, r.kutular = c, boxes
+            r.bulgular, r.kutular, r.turler = find_pii_typed(ow, rules)
             if need_text:
                 r.taranamadi = _quality_reason(img, ow)
         words += ow
@@ -100,12 +101,81 @@ def analyze_image(img, ppi: float, rules: MaskRules, *, ocr: bool = True, extra_
     return r
 
 
+def label_items(r: "ImageScan") -> list:
+    """Bir taramanın kapatılacak kutuları için (kutu, yer tutucu) çiftleri."""
+    from .detect import PLACEHOLDERS
+    out = [(b, PLACEHOLDERS.get(k, f"[{k.upper()}]")) for b, k in zip(r.kutular, r.turler)]
+    out += [(b, IM.IMZA_LABEL) for b in (r.imza.kapat if r.imza else [])]
+    return out
+
+
 def black_out(img, boxes, pad: float = 2.0):
     from PIL import ImageDraw
     out = img.convert("RGB") if img.mode not in ("RGB", "L") else img.copy()
     d = ImageDraw.Draw(out)
     for x0, y0, x1, y1 in boxes:
         d.rectangle([x0 - pad, y0 - pad, x1 + pad, y1 + pad], fill=0)
+    return out
+
+
+_FONT_FILES = ("DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+               "/System/Library/Fonts/Supplemental/Arial.ttf", "/Library/Fonts/Arial.ttf",
+               "C:/Windows/Fonts/arial.ttf", "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf")
+_FONT_PATH: list = []
+
+
+def _font(size: int):
+    """Türkçe harfli (İ) yazı tipi; bulunamazsa Pillow'un varsayılanı (yazı ASCII'ye çevrilir)."""
+    from PIL import ImageFont
+    if not _FONT_PATH:
+        found = None
+        for f in _FONT_FILES:
+            try:
+                ImageFont.truetype(f, 12)
+                found = f
+                break
+            except OSError:
+                continue
+        _FONT_PATH.append(found)
+    size = max(6, int(size))
+    if _FONT_PATH[0]:
+        return ImageFont.truetype(_FONT_PATH[0], size), True
+    try:
+        return ImageFont.load_default(size=size), False
+    except TypeError:                    # eski Pillow: ölçeklenemeyen bit eşlem yazı tipi
+        return ImageFont.load_default(), False
+
+
+# Yazı rengi: siyah kutunun içinde koyu gri. Okunur, ama parlaklığı imza çözümlemesinin "dolu blok"
+# eşiğinin (110) altında kaldığı için kutu yeniden taramada tek parça siyah blok sayılır (beyaz yazı
+# kutuyu delik deşik eder, harf araları imza vuruşu gibi görünürdü).
+LABEL_GRAY = 100
+
+
+def draw_labels(img, items, pad: float = 2.0):
+    """Kapatılan kutuların içine yer tutucu yazısı (`[İMZA]`, `[TC_NO]` …): okuyan (insan ya da
+    model) orada neyin kapatıldığını bilsin. Kutu yazıya dar gelirse yazı küçülür; yine sığmazsa
+    yazı kutudan taşmasın diye yazılmaz (kutu yine kapalıdır). `items`: [(kutu, yazı)]."""
+    from PIL import ImageDraw
+    if not items:
+        return img
+    out = img.convert("RGB") if img.mode not in ("RGB", "L") else img
+    d = ImageDraw.Draw(out)
+    ink = LABEL_GRAY if out.mode == "L" else (LABEL_GRAY,) * 3
+    for (x0, y0, x1, y1), text in items:
+        x0, y0, x1, y1 = x0 - pad, y0 - pad, x1 + pad, y1 + pad
+        w, h = x1 - x0, y1 - y0
+        size = int(min(h * 0.8, 48))
+        while size >= 6:
+            f, unicode_ok = _font(size)
+            if not unicode_ok:
+                text = text.replace("İ", "I")
+            bb = d.textbbox((0, 0), text, font=f)
+            if bb[2] - bb[0] <= w - 2 and bb[3] - bb[1] <= h - 1:
+                d.text((x0 + (w - (bb[2] - bb[0])) / 2 - bb[0], y0 + (h - (bb[3] - bb[1])) / 2 - bb[1]),
+                       text, font=f, fill=ink)
+                break
+            size = int(size * 0.85) if size > 7 else size - 1
     return out
 
 
@@ -226,16 +296,19 @@ def mask_image(src: Path, dst: Path, rules: MaskRules) -> dict:
     bolge = len(r.imza.kapat) if r.imza else 0
     ortusen = r.imza.ortusen_kelime if r.imza else 0
     out = img
+    labels = []
     for turn in range(3):                    # kapatma sonrası belirginleşen bulgu/vuruş için en çok iki tur daha
         boxes = list(r.kutular) + list(r.imza.kapat if r.imza else [])
         if not boxes:
             break
+        labels += label_items(r)
         out = black_out(out, boxes)
         if turn == 2:
             break
         r = scan_image_obj(out, rules)
         bolge += len(r.imza.kapat) if r.imza else 0
         ortusen += r.imza.ortusen_kelime if r.imza else 0
+    out = draw_labels(out, labels)
     save_like(out, dst, src.suffix)
     first = scan_image_obj(img, rules)       # önbellekli OCR: yalnız ilk tarama uyarısı
     uyarilar = [f"taranamadı: {first.taranamadi}"] if first.taranamadi else []
@@ -258,9 +331,12 @@ def scan_image(path: Path, rules: MaskRules) -> dict:
 
 # ---------------------------------------------------------------- PDF sayfaları (PyMuPDF)
 
+_PLACEHOLDER_RE = re.compile(r"\[(?:İMZA|IMZA|MASKELI|[A-Z_]{2,12})\]")
+
+
 def page_needs_ocr(page) -> tuple[bool, bool]:
     """→ (OCR gerekir mi, metin katmanı var mı). Metin yoksa ya da sayfanın ≥%40'ı tek görüntüyse."""
-    text = page.get_text("text").strip()
+    text = _PLACEHOLDER_RE.sub("", page.get_text("text")).strip()   # maskeleyicinin yazdığı etiketler sayılmaz
     has_text = len(text) >= 20
     big = 0.0
     try:
@@ -338,7 +414,8 @@ def scan_pdf_page(page, rules: MaskRules) -> dict:
     """Tek sayfa: OCR gerekiyorsa OCR + PII + imza; metin katmanlı sayfada imza etiketi ve grafik
     varsa imza çözümlemesi. → {"bulgular","kutular_pt","imza","taranamadi","ortusen"}."""
     need_ocr, has_text = page_needs_ocr(page)
-    out = {"bulgular": Counter(), "kutular": [], "imza": None, "taranamadi": None, "imza_kutular": []}
+    out = {"bulgular": Counter(), "kutular": [], "turler": [], "imza": None, "taranamadi": None,
+           "imza_kutular": []}
     if need_ocr:
         dpi = 300
         img = render(page, dpi)
@@ -346,6 +423,7 @@ def scan_pdf_page(page, rules: MaskRules) -> dict:
         r = analyze_image(img, dpi, rules, extra_words=tw, need_text=not has_text)
         out["bulgular"] = r.bulgular
         out["kutular"] = to_page_rects(page, r.kutular, dpi / 72.0)
+        out["turler"] = list(r.turler)
         out["taranamadi"] = r.taranamadi if not has_text else None
         out["imza"] = r.imza
         out["imza_kutular"] = to_page_rects(page, r.imza.kapat, dpi / 72.0) if r.imza else []
