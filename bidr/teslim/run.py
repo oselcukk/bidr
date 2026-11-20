@@ -48,9 +48,9 @@ RAPOR = "report.docx"
 DIZIN = "kanit-dizini"
 EKSIK = "EKSIK.txt"
 SUTUNLAR = ["olcut", "kanit_no", "od", "ad", "dosya", "pdf_kopya", "ozgun_baglanti", "baglanti_kaynagi",
-            "alinma_tarihi", "maskeleme", "durum"]
+            "alinma_tarihi", "maskeleme", "isaretler", "durum"]
 BASLIKLAR = ["Ölçüt", "Kanıt no", "OD", "Kanıt adı", "Paketteki dosya", "PDF kopyası", "Özgün bağlantı",
-             "Bağlantı kaynağı", "Alınma tarihi", "Maskeleme", "Durum"]
+             "Bağlantı kaynağı", "Alınma tarihi", "Maskeleme", "İşaretler", "Durum"]
 # bidr maskele çıktısı (bidr/mask/run.py; yalnız okunur)
 MASKE_RAPOR, MASKE_KLASOR = "maskeleme-raporu.json", "evidence-maskeli"
 MASKE_TAMAM, MASKE_ELLE, MASKE_YOK = "tamam", "eksik: elle bakılmalı", "yapılmadı"
@@ -269,7 +269,7 @@ def build(ws: Path, out: Path | None = None, *, docx_path: Path | None = None, t
         ad = (r.get("ad") or "").strip() or _ad_sade(k.ad, k.baglanti)
         row = {"olcut": k.olcut, "kanit_no": no, "od": k.od, "ad": ad, "dosya": "", "pdf_kopya": "",
                "ozgun_baglanti": "", "baglanti_kaynagi": "", "alinma_tarihi": "", "maskeleme": "",
-               "durum": "tamam", "_web": False}
+               "isaretler": (r.get("isaretler") or "").strip(), "durum": "tamam", "_web": False}
         res.satirlar.append(row)
         if f is None:
             row["durum"] = f"eksik: {neden}"
