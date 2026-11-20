@@ -96,6 +96,9 @@ def mask_and_check(src: Path, dst: Path, rules: MaskRules, eng: str) -> dict:
         rec["imza_ortusen_kelime"] = res.get("ortusen_kelime", 0)
     if after.get("imza_elle"):
         rec["imza_elle"] = after["imza_elle"]
+    if after.get("imza_metin"):
+        rec["imza_metin_elle"] = len(after["imza_metin"])         # metinle örtüştüğü için kapatılmayan
+        rec["imza_metin_yer"] = after["imza_metin"]
     if taranamadi:
         rec["taranamadi"] = taranamadi
     if kalan or sorunlar or taranamadi:
@@ -187,7 +190,8 @@ def run(ws_root: Path, *, evidence: Path | None = None, out: Path | None = None,
         "ozet": {"dosya": len(kayitlar), **dict(sorted(durumlar.items())),
                  **{k: _c(v) for k, v in toplam.items()},
                  "imza_bolgesi": toplam_imza["bolge"], "imza_ortusen_kelime": toplam_imza["ortusen_kelime"],
-                 "imza_elle_dosya": sum(1 for r in kayitlar if r.get("imza_elle"))},
+                 "imza_elle_dosya": sum(1 for r in kayitlar if r.get("imza_elle")),
+                 "imza_metinle_ortusen_elle": sum(r.get("imza_metin_elle", 0) for r in kayitlar)},
         "ocr": raster_ocr_available(),
         "yayimlanamaz": yayimlanamaz, "uyarilar": uyarilar, "dosyalar": kayitlar,
         "maskeli_dizin": str(index_out) if index_out else None,

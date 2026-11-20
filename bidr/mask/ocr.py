@@ -58,14 +58,14 @@ def ocr_available() -> bool:
         return False
 
 
-def _run_tesseract(png: bytes) -> str:
+def _run_tesseract(png: bytes, psm: str | None = None) -> str:
     from bidr.ingest.ocr import OCR_LANGS, OCR_TIMEOUT, _SLOTS, _decode, _env, _psm, _tempdir, _tool_error
     with _tempdir("bidr-maske-") as td:
         src = Path(td) / "s.png"
         src.write_bytes(png)
         base = Path(td) / "o"
         with _SLOTS:
-            r = subprocess.run(["tesseract", str(src), str(base), "-l", OCR_LANGS, "--psm", _psm(), "tsv"],
+            r = subprocess.run(["tesseract", str(src), str(base), "-l", OCR_LANGS, "--psm", psm or _psm(), "tsv"],
                                capture_output=True, timeout=OCR_TIMEOUT, env=_env())
         out = base.with_suffix(".tsv")
         if r.returncode != 0 or not out.exists():
@@ -91,19 +91,20 @@ def parse_tsv(tsv: str) -> list[Word]:
     return words
 
 
-def ocr_words(img) -> list[Word]:
-    """PIL görüntüsü → kelimeler (piksel koordinatı). Aynı görüntü için önbellekli."""
+def ocr_words(img, psm: str | None = None) -> list[Word]:
+    """PIL görüntüsü → kelimeler (piksel koordinatı). Aynı görüntü için önbellekli. `psm`: tesseract
+    sayfa bölme kipi (varsayılan: ingest'inki; küçük kırpıntı için "6" tek blok)."""
     if not ocr_available():
         raise OcrFailed("tesseract ya da tur+eng dil verisi yok")
     buf = io.BytesIO()
     im = img if img.mode in ("L", "RGB") else img.convert("RGB")
     im.save(buf, format="PNG")
     png = buf.getvalue()
-    key = hashlib.sha1(png).hexdigest()
+    key = hashlib.sha1(png).hexdigest() + (psm or "")
     if key in _CACHE:
         _CACHE.move_to_end(key)
         return _CACHE[key]
-    words = parse_tsv(_run_tesseract(png))
+    words = parse_tsv(_run_tesseract(png, psm))
     _CACHE[key] = words
     while len(_CACHE) > _CACHE_MAX:
         _CACHE.popitem(last=False)

@@ -13,8 +13,12 @@ katmanı). Çıktı: kapatılacak kutular ve "elle bakılmalı" kararı.
     Başkan, Dekan, Prof., Dr. …) yakınındaki aday kapatılır; etiketsiz aday varsa sayfa
     "imza: elle bakılmalı" olur (`kesin=False`).
 
-Yanlış karartma ölçüsü: kapatılan kutularla en az %40 örtüşen güvenilir kelime sayısı (etiketler
-hariç) `ortusen_kelime` olarak döner.
+Yanlış karartma koruması: her kapatma adayının içine en az %40'ı düşen okunabilir basılı kelime
+(etiketler hariç; güvenli ya da metin boyunda düşük güvenli) sayılır ve adaydaki mürekkebin kelime
+kutularına düşen payı ölçülür. `MAX_ORTUSEN`'den çok kelime ya da (≥ 2 kelimede) `MAX_METIN_PAYI`
+üstü metin payı varsa aday KARARTILMAZ (belge bilgisi kaybolmasın; imza açık kalır), bölge
+"imza: elle bakılmalı" olur (`elle_bolge`, `kesin=False`). Kapatılan adaylarla
+örtüşen kelime sayısı `ortusen_kelime` olarak döner; her adayın ölçüsü `olcum`'dadır.
 """
 from __future__ import annotations
 
@@ -115,14 +119,18 @@ class Result:
     etiketsiz: int = 0                              # etiketsiz imza benzeri aday
     etiket: int = 0                                 # bulunan imza etiketi
     ortusen_kelime: int = 0                         # kapatılan alanla örtüşen güvenilir kelime
+    elle_bolge: int = 0                             # metinle çok örtüştüğü için kapatılmayan imza bölgesi
+    olcum: list = field(default_factory=list)       # aday başına (örtüşen kelime, kapatıldı mı)
+    dogrulama: list = field(default_factory=list)   # kapatılan kutu başına yeniden OCR'da okunan kelime
 
     @property
     def kesin(self) -> bool:
-        return self.etiketsiz == 0
+        return self.etiketsiz == 0 and self.elle_bolge == 0
 
 
-def _binary(img, words_a, W, H):
-    """→ (mürekkep, renkli mürekkep) ikili görüntüler (255 = mürekkep)."""
+def _binary(img, words_a, W, H, raw: list | None = None):
+    """→ (mürekkep, renkli mürekkep) ikili görüntüler (255 = mürekkep). `raw` verilirse kelime kutuları
+    silinmeden önceki mürekkep (basılı metin dahil) ona eklenir."""
     from PIL import Image, ImageChops, ImageDraw, ImageFilter
     rgb = img.convert("RGB").resize((W, H), Image.BILINEAR)
     lum = rgb.convert("L")
@@ -137,6 +145,8 @@ def _binary(img, words_a, W, H):
     solid = blk.filter(ImageFilter.MinFilter(5)).filter(ImageFilter.MaxFilter(9))
     dark = ImageChops.subtract(dark, solid)
     colored = ImageChops.subtract(colored, solid)
+    if raw is not None:
+        raw.append(ImageChops.lighter(dark, colored))
     d = ImageDraw.Draw(dark)
     hs = sorted(w.h for w in words_a if _confident(w))
     med = hs[len(hs) // 2] if hs else None
@@ -256,21 +266,37 @@ def _inter(a, b) -> bool:
     return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
 
 
+# Kapatma adayının basılı metinle örtüşme sınırları (gerçek veride ölçüldü, docs/PRIVACY.md): gerçek
+# imza kutusu altındaki ad/unvanla en çok 1-3 kelime örtüşür ve mürekkebinin çoğu kelime dışındadır;
+# yanlış adaylar (renkli basılı yazı, başlık bloğu, duyuru metni) çok kelimeyle örtüşür ya da
+# mürekkebinin çoğu kelime kutularındadır.
+MAX_ORTUSEN = 3                    # bundan çok okunabilir kelime: kapatılmaz
+MAX_METIN_PAYI = 0.5               # ≥ 2 kelimede, mürekkebin bu payı kelime kutularındaysa: kapatılmaz
+
 TOP_IGNORE = 0.15                  # sayfa başlığı (logo): etiketsiz aday burada "elle bakılmalı" yapmaz
 
 
 def analyze(img, words: list[Word], ppi: float, *, flag_unlabeled: bool = True, all_zone: bool = False,
-            ink_regions: list | None = None) -> Result:
+            ink_regions: list | None = None, max_ortusen: int | None = None,
+            max_pay: float | None = None) -> Result:
     """`img`: PIL görüntüsü; `words`: aynı görüntünün piksel koordinatında; `ppi`: inç başına piksel.
     `flag_unlabeled`: etiketsiz adaylar "elle bakılmalı" sayılsın mı (taranmış sayfa/görsel: evet).
     `all_zone`: görüntünün tamamı etiket yakını sayılır. `ink_regions`: verilirse mürekkep yalnız bu
     kutularda aranır (metin katmanlı PDF: yalnız küçük gömülü görseller; vektör çizim/akış şeması
-    ve filigran dışarıda kalır)."""
+    ve filigran dışarıda kalır). `max_ortusen`: örtüşen okunabilir kelime üst sınırı (varsayılan
+    `MAX_ORTUSEN`); üstündeki ya da (≥ 2 kelimede) mürekkebinin `max_pay`'ı kelime kutularında olan
+    aday kapatılmaz, `elle_bolge` olur."""
     from PIL import Image, ImageDraw
+    if max_ortusen is None:
+        max_ortusen = MAX_ORTUSEN
+    if max_pay is None:
+        max_pay = MAX_METIN_PAYI
     k = A_PPI / float(ppi)                  # girdi → çözümleme ölçeği
     W, H = max(1, int(img.width * k)), max(1, int(img.height * k))
     wa = [Word(w.text, w.conf, w.x0 * k, w.y0 * k, w.x1 * k, w.y1 * k, w.line) for w in words]
-    ink, colored = _binary(img, wa, W, H)
+    raw: list = []
+    ink, colored = _binary(img, wa, W, H, raw)
+    raw_ink = raw[0]
     if ink_regions is not None:
         keep = Image.new("L", (W, H), 0)
         dk = ImageDraw.Draw(keep)
@@ -364,15 +390,58 @@ def analyze(img, words: list[Word], ppi: float, *, flag_unlabeled: bool = True, 
             res.etiketsiz += 1
 
     labels = set(strict + role)
-    for j, w in enumerate(wa):
-        if j in labels or not (w.conf >= 70 and sum(ch.isalpha() for ch in w.text) >= 3):
-            continue
-        area = max(1.0, (w.x1 - w.x0) * (w.y1 - w.y0))
-        if any(_overlap(w.box, cb) / area >= 0.4 for cb in covers):
-            res.ortusen_kelime += 1
+    hs = sorted(w.h for w in wa if _confident(w))
+    med = hs[len(hs) // 2] if hs else None
+    readable = [w for j, w in enumerate(wa) if j not in labels and (readable_word(w) or _texty(w, med))]
+    kept, hit = [], set()
+    for cb in covers:
+        ws = covered_words(readable, cb)
+        frac = _text_ink_frac(raw_ink, cb, [readable[j] for j in ws])
+        ok = len(ws) <= max_ortusen and not (len(ws) >= 2 and frac >= max_pay)
+        res.olcum.append((len(ws), round(frac, 3), ok))
+        if ok:
+            kept.append(cb)
+            hit.update(ws)
+        else:
+            res.elle_bolge += 1
+            res.etiketli -= 1
+    res.ortusen_kelime = len(hit)
     res.kapat = [(max(0, a / k), max(0, b / k), min(img.width, c / k), min(img.height, d / k))
-                 for a, b, c, d in covers]
+                 for a, b, c, d in kept]
     return res
+
+
+def readable_word(w: Word) -> bool:
+    """Okunabilir basılı kelime: güven ≥ 70 ve en az üç harf/rakam (tarih, sayı dahil)."""
+    return w.conf >= 70 and sum(ch.isalnum() for ch in w.text) >= 3
+
+
+def _text_ink_frac(raw_ink, box, words: list[Word]) -> float:
+    """Kutudaki mürekkebin (basılı metin dahil) okunabilir kelime kutularına düşen payı."""
+    from PIL import Image, ImageChops, ImageDraw
+    x0, y0 = max(0, int(box[0])), max(0, int(box[1]))
+    x1, y1 = min(raw_ink.width, int(box[2]) + 1), min(raw_ink.height, int(box[3]) + 1)
+    if x1 <= x0 or y1 <= y0:
+        return 0.0
+    crop = raw_ink.crop((x0, y0, x1, y1))
+    total = crop.histogram()[255]
+    if not total or not words:
+        return 0.0
+    m = Image.new("L", crop.size, 0)
+    d = ImageDraw.Draw(m)
+    for w in words:
+        d.rectangle([w.x0 - x0, w.y0 - y0, w.x1 - x0, w.y1 - y0], fill=255)
+    return ImageChops.multiply(crop, m).histogram()[255] / float(total)
+
+
+def covered_words(words: list[Word], box) -> list[int]:
+    """`box`'un içine alanının en az %40'ı düşen kelimelerin sırası."""
+    out = []
+    for j, w in enumerate(words):
+        area = max(1.0, (w.x1 - w.x0) * (w.y1 - w.y0))
+        if _overlap(w.box, box) / area >= 0.4:
+            out.append(j)
+    return out
 
 
 def leftover_ink(img, words: list[Word], ppi: float) -> Result:

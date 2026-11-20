@@ -66,7 +66,60 @@ def _analyze_once(img, ppi, rules, ocr, extra_words, flag_unlabeled, need_text, 
         words += ow
     r.words = words
     r.imza = IM.analyze(img, words, ppi, flag_unlabeled=flag_unlabeled, all_zone=all_zone)
+    if ran:
+        verify_covers(r.imza, lambda b: crop_for_ocr(img, ppi, b))
     return r, ran
+
+
+VERIFY_PPI = 300                  # kapatma adayı yeniden OCR çözünürlüğü
+
+
+def crop_for_ocr(img, ppi: float, box):
+    """Görüntüden kutu kırpıntısı, OCR için ~300 ppi'ye büyütülmüş."""
+    from PIL import Image
+    x0, y0, x1, y1 = (int(max(0, box[0])), int(max(0, box[1])), int(min(img.width, box[2])),
+                      int(min(img.height, box[3])))
+    c = img.crop((x0, y0, max(x0 + 1, x1), max(y0 + 1, y1)))
+    f = VERIFY_PPI / float(ppi)
+    if f > 1.2:
+        c = c.resize((max(1, int(c.width * f)), max(1, int(c.height * f))), Image.LANCZOS)
+    return c
+
+
+def box_text_words(crop) -> int:
+    """Kırpıntıdaki okunabilir basılı kelime (imza/unvan etiketleri ve yer tutucular hariç)."""
+    try:
+        ws = ocr_words(crop, psm="6")
+    except Exception:
+        return 0
+    n = 0
+    for w in ws:
+        if not IM.readable_word(w) or IM.is_placeholder(w.text):
+            continue
+        if IM.is_role_label(w) or IM.is_strict_label(w, 1):
+            continue
+        n += 1
+    return n
+
+
+def verify_covers(res, crop_fn, limit: int | None = None) -> None:
+    """Kapatılacak her imza kutusunu karartmadan önce yeniden OCR'la: kutuda `MAX_ORTUSEN`'den çok
+    okunabilir basılı kelime (gövde metni) varsa kutu kapatılmaz, bölge "elle bakılmalı" olur.
+    Sayfa OCR'ı imza vuruşunun üstündeki metni düşük güvenle okuyup saymamış olabilir; kırpıntı
+    OCR'ı bunu yakalar. OCR yoksa çağrılmaz. `res.dogrulama`: kutu başına sayılan kelime."""
+    if res is None or not res.kapat or not ocr_available():
+        return
+    limit = IM.MAX_ORTUSEN if limit is None else limit
+    keep = []
+    for b in res.kapat:
+        n = box_text_words(crop_fn(b))
+        res.dogrulama.append(n)
+        if n > limit:
+            res.elle_bolge += 1
+            res.etiketli -= 1
+        else:
+            keep.append(b)
+    res.kapat = keep
 
 
 def _unrotate(box, how: str, W: int, H: int):
@@ -322,9 +375,14 @@ def scan_image(path: Path, rules: MaskRules) -> dict:
     imza, sor = [], []
     if r.imza and (r.imza.etiketli or r.imza.etiketsiz):
         imza.append("görsel")
-    if r.imza and not r.imza.kesin:
+    if r.imza and r.imza.etiketsiz:
         sor.append("imza: elle bakılmalı")
-    return {"bulgular": r.bulgular, "sorunlar": sor, "imza": imza,
+    metin = []
+    if r.imza and r.imza.elle_bolge:
+        from .formats import IMZA_METIN_SORUN
+        sor.append(IMZA_METIN_SORUN)
+        metin.append("görsel")
+    return {"bulgular": r.bulgular, "sorunlar": sor, "imza": imza, "imza_metin": metin,
             "taranamadi": [f"görsel: {r.taranamadi}"] if r.taranamadi else [],
             "imza_aday": r.imza.etiketli if r.imza else 0}
 
@@ -403,6 +461,14 @@ def has_label_words(words: list[Word]) -> bool:
     return False
 
 
+def _render_clip(page, box, scale: float):
+    """Metin katmanlı sayfada kutunun (görüntü pikseli, `scale` ölçeği) 300 dpi görüntüsü."""
+    from PIL import Image
+    r = to_page_rects(page, [box], scale)[0] & page.rect
+    pix = page.get_pixmap(dpi=VERIFY_PPI, clip=r)
+    return Image.open(io.BytesIO(pix.tobytes("png"))).convert("RGB")
+
+
 def to_page_rects(page, boxes, scale: float):
     """Görüntü pikseli kutuları → sayfa (döndürülmemiş) koordinatı."""
     import pymupdf
@@ -434,6 +500,7 @@ def scan_pdf_page(page, rules: MaskRules) -> dict:
         if has_label_words(tw):
             img = render(page, SIG_DPI)
             res = IM.analyze(img, tw, SIG_DPI, flag_unlabeled=False, ink_regions=regions)
+            verify_covers(res, lambda b: _render_clip(page, b, SIG_DPI / 72.0))
             out["imza"] = res
             out["imza_kutular"] = to_page_rects(page, res.kapat, SIG_DPI / 72.0)
     return out

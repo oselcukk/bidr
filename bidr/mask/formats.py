@@ -26,6 +26,9 @@ from pathlib import Path
 from .detect import PLACEHOLDERS, MaskRules, detect, mask_text
 from .imza import IMZA_LABEL
 
+# Basılı metinle çok örtüşen imza bölgesi karartılmaz (belge bilgisi kaybolmasın): elle bakılmalı.
+IMZA_METIN_SORUN = "imza: elle bakılmalı — basılı metinle örtüşen imza kapatılmadı"
+
 PDF_EXT = {".pdf"}
 DOCX_EXT = {".docx"}
 XLSX_EXT = {".xlsx", ".xlsm"}
@@ -543,7 +546,8 @@ def scan_pdf(path: Path, rules: MaskRules) -> dict:
         if s not in imza:
             imza.append(s)
     return {"bulgular": found, "sorunlar": sorted(set(sorunlar)), "imza": imza,
-            "taranamadi": ras["taranamadi"], "imza_aday": ras["imza_aday"], "imza_elle": ras["imza_elle"]}
+            "taranamadi": ras["taranamadi"], "imza_aday": ras["imza_aday"], "imza_elle": ras["imza_elle"],
+            "imza_metin": ras["imza_metin"]}
 
 
 def _render_pdftoppm(path: Path, pageno: int, dpi: int):
@@ -571,7 +575,8 @@ def _scan_pdf_raster(path: Path, rules: MaskRules, reader, page_counts, page_tex
     → {"ek": metin katmanının ötesinde OCR bulguları, "sorunlar", "imza", "taranamadi",
     "imza_aday": kapatılmamış etiketli imza adayı, "imza_elle": etiketsiz aday sayfaları}."""
     from . import raster
-    out = {"ek": Counter(), "sorunlar": [], "imza": [], "taranamadi": [], "imza_aday": 0, "imza_elle": []}
+    out = {"ek": Counter(), "sorunlar": [], "imza": [], "taranamadi": [], "imza_aday": 0, "imza_elle": [],
+           "imza_metin": []}
     fitz = _fitz()
 
     def take(i, ocr_c: Counter, res, tar):
@@ -584,8 +589,10 @@ def _scan_pdf_raster(path: Path, rules: MaskRules, reader, page_counts, page_tex
             if res.etiketli or res.etiketsiz:
                 out["imza"].append(f"s.{i + 1}")
             out["imza_aday"] += res.etiketli
-            if not res.kesin:
+            if res.etiketsiz:
                 out["imza_elle"].append(f"s.{i + 1}")
+            if res.elle_bolge:
+                out["imza_metin"].append(f"s.{i + 1}")
 
     if fitz is not None:
         doc = fitz.open(str(path))
@@ -608,6 +615,8 @@ def _scan_pdf_raster(path: Path, rules: MaskRules, reader, page_counts, page_tex
             take(i, r.bulgular, r.imza, r.taranamadi)
     if out["imza_elle"]:
         out["sorunlar"].append("imza: elle bakılmalı (" + ", ".join(out["imza_elle"]) + ")")
+    if out["imza_metin"]:
+        out["sorunlar"].append(IMZA_METIN_SORUN + " (" + ", ".join(out["imza_metin"]) + ")")
     return out
 
 
@@ -815,7 +824,7 @@ def _mask_media_parts(pkg, rules: MaskRules, *, imza_label: bool) -> dict:
 def _scan_media(path: Path, rules: MaskRules, imza_label: bool) -> dict:
     """Bağımsız tarama: docx içindeki görseller (OCR varsa)."""
     from . import raster
-    out = {"bulgular": Counter(), "imza_aday": 0, "uyari": None}
+    out = {"bulgular": Counter(), "imza_aday": 0, "imza_metin": 0, "uyari": None}
     with zipfile.ZipFile(path) as z:
         names = [n for n in z.namelist() if n.startswith("word/media/")
                  and Path(n).suffix.lower() in raster.IMAGE_EXT]
@@ -835,6 +844,7 @@ def _scan_media(path: Path, rules: MaskRules, imza_label: bool) -> dict:
             out["bulgular"].update(r.bulgular)
             if r.imza:
                 out["imza_aday"] += r.imza.etiketli
+                out["imza_metin"] += r.imza.elle_bolge
     return out
 
 
@@ -938,9 +948,12 @@ def scan_docx(path: Path, rules: MaskRules) -> dict:
     found, sorunlar, media, body = _scan_ooxml(path, rules)
     imza = ["belge"] if media and _has_imza(body) else []
     m = _scan_media(path, rules, _has_imza_label(body)) if media else {"bulgular": Counter(), "imza_aday": 0,
-                                                                       "uyari": None}
+                                                                       "imza_metin": 0, "uyari": None}
     found.update(m["bulgular"])
+    if m["imza_metin"]:
+        sorunlar = sorted(set(sorunlar) | {IMZA_METIN_SORUN + " (gömülü görsel)"})
     return {"bulgular": found, "sorunlar": sorunlar, "imza": imza, "imza_aday": m["imza_aday"],
+            "imza_metin": ["gömülü görsel"] if m["imza_metin"] else [],
             "uyarilar": [m["uyari"]] if m["uyari"] else []}
 
 

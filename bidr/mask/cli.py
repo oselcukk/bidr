@@ -2,7 +2,7 @@
 
 - teslim/yayın kopyası: `bidr maskele -w WS [--evidence DIR] [--out DIR] [--motor …] [--ad-listesi DOSYA]`
 - model öncesi kaynak maskeleme: `bidr maskele --kaynak BÖLÜM_KLASÖRÜ --out MASKELİ_KOPYA [-w WS]
-  [--motor …] [--ad-listesi DOSYA] [--is N] [--rapor DOSYA]`
+  [--motor …] [--ad-listesi DOSYA] [--is N] [--rapor DOSYA] [--siki]`
 """
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ def _run_source(args) -> int:
     try:
         r = run_source(Path(args.kaynak), Path(args.out), rules=_rules(args, ws), engine=args.motor,
                        workers=max(1, args.is_), report=Path(args.rapor) if args.rapor else None,
-                       progress=progress)
+                       progress=progress, siki=args.siki)
     except (FileNotFoundError, MaskRunError, MaskError, ValueError) as e:
         print(f"HATA {e}", file=sys.stderr)
         return 2
@@ -44,6 +44,8 @@ def _run_source(args) -> int:
         print(f"uyarı: {u}")
     print(json.dumps(r["ozet"], ensure_ascii=False, indent=1))
     print(f"rapor: {r['rapor']}")
+    if r.get("siki_klasor"):
+        print(f"--siki: {len(r['ayrilan'])} dosya maskeli kopyanın dışına ayrıldı: {r['siki_klasor']}")
     if r["elle_bakilmali"]:
         print(f"ELLE BAKILMALI ({len(r['elle_bakilmali'])}):")
         for y in r["elle_bakilmali"]:
@@ -97,6 +99,9 @@ def register(sub):
                                                "--kaynak modu: maskeli kopya klasörü (zorunlu)")
     p.add_argument("--rapor", default=None,
                    help="--kaynak modu: rapor yolu (varsayılan <out>.maskeleme-raporu.json, çıktının dışında)")
+    p.add_argument("--siki", action="store_true",
+                   help="--kaynak modu: maskelemesi eksik kalan/maskelenemeyen dosyalar maskeli kopyaya girmez; "
+                        "<out>.elle-bakilmali/ klasörüne ayrılır ve raporda listelenir (varsayılan: kopyada kalır)")
     p.add_argument("--is", dest="is_", type=int, default=1, help="--kaynak modu: paralel işçi sayısı")
     p.add_argument("--ilerleme", action="store_true", help="--kaynak modu: dosya başına ilerleme yaz")
     p.add_argument("--motor", choices=("auto", "pymupdf", "pypdf"), default="auto",

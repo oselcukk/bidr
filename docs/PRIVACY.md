@@ -55,7 +55,7 @@ Ayrıca iş paketlerine giren metin için `privacy.mask_before_model` vardır (b
 | Türkiye telefon numarası `[TELEFON]` (kurum santrali dahil) | adres, doğum tarihi, not/puan, unvan, imza sirküsü dışındaki kişisel bilgiler |
 | öğrenci no `[OGRENCI_NO]` (yıl önekli 9-10 hane ya da "öğrenci no: …" bağlamı) | düz metinde biçimi beklenmedik numaralar (kural tabanlı tespitin kaçırdıkları) |
 | imza `[İMZA]` (imza etiketi/unvan bloğu yakınındaki mürekkep) | etiketsiz imza (elle bakılmalı listesine girer), paraf |
-| belge üst verisi, yorumlar, izlenen değişiklikler, gömülü ekler | desteklenmeyen biçimlerin içi (eski `.doc`/`.xls`, `.pptx`, `.msg`, `.gif`/`.heic` …: olduğu gibi kopyalanır, elle bakılmalı) |
+| belge üst verisi, yorumlar, izlenen değişiklikler, gömülü ekler | desteklenmeyen biçimlerin içi (`.ppt`/`.pptx`, `.gif`/`.heic` …; araç yoksa eski `.doc`/`.msg`: olduğu gibi kopyalanır, elle bakılmalı) |
 
 Belge kimliği bilgisi korunur: evrak sayısı (`Sayı: E-…`), tarih, karar/toplantı no, ders kodu,
 sayfa no, doküman/form kodu (`FR-…`), DOI/URL içindeki sayılar maskelenmez. Yıl önekli öğrenci no
@@ -73,7 +73,7 @@ bir kimlik no/telefon/imza bulunduğunu bilir ("belge imzalı") ama değeri gör
 
 ```
 bidr maskele --kaynak BÖLÜM_KLASÖRÜ --out MASKELİ_KOPYA [-w WS] [--ad-listesi DOSYA]
-             [--motor auto|pymupdf|pypdf] [--is N] [--rapor DOSYA] [--ilerleme]
+             [--motor auto|pymupdf|pypdf] [--is N] [--rapor DOSYA] [--ilerleme] [--siki]
 ```
 
 - Kaynak klasör **salt okunurdur**; hiçbir dosyasına yazılmaz. `--out` kaynakla iç içe olamaz; bidr'in
@@ -86,6 +86,16 @@ bidr maskele --kaynak BÖLÜM_KLASÖRÜ --out MASKELİ_KOPYA [-w WS] [--ad-liste
   `eposta@maskeli.invalid` olur, çünkü `[EPOSTA]` geçerli adres değildir), `.7z`/`.rar` → yazılamadığı
   için `<ad>.7z.zip`. Üye yolları (`arsiv.zip!/alt/belge.pdf`) ingest'in okuduğu biçimde kalır.
   Bozuk/şifreli kap olduğu gibi kopyalanır (`hata`); şifreli üye yeni kaba alınamaz (`hata`).
+- **Eski biçimler** geçici klasörde yeni biçime çevrilip maskelenir; maskeli kopyada yeni
+  uzantısıyla durur (rapor: `dosya` özgün ad, `hedef` yeni ad, `ozgun_bicim`, `donusum`):
+  `.doc` → `.docx` (macOS `textutil`; textutil'in Word belgesi olarak tanımadığı dosya çevrilmez),
+  `.xls` → `.xlsx` (xlrd ile okunur, openpyxl ile yazılır: hücre değerleri, tarihler, sayfa adları,
+  birleşik hücreler; formül hesaplanmış değer olarak, biçim/grafik/görsel taşınmaz), `.msg` → `.eml`
+  (`extract-msg` kuruluysa: başlıklar, gövde, ekler; sonra `.eml` gibi). Uzantısı `.doc`/`.xls` olup
+  içi docx/xlsx ya da HTML olan dosyalar doğru biçime yönlendirilir. Çevrilemeyen (Windows/Linux'ta
+  textutil yok, `extract-msg` yok, `.ppt`/`.pptx` — LibreOffice gerekir —, bozuk dosya) olduğu gibi
+  kopyalanır, `desteklenmiyor` + anlaşılır neden, elle bakılmalı. Çevrilen biçimde yazı biçimi ve
+  gömülü görseller kaybolabilir (uyarı); özgün dosya kaynakta durur.
 - **Desteklenmeyen biçimler** olduğu gibi kopyalanır (`desteklenmiyor`, elle bakılmalı) — içleri
   maskelenmemiştir. Gizli/sistem dosyaları (`.DS_Store`, `~$` kilit dosyaları, `__MACOSX`) ingest gibi
   atlanır, kopyalanmaz.
@@ -96,10 +106,18 @@ bidr maskele --kaynak BÖLÜM_KLASÖRÜ --out MASKELİ_KOPYA [-w WS] [--ad-liste
   (`hata`) dosyanın **özgünü** ağaçta kalır. Bunlar raporda `elle_bakilmali: true` ile listelenir;
   komut 1 ile çıkar ve listeyi yazar. Modele vermeden önce bu liste gözden geçirilmelidir (gerekirse
   dosya kopyadan elle çıkarılır ya da elle karartılır).
+- **`--siki`**: elle bakılmalı dosyalar (`basarisiz`, `taranamadi`, `hata`, `desteklenmiyor`) maskeli
+  kopyaya **girmez**; kopyanın dışında `<out>.elle-bakilmali/` klasörüne aynı göreli yolla konur
+  (kap üyesi: `<kap adı>/<üye yolu>`; kaptan çıkarılır, e-posta ekinin yerine kısa bir
+  `<ek>.ayrildi.txt` notu konur). Raporda kayıt başına `ayrildi`, ayrıca `ayrilan` listesi ve
+  `ozet.ayrilan`. Hiçbir dosya silinmez; yalnız yeri değişir. Varsayılan (bayraksız) davranış
+  "kanıt düşmez": hepsi kopyada kalır.
 - **Rapor**: `<out>.maskeleme-raporu.json` (ya da `--rapor`), **çıktı klasörünün dışında**. Dosya
   başına `dosya` (özgün yol), `hedef` (maskeli yol), `bicim`, `durum`
   (tamam/basarisiz/taranamadi/hata/desteklenmiyor/kap), `elle_bakilmali`, `neden`,
-  `bulunan`/`maskelenen`/`kalan` (tür → sayı), `imza_bolgesi`; özet ve `elle_bakilmali` listesi.
+  `bulunan`/`maskelenen`/`kalan` (tür → sayı), `imza_bolgesi`, `imza_ortusen_kelime`,
+  `imza_metin_elle` (metinle örtüştüğü için kapatılmayan imza sayfası/görseli); özet
+  (`eski_bicim_cevrilen`, `imza_metinle_ortusen_elle`, `--siki` ile `ayrilan`) ve `elle_bakilmali` listesi.
   Değerlerin kendisi yazılmaz, ama **özgün dosya adları** (kişi adı içerebilir) yazılır: rapor
   modele verilmez.
 - `-w WS` verilirse `config.yaml`'daki `privacy.maskeleme` kuralları (ad listesi, desenler) kullanılır;
@@ -193,7 +211,25 @@ Model kullanılmaz; basit görüntü işleme (Pillow):
    olmaktan çıkarır, harf araları yeniden taramada imza vuruşu sanılırdı. Maskeleyicinin yazdığı
    köşeli ayraçlı işaretler imza etiketi sayılmaz.
 
-Yanlış karartma ölçüsü: kapatılan imza kutularıyla ≥%40 örtüşen güvenilir kelime sayısı raporda
+7. **Basılı metinle örtüşen aday karartılmaz.** Her kapatma adayı için içine alanının ≥%40'ı düşen
+   okunabilir basılı kelime (güven ≥ 70 ya da metin satırı boyunda düşük güvenli, en az üç harf/rakam;
+   imza/unvan etiketleri hariç) sayılır ve adaydaki mürekkebin bu kelime kutularına düşen payı
+   ölçülür. **3'ten çok kelime** ya da **en az 2 kelime ve mürekkebin ≥%50'si kelimelerde** ise aday
+   kapatılmaz (belge bilgisi kaybolmasın; imza açık kalır): sayfa/görsel **"imza: elle bakılmalı —
+   basılı metinle örtüşen imza kapatılmadı"** olur (durum `basarisiz`, raporda `imza_metin_elle`).
+8. **Yeniden OCR doğrulaması**: OCR varsa kapatılacak her kutu karartılmadan önce ~300 ppi
+   kırpıntı olarak yeniden OCR'lanır (sayfa OCR'ı imza vuruşunun altındaki yazıyı düşük güvenle
+   okuyup saymamış olabilir); kutuda 3'ten çok okunabilir kelime çıkarsa kutu yine kapatılmaz,
+   elle bakılmalı olur.
+
+Eşikler gerçek bölüm verisinde ölçüldü (imzalı 150 belge, aday kırpıntılarına tek tek bakılarak):
+gerçek imza kutuları altındaki ad/unvanla 0-2 (seyrek 3) kelime örtüşür ve mürekkeplerinin çoğu
+kelime dışındadır; yanlış adaylar (renkli basılı yazı — ders bilgi formları, duyurular —, toplantı
+başlık bloğu, ekran görüntüsü) 3'ten çok kelimeyle ya da mürekkebinin çoğu kelimelerde olarak
+örtüşür. Birden çok imzanın birleştiği ve unvan sütununu da kaplayan kutu da bu yüzden kapatılmaz,
+elle bakılmalı olur. Logo gibi metinsiz yanlış adaylar kapatılmaya devam eder.
+
+Yanlış karartma ölçüsü: kapatılan imza kutularıyla örtüşen okunabilir kelime sayısı raporda
 `imza_ortusen_kelime` (dosya ve özet). El yazısıyla doldurulmuş form alanları imza adayıyla
 karışabilir: etiketsizse sayfa elle bakılmalı olur, etiket yakınındaysa kapatılır.
 
