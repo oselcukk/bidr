@@ -23,6 +23,9 @@ def _cmd(args) -> int:
             print(f"{st['metin']} metin: {st['paket']} paket ({st['yeni']} yeni/değişen), "
                   f"zaten_tamam={st['zaten_tamam']}, kod denetiminde reddedilen={len(st['kod_reddi'])}, "
                   f"bekleyen {st['bekleyen']} → {st['klasor']}")
+            if st.get("yeni_kural"):
+                print(f"  doğrulanmış ama sonradan eklenen içerik kuralına takılan metin (tur sayacı sıfırlandı, "
+                      f"yeniden yazıma gider): {', '.join(st['yeni_kural'])}")
             for c, why in st["kod_reddi"].items():
                 print(f"  reddedildi {c} (kod):")
                 for w in why:

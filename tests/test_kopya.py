@@ -295,24 +295,74 @@ def test_yonler_faculty_value_not_unit_value():
     assert not _kodlar([kurul], [], _meta({"C.1.2": bos}))
 
 
-def test_yonler_finding_names_uncounted_unit_evidence():
+def test_yonler_finding_states_unit_gap_not_evidence_decision():
+    """Kör test 2026-11-20 (Kimya A.1.5, B.1.6): bulgu belgenin neden bu dönemin kanıtı sayılmadığını
+    söylemez (kanıt yönetimi notu); bölümün eksiğini söyler. Birime ait belge varken "yalnız kurum
+    geneli" de denmez."""
     from bidr.write.yonler import facts, findings
+    from bidr.write.ic_dil import bul
     a = {"od": 2, "sonraki_od": 3, "kurum_geneli_yalniz": True,
          "eksik": [{"halka": "uygula", "gereken": "bölümün uygulama kanıtı"}],
          "zincir": {"planla": {"durum": "var"}, "uygula": {"durum": "yok"}}}
     rows = [{"ad": "Kurum Yönergesi", "isaretler": "kurum_geneli"},
             {"ad": "Bölüm Proje Listesi", "isaretler": "tarih_dogrulanmali, od_sayilmadi"}]
     f = " ".join(findings(a, True, rows))
-    assert "Bölüm Proje Listesi (tarihi belgede görülmüyor)" in f and "birime ait belge" in f
-    assert "birimin kendi uygulamasını gösteren belge yok" not in f
-    # bulgu rapor okurunun dilinde: düzey, halka, "OD'ye sayılmadı", "eşleşti" yok (kör test 2026-11-20)
-    from bidr.write.ic_dil import bul
+    assert "birimin bu dönemdeki uygulamasını gösteren belge yok" in f and "çoğunlukla kurum geneli" in f
+    assert "Bölüm Proje Listesi" not in f and "gösterilemiyor" not in f and "yalnız kurum" not in f
     assert not bul(f) and "OD" not in f
     o = facts(a, rows)
     assert o["birim_kaniti"] == ["Bölüm Proje Listesi"] and not o["uygulama"]
     # eski dizin (işaret sütunu yok): birim kanıtı bilinemez, eski bulgu
     assert facts(a, [{"ad": "x"}])["birim_kaniti"] == []
     assert "dayanak yalnız kurum geneli" in " ".join(findings(a, True, [{"ad": "x"}]))
+    # kanıt sayma gerekçesi madde dilinde iç dildir (kod `ic_dil`)
+    for m in ("Bölüm staj programı sayfası dönem sonrasına ait olduğundan bu dönemin kanıtı olarak "
+              "gösterilememektedir (B.1.6).",
+              "Duyuruların tarihi belgede görülmediğinden sayfa kanıt olarak sayılmamıştır (A.1.5)."):
+        assert bul(m), m
+    assert not bul("Bölümün bu dönemdeki uygulamasını gösteren belge bulunmamaktadır (B.1.6).")
+    assert not bul("Tablolar iç değerlendirme süreçlerinde kanıt olarak kullanılmak üzere iletilmiştir.")
+
+
+def test_yonler_absence_claim_checked_against_verified_text():
+    """Kör test 2026-11-20 güncelleme (Mat C.3.1, Kimya D.2.1, Kimya B.1.1): audit zinciri izleme/
+    iyileştirmeyi eksik saysa da doğrulanmış metin anlatıyorsa "izlendiğini gösteren belge yok" çelişkidir;
+    bulgu daraltılır ya da düşer, var olanı kabul eden ya da daraltılmış hüküm geçer."""
+    from bidr.write.yonler import IZLEME_DAR, facts, findings, text_rings
+    izleme_metni = ("Araştırma göstergeleri kurum stratejik planında tanımlanmıştır. Stratejik Plan İzleme "
+                    "Değerlendirme Tablosunda göstergenin gerçekleşme değeri 0,30 olarak yer almaktadır. Tabloda "
+                    "ilk altı ayda analiz yapılacağı belirtilmektedir.")
+    r = text_rings(izleme_metni)
+    assert r["izleme"].startswith("Stratejik Plan İzleme") and not r["degerlendirme"] and not r["iyilestirme"]
+    # yalnız düzenleme dili halka anlatımı değil
+    assert not any(text_rings("Koordinatörlüğün hedefleri takip etmesi yönergede tanımlanmıştır. "
+                              "İzlenme sıklığı 3 ayda bir olarak belirlenmiştir.").values())
+    deg = text_rings("Anabilim dalı 09.07.2025 tarihli değerlendirme toplantısında ders içeriklerini gözden "
+                     "geçirmiştir. Anket sonuçları doğrultusunda iki seçmeli ders açılmıştır.")
+    assert deg["degerlendirme"] and deg["iyilestirme"]
+    a = {"od": 3, "eksik": [{"halka": "kontrol_et"}, {"halka": "onlem_al"}],
+         "zincir": {"uygula": {"durum": "var"}, "kontrol_et": {"durum": "yok"}, "onlem_al": {"durum": "yok"}}}
+    f = findings(a, True, [], r)
+    assert f[0] == IZLEME_DAR and "izleme sonuçlarına dayanan iyileştirmeyi" in f[1]
+    assert findings(a, True, [], deg) == []                       # metin ikisini de anlatıyor: bulgu yok
+    m = _meta({"C.3.1": facts(a, [{"ad": "x"}], r), "C.1.2": facts(a, [{"ad": "x"}], deg)})
+    yok = "Araştırma performansının izlendiğini gösteren belge bulunmamaktadır (C.3.1)."
+    assert ("a1", "kanitla_celiski") in _kodlar([], [yok], m)
+    assert not _kodlar([], ["Araştırma performansına ilişkin izleme verisi bulunmakla birlikte izleme sonuçlarının "
+                            "bölümce değerlendirildiğini gösteren belge bulunmamaktadır (C.3.1)."], m)
+    assert not _kodlar([], ["İzleme sonuçlarının bölümce değerlendirildiğini gösteren belge bulunmamaktadır (C.3.1)."], m)
+    assert ("a1", "kanitla_celiski") in _kodlar(
+        [], ["Program sonuçlarının değerlendirildiğini ve iyileştirme yapıldığını gösteren belge "
+             "bulunmamaktadır (C.1.2)."], m)
+    # var olanı kabul eden hüküm ("geri bildirimler dışında …") daraltılmıştır
+    assert not _kodlar([], ["Etkinlik raporlarındaki geri bildirimler dışında sonuçların değerlendirildiğini gösteren "
+                            "belge bulunmamaktadır (C.1.2)."], m)
+    # güçlü yön aynı ölçütte değerlendirmeye dayanan değişikliği söylüyorsa gelişmeye açık yön yok sayamaz
+    bos = {"kanit": True, "uygulama": True, "izleme": False, "iyilestirme": False, "birim_kaniti": []}
+    g = "Anket sonuçları değerlendirilmiş ve bu doğrultuda iki seçmeli ders açılmıştır (C.1.2)."
+    k = _kodlar([g], ["İzleme sonuçlarına dayanan iyileştirmeyi gösteren belge bulunmamaktadır (C.1.2)."],
+                _meta({"C.1.2": bos}))
+    assert ("a1", "ic_celiski") in k
 
 
 def test_yonler_code_check_and_verifier_rule_see_same_findings():

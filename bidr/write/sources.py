@@ -208,6 +208,40 @@ def topic_snippets(text: str | None, description: str, covered: list[tuple[int, 
     return out
 
 
+# Gösterge tablosunda birimin kendi satırı (kör test 2026-11-20, Kimya A.2.2/C.3.1): tablo fakülte
+# geneli gerçekleşme değerini (0,36) verip bölümün ham verisini ("kimya bölümü: 8 yayın 28 öğretim
+# üyesi") ayrı satırda tutuyordu; yazar fakülte değerini bölümün değeri gibi yazdı. Birimin adını
+# sayıyla birlikte anan satırlar pakette ayrıca ve önce verilir (alıntı bağlamında olsa da).
+GOSTERGE_BELGE = re.compile(r"gerceklesme|performans gosterge|\bpg\.\d|hedeflenen deger|izleme degerlendirme")
+MAX_BIRIM_VERI = 3
+
+
+def unit_value_snippets(text: str | None, unit: str | None, limit: int = MAX_BIRIM_VERI) -> list[str]:
+    """Gösterge/izleme belgesinde birimin adıyla başlayan ve sayı taşıyan kısa parçalar
+    ("kimya bölümü: 8 yayın 28 öğretim üyesi"). Belge gösterge belgesi değilse ya da birim adı
+    bilinmiyorsa boş."""
+    from bidr.identify.text import fold
+    if not text or not unit:
+        return []
+    flat = " ".join(text.split())
+    low = fold(flat)
+    if len(low) != len(flat) or not GOSTERGE_BELGE.search(low):
+        return []
+    head = fold(unit).split()[0] if fold(unit).split() else ""
+    if len(head) < 3:
+        return []
+    out: list[str] = []
+    rx = re.compile(rf"\b{re.escape(head)}\w*(?:\s+(?:bolum|birim|anabilim)\w*)?\s*(?:[:\-–]|icin|ait)?\s*"
+                    rf"(?:\w+\s+){{0,3}}?(?!(?:19|20)\d\d\b)\d+(?:[.,]\d+)?(?![\d\-])[^.;\n]{{0,120}}")
+    for m in rx.finditer(low):
+        x = flat[m.start():m.end()].strip(" ,")
+        if x not in out:
+            out.append(x)
+            if len(out) >= limit:
+                break
+    return out
+
+
 # -- önceki yılın metni ---------------------------------------------------------------------
 
 _SUB = re.compile(r"^\s*([A-E]\.\d+\.\d+)\.?\s")

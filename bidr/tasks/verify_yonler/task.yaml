@@ -1,9 +1,11 @@
-version: 3
+version: 4
 description: >-
   Bağımsız doğrulama: alan düzeyindeki güçlü / gelişmeye açık yön maddeleri, atıf yaptıkları
   alt ölçütlerin doğrulanmış metni, audit bulguları ve kanıt durumuyla karşılaştırılır; maddeler
   arası çelişki ve hedefin altındaki gösterge de denetlenir → madde başına
   destekleniyor | kismen | desteklenmiyor + gerekçe. Yazarın gerekçesi verilmez.
+  v4: "kanıt yok" hükmü doğrulanmış metinle de karşılaştırılır; kanıt sayma gerekçesi
+  ("bu dönemin kanıtı olarak gösterilememektedir") desteklenmez.
 inputs:
   alan: "alan kodu ve başlığı"
   maddeler: "denetlenecek maddeler: yer (g: güçlü, a: gelişmeye açık), metin"

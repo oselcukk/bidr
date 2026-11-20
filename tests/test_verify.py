@@ -149,7 +149,7 @@ def test_questions_match_guide_and_prompt(tmp_path):
     ws = written(tmp_path)
     V.prepare(ws)
     pkg = json.loads((ws / "work/verify/B.1.1.json").read_text(encoding="utf-8"))
-    assert pkg["surum"] == "2" and all(f"- {k}: " in pkg["istem"] for k in SORU_IDS)
+    assert pkg["surum"] == "3" and all(f"- {k}: " in pkg["istem"] for k in SORU_IDS)
     assert pkg["sema"]["properties"]["sorular"]["minItems"] == 5
 
 
@@ -245,3 +245,32 @@ def test_code_reject_and_stale_text_are_unchecked(tmp_path):
     V.prepare(ws, redo=True)
     assert text(ws)["soru_kapsami"]["durum"] == "denetlenmedi"
     assert coverage(ws)["denetlenmedi"] == ["B.1.1"]
+
+
+def test_verified_text_rechecked_with_new_content_rule(tmp_path):
+    """Kör test 2026-11-20: yeni yazım kuralı (dönem içi kayıt, fakülte değeri) doğrulanmış eski metinlere
+    uygulanmıyordu. verify prepare doğrulanmış metni içerik denetiminden geçirir; takılan metin tur
+    sayacı sıfırlanarak yeniden yazıma gider, temiz metin dokunulmaz."""
+    fak = {"paragraflar": [{"metin": "Ders bilgi formlarında toplam iş yükü 150 olarak verilmiştir [2_OD3]."},
+                           {"metin": "Fakülte genelinde gerçekleşme değeri 0,36 olarak hesaplanmıştır [2_OD3]."}],
+           "onceki_yila_gore": ""}
+    ws = written(tmp_path)
+    V.prepare(ws)
+    answer(ws, "B.1.1", verdicts(ws), stage="verify")
+    assert V.apply(ws)["dogrulandi"] == ["B.1.1"]
+    assert V.prepare(ws)["zaten_tamam"] == 1 and text(ws)["durum"] == "dogrulandi"
+    # aynı metin elle (eski kural döneminden kalmış gibi) fakülte değeriyle doğrulanmış
+    t = text(ws)
+    t["paragraflar"] = [{"metin": p["metin"], "atiflar": ["2_OD3"]} for p in fak["paragraflar"]]
+    t["tur"] = 2
+    (ws / "texts/B.1.1.json").write_text(json.dumps(t, ensure_ascii=False), encoding="utf-8")
+    log = [json.loads(x) for x in (ws / "verify.jsonl").read_text(encoding="utf-8").splitlines()]
+    log[0]["metin_sha"] = W.text_sha(t)
+    (ws / "verify.jsonl").write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in log), encoding="utf-8")
+    st = V.prepare(ws)
+    assert st["yeni_kural"] == ["B.1.1"] and "B.1.1" in st["kod_reddi"]
+    t = text(ws)
+    assert t["durum"] == "reddedildi" and t["tur"] == 0
+    assert any("fakulte_degeri" in g for g in t["dogrulama"]["gerekce"])
+    st = W.prepare_rejected(ws)
+    assert st["tur"] == {"B.1.1": 1} and not st["insan_gerekli"]

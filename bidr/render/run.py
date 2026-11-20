@@ -47,6 +47,7 @@ KANIT_BICIMLERI = ("mat", "kilavuz")
 RE_NO = re.compile(r"^(\d+)_OD([1-5])$")
 RE_ATIF = re.compile(r"\[(\d+_OD[1-5])\]")
 RE_YIL = re.compile(r"^(19|20)\d\d$")
+RE_OLCUT = re.compile(r"\b([A-E]\.\d+\.\d+)\b")
 # `[komisyon]`: yazım/doğrulamada cümlenin komisyon bilgisine dayandığını gösteren iç işaret;
 # rapora girmez (atıf yerine geçer, okur için anlamı yok).
 RE_KOMISYON = re.compile(r"\s*\[komisyon\]")
@@ -96,6 +97,8 @@ class Result:
     od_kaynagi: dict[str, str] = field(default_factory=dict)
     yon_cikarilan: dict[str, list[str]] = field(default_factory=dict)   # alan → desteklenmeyen madde yerleri
     yon_ifadeli: list[str] = field(default_factory=list)               # madde kalmadığı için açık ifadeli hücreler
+    # alan → çıkarılan maddelerle hiçbir yön hücresinde kalmayan ölçütler (rapor TASLAK)
+    yon_kapsam_kaybi: dict[str, list[str]] = field(default_factory=dict)
     # kanıt klasöründe olup metinde atıf almayan, numara boşluğu kalmasın diye listelenen kanıtlar
     atifsiz_listelenen: dict[str, list[str]] = field(default_factory=dict)
 
@@ -112,7 +115,7 @@ class Result:
                 "kapak": self.kapak, "hazirlayan": self.hazirlayan,
                 "kapsam_disi": self.kapsam_disi, "karar_gerekli": self.karar_gerekli, "yonler": self.yonler,
                 "eksik_notlu_metin": self.eksik_notlu, "yon_cikarilan": self.yon_cikarilan,
-                "yon_ifadeli": self.yon_ifadeli,
+                "yon_ifadeli": self.yon_ifadeli, "yon_kapsam_kaybi": self.yon_kapsam_kaybi,
                 "uyari": len(self.uyarilar), "baglantili_kanit": self.baglantili,
                 "baglantisiz_kanit": len(self.baglantisiz), "atifsiz_listelenen": self.atifsiz_listelenen,
                 "degisen_parcalar": self.degisen_parcalar}
@@ -475,10 +478,15 @@ def fill_yonler(doc, yonler: dict[str, dict], res: "Result", log: dict[str, dict
         res.uyarilar.append(f"{alan}: güçlü/gelişmeye açık yön maddeleri var ama şablonda tablosu yok; yazılmadı")
     for alan, c in sorted(cells.items()):
         t = yonler.get(alan)
+        kept: set[str] = set()
+        lost: set[str] = set()
         for key, tc, label in (("guclu", c.guclu_tc, GUCLU), ("gelisme", c.gelisme_tc, GELISME)):
             items, drop, verified = yon_items(t, key, log.get(alan))
+            kept |= {k for x in items for k in RE_OLCUT.findall(x.get("metin") or "")}
             if drop:
                 res.yon_cikarilan.setdefault(alan, []).extend(drop)
+                byyer = {f"{'g' if key == 'guclu' else 'a'}{i}": x for i, x in enumerate(t.get(key) or [], 1)}
+                lost |= {k for y in drop for k in RE_OLCUT.findall((byyer.get(y) or {}).get("metin") or "")}
             paras = []
             if items:
                 if not verified:
@@ -494,6 +502,10 @@ def fill_yonler(doc, yonler: dict[str, dict], res: "Result", log: dict[str, dict
             if paras:
                 ops.replace_cell(tc, paras)
             res.yonler[f"{alan} {label}"] = _cell_state(tc)
+        # Doğrulamada reddedilen maddenin çıkarılması bir ölçütü bütün yön hücrelerinden düşürürse
+        # hücre eksiktir (kör test 2026-11-20, Kimya C: C.3.1 hiçbir hücrede kalmadı): rapor TASLAK.
+        if lost - kept:
+            res.yon_kapsam_kaybi[alan] = sorted(lost - kept, key=lambda x: [int(n) for n in x.split(".")[1:]])
     for alan, ys in res.yon_cikarilan.items():
         res.uyarilar.append(f"{alan}: doğrulamada desteklenmeyen {len(ys)} madde rapora alınmadı ({', '.join(ys)}); "
                             "doğrulanmış maddeler basıldı (gerekçe: verify-yonler.jsonl)")
@@ -659,6 +671,10 @@ def render(template: Path, out: Path, *, texts_dir: Path, audit_path: Path | Non
                      if t.get("durum") == "taslak" and any(res.yonler.get(f"{a} {x}") == "dolu" for x in (GUCLU, GELISME)))
     if unver_y:
         N.append("doğrulanmamış güçlü/gelişmeye açık yön maddeleri: " + ", ".join(unver_y))
+    if res.yon_kapsam_kaybi:
+        N.append("doğrulamada reddedilen yön maddesi çıkarıldı, ölçüt hiçbir yön hücresinde kalmadı: "
+                 + "; ".join(f"{a}: {', '.join(cs)}" for a, cs in sorted(res.yon_kapsam_kaybi.items()))
+                 + " (gerekçe verify-yonler.jsonl; madde düzeltilip yeniden doğrulanır)")
     empty = [k for k, v in res.yonler.items() if v != "dolu"]
     if empty:
         N.append("boş ya da şablon yönergesi kalan güçlü/gelişmeye açık yön hücresi: " + ", ".join(empty))

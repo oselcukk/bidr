@@ -204,7 +204,7 @@ def test_apply_writes_text_per_contract(tmp_path):
     assert t["kanitlar"] == [{"no": "1_OD2", "ad": "Ders Planı Güncelleme İş Akışı", "dosya": "B/B.1/B.1.1/1_OD2.pdf"},
                              {"no": "2_OD3", "ad": "Ders Bilgi Formu", "dosya": "B/B.1/B.1.1/2_OD3.pdf"}]
     assert t["eksikler"][0].startswith("OD4 için kontrol") and "örnek not" in t["eksikler"]
-    assert t["kaynak"]["model"] == "test:ajan" and t["kaynak"]["gorev_surumu"] == "3"
+    assert t["kaynak"]["model"] == "test:ajan" and t["kaynak"]["gorev_surumu"] == "4"
     assert W.apply(ws)["degismedi"] == 1                       # aynı cevap yeniden işlenmez
     assert W.prepare(ws)["zaten_tamam"] == 1                   # yazılmış metin yeniden paketlenmez
 
@@ -480,3 +480,53 @@ def test_status_counts_old_rule_texts(tmp_path):
     ck = write_tamam(ctx)
     assert ck.bitti and ck.ilerleme["eski_kural"] == 1          # zorunlu değil: aşama bitti
     assert any("1 metin eski yazım kuralıyla yazıldı" in u and "--eski-kurallar" in u for u in ck.uyarilar)
+
+
+# -- içerik denetimleri: dönem içi kayıt, fakülte değeri (kör test 2026-11-20 güncelleme) ------------
+
+def test_content_issues_period_record_and_faculty_value():
+    eski = "Listede 1.11.2018-31.10.2022 tarihleri arasında yürütülen proje yer almaktadır [4_OD3]."
+    ic = "Listede 27.03.2025-27.03.2026 tarihleri arasında yürütülen proje yer almaktadır [4_OD3]."
+    genel = "Bölümde yürütülen projeler listede yer almaktadır [4_OD3]."
+    kod = lambda ps, **kw: [i["kod"] for i in T.content_issues(ps, "", **kw)]      # noqa: E731
+    assert kod([genel + " " + eski], donem=2025, donem_ici={"4_OD3"}) == ["donem_ici_atlandi"]
+    assert kod([ic + " " + eski], donem=2025, donem_ici={"4_OD3"}) == []       # önce dönem içi, eski bağlam
+    assert kod([eski], donem=2025, donem_ici=set()) == []                      # belgede dönem içi kayıt yok
+    aralik = "Listede 12.06.2023-11.06.2026 tarihleri arasında süren proje yer almaktadır [4_OD3]."
+    assert kod([aralik], donem=2025, donem_ici={"4_OD3"}) == []                # dönemi kapsayan aralık
+    assert T.dated_in_period(["PRJ-2 27.03.2025 27.03.2026 başlık"], 2025)
+    assert not T.dated_in_period(["Son güncelleme 2025"], 2025) and not T.dated_in_period(["x"], None)
+    # fakülte değeri bölümün değeri olmadan
+    fak = ("Tabloda bölüme ait 8 yayın ve 28 öğretim üyesi verisi yer almaktadır [3_OD2]. Fakülte genelinde "
+           "gerçekleşme değeri 0,36 olarak hesaplanmıştır [3_OD2].")
+    assert kod([fak]) == ["fakulte_degeri"]
+    yalniz = ("Göstergenin hedeflenen değeri 1,08 ve gerçekleşme değeri 0,36 olarak kaydedilmiş; bölüm için "
+              "8 yayın ve 28 öğretim üyesi bilgisi verilmiştir [3_OD2].")
+    assert kod([yalniz]) == ["fakulte_degeri"]                                  # niteleme yok, bölüm ham verisi var
+    hesap = ("Bölüm için değer 8 yayın / 28 öğretim üyesi = 0,29 olup fakülte genelinde gerçekleşme değeri "
+             "0,36'dır [3_OD2].")
+    assert kod([hesap]) == []
+    assert kod(["Göstergenin 2025 hedefi 1,08 olarak belirlenmiştir [2_OD2]."]) == []   # yalnız hedef
+    assert kod(["Fakülte Kurulu kararıyla gerçekleşme değeri 1,20 olan ders kabul edilmiştir [1_OD2]."]) == []
+
+
+def test_package_lists_period_evidence_and_unit_values(tmp_path):
+    ws = make_report_ws(tmp_path)
+    (ws / "config.yaml").write_text("bidr:\n  donem: 2025\n  birim: Kimya Bölümü\n", encoding="utf-8")
+    far = " ".join(["dolgu"] * 200)
+    (ws / "text" / "bbbb000000000002.txt").write_text(
+        DOC_B + " " + far + " PRJ-2 Dr. Deneme 27.03.2025 27.03.2026 Dönem içi proje başlığı. " + far
+        + " Gerçekleşme değeri tablosu: kimya bölümü: 8 yayın 28 öğretim üyesi; fakülte 0,36.", encoding="utf-8")
+    W.prepare(ws)
+    pkg = json.loads((ws / "work/write/B.1.1.json").read_text(encoding="utf-8"))
+    assert pkg["meta"]["donem"] == 2025 and pkg["meta"]["donem_ici"] == ["2_OD3"]
+    ist = pkg["istem"]
+    assert "DÖNEM İÇİ KAYDI OLAN KANITLAR (2025): [2_OD3]" in ist
+    assert "bölümün kendi verisi 1: «kimya bölümü: 8 yayın 28 öğretim üyesi" in ist
+    assert ist.index("bölümün kendi verisi 1") < ist.index("dönem içi bilgi 1") < ist.index("alıntı 1: «AKTS")
+    # dönem içi kaydı atlayıp yalnız eski kaydı anlatan metin reddedilir
+    bad = {"paragraflar": [{"metin": "Ders bilgi formunda 2018 yılına ait eski bir proje yer almaktadır [2_OD3]."}],
+           "onceki_yila_gore": ""}
+    answer(ws, "B.1.1", bad)
+    st = W.apply(ws)
+    assert st["islenen"] == 0 and any("donem_ici_atlandi" in x for x in st["gecersiz"]["B.1.1"])

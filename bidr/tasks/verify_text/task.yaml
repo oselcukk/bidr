@@ -1,10 +1,12 @@
-version: 2
+version: 3
 description: >-
   Bağımsız metin doğrulama. Açıklama metninin her cümlesi, atıf yaptığı kanıtın
   alıntısı ve belge bağlamıyla karşılaştırılır → cümle başına
   destekleniyor | kismen | desteklenmiyor + gerekçe. Yazarın gerekçesi verilmez.
   v2: FR-0833'ün beş zorunlu sorusu için kapsam kararı (kanitla_cevaplandi |
   cevapsiz | uydurma_suphesi + cümle yerleri).
+  v3: kanıttaki sayılardan gösterilen basit hesap desteklenir; fakülte değerini bölümünmüş gibi
+  veren cümle "kismen".
 inputs:
   olcut: "ölçüt kimliği, başlığı, önerilen OD ve rubrik"
   cumleler: "denetlenecek cümleler: yer kimliği, metin, atıflar"
