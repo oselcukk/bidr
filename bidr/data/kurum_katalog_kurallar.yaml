@@ -1,0 +1,137 @@
+# Kurum belge kataloğu → alt ölçüt ön eşlemesi (bidr kurum-katalog prepare).
+#
+# Desenler Türkçe harfsiz, küçük harfli metinde aranır (bidr.ihtiyac.tablolar.norm; "ö" → "o",
+# "ı" → "i"). Ad alanı: belge adı + doküman kodu. Birim: tablo satırının "BİRİM ADI" değeri.
+# Bölüm: liste sayfasındaki ara başlık (ör. "PERSONEL İŞLERİ İLE İLGİLİ FORMLAR").
+#
+# 1. `ele_*`: BİDR ile ilgisiz alanlar (personel özlük, mali, satın alma, idari iç işler, iş
+#    güvenliği, enerji…). Eşleşen öğe ilgisiz sayılır; `tut` desenlerinden biri adda geçerse elenmez.
+# 2. `esle`: sırayla denenir; uyan her kuralın ölçütleri birikir, en çok `en_cok` ölçüt kalır.
+#    Hiçbir kurala uymayan öğe ilgisiz sayılır; yönetmelik/yönerge/usul-esas ise yine de modele sorulur.
+# Bu tablo bir ön elemedir: model cevabı (`.out.json`) kuralın önerisini aşar.
+surum: 1
+en_cok: 3
+
+ele_bolum:
+  - enerji yonetimi
+  - \bisg\b
+  - is sagligi
+  - laboratuvar cihaz
+  - cihaz analiz
+  - personel isleri
+  - \bkvkk\b
+ele_birim:
+  - guvenlik koordinat
+  - temizlik
+  - yapi isleri
+  - idari ve mali
+  - hukuk musavir
+  - doner sermaye
+  - ic denetim
+  - personel daire
+  - afet ve acil
+  - is sagligi
+  - bilgi islem
+  - strateji gelistirme
+  - genel sekreterlik
+  - endustriyel hizmetler
+  - basin ve halkla
+  - satin ?alma
+ele_ad:
+  - maas|ucret|bordro|vergi|fatura|avans|harcirah|yolluk|odeme emri|tahakkuk|butce|muhasebe|mali
+  - satin ?alma|dogrudan temin|ihale|teklif mektubu|piyasa arastirma|hakedis|muayene kabul|tasinir|demirbas|hurda|ambar|depo
+  - mazeret izni|yillik izin|saglik izni|ucretsiz izin|izin talep|izin formu|rapor izni|dogum izni
+  - \barac\b|tasit|yakit|otopark|servis arac|kartvizit|kimlik karti|personel karti|yemekhane|yemek|kafeterya|kantin
+  - temizlik|kalorifer|isitma|elektrik|su tesisat|bakim onarim|ariza|teknik servis|insaat
+  - sozlesmeli personel|isci|surekli isci|kadro tahsis|kontenjan tahsis|ozluk|emekli|nakil|naklen|tayin|disiplin
+  - fotograf cekimi|e-?posta hesab|alan adi|web hosting|yazici|telefon
+  - kurs|fitness|spor salonu|havuz|beslenme|diyet|saglik merkezi|revir
+  - zimmet|anahtar teslim|giris karti|ziyaretci
+tut:
+  - akademik tesvik|atama|yukseltme|egiticilerin egitimi|ogrenci|ders|sinav|staj|mezun|danisman|anket|memnuniyet
+
+esle:
+  # eğitim-öğretim: program tasarımı, ders planı, müfredat
+  - desen: yeni ders|ders plani|ders acma|mufredat|program acma|program tasarim|programi acilmasi|ders icerik|ders bilgi paket|yeni program
+    olcutler: [B.1.1, B.1.5]
+  - desen: \bakts\b|is yuku|ects
+    olcutler: [B.1.4]
+  - desen: diploma eki|diploma|mezuniyet|mezun olma|dereceye giren|onur|yuksek onur
+    olcutler: [B.2.4]
+  - desen: yatay gecis|dikey gecis|muafiyet|intibak|onceki ogrenme|program disi ogrenme|ozel ogrenci|kabul|kayit yenile|kesin kayit|yabanci uyruklu ogrenci|uluslararasi ogrenci|yetenek sinav
+    olcutler: [B.2.3]
+  - desen: cift ana ?dal|\bcap\b|yan ?dal
+    olcutler: [B.2.3, B.2.4]
+  - desen: egitim-?ogretim yonetmeli|egitim ve ogretim yonetmeli|lisans egitim|lisansustu egitim|yaz ogretimi|yaz okulu|uzaktan egitim
+    olcutler: [B.1.6, B.2.2]
+  - desen: sinav|olcme|degerlendirme ve not|not itiraz|butunleme|mazeret sinavi|tek ders|harf notu|notlarin|sinav sonuc
+    olcutler: [B.2.2]
+  - desen: staj|endustriyel uygulama|isyeri egitimi|mesleki uygulama|mesleki egitim
+    olcutler: [B.1.4, B.2.1]
+  - desen: danisman|rehberlik|psikolojik|kariyer|mentor|akran
+    olcutler: [B.3.2]
+  - desen: engelsiz|engelli|dezavantaj|ozel gereksinim|erisilebilir
+    olcutler: [B.3.4]
+  - desen: ogrenci kulup|ogrenci topluluk|topluluk|kultur|sanat|sportif|spor etkinli|etkinlik|sosyal faaliyet
+    olcutler: [B.3.5]
+  - desen: kutuphane|ogrenme kaynak|ogrenme yonetim sistemi|laboratuvar kullan|derslik|tesis|altyapi
+    olcutler: [B.3.1, B.3.3]
+  - desen: hazirlik|yabanci dil|ingilizce yeterlik
+    olcutler: [B.1.6, B.2.3]
+  - desen: ders degerlendirme|ders anket|ogretim elemani degerlendirme
+    olcutler: [A.4.2, B.1.5]
+  - desen: ogrenci memnuniyet|ogrenci gorus|ogrenci temsilci|ogrenci konseyi|oneri ve sikayet|dilek ve sikayet|geri bildirim
+    olcutler: [A.4.2]
+  - desen: mezun
+    olcutler: [A.4.3]
+  - desen: isveren|paydas|danisma kurulu|dis paydas
+    olcutler: [A.4.1]
+  - desen: personel memnuniyet|calisan memnuniyet|personel anketi|akademik personel memnuniyet
+    olcutler: [A.3.2]
+  # öğretim kadrosu
+  - desen: atama|yukseltme|gorevlendirme|kadro|norm kadro|ogretim uyesi|ogretim gorevlisi
+    olcutler: [B.4.1]
+  - desen: egiticilerin egitimi|ogrenme ve ogretme|ogretme merkezi|pedagojik formasyon|ogretim yetkinli
+    olcutler: [B.4.2]
+  - desen: akademik tesvik|odul|basari belgesi|tesekkur
+    olcutler: [B.4.3, C.3.2]
+  # araştırma
+  - desen: bilimsel arastirma proje|\bbap\b|arastirma proje|proje destek|\badep\b|tubitak
+    olcutler: [C.1.2]
+  - desen: arastirma|ar-?ge|patent|fikri|sinai mulkiyet|teknoloji transfer|\btto\b|laboratuvar|merkez arastirma
+    olcutler: [C.1.1, C.1.2]
+  - desen: etik kurul|arastirma etigi|bilimsel etik
+    olcutler: [C.1.1]
+  - desen: doktora|lisansustu|yuksek lisans|tez|yeterlik|enstitu
+    olcutler: [C.1.3]
+  - desen: bilimsel yayin|yayin tesvik|yayin oneri|makale|atif|bilimsel faaliyet|akademik performans|arastirma performans
+    olcutler: [C.3.2]
+  - desen: ortak program|ortak arastirma|ortak uygulama|isbirligi|is birligi|protokol
+    olcutler: [C.2.2]
+  # toplumsal katkı
+  - desen: toplumsal katki|sosyal sorumluluk|surekli egitim|sertifika program|halka acik
+    olcutler: [D.1.1]
+  # uluslararasılaşma
+  - desen: erasmus|farabi|mevlana|degisim program|uluslararasi|yurt disi|exchange
+    olcutler: [A.5.1]
+  # liderlik, yönetişim, kalite
+  - desen: kalite|ic degerlendirme|\bbidr\b|\bkidr\b|oz degerlendirme|akredit|dis degerlendirme|ic denetim raporu
+    olcutler: [A.1.4]
+  - desen: is akis|surec|dokuman|prosedur|el kitabi
+    olcutler: [A.3.4, A.1.4]
+  - desen: risk
+    olcutler: [A.1.4]
+  - desen: stratejik plan|stratejik amac|performans gosterge|performans program|faaliyet raporu
+    olcutler: [A.2.2, A.2.3]
+  - desen: misyon|vizyon|politika
+    olcutler: [A.2.1]
+  - desen: bolum baskan|dekan|kurul|komisyon|senato|organizasyon|yonetisim|gorev tanim|yetki devri|secim
+    olcutler: [A.1.1]
+  - desen: etik deger|etik sozlesme|liderlik|kalite kultur
+    olcutler: [A.1.2]
+  - desen: kisisel veri|bilgi yonetim|bilgi guvenli|veri koruma|aydinlatma metni
+    olcutler: [A.3.1]
+  - desen: web sayfa|internet sayfa|kamuoyu|bilgi edinme|duyuru
+    olcutler: [A.1.5]
+  - desen: memnuniyet|anket
+    olcutler: [A.4.1]

@@ -1,0 +1,11 @@
+version: 1
+description: >-
+  Kurum belge kataloğu eşlemesi. Kurumun herkese açık mevzuat/kalite sayfalarındaki belge
+  ADLARI (yönetmelik, yönerge, usul-esas, iş akışı, form, anket; içerik yok) → ilgili olabileceği
+  BİDR alt ölçütleri (en çok `en_cok`) ve kısa gerekçe. Kural ön elemesinin önerisi girdi olarak
+  verilir; model onu düzeltir. İlgisiz belge boş liste alır. Çıktı `kurum-katalog-esleme.json`
+  (kaynak: model). Kod denetler: id'ler paketle aynı, ölçüt kodu geçerli, ölçüt sayısı ≤ en_cok.
+inputs:
+  olcutler: "alt ölçütler: kod — başlık: ilk örnek kanıtlar (kılavuz)"
+  en_cok: "bir belge için en çok ölçüt sayısı"
+  ogeler: "katalog öğeleri: id, ad, kod, tür, birim/bölüm (liste sayfasındaki başlık), kural_onerisi"

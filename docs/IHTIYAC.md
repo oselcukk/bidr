@@ -4,7 +4,10 @@
 bidr ihtiyac referans -w ÖNCEKİ_WS [--ek iyi-kanitlar.csv] --out referans.json
 bidr ihtiyac -w WS [--referans referans.json] [--out DIR] [--ic-taslak]
              [--istenecekler istenecekler.md|.csv] [--somut S.yaml] [--oneriler O.yaml]
-             [--turler T.yaml] [--sorumlular S.yaml]
+             [--turler T.yaml] [--sorumlular S.yaml] [--kurum-katalog kurum-katalog-esleme.json]
+bidr kurum-katalog cek     [-w WS | --kurum K | --profil P.yaml] [--out DIR]
+bidr kurum-katalog prepare [-w WS] [--out DIR] [--yeniden]
+bidr kurum-katalog apply   [-w WS] [--out DIR] --model M
 ```
 
 İki Excel üretilir: **`istenen-kanitlar.xlsx`** bölümdeki kişilere/birimlere iletilecek sade listedir
@@ -127,6 +130,7 @@ komisyon, bölüm başkanlığı, kalite komisyonu…); birimin kendi düzenine 
 |---|---|
 | `ihtiyac.xlsx` | "Öncelikli talepler" (puan sırasıyla; Kaynak, PUKÖ halkası, ölçüt açıklamasından sütunları), "Ölçüt özeti" (karşılanmamış kılavuz yuvaları, bir üst düzeyin tanımı), "Geçen yıl karşılıkları", "Açıklama" |
 | `istenen-kanitlar.xlsx` | sade liste (bölüme iletilecek; bkz. 5) |
+| `kurum-katalog.json`, `kurum-katalog-esleme.json` | `bidr kurum-katalog` çıktıları (bkz. 6); `ihtiyac` yalnız okur |
 | `ihtiyac.md` | sayılar (önceliğe ve kaynağa göre), ilk 15 talep (kaynakla), kılavuz önerileri (ölçüt başına yuva kimlikleri), karşılığı bulunmayan iyi kanıtlar |
 | `report-ic.docx` | `--ic-taslak`: report.docx'in **kopyası**; her ölçütün "Açıklamalar" hücresinin sonuna kırmızı "[EKSİK: …]" ve başa "İÇ ÇALIŞMA TASLAĞI" satırı. Asıl `report.docx`'e yazılmaz (aynı yola yazma reddedilir); render kodu değişmez, blok bulucu (`bidr.render.template.find_blocks`) yalnız okunur. |
 
@@ -154,7 +158,11 @@ Komisyon dışındaki okur (bölüm sekreterliği, komisyon başkanları, öğre
   karşılanmamış kılavuz maddelerinin **somut karşılıkları** (`bidr/data/ihtiyac_somut.yaml`: her
   "Örnek Kanıtlar" maddesi → bölüm düzeyinde 1–2 somut belge; `{yil}` rapor yılı; özgün uygulama
   maddeleri ortak metinle ve yalnız son düzey istendiğinde). (3)+(4) satır başına en çok 6 madde;
-  öneriyle kapsanan kılavuz maddesi ayrıca yazılmaz. Tam liste `ihtiyac.xlsx`'tedir.
+  öneriyle kapsanan kılavuz maddesi ayrıca yazılmaz. Tam liste `ihtiyac.xlsx`'tedir; (5) **kurumun
+  bu maddeyle eşlenmiş belgeleri** (bkz. 6): `• Belge adı (kod) — bağlantı`, en çok 10 (fazlası
+  "… ve N belgesi daha"); geçen yılki raporda kullanılan kurum belgesi katalogda bulunursa (2)'de
+  ayrıca yazılmaz, bağlantısıyla burada ilk sıradadır. Kimden: `ihtiyac_sorumlular.yaml` belge türü
+  satırı (yönetmelik, yönerge, usul_esas, iş akışı, form, anket).
 - **Neden gerekli**: hazır cümleler — "Bu madde için şu an rapora konabilecek hiç belge yok. En çok
   işe yarayacak belge … gösteren bir belgedir: tek başına maddenin olgunluk düzeyini 1'den 3'e
   çıkarır.", "Bu maddede N belge var ama … gösteren belge yok …", "Geçen yılki raporda bu maddede
@@ -176,6 +184,42 @@ Markdown: yalnız madde işaretli satırlar okunur, `- B.3.2 — 2026 ders izlen
 `(kimden: …)` isteğe bağlı. `B.1.x` ya da `B.1` ana madde satırı olarak ("alt madde belirtilmedi"),
 kodsuz satır "Genel" satırı olarak eklenir. CSV: `madde,istek` zorunlu, `oncelik`, `kimden` isteğe bağlı.
 
+## 6. Kurum belge kataloğu (`bidr kurum-katalog`)
+
+Kurumun herkese açık mevzuat ve kalite sayfalarındaki belgelerin (yönetmelik, yönerge, usul-esas,
+iş akışı, form, anket) yalnız **adları ve bağlantıları** çekilir, adlarından alt ölçütlere eşlenir ve
+sade listeye madde olarak girer. Ek dosyalar indirilmez.
+
+1. **`cek`**: kurum profilinin `katalog:` kayıtları (`bidr/data/institutions/<kurum>.yaml`; `ad`,
+   `adres`, `tur`, isteğe bağlı `etkin: false`, `not`). Kurum `-w` çalışma alanının `config.yaml`'ından,
+   `--kurum` ya da `--profil` ile. Her liste sayfası tek istek (sayfalama: `rel="next"` ya da
+   "Sonraki" bağlantısı aynı yolda izlenir, en çok 20 sayfa); istekler arası 2 sn; User-Agent araç
+   adıdır. Ayrıştırma geneldir: tablo başlığında "… ADI" (ad), "… NO" (doküman kodu), "DİLİ",
+   "… TARİHİ"/"… SAYISI", "REVİZYON NO" sütunları; "BİRİM ADI:" satırı birim; tablo dışında belge
+   dosyasına giden bağlantılar (metindeki kod, kalın ara başlık bölüm; parantez içindeki ikinci bağlantı
+   İngilizce sürüm). Tür: sayfanın `tur`'u; yönerge sayfasında "Usul ve Esaslar/Uygulama Esasları"
+   adı `usul_esas`, form sayfasında "Anket" adı ya da bölümü `anket`. İngilizce satır aynı kodlu
+   Türkçe öğeye `en_baglanti` olur. Çıktı `kurum-katalog.json` (öğe: id, ad, kod, tür, bağlantı,
+   birim, bölüm, dil, tarihler, revizyon, sayfa; sayfa başına durum ve öğe sayısı). Çekilemeyen ya da
+   öğe bulunamayan sayfa uyarıyla raporlanır.
+2. **`prepare`**: kural ön elemesi (`bidr/data/kurum_katalog_kurallar.yaml`): `ele_bolum`,
+   `ele_birim`, `ele_ad` desenleri ilgisiz alanları eler (`tut` desenleri elemeyi aşar); `esle`
+   desenleri adı aday ölçütlere bağlar (en çok `en_cok` = 3). Kurala uyan öğeler ve elenmeyen bütün
+   yönetmelik/yönerge/usul-esaslar model iş paketlerine konur (`work/kurum-katalog/kk-NNN.json`, 60
+   öğe; görev `bidr/tasks/kurum_katalog_esle`: ad, kod, tür, birim/bölüm ve kural önerisi → en çok 3
+   ölçüt ve kısa gerekçe). Kurala uymayan form/iş akışı ilgisiz kalır. Sonuç
+   `kurum-katalog-esleme.json` (öğe başına `ilgili`, `olcutler`, `gerekce`, `kaynak`: kural|model).
+3. **`apply`**: `kk-NNN.out.json` cevapları şemaya, paket id'lerine, geçerli alt ölçüt koduna ve en
+   çok 3 ölçüte göre denetlenir; geçersizler `GECERSIZ.md`'ye. Model cevabı kural önerisini aşar.
+
+**Önbellek**: öğe anahtarı tür + kod + ad + birim + bölüm. Katalog yeniden çekildiğinde değişmeyen
+öğenin model eşlemesi korunur ve yeniden paketlenmez (bağlantı/revizyon değişikliği eşlemeyi
+değiştirmez). `prepare`, cevaplanmış ama uygulanmamış paketleri önce uygular. `--yeniden` hepsini
+yeniden paketler.
+
+`bidr ihtiyac` eşlemeyi `--kurum-katalog` ile, verilmezse `--out` klasöründe sonra çalışma alanında
+arar; yoksa sade liste kurum belgeleri olmadan üretilir.
+
 ## Sınırlar
 
 - Eşleştirme benzerliğe dayanır: `var` satırları gözle doğrulanmalıdır (özellikle aynı kalıptan
@@ -186,6 +230,9 @@ kodsuz satır "Genel" satırı olarak eklenir. CSV: `madde,istek` zorunlu, `once
 - Kılavuz önerileri yuva düzeyindedir: bir yuva farklı bir yuvaya eşlenmiş belgeyle fiilen
   karşılanmış olabilir (eşleştirme yuvayı seçer). Yuva metinleri kurum geneli ifadeler içerir
   ("Kurumun…"); birim düzeyinde karşılığı ayrıca düşünülmelidir. PUKÖ etiketleri öneridir.
+- Kurum belgeleri yalnız adlarından eşlenir (içerik okunmaz): bir belge adında geçmeyen bir ölçüte
+  ilgili olabilir ya da adı ilgili görünüp içeriği başka olabilir. Liste sayfasının yapısı değişirse
+  `cek` "öğe bulunamadı" uyarısı verir.
 - Sade listedeki somut belge adları ve öneri eşlemesi geneldir (her birim için doğru değildir); birimin
   düzenine göre `--somut` / `--oneriler` ile kopyası verilebilir. Elle istek ile öneri aynı belgeyi
   farklı sözlerle isteyebilir (metin karşılaştırması yapılmaz).

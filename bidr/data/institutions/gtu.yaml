@@ -58,3 +58,25 @@ kodlar:
   FR-0587: {ad: Bitirme Projesi Değerlendirme Formu}
   FR-0754: {ad: Lisans Müşterek Jüri Raporu}
   FR-0820: {ad: Yeni Ders Açma Öneri Formu}
+# Kurum belge kataloğu (bidr kurum-katalog cek): herkese açık liste sayfaları. Yalnız sayfa (HTML)
+# indirilir; listedeki ek dosyalar indirilmez. tur: yonetmelik | yonerge | usul_esas | is_akisi |
+# form | anket | talimat (yönerge sayfasında "Usul ve Esaslar" adlı öğe usul_esas, form sayfasında
+# "Anket" adlı öğe anket olur).
+katalog:
+  - ad: Yönetmelikler
+    adres: https://www.gtu.edu.tr/kategori/3074/0/display.aspx
+    tur: yonetmelik
+  - ad: Yönergeler ve usul-esaslar
+    adres: https://www.gtu.edu.tr/kategori/3075/0/display.aspx
+    tur: yonerge
+  - ad: Kalite Ofisi iş akışları
+    adres: https://www.gtu.edu.tr/kategori/2381/0/display.aspx
+    tur: is_akisi
+  - ad: Kalite Ofisi formlar ve anketler
+    adres: https://www.gtu.edu.tr/kategori/2382/0/display.aspx
+    tur: form
+  - ad: Cihaz kullanım talimatları
+    adres: https://www.gtu.edu.tr/kategori/3103/0/display.aspx
+    tur: talimat
+    etkin: false
+    not: laboratuvar cihaz talimatları (~450); BİDR ölçütleriyle ilgisiz, çekilmez

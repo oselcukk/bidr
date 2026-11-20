@@ -7,8 +7,9 @@ somut belge listesi. Model yok; metinler kodla şablonlanır:
 - İstenen belgeler (sıra): komisyonun elle eklediği istekler (`--istenecekler`) → geçen yılki raporda
   olup bu yıl karşılığı bulunamayan belgeler (tekrarlayan belgede yıl ilerletilir) → komisyonun
   "istenebilecek kanıtlar" önerileri (`ihtiyac_oneriler.yaml`; eşlendiği kılavuz maddesi karşılanmamışsa)
-  → karşılanmamış kılavuz maddelerinin somut karşılıkları (`ihtiyac_somut.yaml`). Kılavuz
-  kaynaklı satırlar en çok `KILAVUZ_EN_COK` madde; tam liste ihtiyac.xlsx'te.
+  → karşılanmamış kılavuz maddelerinin somut karşılıkları (`ihtiyac_somut.yaml`) → kurumun bu
+  maddeyle eşlenmiş belgeleri (`kurum-katalog-esleme.json`; ad, kod, bağlantı). Kılavuz kaynaklı
+  satırlar en çok `KILAVUZ_EN_COK` (tam liste ihtiyac.xlsx'te), kurum belgeleri en çok `KURUM_EN_COK` madde.
 - Neden gerekli: ölçütün durumuna göre hazır cümleler (olgunluk düzeyi, eksik aşama sade adıyla).
 - Öncelik: Yüksek (kanıtsız ya da tek belgeyle olgunluk düzeyi artan) / Orta (geçen yılın karşılığı
   yok ya da bir üst düzeyin eksik belgesi; elle istek varsayılanı) / Düşük (yalnız tamamlayıcı).
@@ -31,6 +32,11 @@ ONERILER_FILE = DATA / "ihtiyac_oneriler.yaml"
 FILE = "istenen-kanitlar.xlsx"
 KILAVUZ_EN_COK = 6          # kılavuz/öneri kaynaklı madde sayısı (satır başına)
 ELDE_EN_COK = 4
+KURUM_EN_COK = 10           # kurum belge kataloğundan madde sayısı (satır başına)
+KURUM_REF_TURLER = frozenset({"yonetmelik", "yonerge", "usul_esas", "is_akisi", "senato_karari", "anket_formu"})
+_KURUM_SIRA = {t: i for i, t in enumerate(("yonetmelik", "yonerge", "usul_esas", "is_akisi", "anket", "form",
+                                           "talimat"))}
+_DOLGU = frozenset("gtu gebze teknik universitesi universite akis akisi is ve ile icin iliskin hakkinda bir the of and".split())
 REF_GRUP_EN_AZ = 3          # geçen yılın aynı türden bu kadar belgesi tek maddede toplanır
 REF_GRUP = {"yonerge": "mevzuat", "yonetmelik": "mevzuat", "is_akisi": "mevzuat"}
 YUKSEK, ORTA, DUSUK = "Yüksek", "Orta", "Düşük"
@@ -61,6 +67,8 @@ NASIL = [
     "Elde olan benzer bir belge de iş görür.",
     "“Kime gönderilecek” sayfası aynı istekleri kişi/birim başına toplar. Kimden istenebileceği öneridir; "
     "bölümün iş bölümüne göre değişebilir.",
+    "“İstenen belgeler”in sonunda bağlantısıyla verilenler kurumun yayımladığı yönetmelik, yönerge, iş akışı ve "
+    "formlardır (adlarından bu maddeyle ilgili oldukları düşünülmüştür; uygun olanı seçilir).",
     "“Kılavuzdaki örnek kanıtlar” YÖKAK kılavuzunun bu madde için örnek verdiği ve henüz karşılanmamış "
     "belgelerdir (kılavuz metni). Liste bir hatırlatmadır, kesin kontrol listesi değildir.",
 ]
@@ -243,8 +251,12 @@ def _neden(sat: dict | None, tal: list[dict], ref_n: int, elle: bool) -> str:
 
 def satirlar_kur(cs, tags, sor, talepler: list[dict], satirlar: list[dict], gecen: list[dict], *,
                  yil=None, ref_yil=None, istekler: list[dict] | None = None, somut: Somut | None = None,
-                 oneriler: list[dict] | None = None) -> list[dict]:
-    """Ölçüt başına bir sade satır (öncelik sırasıyla). Her satırda `maddeler`: [{metin, kimden}]."""
+                 oneriler: list[dict] | None = None, kurum: dict | None = None) -> list[dict]:
+    """Ölçüt başına bir sade satır (öncelik sırasıyla). Her satırda `maddeler`: [{metin, kimden}].
+    `kurum`: kurum belge kataloğu eşlemesi (`katalog_esle.esleme_oku`); ilgili belgeler madde olur."""
+    from .katalog_esle import madde_metni, olcut_belgeleri
+    k_by = olcut_belgeleri(kurum)
+    k_hepsi = list((kurum or {}).get("ogeler") or [])
     somut = somut or Somut()
     oneriler = oneriler if oneriler is not None else oneriler_yukle()
     istekler = istekler or []
@@ -280,6 +292,13 @@ def satirlar_kur(cs, tags, sor, talepler: list[dict], satirlar: list[dict], gece
             ekle(x["metin"], x["kimden"] or sor.kim(olcut=cid if cid[:1] in "ABCDE" else None), "elle")
         # 2. geçen yılın karşılığı bulunamayan belgeleri
         refs = ref_by.get(cid, [])
+        k_ref: list[dict] = []                 # geçen yılın kurum belgesi kataloğda bulundu: bağlantısıyla
+        if k_hepsi:
+            kalan = []
+            for g in refs:
+                o = katalog_karsiligi(g, k_hepsi)
+                (kalan if o is None else k_ref).append(g if o is None else o)
+            refs = kalan
         gruplar: dict[str, list[dict]] = {}
         for g in refs:
             gruplar.setdefault(REF_GRUP.get(g.get("belge_turu") or "", g.get("belge_turu") or ""), []).append(g)
@@ -337,6 +356,17 @@ def satirlar_kur(cs, tags, sor, talepler: list[dict], satirlar: list[dict], gece
                 n0 = len(maddeler)
                 ekle(x, _kim(sor, tags, somut, y, cid), "kilavuz")
                 n_klv += len(maddeler) > n0
+        # 5. kurumun bu maddeyle ilgili belgeleri (katalog eşlemesi; geçen yıl kullanılanlar önce)
+        kb = list({o["id"]: o for o in k_ref + k_by.get(cid, [])}.values())
+        n_kur = 0
+        for o in kb:
+            if n_kur >= KURUM_EN_COK:
+                ekle(f"… ve kurumun bu maddeyle ilgili {len(kb) - n_kur} belgesi daha (tam liste: kurum-katalog-esleme.json)",
+                     sor.kim(belge_turu=o.get("tur"), olcut=cid), "kurum")
+                break
+            n0 = len(maddeler)
+            ekle(madde_metni(o), sor.kim(belge_turu=o.get("tur"), olcut=cid), "kurum")
+            n_kur += len(maddeler) > n0
         # öncelik, gerekçe, not
         oto = _oncelik(tal[0]["puan"]) if tal else DUSUK
         onc = min([oto] + [x["oncelik"] for x in ist], key=SIRA.get)
@@ -365,6 +395,40 @@ def satirlar_kur(cs, tags, sor, talepler: list[dict], satirlar: list[dict], gece
         r["sira"] = i
         del r["_anahtar"]
     return out
+
+
+def _sozcukler(s: str) -> set[str]:
+    from .tablolar import norm
+    return {w[:5] for w in re.findall(r"[a-z0-9]+", norm(s)) if len(w) > 2 and w not in _DOLGU}
+
+
+def katalog_karsiligi(g: dict, ogeler: list[dict]) -> dict | None:
+    """Geçen yılın kurum geneli belgesinin (yönetmelik, yönerge, iş akışı…) katalogdaki karşılığı:
+    addaki doküman kodu, yoksa ad sözcük köklerinin (ilk 5 harf) örtüşmesi (kısa adın ≥ %80'i ve
+    Jaccard ≥ 0,5)."""
+    if g.get("belge_turu") not in KURUM_REF_TURLER:
+        return None
+    from .katalog import kod_bul
+    ad = g.get("kanit_adi") or ""
+    kod = kod_bul(ad)
+    if kod:
+        o = next((o for o in ogeler if o.get("kod") == kod), None)
+        if o is not None:
+            return o
+    a = _sozcukler(ad)
+    if len(a) < 2:
+        return None
+    best, bs = None, 0.0
+    for o in ogeler:
+        b = _sozcukler(o.get("ad") or "")
+        if len(b) < 2:
+            continue
+        ort = len(a & b)
+        sk = ort / min(len(a), len(b))
+        jc = ort / len(a | b)
+        if sk >= 0.8 and jc >= 0.5 and (sk + jc) > bs:
+            best, bs = o, sk + jc
+    return best
 
 
 _ETIKET: dict[str, str] = {}

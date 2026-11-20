@@ -434,10 +434,11 @@ def md_ozet(meta: dict, talepler: list[dict], satirlar: list[dict], gecen: list[
 
 
 def run(ws_root: Path, *, referans: dict | None = None, out: Path | None = None, sorumlular=None,
-        turler=None, istekler: list[dict] | None = None, somut=None, oneriler: list[dict] | None = None
-        ) -> dict:
+        turler=None, istekler: list[dict] | None = None, somut=None, oneriler: list[dict] | None = None,
+        kurum: dict | None = None) -> dict:
     """Raporu üretir; {"paths", "talepler", "satirlar", "gecen", "meta", "sade"} döner. `istekler`:
-    elle istekler (`sade.istekler_oku`); `somut`/`oneriler`: sade liste tabloları (vars. bidr/data)."""
+    elle istekler (`sade.istekler_oku`); `somut`/`oneriler`: sade liste tabloları (vars. bidr/data);
+    `kurum`: kurum belge kataloğu eşlemesi (`kurum-katalog-esleme.json`, bkz. katalog_esle)."""
     from bidr.audit.run import FILES as AFILES
     from bidr.audit.run import build
     from bidr.criteria.slots import load_tags
@@ -487,7 +488,7 @@ def run(ws_root: Path, *, referans: dict | None = None, out: Path | None = None,
     from . import sade
     sade_rows = sade.satirlar_kur(a.cs, tags, sor, talepler, satirlar, gecen, yil=a.donem,
                                   ref_yil=(referans or {}).get("donem"), istekler=istekler, somut=somut,
-                                  oneriler=oneriler)
+                                  oneriler=oneriler, kurum=kurum)
     paths["sade"] = sade.write_xlsx(out / sade.FILE, sade_rows,
                                     baslik=f"İstenen kanıtlar ({a.donem})" if a.donem else "İstenen kanıtlar")
     return {"paths": paths, "talepler": talepler, "satirlar": satirlar, "gecen": gecen, "meta": meta,

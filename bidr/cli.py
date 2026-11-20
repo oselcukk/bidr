@@ -31,6 +31,7 @@ SUBCOMMAND_MODULES = [
     "bidr.teslim.cli",
     "bidr.mask.cli",
     "bidr.ihtiyac.cli",
+    "bidr.ihtiyac.katalog_cli",
 ]
 
 
