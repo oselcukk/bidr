@@ -8,13 +8,20 @@ Kaynak klasör salt okunurdur; hiçbir dosyasına yazılmaz. Çıktı klasörü 
   (iç içe kaplar dahil) maskelenir ve kap maskeli üyelerle yeniden paketlenir: zip → zip, tar → aynı
   sıkıştırmalı tar, .eml → .eml (başlıklar ve gövde de maskelenir); 7z/rar yazılamadığından
   `<ad>.zip` olarak paketlenir;
-- desteklenmeyen biçimler (eski .doc/.xls, sunum, .msg …) olduğu gibi kopyalanır ve
-  "elle bakılmalı" listesine girer (içleri maskelenmedi);
+- eski biçimler (`eski.convert`): .doc → .docx (macOS textutil), .xls → .xlsx (xlrd → openpyxl),
+  .msg → .eml (extract-msg kuruluysa) çevrilip maskelenir; maskeli kopyada yeni uzantısıyla durur
+  (rapor: `ozgun_bicim`, `donusum`). Çevrilemeyen (araç yok, .ppt/.pptx, bozuk) olduğu gibi
+  kopyalanır ve "elle bakılmalı" olur;
+- desteklenmeyen biçimler olduğu gibi kopyalanır ve "elle bakılmalı" listesine girer (içleri
+  maskelenmedi);
 - gizli/sistem dosyaları (`.DS_Store`, `~$` kilit dosyaları …; ingest'in de atladıkları) kopyalanmaz.
 
 Maskeleme hiçbir kanıtı düşürmez: maskelemesi eksik kalan (`basarisiz`, `taranamadi`) dosyanın
-maskeli kopyası, maskelenemeyen (`hata`) dosyanın özgünü ağaçta kalır; hepsi raporda
-`elle_bakilmali: true` olur. Dosya/klasör adlarındaki kişisel veri de (ad, öğrenci no …) yer
+maskeli kopyası, maskelenemeyen (`hata`, `desteklenmiyor`) dosyanın özgünü ağaçta kalır; hepsi
+raporda `elle_bakilmali: true` olur. `siki=True` (`--siki`): bu dosyalar maskeli kopyaya girmez,
+kopyanın DIŞINDA ayrı bir klasöre (`<out>.elle-bakilmali/`, aynı göreli yol; kap üyeleri
+`<kap>/<üye>`) konur ve raporda `ayrilan` listesinde yer alır (kaptaki e-posta eki yerine kısa
+bir not eklenir). Dosya/klasör adlarındaki kişisel veri de (ad, öğrenci no …) yer
 tutucuyla değiştirilir; rapor özgün yolu (`dosya`) ve maskeli yolu (`hedef`) birlikte tutar.
 
 Rapor (`<out>.maskeleme-raporu.json`, çıktı klasörünün DIŞINDA) özgün dosya adlarını içerir:
@@ -40,12 +47,14 @@ from pathlib import Path
 from bidr.ingest import containers as C
 
 from .detect import MaskRules, detect, mask_text
+from .eski import LEGACY_EXT, ConvertError, convert as convert_legacy
 from .formats import kind_of as mask_kind, mask_html, pdf_engine
 from .ocr import ocr_available
 from .run import MARKER, MaskRunError, _c, _inside, _prepare_dir, mask_and_check
 
 SURUM = 1
 REPORT_SUFFIX = ".maskeleme-raporu.json"
+SIKI_SUFFIX = ".elle-bakilmali"
 ADDR_HEADERS = {"from", "to", "cc", "bcc", "reply-to", "sender", "return-path", "delivered-to",
                 "resent-from", "resent-to", "resent-cc", "disposition-notification-to"}
 # Adres başlıklarında "[EPOSTA]" geçerli adres olmadığından e-posta ayrıştırıcıları onu siler;
@@ -54,10 +63,38 @@ ADDR_PLACEHOLDER = "eposta@maskeli.invalid"
 
 
 class _Ctx:
-    def __init__(self, rules: MaskRules, eng: str):
+    def __init__(self, rules: MaskRules, eng: str, siki: Path | None = None):
         self.rules = rules
         self.eng = eng
+        self.siki = siki                    # --siki: elle bakılmalı dosyaların ayrı klasörü
         self.records: list[dict] = []
+        self.last: dict | None = None       # son `_handle` çağrısının ana kaydı
+
+    def set_aside(self, written: Path, rec: dict | None) -> bool:
+        """--siki: elle bakılmalı (kap dışı) dosyayı ayrı klasöre kopyala. → ayrıldı mı."""
+        if self.siki is None or rec is None or not rec.get("elle_bakilmali") or rec.get("durum") == "kap":
+            return False
+        if not written.exists() or not rec.get("hedef"):
+            return False
+        rel = rec["hedef"].replace(C.SEP, "/")
+        target = self.siki / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(written, target)
+        rec["ayrildi"] = rel
+        return True
+
+
+def renamed(masked: str, base: str, written: str) -> str:
+    """Maskeli ad + yazılan dosyanın ad değişikliği: ek (7z → `.7z.zip`) ya da uzantı (`.doc` → `.docx`,
+    `.msg` → `.eml`)."""
+    if written == base:
+        return masked
+    if written.startswith(base):
+        return masked + written[len(base):]
+    old, new = os.path.splitext(base)[1], os.path.splitext(written)[1]
+    if old and masked.lower().endswith(old.lower()):
+        return masked[: len(masked) - len(old)] + new
+    return masked + new
 
 
 # ------------------------------------------------------------------ adlar
@@ -119,6 +156,7 @@ class _Namer:
 def _record(ctx: _Ctx, rel: str, hedef: str, **kw) -> dict:
     rec = {"dosya": rel, "hedef": hedef, **kw}
     ctx.records.append(rec)
+    ctx.last = rec
     return rec
 
 
@@ -142,11 +180,17 @@ def _handle(src: Path, rel: str, hedef: str, dst: Path, ctx: _Ctx, depth: int = 
             return _handle_eml(src, rel, hedef, dst, ctx, depth)
         return _handle_archive(src, rel, hedef, dst, ctx, depth, ck, ext)
     kind = mask_kind(src)
+    if kind is None and ext in LEGACY_EXT:
+        return _handle_legacy(src, rel, hedef, dst, ctx, depth, ext)
     if kind is None:
         _copy_as_is(src, dst)
         _record(ctx, rel, hedef, bicim=ext.lstrip(".") or "?", durum="desteklenmiyor", elle_bakilmali=True,
                 neden="biçim maskelenemiyor; olduğu gibi kopyalandı (içi maskelenmedi), elle bakılmalı")
         return dst
+    return _mask_one(src, rel, hedef, dst, ctx, kind)
+
+
+def _mask_one(src: Path, rel: str, hedef: str, dst: Path, ctx: _Ctx, kind: str) -> Path:
     rec = {"bicim": kind}
     if kind == "pdf":
         rec["motor"] = ctx.eng
@@ -159,6 +203,48 @@ def _handle(src: Path, rel: str, hedef: str, dst: Path, ctx: _Ctx, depth: int = 
         rec["neden"] = rec["neden"] + " — maskeli kopya ağaçta (eksik maskeleme)"
     _record(ctx, rel, hedef, **rec)
     return dst
+
+
+def _handle_legacy(src: Path, rel: str, hedef: str, dst: Path, ctx: _Ctx, depth: int, ext: str) -> Path:
+    """Eski biçim → yeni biçime çevir (geçici klasörde) → maskele. Çevrilemezse olduğu gibi kopyala."""
+    with tempfile.TemporaryDirectory(prefix="bidr-eski-") as td:
+        try:
+            conv, how = convert_legacy(src, Path(td))
+        except ConvertError as e:
+            _copy_as_is(src, dst)
+            _record(ctx, rel, hedef, bicim=ext.lstrip("."), durum="desteklenmiyor", elle_bakilmali=True,
+                    neden=f"eski biçim çevrilemedi: {e}; olduğu gibi kopyalandı (içi maskelenmedi), elle bakılmalı")
+            return dst
+        except Exception as e:
+            _copy_as_is(src, dst)
+            _record(ctx, rel, hedef, bicim=ext.lstrip("."), durum="hata", elle_bakilmali=True,
+                    neden=f"eski biçim çevrilemedi ({type(e).__name__}: {str(e)[:160]}); olduğu gibi kopyalandı")
+            return dst
+        new_ext = conv.suffix
+        dst2 = dst.with_name(renamed(dst.name, src.name, conv.name))
+        hedef2 = hedef[: len(hedef) - len(dst.name)] + dst2.name if hedef.endswith(dst.name) else \
+            renamed(hedef, src.name, conv.name)
+        n0 = len(ctx.records)
+        kind = mask_kind(conv)
+        if conv.suffix == ".eml":
+            out = _handle_eml(conv, rel, hedef2, dst2, ctx, depth)
+        elif kind is not None:
+            out = _mask_one(conv, rel, hedef2, dst2, ctx, kind)
+        else:                                       # olmamalı: çevirici desteklenen biçim üretir
+            _copy_as_is(src, dst)
+            _record(ctx, rel, hedef, bicim=ext.lstrip("."), durum="desteklenmiyor", elle_bakilmali=True,
+                    neden=f"eski biçim çevrildi ama {conv.suffix} maskelenemiyor; olduğu gibi kopyalandı")
+            return dst
+        main = ctx.records[n0] if len(ctx.records) > n0 else None
+        if main is not None:
+            main["ozgun_bicim"] = ext.lstrip(".")
+            main["donusum"] = f"{ext.lstrip('.')} → {new_ext.lstrip('.')} ({how})"
+            if how in ("textutil", "xlrd→openpyxl"):
+                main.setdefault("uyarilar", []).append(
+                    "eski biçimden çevrildi: yazı biçimi, gömülü görsel/grafik ve formüller maskeli kopyada "
+                    "korunmayabilir (özgün dosya kaynakta)")
+            ctx.last = main
+        return out
 
 
 # ------------------------------------------------------------------ arşivler
@@ -244,7 +330,11 @@ def _handle_archive(src: Path, rel: str, hedef: str, dst: Path, ctx: _Ctx, depth
                     f_in.write_bytes(data)
                     del data
                     written = _handle(f_in, mrel, mhedef, d_out / base, ctx, depth + 1)
-                    arc = "/".join(mparts[:-1] + [mparts[-1] + written.name[len(base):]])   # 7z/rar → +.zip
+                    if ctx.set_aside(written, ctx.last):
+                        shutil.rmtree(d_in, ignore_errors=True)
+                        shutil.rmtree(d_out, ignore_errors=True)
+                        continue                 # --siki: elle bakılmalı üye kaba girmez
+                    arc = "/".join(mparts[:-1] + [renamed(mparts[-1], base, written.name)])   # 7z → +.zip; .doc → .docx
                     if ck == "tar":
                         writer.add(str(written), arcname=arc, recursive=False)
                     else:
@@ -270,6 +360,7 @@ def _handle_archive(src: Path, rel: str, hedef: str, dst: Path, ctx: _Ctx, depth
     if sorun:
         rec["neden"] = "; ".join(sorun)
     ctx.records.insert(n0, {"dosya": rel, "hedef": hedef, **rec})
+    ctx.last = ctx.records[n0]
     return dst
 
 
@@ -397,7 +488,11 @@ def _handle_eml(src: Path, rel: str, hedef: str, dst: Path, ctx: _Ctx, depth: in
                     data = inner.as_bytes() if hasattr(inner, "as_bytes") else bytes(inner)
                     disp = p.get_content_disposition()
                     had_name = bool(p.get_filename())
-                    newdata, newname = _member(name, data)
+                    newdata, newname, aside = _member(name, data)
+                    if aside:
+                        p.set_content(_aside_note(newname), subtype="plain", charset="utf-8",
+                                      disposition="attachment", filename=newname + ".ayrildi.txt")
+                        return
                     newmsg = email.message_from_bytes(newdata, policy=email.policy.default)
                     kw = {"disposition": disp} if disp else {}
                     if had_name:
@@ -417,12 +512,16 @@ def _handle_eml(src: Path, rel: str, hedef: str, dst: Path, ctx: _Ctx, depth: in
                 fn = p.get_filename()
                 data = p.get_payload(decode=True) or b""
                 name = fn or f"ek{C._MIME_EXT.get(ct, '.bin')}"
-                newdata, newname = _member(name, data)
+                newdata, newname, aside = _member(name, data)
+                if aside:
+                    p.set_content(_aside_note(newname), subtype="plain", charset="utf-8",
+                                  disposition="attachment", filename=newname + ".ayrildi.txt")
+                    return
                 maintype, subtype = ct.split("/", 1)
                 p.set_content(newdata, maintype=maintype, subtype=subtype,
                               disposition=p.get_content_disposition() or "attachment", filename=newname)
 
-            def _member(name: str, data: bytes) -> tuple[bytes, str]:
+            def _member(name: str, data: bytes) -> tuple[bytes, str, bool]:
                 nonlocal n_att
                 n_att += 1
                 base = re.sub(r"[\\/]+", "_", name).strip() or "ek.bin"
@@ -438,9 +537,10 @@ def _handle_eml(src: Path, rel: str, hedef: str, dst: Path, ctx: _Ctx, depth: in
                 (d_in / base).write_bytes(data)
                 written = _handle(d_in / base, f"{rel}{C.SEP}{base}", f"{hedef}{C.SEP}{mname}",
                                   d_out / base, ctx, depth + 1)
-                if written.name != base:
-                    mname = mname + written.name[len(base):]
-                return written.read_bytes(), mname
+                mname = renamed(mname, base, written.name)
+                if ctx.set_aside(written, ctx.last):
+                    return b"", mname, True
+                return written.read_bytes(), mname, False
 
             visit(msg, True)
             # satır içi (ek olmayan) metin dışı parçalar: ingest okumaz ama dosyada kalır → görsel ise
@@ -450,7 +550,11 @@ def _handle_eml(src: Path, rel: str, hedef: str, dst: Path, ctx: _Ctx, depth: in
                     continue
                 data = p.get_payload(decode=True) or b""
                 ext = C._MIME_EXT.get(p.get_content_type(), "." + p.get_content_subtype())
-                newdata, _ = _member(f"satir-ici{ext}", data)
+                newdata, _, aside = _member(f"satir-ici{ext}", data)
+                if aside:
+                    p.set_content(_aside_note("satır içi görsel"), subtype="plain", charset="utf-8",
+                                  disposition="inline")
+                    continue
                 p.set_content(newdata, maintype="image", subtype=p.get_content_subtype(),
                               disposition="inline", cid=p.get("Content-ID"))
             out_bytes = msg.as_bytes()
@@ -472,7 +576,13 @@ def _handle_eml(src: Path, rel: str, hedef: str, dst: Path, ctx: _Ctx, depth: in
         rec["neden"] = ("maskeleme başarısız; kalan: " + ", ".join(f"{k}×{n}" for k, n in sorted(kalan.items()))
                         + " — maskeli kopya ağaçta (eksik maskeleme)")
     ctx.records.insert(n0, {"dosya": rel, "hedef": hedef, **rec})
+    ctx.last = ctx.records[n0]
     return dst
+
+
+def _aside_note(name: str) -> str:
+    return (f"[{name}: maskelemesi eksik kaldığı için --siki ile maskeli kopyanın dışına ayrıldı; "
+            "maskeleme raporundaki 'ayrilan' listesine bakın]\n")
 
 
 # ------------------------------------------------------------------ çalıştırma
@@ -489,24 +599,42 @@ def _files(src: Path) -> tuple[list[Path], list[str]]:
 
 
 def _work(args) -> list[dict]:
-    src, rel, hedef, dst, rules, eng = args
-    ctx = _Ctx(rules, eng)
+    src, rel, hedef, dst, rules, eng, siki = args
+    ctx = _Ctx(rules, eng, Path(siki) if siki else None)
     try:
-        _handle(Path(src), rel, hedef, Path(dst), ctx)
+        written = _handle(Path(src), rel, hedef, Path(dst), ctx)
     except Exception as e:      # beklenmeyen: kanıt düşmesin
         _copy_as_is(Path(src), Path(dst))
+        written = Path(dst)
         ctx.records.append({"dosya": rel, "hedef": hedef, "bicim": "?", "durum": "hata", "elle_bakilmali": True,
                             "neden": f"beklenmeyen hata ({type(e).__name__}: {str(e)[:160]}); "
                                      "olduğu gibi kopyalandı"})
+        ctx.last = ctx.records[-1]
+    if ctx.last is not None and ctx.last.get("dosya") == rel and ctx.set_aside(written, ctx.last):
+        written.unlink()           # --siki: maskeli kopyada kalmaz
+        root, d = Path(dst).parents[len(hedef.split("/")) - 1], written.parent
+        while d != root and d.is_dir() and not any(d.iterdir()):
+            d.rmdir()
+            d = d.parent
     return ctx.records
+
+
+def _base(path: str, converted) -> str:
+    """Yolun son öğesi; eski biçimden çevrilen dosyada uzantısız (uzantı değişimi ad maskelemesi değil)."""
+    b = path.rsplit(C.SEP, 1)[-1].rsplit("/", 1)[-1]
+    return os.path.splitext(b)[0] if converted else b
 
 
 def report_path(out: Path) -> Path:
     return out.parent / (out.name + REPORT_SUFFIX)
 
 
+def siki_path(out: Path) -> Path:
+    return out.parent / (out.name + SIKI_SUFFIX)
+
+
 def run_source(source: Path, out: Path, *, rules: MaskRules | None = None, engine: str = "auto",
-               workers: int = 1, report: Path | None = None, progress=None) -> dict:
+               workers: int = 1, report: Path | None = None, progress=None, siki: bool = False) -> dict:
     src = Path(source).expanduser().resolve()
     if not src.is_dir():
         raise FileNotFoundError(f"kaynak klasör yok: {src}")
@@ -516,9 +644,14 @@ def run_source(source: Path, out: Path, *, rules: MaskRules | None = None, engin
     rep_p = Path(report).expanduser().resolve() if report else report_path(out)
     if _inside(rep_p, src) or _inside(rep_p, out):
         raise MaskRunError(f"rapor kaynak ya da çıktı klasörünün içinde olamaz: {rep_p}")
+    siki_d = siki_path(out) if siki else None
+    if siki_d is not None and (_inside(siki_d, src) or _inside(src, siki_d)):
+        raise MaskRunError(f"--siki klasörü kaynak klasörle iç içe olamaz: {siki_d}")
     rules = rules or MaskRules()
     eng = pdf_engine(engine)
     _prepare_dir(out)
+    if siki_d is not None:
+        _prepare_dir(siki_d)
     uyarilar = list(rules.warnings)
     if not ocr_available():
         uyarilar.append("OCR yok (tesseract + tur/eng dil verisi): taranmış sayfalar ve görseller taranamadı; "
@@ -532,7 +665,7 @@ def run_source(source: Path, out: Path, *, rules: MaskRules | None = None, engin
     for p in files:
         rel = p.relative_to(src).as_posix()
         hedef = "/".join(namer.path(rel.split("/")))
-        jobs.append((str(p), rel, hedef, str(out / hedef), rules, eng))
+        jobs.append((str(p), rel, hedef, str(out / hedef), rules, eng, str(siki_d) if siki_d else None))
     records: list[dict] = []
     if workers > 1 and len(jobs) > 1:
         with ProcessPoolExecutor(max_workers=workers) as ex:
@@ -553,8 +686,11 @@ def run_source(source: Path, out: Path, *, rules: MaskRules | None = None, engin
     for r in records:
         for k in toplam:
             toplam[k].update(r.get(k) or {})
-    elle = [{"dosya": r["dosya"], "hedef": r.get("hedef"), "durum": r["durum"], "neden": r.get("neden", "")}
+    elle = [{"dosya": r["dosya"], "hedef": r.get("hedef"), "durum": r["durum"], "neden": r.get("neden", ""),
+             **({"ayrildi": r["ayrildi"]} if r.get("ayrildi") else {})}
             for r in records if r.get("elle_bakilmali")]
+    ayrilan = [{"dosya": r["dosya"], "hedef": r.get("hedef"), "ayrildi": r["ayrildi"], "durum": r["durum"]}
+               for r in records if r.get("ayrildi")]
     rapor = {
         "surum": SURUM, "mod": "kaynak", "zaman": datetime.now().astimezone().isoformat(timespec="seconds"),
         "kaynak_klasor": str(src), "maskeli_klasor": str(out), "pdf_motoru": eng, "ocr": ocr_available(),
@@ -565,10 +701,18 @@ def run_source(source: Path, out: Path, *, rules: MaskRules | None = None, engin
                  **{k: _c(v) for k, v in toplam.items()},
                  "imza_bolgesi": sum(r.get("imza_bolgesi", 0) for r in records),
                  "imza_ortusen_kelime": sum(r.get("imza_ortusen_kelime", 0) for r in records),
+                 "imza_metinle_ortusen_elle": sum(r.get("imza_metin_elle", 0) for r in records),
+                 "eski_bicim_cevrilen": sum(1 for r in records if r.get("donusum")),
+                 **({"ayrilan": len(ayrilan)} if siki else {}),
                  "ad_degisen": sum(1 for r in records if r.get("hedef") and
-                                   r["hedef"].rsplit(C.SEP, 1)[-1] != r["dosya"].rsplit(C.SEP, 1)[-1])},
+                                   _base(r["hedef"], r.get("donusum")) != _base(r["dosya"], r.get("donusum")))},
         "uyarilar": uyarilar, "elle_bakilmali": elle, "atlanan": skipped, "dosyalar": records,
     }
+    if siki_d is not None:
+        rapor["siki_klasor"] = str(siki_d)
+        rapor["ayrilan"] = ayrilan
+        (siki_d / MARKER).write_text(json.dumps({"surum": SURUM, "mod": "kaynak-siki", "rapor": str(rep_p)},
+                                                ensure_ascii=False, indent=1), encoding="utf-8")
     rep_p.parent.mkdir(parents=True, exist_ok=True)
     rep_p.write_text(json.dumps(rapor, ensure_ascii=False, indent=1), encoding="utf-8")
     rapor["rapor"] = str(rep_p)
