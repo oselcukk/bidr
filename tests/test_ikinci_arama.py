@@ -287,3 +287,83 @@ def test_cli_prepare_gated_until_audit_done(ws, tmp_path, capsys):
     assert "audit bittikten sonra" in err and "bidr next -w" in err and "önce bitmeli" in err
     assert not (root / "work" / A.WORK).exists()
     assert main(["arama", "olcum", "-w", str(root), "--json"]) == 0
+
+
+# -- çapraz yol: başka ölçütte kabul edilmiş birim belgeleri ------------------------------
+
+Q_D21 = "Lise öğrencilerine yönelik toplumsal katkı etkinliği gerçekleştirilmiş ve 120 kişi katılmıştır."
+Q_D12 = "Etkinlik bütçesi üniversitemiz tarafından karşılanmış, bölüm görevlisi belirlenmiştir."
+ETK = (f"BÖLÜM ETKİNLİK RAPORU\n{Q_D21}\n{Q_D12}\nToplumsal katkı kaynakları (mali, fiziksel, "
+       "insan gücü) etkinlik için ayrılmıştır.")
+CROSS = {
+    "etk": ETK,                              # D.2.1 kabul, D.1.2 ilk geçişte aday ama eşleşmedi
+    "etk_ret": ETK + " Nüsha 2.",            # D.2.1 kabulünü insan reddetti → havuzda değil
+    "etk_kg": ETK + " Nüsha 3.",             # kurum geneli → havuzda değil
+    "etk_d12": ETK + " Nüsha 4.",            # D.1.2 ilk geçişte eşleşti (kod reddi) → sorulmaz
+    "kantin": "Kantin menüsü: pazartesi mercimek çorbası, salı kuru fasulye.",
+}
+
+
+@pytest.fixture
+def cws(tmp_path):
+    docs = [{"text": t} for t in CROSS.values()]
+    root = make_ws(tmp_path / "cws", docs)
+    ids = {k: d["id"] for k, d in zip(CROSS, docs)}
+    with open(root / "documents.jsonl", "w", encoding="utf-8") as f:
+        for x in ids.values():
+            f.write(json.dumps({"doc_id": x, "doc_type": "faaliyet_raporu"}) + "\n")
+    d21 = lambda: _match("D.2.1", "D.2.1/1", Q_D21, asama="uygula")   # noqa: E731
+    rej = {**_match("D.1.2", "D.1.2/1", Q_D12), "kabul": False}
+    recs = {
+        ids["etk"]: _fine_rec(ids["etk"], ["D.2.1", "D.1.2"], [d21()]),
+        ids["etk_ret"]: _fine_rec(ids["etk_ret"], ["D.2.1"], [d21()]),
+        ids["etk_kg"]: _fine_rec(ids["etk_kg"], ["D.2.1"], [d21()], rel="kurum_geneli"),
+        ids["etk_d12"]: _fine_rec(ids["etk_d12"], ["D.2.1", "D.1.2"], [d21(), rej]),
+        ids["kantin"]: _fine_rec(ids["kantin"], ["D.2.1"]),
+    }
+    with open(root / "decisions.jsonl", "w", encoding="utf-8") as f:
+        for k in sorted(recs):
+            f.write(json.dumps(recs[k], ensure_ascii=False) + "\n")
+    (root / "review-decisions.jsonl").write_text(
+        json.dumps({"satir": f"{ids['etk_ret']}|D.2.1/1", "karar": "ret"}) + "\n", encoding="utf-8")
+    return root, ids
+
+
+def test_cross_route_asks_accepted_unit_documents(cws):
+    root, ids = cws
+    # arşiv yolu: etk'de D.1.2 ilk geçiş adayıydı, seçilmez; çapraz yol onu sorar
+    st = A.prepare(root, profile=None, olcutler=["D.1.2"], capraz=False)
+    assert ids["etk"] not in st["secim"]["D.1.2"] and st["capraz_havuz"] == 0
+    st = A.prepare(root, profile=None, olcutler=["D.1.2"])
+    assert st["secim_capraz"]["D.1.2"] == [ids["etk"]]
+    assert st["capraz_havuz"] == 1 and st["capraz_paket"] == 1 and st["capraz_cift"] == 1
+    pkg = json.loads((root / "work" / A.WORK / f"{ids['etk']}.json").read_text(encoding="utf-8"))
+    assert pkg["meta"]["adaylar"] == ["D.1.2"]
+    assert "D.1.2/1" in pkg["istem"] and Q_D12 in pkg["istem"]          # hedef ölçüt + yuva + metin
+    row = pkg["meta"]["ikinci_arama"]["olcutler"][0]
+    assert row["kaynak"] == ["capraz"] and row["kabul_olcutler"] == ["D.2.1"]
+    for k in ("etk_ret", "etk_kg", "etk_d12", "kantin"):
+        assert ids[k] not in st["secim_capraz"]["D.1.2"], k
+
+
+def test_cross_route_apply_merges_without_double_count(cws):
+    root, ids = cws
+    A.prepare(root, profile=None, olcutler=["D.1.2"])
+    for p in (root / "work" / A.WORK).glob("*.json"):
+        if p.stem != ids["etk"] and not p.name.endswith(".out.json"):
+            _answer(root, p.stem, {"karar": "olcut_yok", "gerekce": "g", "birim_iliskisi": "kendi",
+                                   "eslesmeler": []})
+    _answer(root, ids["etk"], {"karar": "olcut_var", "gerekce": "bütçe", "birim_iliskisi": "kendi",
+                               "eslesmeler": [{"olcut": "D.1.2", "yuva": "D.1.2/1", "asama": "uygula",
+                                               "od_onerisi": 2, "alinti": Q_D12, "gerekce": "g",
+                                               "guven": "yuksek"}]})
+    st = A.apply(root, model="m")
+    assert st["eklenen_kabul"] == 1
+    rec = _recs(root)[ids["etk"]]
+    assert [(m["olcut"], bool(m.get("ikinci_arama"))) for m in rec["eslesmeler"]] == \
+        [("D.2.1", False), ("D.1.2", True)]
+    assert rec["ikinci_arama"]["olcutler"]["D.1.2"]["kaynak"] == ["capraz"]
+    assert {o["olcut"] for o in rec["olcutler"]} == {"D.1.2", "D.2.1"}
+    # bakılmış çift yeniden paketlenmez; ikinci aramanın kabulü havuz nedeni sayılmaz
+    st = A.prepare(root, profile=None, olcutler=["D.1.2"])
+    assert ids["etk"] not in st["secim_capraz"].get("D.1.2", [])

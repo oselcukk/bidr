@@ -50,23 +50,31 @@ def load_audit(path: Path) -> dict[str, dict] | None:
     return {c["olcut"]: c for c in js.get("olcutler") or [] if c.get("olcut")}
 
 
+def unit_own(view: dict, doc: dict | None) -> bool:
+    """Belge birimin kendi kanıtı mı: birim ilişkisi kurum/fakülte geneli ya da başka birim
+    değil, türü kurum geneli düzenleme değil (audit'in kurum geneli kuralıyla aynı; insan birim
+    kararı `unit_view` ile öncelikli)."""
+    from bidr.audit.rules import KARAR_TURLERI, KURUM_GENELI_TURLER
+    from bidr.decide.run import BIRIM_DISI, GENEL_ILISKI, record_unit_relation
+
+    rel = record_unit_relation(view)
+    dtype = (doc or {}).get("doc_type") or ""
+    tur_kg = dtype in KURUM_GENELI_TURLER and not (
+        rel == "ust_birim_bu_birim_hakkinda" and dtype in KARAR_TURLERI)
+    return rel not in GENEL_ILISKI and rel != BIRIM_DISI and not tur_kg
+
+
 def _unit_stats(recs: dict[str, dict], pins: dict, tags: dict, docs: dict) -> dict[str, dict]:
     """Ölçüt başına kabul edilmiş eşleşme, bölüm (birim) kanıtı sayısı ve en yüksek od_kabul.
-    Bölüm kanıtı: birim ilişkisi kurum/fakülte geneli ya da başka birim olmayan, türü kurum
-    geneli düzenleme olmayan belgedeki eşleşme (audit'in kurum geneli kuralıyla aynı)."""
-    from bidr.audit.rules import KARAR_TURLERI, KURUM_GENELI_TURLER
-    from bidr.decide.run import BIRIM_DISI, GENEL_ILISKI, record_unit_relation, unit_view
+    Bölüm kanıtı: `unit_own` belgedeki eşleşme."""
+    from bidr.decide.run import unit_view
 
     out: dict[str, dict] = {}
     for rec in recs.values():
         if rec.get("durum") != "ok" or rec.get("asama") != "ince":
             continue
         view = unit_view(rec, pins, tags)
-        rel = record_unit_relation(view)
-        dtype = (docs.get(rec["doc_id"]) or {}).get("doc_type") or ""
-        tur_kg = dtype in KURUM_GENELI_TURLER and not (
-            rel == "ust_birim_bu_birim_hakkinda" and dtype in KARAR_TURLERI)
-        bolum = rel not in GENEL_ILISKI and rel != BIRIM_DISI and not tur_kg
+        bolum = unit_own(view, docs.get(rec["doc_id"]))
         for m in view.get("eslesmeler") or []:
             if not m.get("kabul"):
                 continue
@@ -150,6 +158,7 @@ class Searcher:
         self.bm = BM25.from_bags(archive.bags) if archive.bags else None
         self.slots = SlotBM25(cs)
         self._slot_cache: dict[str, dict[str, float]] = {}
+        self._search_cache: dict[str, tuple[list[dict], list[str]]] = {}
 
     def _slot_scores(self, did: str) -> dict[str, float]:
         if did not in self._slot_cache:
@@ -158,7 +167,13 @@ class Searcher:
 
     def search(self, sid: str) -> tuple[list[dict], list[str]]:
         """([{doc_id, puan, sinyaller}], eşanlamlıdan eklenen belirteçler), azalan puan.
-        Sorgu BM25'i sıfır olan belge listeye girmez (ölçüt sözcüklerinden hiçbiri yok)."""
+        Sorgu BM25'i sıfır olan belge listeye girmez (ölçüt sözcüklerinden hiçbiri yok).
+        Sonuç önbellekte: arşiv ve çapraz yol aynı aramayı paylaşır."""
+        if sid not in self._search_cache:
+            self._search_cache[sid] = self._search(sid)
+        return self._search_cache[sid]
+
+    def _search(self, sid: str) -> tuple[list[dict], list[str]]:
         if self.bm is None:
             return [], []
         q, added = query_bag(self.cs, sid, self.synonyms)
@@ -206,3 +221,51 @@ def select(searcher: Searcher, weak: dict[str, dict], eligible: dict[str, set[st
 def load_docs(ws: Workspace) -> dict[str, dict]:
     return {r["doc_id"]: r for r in read_jsonl(ws.documents) if r.get("doc_id")} \
         if ws.documents.exists() else {}
+
+
+# -- çapraz yol: başka ölçütte kabul edilmiş birim belgeleri ---------------------------------
+# Arşiv yolu (yukarıda) ölçüt başına arşivin en iyi `n` belgesini seçer; bir ölçüte atanmış
+# belgenin başka bir ölçüte de kanıt olduğu çoğu zaman bu sıralamada geride kalır (bütçe cümlesi
+# bir etkinlik raporunun içinde, izleme tablosu performans ölçütünde). Çapraz yol, başka ölçütte
+# KABUL edilmiş (insan reddetmemiş) ve birimin kendi belgesi sayılan belgeleri zayıf ölçütlere
+# aday yapar: bu belgeler okunmuş ve bölüme ait sayılmıştır, ucuz ve güvenilir adaylardır.
+# Ölçüt ilk geçişte bu belgenin adayıydı ama ince karar eşleşme vermediyse de sorulur (dar
+# aday listesi ve ölçüte odaklı metin kesiti); o ölçütle eşleşmesi olan (kabul ya da ret, insan
+# ret dahil) belgeye o ölçüt yeniden sorulmaz.
+
+def human_rejected(review: dict[str, dict], did: str, yuva: str | None) -> bool:
+    return (review.get(f"{did}|{yuva}") or {}).get("karar") == "ret"
+
+
+def accepted_elsewhere(rec: dict, view: dict, review: dict[str, dict]) -> list[str]:
+    """Belgenin ilk geçişte kabul edilmiş, insanın reddetmediği eşleşmelerinin ölçütleri."""
+    did = rec["doc_id"]
+    return sorted({m["olcut"] for m in view.get("eslesmeler") or []
+                   if m.get("kabul") and not m.get("ikinci_arama")
+                   and not human_rejected(review, did, m.get("yuva"))}, key=id_key)
+
+
+def first_pass_matched(rec: dict) -> set[str]:
+    """İlk geçişin eşleşme verdiği ölçütler (kabul ya da ret): çapraz yol bunları sormaz."""
+    return {m.get("olcut") for m in rec.get("eslesmeler") or [] if not m.get("ikinci_arama")} - {None}
+
+
+def select_cross(searcher: Searcher, weak: dict[str, dict], pool: dict[str, dict], *,
+                 max_aday: int) -> dict[str, list[dict]]:
+    """{doc_id: [{olcut, puan, sira, sinyaller}]}: çapraz havuzdaki her belgeye en çok `max_aday`
+    zayıf ölçüt. `pool`: {doc_id: {"acik": ölçütler, "kabul": başka ölçütler}}. Sıra: ölçüt
+    sorgusunun bu belgeye puanı (arşivde en yükseğe bölünmüş, ölçütler arasında karşılaştırılabilir;
+    kanıtsız ölçüte öncelik vermek her pakete ilgisiz kanıtsız ölçüt sokuyordu). Sorgu
+    sözcüklerinden hiçbiri belgede yoksa (puan yok) ölçüt sorulmaz."""
+    out: dict[str, list[dict]] = {}
+    for c in sorted(weak, key=id_key):
+        rows, _ = searcher.search(c)
+        for i, r in enumerate(rows, 1):
+            p = pool.get(r["doc_id"])
+            if p and c in p["acik"]:
+                out.setdefault(r["doc_id"], []).append({"olcut": c, "puan": r["puan"], "sira": i,
+                                                        "sinyaller": r["sinyaller"]})
+    for did, rows in out.items():
+        rows.sort(key=lambda r: (-r["puan"], id_key(r["olcut"])))
+        del rows[max_aday:]
+    return out
