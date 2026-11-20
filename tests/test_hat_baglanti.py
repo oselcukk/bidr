@@ -180,6 +180,8 @@ KANITSIZ = {"durum": "kanitsiz", "nedenler": [], "metin": "Eksik kanıt notu: A.
 
 
 def test_render_missing_evidence_note(tmp_path):
+    """Eksik kanıt notu komisyon içindir (gaps.md): metinli ya da metinsiz hiçbir ölçütte rapora girmez
+    (kör test 2026-11-20); metni olup notu olan ölçüt yalnız kayda geçer."""
     ws = tmp_path / "ws"
     ws.mkdir()
     make_template(tmp_path / "sablon.docx", ids=(("A.1.1", "Yönetişim"), ("A.1.2", "Liderlik"),
@@ -198,28 +200,14 @@ def test_render_missing_evidence_note(tmp_path):
                      for c, b in blocks.items()}, blocks
 
     res, cell, blocks = run(kapsam={"A.1.3": "baska_birim"})
-    # metni var + neredeyse kanıtsız: metin ve not birlikte; not italik
-    assert cell["A.1.1"][0].startswith("A.1.1 sentetik paragraf") and cell["A.1.1"][-1] == NEREDEYSE["metin"]
-    runs = [r for p in blocks["A.1.1"].aciklama_tc.iter(docx.oxml.ns.qn("w:p"))
-            for r in p.iter(docx.oxml.ns.qn("w:r")) if "Eksik kanıt notu" in "".join(
-                t.text or "" for t in r.iter(docx.oxml.ns.qn("w:t")))]
-    assert runs and all(r.find(docx.oxml.ns.qn("w:rPr") + "/" + docx.oxml.ns.qn("w:i")) is not None for r in runs)
+    assert not any("Eksik kanıt notu" in x or "Gereken" in x for c in cell for x in cell[c])
+    assert cell["A.1.1"][0].startswith("A.1.1 sentetik paragraf")
     assert res.eksik_notlu == ["A.1.1"]
-    # metni yok + kanıtsız: bugünkü davranış (boş ifade + not)
-    assert cell["A.1.2"] == [BOS_IFADE, KANITSIZ["metin"]]
-    # kapsam dışı: not yazılmaz
+    assert cell["A.1.2"] == [BOS_IFADE]
     assert cell["A.1.3"] == [KAPSAM_DISI]
-    # alan null: metin olduğu gibi, not yok
-    assert not any("Eksik kanıt notu" in x for x in cell["A.1.4"])
-    # --eksik-notu-yok ikisini de kapatır
-    from bidr.render.run import Options
-    _, cell, _ = run(opts=Options(eksik_notu=False))
-    assert not any("Eksik kanıt notu" in x for c in ("A.1.1", "A.1.2") for x in cell[c])
-    # eski audit (alan yok): metinli ölçütte not yok, metinsizde eksik halkalar (bugünkü)
     _audit(ws, {"A.1.1": {}, "A.1.2": {}})
     _, cell, _ = run()
-    assert not any("Eksik kanıt notu" in x for x in cell["A.1.1"])
-    assert cell["A.1.2"] == [BOS_IFADE, "Eksik kanıt notu: A.1.2 için uygulama kanıtı."]
+    assert cell["A.1.2"] == [BOS_IFADE]
 
 
 # -- write: yeniden yazım gerekçeleri ------------------------------------------------------------
@@ -288,7 +276,7 @@ def test_write_package_has_activity_summary_and_rule(tmp_path):
     assert "İlgisiz Etkinlik" not in sec
     assert [f["id"] for f in pkg["meta"]["faaliyetler"]] == ["F001", "F002"]
     assert pkg["meta"]["faaliyetler"][0]["yalniz_duyuru"] is True
-    assert str(pkg["surum"]) == W.task_version() == "2"
+    assert str(pkg["surum"]) == W.task_version() == "3"
 
 
 def test_verify_prompt_announcement_rule():

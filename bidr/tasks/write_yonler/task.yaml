@@ -1,4 +1,4 @@
-version: 2
+version: 3
 description: >-
   Alan düzeyinde "Güçlü Yönler" ve "Gelişmeye Açık Yönler" maddeleri (FR-0833 son tablosu).
   Girdi: alanın birimce doldurulan alt ölçütlerinin doğrulanmış açıklama metinleri, audit
@@ -7,6 +7,9 @@ description: >-
   ölçüt koduna atıf yapar: "(B.1.1)". Kod denetimi: bidr/write/yonler.py (ölçüt atfı,
   dayanak, OD aşımı, yasak ifade ve vaat dili bidr/write/text.py'den; kanıtla ve maddeler
   arası çelişki, hedefin altındaki gösterge `cross_check`).
+  v3 (kör test 2026-11-20): bulgular sade dille (iç terim yok); iç dil kuralı ve kod denetimi
+  (`ic_dil`); hedefin altındaki göstergenin izleme verisi güçlü yön olmaz; fakülte değeri
+  bölümün değeri gibi verilmez (`fakulte_degeri`).
 inputs:
   hitap: "kurumsal özne (ör. Bölümümüzde)"
   alan: "alan kodu ve başlığı (ör. B Eğitim ve Öğretim)"

@@ -16,14 +16,16 @@ bidr/write/text.py'deki kurallar) ve kanıtla çapraz denetim (`cross_check`, k�
 çelişmez (izleme/iyileştirme halkası kanıtlıyken "yok", listede birime ait kanıt varken "bölüm
 düzeyinde kanıt yok/yalnız kurum geneli"); aynı ölçütte güçlü yönün söylediği uygulamayı
 gelişmeye açık yön yok saymaz; hedefe ulaşıldığı metinde görünmeyen gösterge değeri güçlü yön
-olmaz. Geçen cevap `yonler/<alan>.json`, `durum: taslak`.
+olmaz (metindeki hedef/gerçekleşme sayıları da karşılaştırılır); fakülte/kurum geneli değer bölümün
+değeri yanında olmadan verilmez (`fakulte_degeri`); aracın iç dili yok (`ic_dil`, bidr/write/ic_dil.py;
+bulgular da sade dille verilir). Geçen cevap `yonler/<alan>.json`, `durum: taslak`.
 
 Bağımsız doğrulama `bidr verify prepare|apply` akışına katılır (`work/verify/yonler/`,
 görev `verify_yonler`, kayıt `verify-yonler.jsonl`): her madde atıf yaptığı ölçütün metni ya
 da bulgusuyla karşılaştırılır; hepsi "destekleniyor" ise `dogrulandi`. Reddedilen alan
 `bidr yonler prepare --reddedilenler` ile gerekçeli yeniden yazıma gider (sınır
-`rapor.yeniden_yazim_siniri`); sınırdan sonra hücreler şablon yönergesiyle kalır ve rapor
-TASLAK damgalı olur.
+`rapor.yeniden_yazim_siniri`); render reddedilmiş alanda doğrulayıcının desteklediği maddeleri
+basar, desteklenmeyenleri çıkarır; madde kalmazsa hücreye açık ifade yazar (bidr/render/run.py).
 """
 from __future__ import annotations
 
@@ -36,6 +38,7 @@ from bidr.common import Workspace, read_jsonl, write_jsonl
 from . import packages as K
 from . import run as W
 from . import sources as S
+from . import ic_dil as IC
 from . import text as T
 
 TASK = "write_yonler"
@@ -48,7 +51,8 @@ FINAL = ("dogrulandi", "reddedildi")
 KOD = re.compile(r"\b([A-E]\.\d+\.\d+)\b")
 RULE = ("İstemdeki kurallara uy: her cümle dayandığı ölçüt kodunu parantez içinde taşır \"(B.1.1)\"; "
         "güçlü yön yalnız doğrulanmış metinden, gelişmeye açık yön yalnız bulgudan; öğüt ve vaat yok; "
-        "\"kanıt yok\" hükmü KANIT DURUMU ile ve aynı ölçütün güçlü yönüyle çelişmez.")
+        "\"kanıt yok\" hükmü KANIT DURUMU ile ve aynı ölçütün güçlü yönüyle çelişmez; aracın iç dili "
+        "(\"OD'ye sayılmamıştır\", \"eşleşmiş\", \"uygulama halkası\") yok; hedefin altındaki gösterge güçlü yön değil.")
 VRULE = ("Her maddeyi yalnız atıf yaptığı ölçütün doğrulanmış metni (g) ya da bulgusu (a) ile karşılaştır "
          "(destekleniyor / kismen / desteklenmiyor + gerekçe); listedeki her maddeye bir karar ver.")
 
@@ -123,8 +127,17 @@ def _clean_criterion_text(t: dict) -> str:
     return " ".join(out)
 
 
-_SAYILMAMA = (("gecmis_kanit", "önceki yıla ait"), ("donem_sonrasi", "dönem sonrası"),
-              ("tarih_dogrulanmali", "tarihi doğrulanmalı"), ("birim_iliskisi_kod", "birim aitliği doğrulanmalı"))
+# Birime ait ama dönem kanıtı sayılmayan belgenin nedeni, rapor okurunun anlayacağı sade dille
+# (iç işaret ve "OD'ye sayılmadı" yerine; bkz. bidr/write/ic_dil.py).
+_SAYILMAMA = (("gecmis_kanit", "önceki yıla ait"), ("donem_sonrasi", "dönem sonrasına ait"),
+              ("tarih_dogrulanmali", "tarihi belgede görülmüyor"),
+              ("birim_iliskisi_kod", "birime ait olduğu belgede açık değil"))
+# Eksik PUKÖ halkasının sade karşılığı (gelişmeye açık yönün olgusu).
+EKSIK_SADE = {"planla": "birimin bu konudaki tanımlı süreç ya da planını gösteren belge yok",
+              "uygula": "birimin bu dönemdeki uygulamasını gösteren belge yok",
+              "kontrol_et": "uygulamanın izlendiğini ya da sonuçlarının değerlendirildiğini gösteren belge yok",
+              "onlem_al": "izleme sonuçlarına dayanan iyileştirmeyi gösteren belge yok",
+              "ozgun": "birime özgü, örnek gösterilebilir uygulamayı gösteren belge yok"}
 
 
 def unit_rows(rows: list[dict] | None) -> list[dict]:
@@ -134,21 +147,22 @@ def unit_rows(rows: list[dict] | None) -> list[dict]:
 
 
 def _uncounted_note(rows: list[dict]) -> str:
-    """Birime ait ama OD'ye sayılmamış kanıtların kısa notu ("Ad (tarihi doğrulanmalı)")."""
+    """Birime ait ama bu dönemin kanıtı sayılmayan belgelerin kısa notu ("Ad (tarihi belgede görülmüyor)")."""
     out = []
     for r in rows:
         fl = r.get("isaretler") or ""
         if "od_sayilmadi" not in fl:
             continue
-        why = next((t for k, t in _SAYILMAMA if k in fl), "OD'ye sayılmadı")
+        why = next((t for k, t in _SAYILMAMA if k in fl), "dönemi belgede açık değil")
         out.append(f"{r.get('ad') or r.get('doc_id')} ({why})")
     return "; ".join(out[:3])
 
 
 def findings(a: dict | None, has_evidence: bool, rows: list[dict] | None = None) -> list[str]:
-    """Audit bulguları (gelişmeye açık yönün tek dayanağı). `rows`: ölçütün kanıt listesi satırları;
-    birime ait ama OD'ye sayılmamış kanıt bulguda nedeniyle anılır ("bölüm düzeyinde kanıt yok"
-    denmesin)."""
+    """Audit bulguları (gelişmeye açık yönün tek dayanağı), rapor okurunun dilinde: düzey, halka,
+    "OD'ye sayılmadı", "eşleşti" gibi iç terim yok (kör test 2026-11-20: model bulguyu olduğu gibi
+    maddeye kopyalıyordu). `rows`: ölçütün kanıt listesi satırları; birime ait ama dönem kanıtı
+    sayılmayan belge nedeniyle anılır ("bölüm düzeyinde kanıt yok" denmesin)."""
     out = []
     if not has_evidence:
         out.append("bu dönemde ölçüte ilişkin kanıt bulunamadı")
@@ -156,21 +170,22 @@ def findings(a: dict | None, has_evidence: bool, rows: list[dict] | None = None)
         return out
     unit = unit_rows(rows)
     note = _uncounted_note(unit)
+    eksik = a.get("eksik") or []
     od = a.get("od")
-    if od is not None and int(od) <= 2 and has_evidence:
-        out.append(f"önerilen OD{od} (düşük olgunluk düzeyi)")
-    for e in a.get("eksik") or []:
-        f_ = (f"OD{a.get('sonraki_od')} için {W.HALKA.get(e.get('halka'), e.get('halka'))} kanıtı eksik"
-              + (f": {e['gereken']}" if e.get("gereken") else ""))
+    if od is not None and int(od) <= 2 and has_evidence and not eksik:
+        out.append("birimin bu dönemdeki uygulamasını gösteren belge sınırlı" if int(od) == 2
+                   else "birimin bu konudaki tanımlı süreç ya da planını gösteren belge sınırlı")
+    for e in eksik:
+        f_ = EKSIK_SADE.get(e.get("halka"), f"{W.HALKA.get(e.get('halka'), e.get('halka'))} belgesi yok")
         if e.get("halka") == "uygula" and note:
-            f_ += f" (birime ait kanıt listede var ama OD'ye sayılmadı: {note})"
+            f_ += f" (birime ait belge var ancak bu dönemin kanıtı olarak gösterilemiyor: {note})"
         out.append(f_)
     if a.get("kurum_geneli_yalniz"):
         if unit:
-            out.append("OD'ye yalnız kurum geneli düzenleme sayıldı; birime ait kanıt listede var"
-                       + (f" ama OD'ye sayılmadı: {note}" if note else ""))
+            out.append("dayanak çoğunlukla kurum geneli düzenleme; birime ait belge de var"
+                       + (f" ancak bu dönemin kanıtı olarak gösterilemiyor: {note}" if note else ""))
         else:
-            out.append("yalnız kurum geneli düzenlemeyle eşleşti; birimin uygulama kanıtı eksik")
+            out.append("dayanak yalnız kurum geneli düzenleme; birimin kendi uygulamasını gösteren belge yok")
     return out
 
 
@@ -199,14 +214,44 @@ HEDEF_ALTI = re.compile(r"hedefin (?:altinda|gerisinde)|hedef\w* (?:ulasilama|tu
                         r"gerceklestirileme)|performans\w* %\s*0\b|%\s*0 (?:performans|gerceklesme)")
 
 
+# Sayısal karşılaştırma: "hedeflenen değeri 1.08 … gerçekleşme değeri 0.36" (kör test 2026-11-20:
+# değerler yan yana yazılıyor, "hedefin altında" denmiyordu). Yıl (2025) değer sayılmaz.
+_SAYI = r"((?:\d+[.,])?\d+)(?![\d.,]*\d)"
+_HEDEF_SAYI = re.compile(r"\bhedef\w*(?:\s+(?:edilen|olunan))?(?:\s+(?:deger\w*|olarak))?\s*(?:[:=]\s*)?" + _SAYI)
+_GERCEK_SAYI = re.compile(r"\bgerceklesme\w*(?:\s+(?:deger\w*|orani\w*|olarak))?\s*(?:[:=]\s*)?" + _SAYI
+                          + r"|\bgerceklesen\w*(?:\s+deger\w*)?\s*(?:[:=]\s*)?" + _SAYI)
+
+
+def _num(x: str | None) -> float | None:
+    if not x or re.fullmatch(r"(?:19|20)\d\d", x):
+        return None
+    try:
+        return float(x.replace(",", "."))
+    except ValueError:
+        return None
+
+
+def numeric_target(t: str) -> str | None:
+    """Katlanmış metinde hedef ve gerçekleşme değerleri: hepsi hedefin altındaysa "alti", biri
+    hedefe ulaşıyorsa "ok", karşılaştırılacak değer yoksa None."""
+    hed = [v for m in _HEDEF_SAYI.finditer(t) if (v := _num(m.group(1))) is not None]
+    ger = [v for m in _GERCEK_SAYI.finditer(t) if (v := _num(m.group(1) or m.group(2))) is not None]
+    if not hed or not ger:
+        return None
+    return "ok" if max(ger) >= min(hed) else "alti"
+
+
 def target_state(text: str | None) -> str | None:
     """Doğrulanmış metinde gösterge/hedef durumu: "ok" (hedefe ulaşıldı), "alti" (hedefin altında)
-    ya da None (hedefle karşılaştırma yok)."""
+    ya da None (hedefle karşılaştırma yok). Söz ("hedefin altında") yoksa hedef ve gerçekleşme
+    değerleri karşılaştırılır."""
     from bidr.identify.text import fold
     t = " ".join(fold(text or "").split())
     if HEDEF_ALTI.search(t):
         return "alti"
-    return "ok" if HEDEF_OK.search(t) else None
+    if HEDEF_OK.search(t):
+        return "ok"
+    return numeric_target(t)
 
 
 class Inputs:
@@ -322,6 +367,7 @@ def check_item(metin: str, *, liste: str, alan: str, allowed: set[str], od: dict
                    else "audit bulgusu yok (ya da birimin doldurduğu ölçüt değil)")
             issues.append({"kod": "dayanaksiz_olcut", "ayrinti": f"({c}) {why}"})
     low = T.tr_lower(KOD.sub(" ", metin))
+    issues += IC.sorunlar(KOD.sub(" ", metin))
     for rx, kind in T._YASAK:
         m = rx.search(low)
         if m:
@@ -355,7 +401,8 @@ def check_item(metin: str, *, liste: str, alan: str, allowed: set[str], od: dict
 # nedenli hüküm çelişki değildir (kanıt var ama sayılmadı).
 YOK = re.compile(r"bulunmamak|bulunmadig|yer almamak|yer almadig|yoktur|bulunamam|eksik|gorulmemekte"
                  r"|gosterilmemis|sinirli kal|ulasilamam|ortaya konmamis|kanitlanmamis")
-NEDENLI = re.compile(r"\bsayil|dogrulanama|dogrulanmali|donem disi|onceki yil|tarih\w* (?:belirsiz|dogrulan)")
+NEDENLI = re.compile(r"\bsayil|dogrulanama|dogrulanmali|donem disi|donem sonrasi|onceki yil|tarih\w* (?:belirsiz|dogrulan)"
+                     r"|belgede (?:gorulme|acik degil)|kaniti olarak gosterilemi")
 H_IZLEME = re.compile(r"izlen|izleme|olcme|olcum|olculme|degerlendirme sonuc|sonuclarin\w* (?:degerlendir|izlen)")
 H_IYILESTIRME = re.compile(r"iyilestir|eylem plani|duzeltici|onleyici|sonuclara dayanan (?:degisiklik|karar)")
 H_BIRIM = re.compile(r"bolum(?:un|umuzun)? (?:duzeyinde|donem icindeki|kendi|tarafindan)|bolumun\b[^.]*uygulama"
@@ -373,6 +420,13 @@ UYGULAMA_FIIL = re.compile(r"(?:yurutul|gerceklestiril|yapil|kaydedil|karara bag
 PERF = re.compile(r"gosterge|performans|hedef|gerceklesme|yayin (?:sayisi|degeri)")
 DEGER = re.compile(r"\bdeger(?:i|leri)?\b|\boran(?:i|lari)?\b|\bsayisi\b|\bortalama"
                    r"|(?<![\d.\-])(?!(?:19|20)\d\d\b)\d+(?:[.,]\d+)?(?![\d\-])")
+# hedefin altında kalan göstergenin izleme verisini anan güçlü yön ("tabloda Kimya verisi yer almaktadır")
+VERI = re.compile(r"\bveri\w*|\btablo\w*|\bizleme\b|\byayin\w*")
+# fakülte/kurum geneli değer (bölümün değeri varken fakülte değeri verilmesin)
+UST_BIRIM = re.compile(r"\bfakulte(?!\w* (?:yonetim )?kurul)\w*|\btbf\b|universite genel\w*|kurum genel\w*")
+TARIH = re.compile(r"\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b")
+BOLUM_DEGER = re.compile(r"\bbolum\w*[^.;]{0,60}?\d|\d[^.;]{0,40}?\bbolum\w*")
+SAYI = re.compile(r"(?<![\d.\-])(?!(?:19|20)\d\d\b)\d+(?:[.,]\d+)?(?![\d\-])")
 # izleme sözcüğü iyileştirmenin niteleyicisi ("izleme sonuçlarına dayanan iyileştirme") ise izleme hükmü değil
 NITELEYICI = re.compile(r"^\W*(?:\w+\W+){0,3}?(?:dayan|dayali|dogrultusunda|uzerine)")
 
@@ -419,11 +473,21 @@ def cross_check(t: dict, meta: dict) -> list[dict]:
             for c in KOD.findall(s):
                 if UYGULAMA_FIIL.search(low):
                     practice.setdefault(c, []).append(r["yer"])
-                if PERF.search(low) and DEGER.search(low) and hedef.get(c) != "ok":
+                if ((PERF.search(low) and DEGER.search(low) and hedef.get(c) != "ok")
+                        or (hedef.get(c) == "alti" and (PERF.search(low) or VERI.search(low)))):
                     why = ("metindeki gösterge hedefin altında" if hedef.get(c) == "alti"
                            else "metin hedefe ulaşıldığını göstermiyor")
                     out.append({"yer": r["yer"], "metin": r["metin"], "kod": "hedef_alti_guclu",
-                                "ayrinti": f"({c}) gösterge/performans değeri güçlü yön değildir: {why}"})
+                                "ayrinti": f"({c}) gösterge/performans değeri ya da izleme verisi güçlü yön "
+                                           f"değildir: {why}"})
+    for r in rows:
+        for s in T.split_sentences(r["metin"]):
+            low = TARIH.sub(" ", _f(KOD.sub(" ", s)))
+            if UST_BIRIM.search(low) and PERF.search(low) and SAYI.search(low) and not BOLUM_DEGER.search(low):
+                out.append({"yer": r["yer"], "metin": r["metin"], "kod": "fakulte_degeri",
+                            "ayrinti": "fakülte/kurum geneli değer bölümün değeri gibi verilmez: bölümün kendi değeri "
+                                       "yazılır (metinde yoksa değer maddeye konmaz)"})
+                break
     for r in rows:
         if r["liste"] != "gelisme":
             continue

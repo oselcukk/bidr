@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from bidr.criteria.loader import load_criteria
 from bidr.write import run as W
 from bidr.write import sources as S
 from bidr.write import text as T
@@ -105,6 +106,11 @@ def test_split_sentences():
     ("İzleme mekanizmasının kurulması planlanmaktadır [2_OD3].", "gelecek_vaat"),
     ("Anket sistemi kurulacaktır [2_OD3].", "gelecek_vaat"),
     ("Anket sistemi kurulacaktır [komisyon].", "komisyon_bilgisi_yok"),
+    # aracın iç dili (kör test 2026-11-20)
+    ("Eksik kanıt notu: bölümün bu döneme ait doğrudan kanıtı yok [2_OD3].", "ic_dil"),
+    ("Bölüm kurulu kararı OD'ye sayılmamıştır [2_OD3].", "ic_dil"),
+    ("Yönerge yalnız kurum geneli belgelerle eşleşmiştir [1_OD2].", "ic_dil"),
+    ("Kanıt kurum_geneli olarak işaretlidir [1_OD2].", "ic_dil"),
 ])
 def test_check_sentence_flags(sentence, kod):
     got = T.check_sentence(sentence, index_nos={"1_OD2", "2_OD3"}, od=3, komisyon=False)
@@ -117,6 +123,8 @@ def test_check_sentence_flags(sentence, kod):
     ("Ders planlarının izlenmesine ilişkin bir kayıt bulunmamaktadır [2_OD3].", False, None),  # olumsuz
     ("Anket sisteminin 2026 yılında kurulacağı komisyonca bildirilmiştir [komisyon].", True, None),
     ("Anket sistemi kurulacaktır [komisyon].", True, None),
+    ("Ders öğrenme kazanımları program çıktılarıyla ilişkilendirilmiştir [2_OD3].", False, None),
+    ("Bölümümüzde araştırma odak alanları belirlenmiştir [1_OD2].", False, None),
 ])
 def test_check_sentence_passes(sentence, komisyon, nos):
     nos = nos or {"1_OD2", "2_OD3"}
@@ -196,7 +204,7 @@ def test_apply_writes_text_per_contract(tmp_path):
     assert t["kanitlar"] == [{"no": "1_OD2", "ad": "Ders Planı Güncelleme İş Akışı", "dosya": "B/B.1/B.1.1/1_OD2.pdf"},
                              {"no": "2_OD3", "ad": "Ders Bilgi Formu", "dosya": "B/B.1/B.1.1/2_OD3.pdf"}]
     assert t["eksikler"][0].startswith("OD4 için kontrol") and "örnek not" in t["eksikler"]
-    assert t["kaynak"]["model"] == "test:ajan" and t["kaynak"]["gorev_surumu"] == "2"
+    assert t["kaynak"]["model"] == "test:ajan" and t["kaynak"]["gorev_surumu"] == "3"
     assert W.apply(ws)["degismedi"] == 1                       # aynı cevap yeniden işlenmez
     assert W.prepare(ws)["zaten_tamam"] == 1                   # yazılmış metin yeniden paketlenmez
 
@@ -354,3 +362,30 @@ def test_procedure_and_document_verbs_not_claims(sentence):
 ])
 def test_monitoring_and_plan_claims_still_caught(sentence, kod):
     assert kod in {x["kod"] for x in T.check_sentence(sentence, index_nos={"1_OD2"}, od=2, komisyon=False)}
+
+
+# -- kanıt paketi: alıntı dışındaki dönem içi ve ölçütle ilgili bilgi (kör test 2026-11-20) -----------
+
+def test_period_and_topic_snippets():
+    from bidr.write import sources as S
+    text = ("Bölüm Projeler Listesi\nPRJ-1 Prof. Dr. Örnek Kişi 01.11.2018 31.10.2022 Eski proje başlığı.\n"
+            + "x " * 300 + "\nPRJ-2 Dr. Deneme Ad 27.03.2025 27.03.2026 Dönem içi proje başlığı.\n"
+            + "y " * 300 + "\nYayın Tarihi 21.11.2025 Revizyon 0\n"
+            + "z " * 300 + "\nEtkinlik bütçesi üniversitemiz tarafından karşılanmıştır.")
+    cov = [(0, 120)]                                          # alıntı bağlamı: ilk satır
+    per = S.period_snippets(text, 2025, cov)
+    assert len(per) == 1 and "PRJ-2" in per[0] and "27.03.2025" in per[0]   # künye tarihi sayılmaz
+    assert S.period_snippets(text, None, cov) == [] and S.period_snippets(text, 2025, [(0, len(text))]) == []
+    top = S.topic_snippets(text, "Toplumsal katkı etkinliklerine ayrılan kaynaklar (mali, fiziksel)", cov)
+    assert top == ["Etkinlik bütçesi üniversitemiz tarafından karşılanmıştır."]
+    assert S.topic_snippets(text, "Öğrenci kabulü ve diploma", cov) == []
+
+
+def test_evidence_block_lists_period_info_first():
+    ev = [{"no": "1_OD3", "ad": "Bölüm Projeler Listesi", "belge_turu": "", "tarih": "", "yuvalar": [],
+           "donem_ici": ["PRJ-2 27.03.2025 Dönem içi proje"], "konu": ["Bütçe karşılanmıştır."],
+           "alintilar": [{"alinti": "PRJ-1 2018", "baglam": "", "alinti_belgede": True}]}]
+    out = W.render_evidence(ev, load_criteria()).splitlines()
+    i, j, k = (next(n for n, l in enumerate(out) if key in l)
+               for key in ("dönem içi bilgi 1", "ölçütle ilgili bilgi 1", "alıntı 1"))
+    assert i < j < k

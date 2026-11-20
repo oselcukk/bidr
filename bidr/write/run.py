@@ -104,6 +104,7 @@ class Sources:
                      if self.ws.documents.exists() else {})
         self._texts: dict[str, str | None] = {}
         self.faaliyetler = load_activities(self.ws.root)
+        self.donem = period_of(self.ws.root)
 
     def doc_text(self, did: str) -> str | None:
         if did not in self._texts:
@@ -125,13 +126,25 @@ class Sources:
             if only is not None and r["kanit_no"] not in only:
                 continue
             doc = self.docs.get(r.get("doc_id")) or {}
+            txt = self.doc_text(r.get("doc_id"))
+            cov = S.quote_spans(txt, r["alintilar"], self.verify) if self.verify else []
+            # kurum geneli düzenlemenin dönem bilgisi künye tarihidir; yalnız birime ait belgeye eklenir
+            ext = "kurum_geneli" not in (r.get("isaretler") or "")
             out.append({"no": r["kanit_no"], "ad": r.get("ad", ""), "dosya": r.get("dosya", ""),
                         "doc_id": r.get("doc_id", ""), "od": r.get("od"), "yuvalar": r["yuvalar"],
                         "belge_turu": doc.get("doc_type_etiket") or doc.get("doc_type") or "",
                         "tarih": doc.get("tarih") or "",
-                        "alintilar": S.evidence_context(self.doc_text(r.get("doc_id")), r["alintilar"],
-                                                        self.verify)})
+                        "donem_ici": S.period_snippets(txt, self.donem, cov) if ext else [],
+                        "konu": S.topic_snippets(txt, self._description(olcut), cov) if ext else [],
+                        "alintilar": S.evidence_context(txt, r["alintilar"], self.verify)})
         return out
+
+    def _description(self, olcut: str) -> str:
+        try:
+            s = self.cs.get(olcut)
+        except KeyError:
+            return ""
+        return " ".join([s.title, *s.description])
 
     def gaps(self, olcut: str) -> list[str]:
         """Eksik halkalar ve notlar (insan okur; metne değil `eksikler` alanına)."""
@@ -208,6 +221,11 @@ def render_evidence(ev: list[dict], cs) -> str:
                                      f"tarih: {e['tarih']}" if e["tarih"] else "") if x)
         if info:
             lines.append(f"  {info}")
+        # önce belgedeki dönem içi kayıtlar ve ölçütün sorduğu bilgi (alıntı bağlamı dışında)
+        for i, x in enumerate(e.get("donem_ici") or [], 1):
+            lines.append(f"  dönem içi bilgi {i}: «{x}»")
+        for i, x in enumerate(e.get("konu") or [], 1):
+            lines.append(f"  ölçütle ilgili bilgi {i}: «{x}»")
         for y in e["yuvalar"]:
             try:
                 lines.append(f"  yuva {y}: {cs.get_slot(y).text}")
@@ -221,6 +239,16 @@ def render_evidence(ev: list[dict], cs) -> str:
                 lines.append(f"  (alıntı belge metninde bulunamadı)")
         blocks.append("\n".join(lines))
     return "\n\n".join(blocks)
+
+
+def period_of(ws_root: Path) -> int | None:
+    """config.yaml `bidr.donem` (rapor yılı; yoksa None)."""
+    from bidr.init.config import load_section
+    try:
+        v = (load_section(Path(ws_root)) or {}).get("donem")
+        return int(v) if v else None
+    except (TypeError, ValueError, OSError):
+        return None
 
 
 FAALIYETLER = "faaliyetler.json"

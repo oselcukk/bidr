@@ -66,7 +66,8 @@ class Options:
     kanit_bicimi: str = "mat"      # mat: "1_OD3: ad" | kilavuz: "[1-OD3]. ad"
     bos_ifade: str = BOS_IFADE
     bos_kanit: str = BOS_KANIT
-    eksik_notu: bool = True
+    # Eski seçenek (eksik kanıt notunu rapora yazma): artık etkisiz; not hiçbir durumda rapora girmez.
+    eksik_notu: bool = False
     kapsam_disi: str = KAPSAM_DISI   # boş dize: Açıklamalar hücresi yalnız etiketle kalır
 
 
@@ -89,10 +90,12 @@ class Result:
     yonler: dict[str, str] = field(default_factory=dict)        # "A Güçlü Yönler" → dolu | bos | yonerge
     hazirlayan: int = 0
     taslak_nedenleri: list[str] = field(default_factory=list)
-    eksik_notlu: list[str] = field(default_factory=list)       # metni olup eksik kanıt notu da alan ölçütler
+    eksik_notlu: list[str] = field(default_factory=list)       # metni olup eksik kanıt notu (gaps.md) olan ölçütler
     # işaretlenen OD'nin kaynağı: onayli (komisyon, audit `od_onayli`) | kod (audit `od`) | metin
     # (audit kaydı yok: write'ın `od_onerisi`). Onaysız işaretlenenler denetle'de uyarı olur.
     od_kaynagi: dict[str, str] = field(default_factory=dict)
+    yon_cikarilan: dict[str, list[str]] = field(default_factory=dict)   # alan → desteklenmeyen madde yerleri
+    yon_ifadeli: list[str] = field(default_factory=list)               # madde kalmadığı için açık ifadeli hücreler
     # kanıt klasöründe olup metinde atıf almayan, numara boşluğu kalmasın diye listelenen kanıtlar
     atifsiz_listelenen: dict[str, list[str]] = field(default_factory=dict)
 
@@ -108,7 +111,8 @@ class Result:
                 "od_isaretli": len(self.od), "od_onay_bekliyor": self.od_onay_bekliyor, "taslak": self.taslak, "taslak_nedenleri": self.taslak_nedenleri,
                 "kapak": self.kapak, "hazirlayan": self.hazirlayan,
                 "kapsam_disi": self.kapsam_disi, "karar_gerekli": self.karar_gerekli, "yonler": self.yonler,
-                "eksik_notlu_metin": self.eksik_notlu,
+                "eksik_notlu_metin": self.eksik_notlu, "yon_cikarilan": self.yon_cikarilan,
+                "yon_ifadeli": self.yon_ifadeli,
                 "uyari": len(self.uyarilar), "baglantili_kanit": self.baglantili,
                 "baglantisiz_kanit": len(self.baglantisiz), "atifsiz_listelenen": self.atifsiz_listelenen,
                 "degisen_parcalar": self.degisen_parcalar}
@@ -244,8 +248,8 @@ def evidence_list(cited: list[dict], filed: list[dict]) -> tuple[list[dict], lis
 
 
 def eksik_text(a: dict | None) -> str | None:
-    """Ölçütün metni olmadığında yazılan eksik kanıt notu (bugünkü davranış): audit'in
-    `eksik_kanit_notu.metin`'i varsa o, yoksa eksik halkaların gereken metinleri."""
+    """Ölçütün eksik kanıt notu (komisyon için; gaps.md): audit'in `eksik_kanit_notu.metin`'i varsa
+    o, yoksa eksik halkaların gereken metinleri. Rapora yazılmaz (kör test 2026-11-20)."""
     if not a:
         return None
     note = audit_note(a)
@@ -259,8 +263,8 @@ def eksik_text(a: dict | None) -> str | None:
 
 def audit_note(a: dict | None) -> str | None:
     """audit-olcutler.json `eksik_kanit_notu.metin` (docs/REPORT_LAYER.md "Eksik kanıt notu"):
-    `kanitsiz` ya da `neredeyse_kanitsiz` ölçütte dolu; ölçütün metni olsa da yazılır. Alan yoksa
-    (eski audit çıktısı) ya da `null` ise None."""
+    `kanitsiz` ya da `neredeyse_kanitsiz` ölçütte dolu. Komisyon notudur: gaps.md'de kalır, rapor
+    metnine girmez. Alan yoksa (eski audit çıktısı) ya da `null` ise None."""
     n = (a or {}).get("eksik_kanit_notu")
     if not isinstance(n, dict) or n.get("durum") not in ("kanitsiz", "neredeyse_kanitsiz"):
         return None
@@ -274,8 +278,15 @@ def _usable(t: dict | None) -> bool:
 
 
 def _mark_od(block, od: int, mode: str) -> bool:
+    """Rubrikte `od` sütununu işaretler. Kalın işarette öteki düzey hücrelerinin kalınlığı açıkça
+    kaldırılır (tablo stili ilk sütunu kalın yapabilir); işaret satırdaki tek kalın hücredir."""
     if mode == "yok" or not (1 <= od <= 5) or not block.rubric:
         return False
+    if mode == "kalin":
+        for row in block.rubric:
+            for i, tc in enumerate(row, 1):
+                if i != od:
+                    ops.clear_bold(tc)
     for tc in block.rubric_cells(od):
         if mode == "kalin":
             ops.mark_bold(tc)
@@ -284,6 +295,40 @@ def _mark_od(block, od: int, mode: str) -> bool:
     if mode == "golge" and len(block.numbers) == 5:
         ops.mark_shade(block.numbers[od - 1], GOLGE)
     return True
+
+
+def choose_od(cid: str, a: dict | None, od_text, res: "Result") -> tuple[int, str]:
+    """İşaretlenecek düzey ve kaynağı. Önce komisyonun onayladığı `od_onayli` (insan kararı; metnin
+    ve kodun önerisini aşar), yoksa kodun önerisi `od` (metnin önerisi onu aşamaz; docs/AUDIT.md
+    "Kod önerisi ve nihai düzey ayrı"), o da yoksa metnin önerisi. Hiçbiri yoksa OD1 (kanıtı
+    olmayan ölçüt rubriğin ilk düzeyindedir): kapsam dışı olmayan hiçbir ölçüt işaretsiz kalmaz.
+    Onaysız işaretler `od_onay_bekliyor` olarak denetle'de uyarı olur."""
+    od_a = a.get("od") if a else None
+    od_ok = a.get("od_onayli") if a else None
+    od = od_text
+    if od_ok in (1, 2, 3, 4, 5):
+        if od is not None and od != od_ok:
+            res.uyarilar.append(f"{cid}: metnin OD önerisi ({od}) komisyonun onayladığı düzeyden ({od_ok}) "
+                                f"farklı; OD{od_ok} işaretlendi (metin yeniden yazılmalı mı bakın)")
+        return int(od_ok), "onayli"
+    if od is None:
+        if od_a in (1, 2, 3, 4, 5):
+            return int(od_a), "kod"
+        return 1, "varsayilan"
+    if od_a is not None and od > od_a:
+        res.uyarilar.append(f"{cid}: metnin OD önerisi ({od}) audit önerisini ({od_a}) aşıyor; "
+                            f"OD{od_a} işaretlendi")
+        return int(od_a), "kod"
+    return int(od), "kod" if a else "metin"
+
+
+def _mark(res: "Result", block, cid: str, a: dict | None, od_text, opts: "Options") -> None:
+    od, kaynak = choose_od(cid, a, od_text, res)
+    if _mark_od(block, od, opts.puan_isareti):
+        res.od[cid] = od
+        res.od_kaynagi[cid] = kaynak
+    elif opts.puan_isareti != "yok":
+        res.uyarilar.append(f"{cid}: rubrik satırı bulunamadı; OD{od} işaretlenemedi")
 
 
 def cover_paragraphs(doc) -> list:
@@ -372,26 +417,86 @@ def _cell_state(tc) -> str:
     return "yonerge" if YONLER_YONERGE in txt else "dolu"
 
 
-def fill_yonler(doc, yonler: dict[str, dict], res: "Result") -> None:
+# Alanda yazılacak madde kalmadığında hücreye konan açık ifade (şablon yönergesi kalmaz). Gerekçe:
+# hücre boş ya da yönergeyle kalırsa unutulmuş sanılır (kör test 2026-11-20, Matematik C).
+YON_YOK = {"guclu": "Bu alanda bu dönem için kanıtla doğrulanmış bir güçlü yön belirlenmemiştir.",
+           "gelisme": "Bu alanda bu dönem için kanıtla doğrulanmış bir gelişmeye açık yön belirlenmemiştir."}
+YONLER_LOG = "verify-yonler.jsonl"
+
+
+def load_yonler_log(p: Path | None) -> dict[str, dict]:
+    """`verify-yonler.jsonl` → {alan: kayıt} (yoksa boş)."""
+    out: dict[str, dict] = {}
+    if p is None or not Path(p).exists():
+        return out
+    for line in Path(p).read_text(encoding="utf-8").splitlines():
+        try:
+            r = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(r, dict) and r.get("alan"):
+            out[r["alan"]] = r
+    return out
+
+
+def _yon_sha(t: dict) -> str:
+    from bidr.write.yonler import text_sha
+    return text_sha(t)
+
+
+def yon_items(t: dict | None, key: str, rec: dict | None) -> tuple[list[dict], list[str], bool]:
+    """(basılacak maddeler, çıkarılan madde yerleri, doğrulanmış mı). Doğrulanmış alan: bütün maddeler.
+    Reddedilmiş alan: doğrulayıcının (model aşaması, güncel kayıt) "destekleniyor" dediği maddeler
+    basılır, öteki maddeler çıkarılır — tek madde yüzünden bütün hücre boş kalmaz. Kod aşamasında
+    reddedilen ya da kaydı eski alanın maddesi doğrulanmamıştır: hiçbiri basılmaz."""
+    if not t:
+        return [], [], False
+    prefix = "g" if key == "guclu" else "a"
+    rows = [(f"{prefix}{i}", x) for i, x in enumerate(t.get(key) or [], 1) if (x.get("metin") or "").strip()]
+    durum = t.get("durum")
+    if durum == "dogrulandi":
+        return [x for _, x in rows], [], True
+    if durum != "reddedildi":
+        return [x for _, x in rows], [], False          # taslak: [doğrulanmadı] işaretiyle basılır
+    ok = set()
+    if rec and rec.get("durum") == "reddedildi" and rec.get("asama") == "model" and rec.get("metin_sha") == _yon_sha(t):
+        ok = {(m.get("yer"), " ".join((m.get("metin") or "").split())) for m in rec.get("maddeler") or []
+              if m.get("karar") == "destekleniyor"}
+    keep = [x for y, x in rows if (y, " ".join(x["metin"].split())) in ok]
+    drop = [y for y, x in rows if (y, " ".join(x["metin"].split())) not in ok]
+    return keep, drop, True
+
+
+def fill_yonler(doc, yonler: dict[str, dict], res: "Result", log: dict[str, dict] | None = None) -> None:
     cells, uy = find_yonler(doc)
     res.uyarilar += uy
+    log = log or {}
     for alan in sorted(set(yonler) - set(cells)):
         res.uyarilar.append(f"{alan}: güçlü/gelişmeye açık yön maddeleri var ama şablonda tablosu yok; yazılmadı")
     for alan, c in sorted(cells.items()):
         t = yonler.get(alan)
-        usable = t and t.get("durum") != "reddedildi"
         for key, tc, label in (("guclu", c.guclu_tc, GUCLU), ("gelisme", c.gelisme_tc, GELISME)):
-            items = [x for x in (t or {}).get(key) or [] if (x.get("metin") or "").strip()] if usable else []
+            items, drop, verified = yon_items(t, key, log.get(alan))
+            if drop:
+                res.yon_cikarilan.setdefault(alan, []).extend(drop)
+            paras = []
             if items:
-                paras = []
-                if t.get("durum") != "dogrulandi":
+                if not verified:
                     paras.append(ops.make_paragraph([(
                         f"{DOGRULANMADI} Bu maddeler doğrulama aşamasından geçmemiştir "
                         f"(durum: {t.get('durum') or 'belirtilmemiş'}).",
                         {"italic": True, "color": ops.TASLAK_RENK})]))
                 paras += [ops.make_paragraph(MADDE + " ".join(x["metin"].split())) for x in items]
+            elif t is not None and verified:
+                # alan işlendi ama basılacak doğrulanmış madde yok: açık ifade (yönerge kalmaz)
+                paras = [ops.make_paragraph(YON_YOK[key])]
+                res.yon_ifadeli.append(f"{alan} {label}")
+            if paras:
                 ops.replace_cell(tc, paras)
             res.yonler[f"{alan} {label}"] = _cell_state(tc)
+    for alan, ys in res.yon_cikarilan.items():
+        res.uyarilar.append(f"{alan}: doğrulamada desteklenmeyen {len(ys)} madde rapora alınmadı ({', '.join(ys)}); "
+                            "doğrulanmış maddeler basıldı (gerekçe: verify-yonler.jsonl)")
 
 
 def render(template: Path, out: Path, *, texts_dir: Path, audit_path: Path | None,
@@ -399,9 +504,10 @@ def render(template: Path, out: Path, *, texts_dir: Path, audit_path: Path | Non
            opts: Options | None = None, index_path: Path | None = None,
            kapsam: dict[str, str] | None = None, yonler_dir: Path | None = None,
            hazirlayanlar: list[dict] | None = None, teslim: str = "baglanti",
-           evidence_dir: Path | None = None) -> Result:
+           evidence_dir: Path | None = None, yonler_log: Path | None = None) -> Result:
     """`kapsam`: {ölçüt: bolum|ortak|baska_birim|karar_gerekli} (verilmezse hepsi bolum);
-    `yonler_dir`: `yonler/<alan>.json` klasörü; `hazirlayanlar`: config.yaml `rapor.hazirlayanlar`;
+    `yonler_dir`: `yonler/<alan>.json` klasörü (`yonler_log`: doğrulama kaydı, vars. klasörün yanındaki
+    verify-yonler.jsonl; reddedilen alanda yalnız desteklenen maddeler basılır); `hazirlayanlar`: config.yaml `rapor.hazirlayanlar`;
     `teslim`: config.yaml `rapor.teslim` (bidr/teslim/mod.py). `dekanlik`ta web sayfası kanıtının
     satırı adı (bağlantılı) ve özgün adresi görünür yazar: "[1-OD3]. Ad (https://…)"; `evidence_dir`
     web kanıtının adresini sayfanın kendi kaydından okumak için (vars. dizinin yanındaki evidence/)."""
@@ -468,6 +574,7 @@ def render(template: Path, out: Path, *, texts_dir: Path, audit_path: Path | Non
                 if b.kanit_tc is not None:
                     ops.fill_cell(b.kanit_tc, KANIT, [])
                 res.bos.append(cid)
+                _mark(res, b, cid, a, None, opts)
                 continue
         if _usable(t):
             res.dolu.append(cid)
@@ -488,10 +595,9 @@ def render(template: Path, out: Path, *, texts_dir: Path, audit_path: Path | Non
                         res.uyarilar.append(f"{cid}: metindeki [{no}] kanıt listesinde yok")
             if clean_text(t.get("onceki_yila_gore") or ""):
                 aciklama.append(ops.make_paragraph(clean_text(t["onceki_yila_gore"])))
-            # metin olsa da: bölümün bu döneme ait doğrudan kanıtı yoksa (audit) not düşülür
-            note = audit_note(a) if opts.eksik_notu else None
-            if note:
-                aciklama.append(ops.make_paragraph([(note, {"italic": True})]))
+            # bölümün bu döneme ait doğrudan kanıtı yoksa (audit) not komisyon içindir: gaps.md'de
+            # kalır, rapora girmez (kör test 2026-11-20); yalnız kayda geçer
+            if audit_note(a):
                 res.eksik_notlu.append(cid)
             kanit = []
             liste, atifsiz = evidence_list(t.get("kanitlar") or [], filed.get(cid, []))
@@ -522,37 +628,16 @@ def render(template: Path, out: Path, *, texts_dir: Path, audit_path: Path | Non
                     f"{DOGRULANMADI} Bu ölçüt için yazılan metin doğrulamada reddedildiği için "
                     "rapora alınmamıştır.", {"italic": True, "color": ops.TASLAK_RENK})]))
             aciklama.append(ops.make_paragraph(opts.bos_ifade))
-            note = eksik_text(a) if opts.eksik_notu else None
-            if note:
-                aciklama.append(ops.make_paragraph([(note, {"italic": True})]))
             kanit = [ops.make_paragraph(opts.bos_kanit, jc="left")]
-        # İşaretlenecek düzey: önce komisyonun onayladığı `od_onayli` (insan kararı; metnin ve kodun
-        # önerisini aşar), yoksa kodun önerisi `od` (metnin önerisi onu aşamaz). docs/AUDIT.md
-        # "Kod önerisi ve nihai düzey ayrı".
-        od_a = a.get("od") if a else None
-        od_ok = a.get("od_onayli") if a else None
-        if od_ok in (1, 2, 3, 4, 5):
-            if od is not None and od != od_ok:
-                res.uyarilar.append(f"{cid}: metnin OD önerisi ({od}) komisyonun onayladığı düzeyden ({od_ok}) "
-                                    f"farklı; OD{od_ok} işaretlendi (metin yeniden yazılmalı mı bakın)")
-            od, kaynak = od_ok, "onayli"
-        elif od is None:
-            od, kaynak = od_a, "kod"
-        else:
-            kaynak = "kod" if a else "metin"
-            if od_a is not None and od > od_a:
-                res.uyarilar.append(f"{cid}: metnin OD önerisi ({od}) audit önerisini ({od_a}) aşıyor; "
-                                    f"OD{od_a} işaretlendi")
-                od = od_a
         if b.aciklama_tc is not None:
             ops.fill_cell(b.aciklama_tc, ACIKLAMA, aciklama)
         if b.kanit_tc is not None:
             ops.fill_cell(b.kanit_tc, KANIT, kanit)
-        if od is not None and _mark_od(b, int(od), opts.puan_isareti):
-            res.od[cid] = int(od)
-            res.od_kaynagi[cid] = kaynak
+        _mark(res, b, cid, a, od, opts)
 
-    fill_yonler(doc, load_yonler(yonler_dir), res)
+    if yonler_log is None and yonler_dir is not None:
+        yonler_log = Path(yonler_dir).parent / YONLER_LOG
+    fill_yonler(doc, load_yonler(yonler_dir), res, load_yonler_log(yonler_log))
     res.kapak = fill_cover(doc, birim, yil)
     if birim and "birim" not in res.kapak:
         res.uyarilar.append("kapakta '[Birim Adı]' yer tutucusu bulunamadı")
@@ -604,6 +689,8 @@ def inputs_sha(template: Path, texts_dir: Path, audit_path: Path | None, index_p
     h = hashlib.sha256()
     named = [(p.name, p) for p in [Path(template), *files(texts_dir), *(Path(x) for x in (audit_path, index_path) if x)]]
     named += [(f"yonler/{p.name}", p) for p in files(yonler_dir)]
+    if yonler_dir is not None and (Path(yonler_dir).parent / YONLER_LOG).exists():
+        named.append((YONLER_LOG, Path(yonler_dir).parent / YONLER_LOG))
     for name, p in named:
         h.update(name.encode())
         h.update(p.read_bytes() if p.exists() else b"-")

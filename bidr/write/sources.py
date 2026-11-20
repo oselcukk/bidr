@@ -93,6 +93,121 @@ def evidence_context(text: str | None, quotes: list[str], verify: Callable) -> l
     return out
 
 
+# -- dönem içi ve ölçütle ilgili bilgi (alıntı dışında) -------------------------------------------
+# Kör test 2026-11-20: yazar yalnız alıntıyı ve ±350 karakter bağlamını gördüğü için kullanılan
+# belgedeki dönem içi kayıtları (listede 2025 başlangıçlı proje) ve ölçütün sorduğu bilgiyi
+# ("etkinlik bütçesi üniversitemiz tarafından karşılanmıştır") atlıyordu. Pakete, alıntı bağlamının
+# dışında kalan dönem yılını anan pencereler ve ölçüt konusuna ait cümleler eklenir (önce bunlar).
+DONEM_PENCERE = 220                # dönem yılının her yanında (karakter)
+MAX_DONEM = 4
+MAX_KONU = 3
+# ölçüt tanımında geçen konu → belgede aranacak (katlanmış) ifade
+KONU_IPUCU: list[tuple[str, str]] = [
+    (r"\bmali\b|kaynak", r"\bbutce\w*|\bodenek\w*|karsilan\w*|finanse\w*"),
+    (r"gorev tanim|organizasyonel|yetki", r"temsilci\w*|gorevlendir\w*|\bsorumlu\w*|koordinator\w*"),
+    (r"performans|gosterge|hedeflerle", r"gerceklesme\w*|hedef(?:lenen)? deger\w*|hedefin (?:alti|ustu)\w*"),
+]
+
+
+_BASLIK_TARIHI = re.compile(r"yayin tarihi|evrak tarih|deg\.? ?tarihi|degisiklik tarihi|revizyon tarihi|gazete"
+                            r"|son guncelleme|yururluk tarihi|\bsayi\s*:|\btarih\s*:")
+
+
+def _spans_overlap(a: int, b: int, spans: list[tuple[int, int]]) -> bool:
+    return any(min(b, y) - max(a, x) > (b - a) // 2 for x, y in spans)
+
+
+def quote_spans(text: str | None, quotes: list[str], verify: Callable) -> list[tuple[int, int]]:
+    """Alıntı bağlamlarının [başlangıç, bitiş) aralıkları (evidence_context ile aynı genişlik)."""
+    out = []
+    if not text:
+        return out
+    for q in quotes[:MAX_QUOTES]:
+        ok, _score, span = verify(q, text)
+        if ok and span:
+            out.append((max(0, span[0] - CTX), min(len(text), span[1] + CTX)))
+    return out
+
+
+def _window(text: str, a: int, b: int) -> tuple[int, int]:
+    """Pencereyi sözcük sınırına genişletir."""
+    while a > 0 and not text[a - 1].isspace():
+        a -= 1
+    while b < len(text) and not text[b].isspace():
+        b += 1
+    return a, b
+
+
+def period_snippets(text: str | None, year: int | None, covered: list[tuple[int, int]],
+                    limit: int = MAX_DONEM) -> list[str]:
+    """Belgede dönem yılını anan (ör. "27.03.2025", "2025/1") ve alıntı bağlamının dışında kalan
+    pencereler, belge sırasıyla; örtüşenler birleştirilir."""
+    if not text or not year:
+        return []
+    from bidr.identify.text import fold
+    wins: list[list[int]] = []
+    for m in re.finditer(rf"(?<!\d){year}(?!\d)", text):
+        if _BASLIK_TARIHI.search(fold(text[max(0, m.start() - 45):m.start()])):
+            continue                      # belge künyesi: yayın/evrak/değişiklik tarihi bilgi değildir
+        a, b = _window(text, max(0, m.start() - DONEM_PENCERE), min(len(text), m.end() + DONEM_PENCERE))
+        if wins and a <= wins[-1][1]:
+            wins[-1][1] = max(wins[-1][1], b)
+        else:
+            wins.append([a, b])
+    out: list[str] = []
+    for a, b in wins:
+        x = " ".join(text[a:b].split())
+        if _spans_overlap(a, b, covered) or x in out:
+            continue
+        out.append(x)
+        if len(out) >= limit:
+            break
+    return out
+
+
+_CUMLE = re.compile(r"[^.!?\n]*(?:[.!?]|$)")
+
+
+def topic_snippets(text: str | None, description: str, covered: list[tuple[int, int]],
+                   limit: int = MAX_KONU) -> list[str]:
+    """Ölçüt tanımının konusuna ait (bütçe/kaynak, görevli/temsilci, gerçekleşme/hedef) ve alıntı
+    bağlamının dışında kalan cümleler."""
+    from bidr.identify.text import fold
+    if not text:
+        return []
+    d = fold(description or "")
+    pats = [re.compile(x) for t, x in KONU_IPUCU if re.search(t, d)]
+    if not pats:
+        return []
+    # satır sonu cümleyi bölmesin (PDF metni): satırları birleştirerek konumları koru
+    flat = text.replace("\n", " ")
+    out: list[str] = []
+    for m in re.finditer(r"[^.!?]{20,400}[.!?]", flat):
+        a, b = m.start(), m.end()
+        if _spans_overlap(a, b, covered):
+            continue
+        low = fold(m.group(0))
+        hit = next((h for p in pats if (h := p.search(low))), None)
+        if hit is None:
+            continue
+        # cümle başı satır kırılımında yitmiş olabilir: konu sözcüğünden en çok 160 karakter geri,
+        # satır başından (büyük harf) başlat
+        seg = m.group(0)
+        if hit.start() > 160:
+            seg = seg[hit.start() - 160:]
+        lines = text[a:b].split("\n")
+        if len(lines) > 1:
+            last = next((ln for ln in reversed(lines) if fold(ln).find(low[hit.start():hit.end()]) >= 0), None)
+            if last is not None and last.strip()[:1].isupper():
+                seg = flat[a:b][flat[a:b].find(last.strip()):]
+        x = " ".join(seg.split())
+        if x not in out:
+            out.append(x)
+            if len(out) >= limit:
+                break
+    return out
+
+
 # -- önceki yılın metni ---------------------------------------------------------------------
 
 _SUB = re.compile(r"^\s*([A-E]\.\d+\.\d+)\.?\s")

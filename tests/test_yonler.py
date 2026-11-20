@@ -35,6 +35,12 @@ def test_check_item_rules():
     assert "od_asimi" in _chk("Program çıktıları sistematik olarak izlenmektedir (B.1.1).")
     assert "od_asimi" in _chk("Uygulama içselleştirilmiştir (B.1.1).")
     assert "od_anisi" in _chk("Ölçüt OD3 düzeyindedir (B.1.1).")
+    # aracın iç dili (kör test 2026-11-20): komisyon notu maddeye girmez
+    assert "ic_dil" in _chk("Birime ait kanıtlar OD'ye sayılmamıştır (B.1.2).", "gelisme")
+    assert "ic_dil" in _chk("Dayanaklar yalnız kurum geneli belgelerle eşleşmiştir (B.1.2).", "gelisme")
+    assert "ic_dil" in _chk("Uygulama halkasına kurum düzenlemeleri esas alınmıştır (B.1.2).", "gelisme")
+    assert "ic_dil" in _chk("Olgunluk düzeyine yalnız kurum geneli düzenleme sayılmıştır (B.1.2).", "gelisme")
+    assert _chk("Bölümün bu dönemdeki uygulamasını gösteren belge bulunmamaktadır (B.1.2).", "gelisme") == set()
     # olumsuz bulgu cümlesi üst düzey dil denetimine takılmaz
     assert _chk("Program çıktılarının sistematik olarak izlendiğine ilişkin kanıt bulunmamaktadır (B.1.2).",
                 "gelisme") == set()

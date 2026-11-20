@@ -220,8 +220,8 @@ def gaps_md(a) -> str:
     en = [c for c in a.criteria if (c.get("eksik_kanit_notu") or {}).get("durum") == "neredeyse_kanitsiz"]
     if en:
         L += ["", "## Neredeyse kanıtsız ölçütler (eksik kanıt notu)", "",
-              "Eşleşme var ama bölümün bu döneme ait, kurum geneli olmayan sayılan kanıtı yok; raporda eksik kanıt "
-              "notu yazılır (`audit-olcutler.json` `eksik_kanit_notu`).", ""]
+              "Eşleşme var ama bölümün bu döneme ait, kurum geneli olmayan sayılan kanıtı yok. Not komisyon içindir "
+              "(`audit-olcutler.json` `eksik_kanit_notu`); rapor metnine yazılmaz.", ""]
         for c in en:
             L.append(f"- {c['olcut']} {c['baslik']}: {c['eksik_kanit_notu']['metin']}")
     L += _birim_sections(a)

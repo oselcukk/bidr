@@ -16,6 +16,8 @@
   ölçüt, program…) anlatılan cümlede belgenin içeriğidir; öteki yerde gelecek vaadi sayılır.
 - Kısaltmalar (unvanlar, "A.Ş.", "San. ve Tic.", "Ltd. Şti.") cümleyi bölmez.
 - Yasak ifadeler: abartı, slogan, koçluk dili (bkz. YASAK).
+- Aracın iç dili (`ic_dil`: "Eksik kanıt notu", "OD'ye sayılmamıştır", "eşleşmiş", "uygulama
+  halkası", alt çizgili işaretler): komisyon notudur, metne girmez (bkz. bidr/write/ic_dil.py).
 - Belge/birim adı içindeki terim ("GTÜ Yapay Zekâ Politikası", "Sürdürülebilirlik
   Koordinatörlüğü", tırnak içi ad) yasak ifade, vaat ve üst düzey dil denetimlerinden muaftır
   (`name_spans`); ad dışındaki aynı terim yakalanır.
@@ -262,6 +264,8 @@ def check_sentence(s: str, *, index_nos: set[str], od: int, komisyon: bool) -> l
             continue   # "yönergede … tavsiye edilmektedir": belgenin içeriği, öğüt değil
         if m:
             issues.append({"kod": "yasak_ifade", "ayrinti": f"{kind}: “{m.group(0)}”"})
+    from .ic_dil import sorunlar as _ic_dil
+    issues += _ic_dil(bare)
     g = GELECEK.search(ad)
     # Mevzuat dili: "yönergede … öngörülmektedir" gelecek vaadi değil, "hükme bağlanmıştır"
     # anlamındadır; atıflı ve bir düzenleme belgesini anlatan cümlede kabul edilir.

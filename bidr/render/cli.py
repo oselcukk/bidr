@@ -38,8 +38,7 @@ def _run(args) -> int:
     out = Path(args.out).expanduser() if args.out else ws / "report.docx"
     texts = Path(args.texts).expanduser() if args.texts else ws / "texts"
     audit = Path(args.audit).expanduser() if args.audit else ws / "audit-olcutler.json"
-    opts = Options(puan_isareti=args.puan_isareti, kanit_bicimi=args.kanit_bicimi,
-                   eksik_notu=not args.eksik_notu_yok)
+    opts = Options(puan_isareti=args.puan_isareti, kanit_bicimi=args.kanit_bicimi)
     if args.bos_ifade:
         opts.bos_ifade = args.bos_ifade
     if args.bos_kanit:
@@ -67,6 +66,8 @@ def _run(args) -> int:
     if res.karar_gerekli:
         print(f"uyarı: {len(res.karar_gerekli)} ölçütte kapsam kararı gerekli ({', '.join(res.karar_gerekli)}): "
               "soru gaps.md'de; KULLANICI karar verir (config.yaml rapor.kapsam)")
+    if res.eksik_notlu:
+        print(f"bilgi: {len(res.eksik_notlu)} ölçütün eksik kanıt notu komisyon içindir (gaps.md); rapora yazılmadı")
     if res.atifsiz_listelenen:
         n = sum(map(len, res.atifsiz_listelenen.values()))
         print(f"not: {n} kanıt metinde atıf almıyor ama kanıt klasöründe; numara sırası bozulmasın diye "
@@ -102,12 +103,12 @@ def register(sub):
                    help="birimin doldurmadığı (kapsam baska_birim) ölçütün Açıklamalar ifadesi; '' = hücre boş "
                         "(vars.: 'Bu ölçüt birimin doldurma sorumluluğunda değildir.')")
     p.add_argument("--puan-isareti", choices=["kalin", "golge", "yok"], default="kalin",
-                   help="öz değerlendirme düzeyinin rubrikte işaretlenmesi (vars.: kalin, "
-                        "Kimya 2025 raporu usulü; Matematik/Fizik/MBG işaretlememiş: yok)")
+                   help="öz değerlendirme düzeyinin rubrikte işaretlenmesi (vars.: kalin, Kimya 2025 raporu "
+                        "usulü; öteki düzeylerin kalınlığı kaldırılır; yok: işaretsiz — bidr denetle KRİTİK sayar)")
     p.add_argument("--kanit-bicimi", choices=["mat", "kilavuz"], default="mat",
                    help="Kanıtlar listesi: mat '1_OD3: ad' (vars.) | kilavuz '[1-OD3]. ad'")
     p.add_argument("--bos-ifade", default=None, help="metni olmayan ölçüt için Açıklamalar ifadesi")
     p.add_argument("--bos-kanit", default=None, help="metni olmayan ölçüt için Kanıtlar ifadesi")
     p.add_argument("--eksik-notu-yok", action="store_true",
-                   help="metni olmayan ölçüte audit'in eksik kanıt notunu yazma")
+                   help="etkisiz (eski seçenek): eksik kanıt notu artık hiçbir durumda rapora yazılmaz; gaps.md'dedir")
     p.set_defaults(func=_run)

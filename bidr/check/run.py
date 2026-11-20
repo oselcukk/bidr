@@ -3,6 +3,12 @@ kurallarına göre bulgu listesi çıkarır. Render'dan bağımsızdır: render 
 kim üretmiş olursa olsun (render, elle düzenleme) aynı denetimi yapar.
 
 Bulgu düzeyleri: `kritik` (yayıma hazır değil) | `uyari` (bakılmalı; yayımı durdurmaz).
+
+İçerik denetimi (kör test 2026-11-20; son çıktı baştan üretilip içerik denetlenmeden gönderildi):
+aracın iç dili (`ic_dil`: "Eksik kanıt notu", "OD'ye sayılmamıştır", "eşleşmiş", "uygulama
+halkası"; bidr/write/ic_dil.py) Açıklamalar ve yön hücrelerinde; rubrikte OD işareti olmayan
+(`od_isaretsiz`) ya da birden çok düzeyi işaretli (`od_isareti_belirsiz`) ölçüt — kapsam dışı
+hariç; boş ya da şablon yönergesi kalan hücre. Hepsi KRİTİK.
 Kapsam: birimin doldurduğu bölgeler (Açıklamalar/Kanıtlar hücreleri, güçlü/gelişmeye açık
 yönler hücreleri, kapak alanları), ölçüt başlıkları, üst/altbilgideki form alanları ve kanıt
 klasörü. Şablonun kendi kılavuz metni biçim denetimine girmez (birimin sorumluluğunda değil).
@@ -25,6 +31,8 @@ KRITIK, UYARI = "kritik", "uyari"
 
 COVER_STOP = "ÖLÇÜTLER VE KANITLAR"
 ACIKLAMA, KANIT = "Açıklamalar:", "Kanıtlar:"
+ORNEK = "Örnek Kanıtlar:"
+KAPSAM_DISI_IPUCU = "doldurma sorumluluğunda değil"
 YER_TUTUCU_ACIKLAMA = "Bu bölüme açıklayıcı metin yazılmalı"
 YER_TUTUCU_KANIT = "Kanıtlar buraya yazılmalı"
 YER_TUTUCU_BIRIM = "[Birim Adı]"
@@ -99,6 +107,7 @@ class Blok:
     baslik_p: object
     aciklama_tc: object | None = None
     kanit_tc: object | None = None
+    rubrik: list = field(default_factory=list)       # düzey satırları: satır başına 5 w:tc
 
 
 def _body_after_stop(doc) -> list:
@@ -118,6 +127,7 @@ def bloklar(doc) -> tuple[dict[str, Blok], list[tuple[str, object]], list[str]]:
     mains: list[tuple[str, object]] = []
     dups: list[str] = []
     cur: Blok | None = None
+    in_rubric = False
     for tbl in _body_after_stop(doc):
         for tr in tbl.iter(W + "tr"):
             cells = list(tr.iterchildren(W + "tc"))
@@ -129,6 +139,7 @@ def bloklar(doc) -> tuple[dict[str, Blok], list[tuple[str, object]], list[str]]:
             if len(cells) == 1 and (m := RE_SUB.match(head)):
                 sid = f"{m.group(1)}.{m.group(2)}.{m.group(3)}"
                 cur = Blok(sid, first_p)
+                in_rubric = False
                 if sid in blks:
                     dups.append(sid)
                 else:
@@ -143,10 +154,20 @@ def bloklar(doc) -> tuple[dict[str, Blok], list[tuple[str, object]], list[str]]:
                 continue
             if cur is None:
                 continue
+            flat = [" ".join(_cell_lines(c)).strip() for c in cells]
+            if flat == ["1", "2", "3", "4", "5"]:
+                in_rubric = True
+                continue
             if head.startswith(ACIKLAMA):
                 cur.aciklama_tc = cells[0]
+                in_rubric = False
             elif head.startswith(KANIT):
                 cur.kanit_tc = cells[0]
+                in_rubric = False
+            elif head.startswith(ORNEK):
+                in_rubric = False
+            elif in_rubric and len(cells) == 5:
+                cur.rubrik.append(cells)
     return blks, mains, dups
 
 
@@ -287,14 +308,16 @@ def denetle(docx_path: Path, *, rules: Rules | None = None, sablon: Path | None 
             kanit_klasoru: Path | None = None, index_path: Path | None = None,
             beklenen: tuple[list[str], list[str]] | None = None,
             od_bekleyen: dict[str, dict] | None = None,
-            taslak_nedenleri: list[str] | None = None, teslim_modu: str | None = None) -> Sonuc:
+            taslak_nedenleri: list[str] | None = None, teslim_modu: str | None = None,
+            kapsam_disi: list[str] | None = None) -> Sonuc:
     """`beklenen`: (alt ölçütler, ölçütler); vars. paket ölçüt verisi (46 alt ölçüt).
     `teslim_modu`: `dekanlik` | `baglanti` (config.yaml `rapor.teslim`; bidr/teslim/mod.py); verilirse
     kanıt bağlantıları denetlenir: dekanlik'te bağlantısız kanıt bilgi, baglanti'da uyarı.
     `od_bekleyen`: {ölçüt: {od, kaynak}}: rubrikte insan onayı olmadan (kod/metin önerisiyle)
     işaretlenen düzeyler (`od_onay_bekleyenler`); her biri `od_onay_bekliyor` uyarısı olur.
     `taslak_nedenleri`: bu belgeyi üreten render'ın TASLAK gerekçeleri (`taslak_nedenleri()`);
-    verilmezse damga bulgusu nedeni bilinmiyor der (tahmin etmez)."""
+    verilmezse damga bulgusu nedeni bilinmiyor der (tahmin etmez). `kapsam_disi`: birimin doldurmadığı
+    ölçütler (render kaydı); rubrik işareti aranmaz (kapsam ifadesi de aynı ölçütü atlatır)."""
     import docx
 
     rules = rules or Rules()
@@ -308,6 +331,7 @@ def denetle(docx_path: Path, *, rules: Rules | None = None, sablon: Path | None 
     _kapak(doc, s)
     listeler = _olcutler(doc, d, s, beklenen or beklenen_olcutler())
     _swot(doc, d, s)
+    _od_isaretleri(doc, d, s, Path(sablon) if sablon else None, set(kapsam_disi or []))
     _form_alanlari(doc, s, sablon, taslak_nedenleri)
     if sablon is not None and Path(sablon).exists():
         _sablondan(s, Path(sablon), rules)
@@ -323,7 +347,7 @@ def denetle(docx_path: Path, *, rules: Rules | None = None, sablon: Path | None 
 
 # -- OD onayı (docs/AUDIT.md "Kod önerisi ve nihai düzey ayrı") ---------------------------------
 
-OD_KAYNAK = {"kod": "kod önerisi", "metin": "metnin önerisi"}
+OD_KAYNAK = {"kod": "kod önerisi", "metin": "metnin önerisi", "varsayilan": "kanıt/öneri yok: OD1"}
 
 
 def render_kaydi(ws: Path, docx_path: Path) -> dict | None:
@@ -557,6 +581,7 @@ def _olcutler(doc, d: Denetci, s: Sonuc, beklenen) -> dict[str, dict[int, int]]:
             s.ekle(KRITIK, "sablon_metni", sid, "'Kanıtlar' hücresinde şablon yönerge metni duruyor")
         if any(DOGRULANMADI in t for t in a_txt):
             s.ekle(KRITIK, "dogrulanmamis_metin", sid, f"'{DOGRULANMADI}' işaretli metin var")
+        _ic_dil(a_txt, f"{sid} Açıklamalar", s)
         joined = " ".join(a_txt)
         if any(ip in joined for ip in BOS_ACIKLAMA_IPUCU) and not RE_ATIF.search(joined):
             bos_olcut.append(sid)
@@ -620,6 +645,114 @@ def _olcutler(doc, d: Denetci, s: Sonuc, beklenen) -> dict[str, dict[int, int]]:
     return listeler
 
 
+def _ic_dil(texts: list[str], yer: str, s: Sonuc) -> None:
+    """Aracın komisyona yönelik iç dili rapor metninde (bidr/write/ic_dil.py): her paragraf bir bulgu."""
+    from bidr.write.ic_dil import bul
+    for t in texts:
+        hits = bul(t)
+        if hits:
+            s.ekle(KRITIK, "ic_dil", yer, "aracın iç notu/dili rapor metninde ("
+                   + ", ".join(dict.fromkeys(ad for ad, _ in hits)) + f"): «{t[:70]}»")
+
+
+# -- rubrikte OD işareti ------------------------------------------------------------------------
+
+def _ilk_sutun_kalin(tc, doc) -> bool:
+    """Tablo stilinin koşullu biçimi: tblLook firstColumn açıkken ilk sütun hücresi (tablo stili
+    `firstCol` rPr'si kalınsa) kalın görünür. FR-0833 rubriğinde 1. düzey hücresi böyle kalındır."""
+    tr = tc.getparent()
+    if tr is None or tr.find(W + "tc") is not tc:
+        return False
+    tbl = tr.getparent()
+    tblpr = tbl.find(W + "tblPr") if tbl is not None else None
+    if tblpr is None:
+        return False
+    look = tblpr.find(W + "tblLook")
+    if look is None or not (look.get(W + "firstColumn") in ("1", "true", "on")
+                            or (int(look.get(W + "val") or "0", 16) & 0x0080)):
+        return False
+    st = tblpr.find(W + "tblStyle")
+    sid = st.get(W + "val") if st is not None else None
+    for el in doc.styles.element.iter(W + "style"):
+        if el.get(W + "styleId") == sid:
+            for t in el.iter(W + "tblStylePr"):
+                if t.get(W + "type") == "firstCol":
+                    rpr = t.find(W + "rPr")
+                    b = rpr.find(W + "b") if rpr is not None else None
+                    return b is not None and b.get(W + "val") not in ("0", "false", "off")
+    return False
+
+
+def _run_kalin(r, p, res: Resolver, kosul: bool) -> bool:
+    rpr = r.find(W + "rPr")
+    b = rpr.find(W + "b") if rpr is not None else None
+    if b is not None:                      # çalışmadaki açık değer koşullu biçimi de aşar
+        return b.get(W + "val") not in ("0", "false", "off")
+    return kosul or res.toggle(r, p, "b")
+
+
+def _hucre_isareti(tc, res: Resolver, doc=None) -> tuple[bool, str | None]:
+    """(bütün metin kalın mı — tablo stilinin ilk sütun biçimi dahil, hücre dolgusu)."""
+    runs = [(r, p) for p in tc.iter(W + "p") for r in text_runs(p)]
+    kosul = _ilk_sutun_kalin(tc, doc) if doc is not None else False
+    bold = bool(runs) and all(_run_kalin(r, p, res, kosul) for r, p in runs)
+    tcpr = tc.find(W + "tcPr")
+    shd = tcpr.find(W + "shd") if tcpr is not None else None
+    fill = (shd.get(W + "fill") or "").upper() if shd is not None else None
+    return bold, fill
+
+
+def isaretli_duzeyler(b: Blok, res: Resolver, doc=None) -> set[int]:
+    """Rubrik satırlarında öteki hücrelerden ayrılan (kalın ya da ayrık dolgulu) düzeyler."""
+    out: set[int] = set()
+    for row in b.rubrik:
+        st = [_hucre_isareti(tc, res, doc) for tc in row]
+        bolds = [i for i, (bo, _) in enumerate(st, 1) if bo]
+        if bolds and len(bolds) < len(st):
+            out.update(bolds)
+        fills = [f for _, f in st]
+        for i, f in enumerate(fills, 1):
+            others = set(fills[:i - 1] + fills[i:])
+            if f is not None and len(others) == 1 and f not in others:
+                out.add(i)
+    return out
+
+
+def _rubrik_imza(b: Blok) -> list[bytes]:
+    from lxml import etree
+    return [etree.tostring(tc) for row in b.rubrik for tc in row]
+
+
+def _od_isaretleri(doc, d: Denetci, s: Sonuc, sablon: Path | None, kapsam_disi: set[str]) -> None:
+    """Her ölçütün rubriğinde tek düzey işaretli olmalı (kapsam dışı hariç). Şablon verilirse rubriği
+    şablonla aynı kalan blok (render işaretlememiş: şablonun 1. düzey hücresi zaten kalındır) işaretsiz
+    sayılır."""
+    import docx as _docx
+    blks, _, _ = bloklar(doc)
+    tblks: dict[str, Blok] = {}
+    if sablon is not None and Path(sablon).exists():
+        tblks, _, _ = bloklar(_docx.Document(str(sablon)))
+    isaret: dict[str, int] = {}
+    for sid, b in blks.items():
+        if not b.rubrik:
+            continue
+        a_txt = " ".join(_ptexts(icerik(b.aciklama_tc, ACIKLAMA)[0])) if b.aciklama_tc is not None else ""
+        if sid in kapsam_disi or KAPSAM_DISI_IPUCU in a_txt:
+            continue
+        lv = isaretli_duzeyler(b, d.res, doc)
+        if sid in tblks and tblks[sid].rubrik and _rubrik_imza(b) == _rubrik_imza(tblks[sid]):
+            lv = set()
+        if not lv:
+            s.ekle(KRITIK, "od_isaretsiz", sid, "rubrikte öz değerlendirme düzeyi işaretli değil (önerilen ya da "
+                   "onaylanan OD işaretlenir; bidr render --puan-isareti kalin|golge)")
+        elif len(lv) > 1:
+            s.ekle(KRITIK, "od_isareti_belirsiz", sid, f"rubrikte birden çok düzey işaretli görünüyor: "
+                   f"{', '.join(f'OD{x}' for x in sorted(lv))} (yalnız bir düzey kalın/gölgeli olmalı)")
+        else:
+            isaret[sid] = next(iter(lv))
+    s.bilgi["od_isareti"] = isaret
+
+
 def _swot(doc, d: Denetci, s: Sonuc) -> None:
     bulunan = 0
     for tbl in doc.element.body.iter(W + "tbl"):
@@ -641,6 +774,9 @@ def _swot(doc, d: Denetci, s: Sonuc) -> None:
                 elif any(SWOT_YER_TUTUCU in t for t in txt):
                     s.ekle(KRITIK, "swot_sablon_metni", yer, "şablon yönerge metni duruyor")
                 else:
+                    if any(DOGRULANMADI in t for t in txt):
+                        s.ekle(KRITIK, "dogrulanmamis_metin", yer, f"'{DOGRULANMADI}' işaretli madde var")
+                    _ic_dil(txt, yer, s)
                     for p in tc.iter(W + "p"):
                         d.govde(p, yer)
     s.bilgi["swot_alan"] = bulunan

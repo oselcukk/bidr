@@ -33,7 +33,7 @@ def _run(args) -> int:
     from bidr.write.sources import rapor_section
 
     from .rules import load_rules
-    from .run import denetle, od_onay_bekleyenler, tablo, taslak_nedenleri, yaz
+    from .run import denetle, od_onay_bekleyenler, render_kaydi, tablo, taslak_nedenleri, yaz
 
     from bidr.teslim.mod import teslim_modu
 
@@ -56,7 +56,8 @@ def _run(args) -> int:
         res = denetle(docx_path, rules=rules, sablon=_sablon(ws, args.sablon, rapor),
                       kanit_klasoru=kanit if (args.kanit or kanit.is_dir()) else None,
                       index_path=index, od_bekleyen=od_onay_bekleyenler(ws, docx_path)[0],
-                      taslak_nedenleri=taslak_nedenleri(ws, docx_path), teslim_modu=mod)
+                      taslak_nedenleri=taslak_nedenleri(ws, docx_path), teslim_modu=mod,
+                      kapsam_disi=(render_kaydi(ws, docx_path) or {}).get("kapsam_disi"))
     except Exception as e:  # bozuk docx vb.
         print(f"HATA denetlenemedi: {e}", file=sys.stderr)
         return 2

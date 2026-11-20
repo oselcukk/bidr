@@ -67,8 +67,9 @@ def _single_row(table, ncols=5):
 
 
 def make_doc(path: Path, *, fill=True, aciklama=None, kanitlar=None, footer=FOOTER, swot=True,
-             uyeler=None, birim="Matematik Bölümü", extra_aciklama=None) -> Path:
-    """`fill=False`: boş şablon gibi (yer tutucular). Aksi halde kurala uygun dolu rapor."""
+             uyeler=None, birim="Matematik Bölümü", extra_aciklama=None, od=3, swot_metin=None) -> Path:
+    """`fill=False`: boş şablon gibi (yer tutucular). Aksi halde kurala uygun dolu rapor; rubrikte `od`
+    düzeyi kalın (`od` None: işaretsiz; liste: birden çok düzey kalın)."""
     d = docx.Document()
     sec = d.sections[0]
     fp = sec.footer.paragraphs[0]
@@ -97,8 +98,11 @@ def make_doc(path: Path, *, fill=True, aciklama=None, kanitlar=None, footer=FOOT
         for i, cc in enumerate(r.cells):
             cc.text = str(i + 1)
         r = t.add_row()
+        isaret = set(od if isinstance(od, (list, tuple)) else [od]) if fill and od else set()
         for i, cc in enumerate(r.cells):
             cc.text = f"Rubrik {i + 1}"
+            if i + 1 in isaret:
+                cc.paragraphs[0].runs[0].bold = True
         c = _single_row(t)
         c.paragraphs[0].text = "Örnek Kanıtlar:"
         ca = _single_row(t)
@@ -127,7 +131,7 @@ def make_doc(path: Path, *, fill=True, aciklama=None, kanitlar=None, footer=FOOT
             r = st.add_row()
             for cc in r.cells:
                 if fill:
-                    _body_p(cc, "Birimde süreçler tanımlıdır.")
+                    _body_p(cc, swot_metin or "Birimde süreçler tanımlıdır.")
                 else:
                     cc.paragraphs[0].text = SWOT_YT
     d.save(str(path))
@@ -403,3 +407,61 @@ def test_taslak_nedeni_render_kaydindan(tmp_path, sablon, mini_criteria, capsys)
     js = json.loads((ws / "denetim.json").read_text(encoding="utf-8"))
     msg = [b["mesaj"] for b in js["bulgular"] if b["kod"] == "taslak_damgasi"]
     assert msg and all("bilinmiyor" in m and neden not in m for m in msg)
+
+
+# -- son çıktı içerik denetimi (kör test 2026-11-20) ---------------------------------------------
+
+def test_ic_dil_kritik(tmp_path, sablon):
+    rep = make_doc(tmp_path / "r.docx", aciklama={
+        "A.1.1": ["Süreç tanımlıdır [1_OD3]. İzlenmektedir [2_OD3].",
+                  "Eksik kanıt notu: bölümün bu döneme ait doğrudan kanıtı yok. Gereken: kurul kararı."]},
+        swot_metin="• Birime ait belgeler OD'ye sayılmamıştır (A.1.1).")
+    s = denetle(rep, sablon=sablon, beklenen=BEKLENEN)
+    ic = [b for b in s.bulgular if b.kod == "ic_dil"]
+    assert all(b.seviye == KRITIK for b in ic)
+    assert {b.yer for b in ic} >= {"A.1.1 Açıklamalar"} and sum("Güçlü Yönler" in b.yer for b in ic) == 4
+    # temiz metinde yok
+    s = denetle(make_doc(tmp_path / "t.docx"), sablon=sablon, beklenen=BEKLENEN)
+    assert "ic_dil" not in codes(s)
+
+
+def test_od_isareti_kritik(tmp_path, sablon):
+    s = denetle(make_doc(tmp_path / "ok.docx", od=1), sablon=sablon, beklenen=BEKLENEN)
+    assert not {"od_isaretsiz", "od_isareti_belirsiz"} & set(codes(s))
+    assert s.bilgi["od_isareti"] == {c: 1 for c in SUBS}
+    s = denetle(make_doc(tmp_path / "yok.docx", od=None), sablon=sablon, beklenen=BEKLENEN)
+    assert codes(s, KRITIK).count("od_isaretsiz") == len(SUBS)
+    s = denetle(make_doc(tmp_path / "iki.docx", od=[1, 3]), sablon=sablon, beklenen=BEKLENEN)
+    assert codes(s, KRITIK).count("od_isareti_belirsiz") == len(SUBS)
+    # kapsam dışı ölçüt atlanır (render kaydı ya da kapsam ifadesi)
+    s = denetle(make_doc(tmp_path / "kd.docx", od=None), sablon=sablon, beklenen=BEKLENEN, kapsam_disi=SUBS[:1])
+    assert codes(s, KRITIK).count("od_isaretsiz") == len(SUBS) - 1
+    rep = make_doc(tmp_path / "kd2.docx", od=None,
+                   aciklama={c: ["Bu ölçüt birimin doldurma sorumluluğunda değildir."] for c in SUBS})
+    assert "od_isaretsiz" not in codes(denetle(rep, beklenen=BEKLENEN))
+
+
+def test_od_isareti_tablo_stili_ilk_sutun(tmp_path):
+    """Tablo stilinin ilk sütun biçimi (firstCol kalın) açıkça kapatılmamışsa 1. düzey kalın görünür:
+    render başka düzeyi işaretlediğinde iki düzey kalın okunur (belirsiz); kapatılmışsa tek düzey."""
+    from bidr.check.fmt import Resolver
+    from bidr.check.run import bloklar, isaretli_duzeyler
+    from bidr.render import docx_ops as ops
+    rep = make_doc(tmp_path / "r.docx", od=3)
+    d = docx.Document(str(rep))
+    st = d.styles["Table Grid"].element
+    tsp = OxmlElement("w:tblStylePr")
+    tsp.set(qn("w:type"), "firstCol")
+    rpr = OxmlElement("w:rPr")
+    rpr.append(OxmlElement("w:b"))
+    tsp.append(rpr)
+    st.append(tsp)
+    for tbl in d.element.body.iter(qn("w:tbl")):
+        look = tbl.find(qn("w:tblPr") + "/" + qn("w:tblLook"))
+        if look is not None:
+            look.set(qn("w:firstColumn"), "1")
+    b = bloklar(d)[0][SUBS[0]]
+    assert isaretli_duzeyler(b, Resolver(d), d) == {1, 3}
+    for row in b.rubrik:
+        ops.clear_bold(row[0])
+    assert isaretli_duzeyler(b, Resolver(d), d) == {3}

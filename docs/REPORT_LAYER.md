@@ -14,14 +14,20 @@ Sahibi: şef. Aşamalar `bidr/data/pipeline.yaml`'da; tamamlanma denetimleri
 ### Eksik kanıt notu (`audit-olcutler.json` `olcutler[].eksik_kanit_notu`)
 Audit üretir (docs/AUDIT.md "Eksik kanıt notu"); render okur. `null` ya da
 `{"durum": "kanitsiz" | "neredeyse_kanitsiz", "nedenler": [...], "metin": "Eksik kanıt notu: …"}`.
-Render sözleşmesi (uygulandı: `render.run.audit_note`): alan doluysa ölçütün Açıklamalar hücresine
-`metin` (italik, metnin paragraflarından sonra) yazılır,
-**ölçütün metni olsa da** (`neredeyse_kanitsiz`: yalnız kurum geneli, yalnız dönem dışı, yalnız
-tarihi/birimi doğrulanmamış ya da yalnız düşük güvenli kanıtı olan ölçüt metinle de doldurulmuş
-olabilir; not bölümün bu döneme ait doğrudan kanıtı olmadığını söyler). `kanitsiz` metni
-bugünkü `eksik_text` çıktısıyla aynıdır; alan yoksa (eski audit çıktısı) render bugünkü
-davranışı sürdürür. `--eksik-notu-yok` ikisini de kapatır. Kapsam dışı (`baska_birim`) ölçütte
-yazılmaz. Metni olup not alan ölçütler `.bidr-render.json` `eksik_notlu_metin`.
+**Not komisyon içindir, rapor metnine girmez** (kör test 2026-11-20: "Eksik kanıt notu: … Gereken: …"
+Açıklamalar'a sızdı). Not gaps.md'de ("Neredeyse kanıtsız ölçütler" ve "Ölçüt ölçüt") ve review.xlsx'te
+kalır; metni olmayan ölçütün Açıklamalar hücresinde yalnız "Bu ölçüt için bu dönemde kanıt
+bulunamamıştır." yazar. `--eksik-notu-yok` eski seçenektir, etkisizdir. Metni olup notu olan ölçütler
+`.bidr-render.json` `eksik_notlu_metin` (bilgi).
+
+### Aracın iç dili (`bidr/write/ic_dil.py`)
+"Eksik kanıt notu", "Gereken:", "OD'ye sayılmamıştır", "olgunluk düzeyine sayılmış", "eşleşmiş",
+"uygulama halkası", "olgunluk değerlendirmesinde … esas alındığından", alt çizgili işaretler
+(`kurum_geneli`), araç dosya adları. Üç denetim aynı listeyi kullanır: ölçüt metni (`write apply`,
+`verify` kod denetimi: `ic_dil`), alan maddeleri (`yonler apply`, `verify`: `ic_dil`) ve son çıktı
+(`bidr denetle`: KRİTİK `ic_dil`). Yazım istemleri iç terim yerine sade karşılık verir (yonler
+bulguları: "birimin bu dönemdeki uygulamasını gösteren belge yok", "tarihi belgede görülmüyor").
+
 
 ## Kanıt adı (`ad`, `ad_kaynagi`) — öncelik insan > model parça adı > model > kural
 - `insan`: review.xlsx "kanıt adı" düzeltmesi (`bidr audit apply` → `kanit-adlari.jsonl`,
@@ -166,6 +172,15 @@ yalnız duyurulu faaliyet için "duyurulmuştur/planlanmıştır". `verify_text`
 kuralı denetler: yalnız duyuruya dayanan "düzenlendi" iddiası `kismen`. **v1 → v2:** görevin eski
 sürümüyle yazılmış metin, `girdi_sha`'sı güncelse geçerli kalır (`write prepare` yeniden paketlemez,
 `eski_surum` listeler; `write_tamam` uyarı verir); yeni kuralla yazmak `--only`/`--redo` ile.
+**v3 (kör test 2026-11-20, kanıt içeriğinin eksik aktarımı):** her kanıtın altında, alıntı bağlamı
+dışında kalan "dönem içi bilgi" (belgede rapor yılını anan pencereler; yayın/evrak/değişiklik
+künyesi tarihleri sayılmaz; kurum geneli düzenlemede yok) ve "ölçütle ilgili bilgi" (ölçüt tanımı
+mali kaynak, görev tanımı ya da performans soruyorsa bütçe/karşılanma, temsilci/görevlendirme,
+gerçekleşme/hedef değeri cümleleri) alıntılardan önce verilir (`write/sources.py` `period_snippets`,
+`topic_snippets`; dönem `config.yaml bidr.donem`). İstem kuralları 8–11: dönem içi kaydı önce anlat,
+sayıyı küçültme ("4 proje", "birinin" değil), kanıtta bilgi varken "kanıt yok" deme, fakülte
+değerini bölümün değeri gibi verme ve hedefle karşılaştırmayı açık yaz; kural 13: aracın iç dili yok
+(kod `ic_dil`). v2 metinleri girdileri değişmedikçe geçerli kalır.
 Her cümle en az bir atıf taşır; atıflar `evidence-index.csv`'de olmalı. Metin OD'yi
 `audit-olcutler.json`'daki önerilen düzeyin üstünde iddia etmez. `[komisyon]` işareti
 cümlenin kanıta değil komisyon bilgisine (`rapor-notlari.yaml`) dayandığını gösterir; rapora
@@ -206,16 +221,25 @@ dayanağı olan ölçütlerden (güçlü: doğrulanmış metni olan; gelişme: b
 kuralları; ayrıca "önerilir/gerekmektedir" öğüt dili yok. Kanıtla çapraz denetim (`cross_check`):
 gelişmeye açık yönün "yok" hükmü ölçütün KANIT DURUMU'yla çelişmez (`kanitla_celiski`: izleme/
 iyileştirme/uygulama halkası kanıtlıyken ya da listede birime ait kanıt varken "bölüm düzeyinde
-kanıt yok/yalnız kurum geneli"; nedenli hüküm — "OD'ye sayılmamıştır", "tarihi doğrulanamadı" —
+kanıt yok/yalnız kurum geneli"; nedenli hüküm — "tarihi belgede görülmüyor", "dönem sonrasına ait" —
 çelişki değildir); aynı ölçütte güçlü yönün söylediği uygulamayı yok saymaz (`ic_celiski`); hedefe
-ulaşıldığı doğrulanmış metinde görünmeyen gösterge/performans değeri güçlü yön olmaz
-(`hedef_alti_guclu`). Bulgu, birime ait ama OD'ye sayılmamış kanıtı nedeniyle anar. `girdi_sha`:
+ulaşıldığı doğrulanmış metinde görünmeyen gösterge/performans değeri güçlü yön olmaz; metindeki
+gösterge hedefin altındaysa (söz ya da sayı: "hedeflenen değeri 1.08 … gerçekleşme değeri 0.36")
+o ölçütün izleme verisi de güçlü yön olmaz (`hedef_alti_guclu`); fakülte/kurum geneli gösterge
+değeri bölümün değeri yanında olmadan verilmez (`fakulte_degeri`); aracın iç dili yok (`ic_dil`).
+Bulgular sade dildedir (düzey/halka/"OD'ye sayılmadı" yok): birime ait ama dönem kanıtı sayılmayan
+belge nedeniyle anılır. `girdi_sha`:
 alanın ölçütleri, doğrulanmış metin özetleri, OD, bulgular ve kanıt durumu; değişirse maddeler eskir.
 Bağımsız doğrulama `bidr verify prepare|apply` akışına katılır: `work/verify/yonler/<alan>.json`
 (görev `verify_yonler`; doğrulayıcıya yalnız maddeler ve atıf yapılan ölçütlerin metni/bulgusu
 verilir) → `verify-yonler.jsonl`. Her madde "destekleniyor" ise `dogrulandi`. Reddedilen alan
-`bidr yonler prepare --reddedilenler` (gerekçeli; `rapor.yeniden_yazim_siniri`); sınırdan sonra
-hücreler şablon yönergesiyle kalır ve rapor TASLAK olur (insan görür).
+`bidr yonler prepare --reddedilenler` (gerekçeli; `rapor.yeniden_yazim_siniri`). Render reddedilmiş
+alanda bütün hücreyi boşaltmaz: doğrulayıcının (model aşaması, kaydı güncel) "destekleniyor" dediği
+maddeleri basar, ötekileri çıkarır (`.bidr-render.json` `yon_cikarilan`, uyarı); kod aşamasında
+reddedilen alanın maddesi doğrulanmamıştır, basılmaz. İşlenmiş alanda basılacak madde kalmazsa
+hücreye açık ifade yazılır ("Bu alanda bu dönem için kanıtla doğrulanmış bir güçlü yön
+belirlenmemiştir."; `yon_ifadeli`), şablon yönergesi kalmaz. Alan maddesi hiç yazılmamışsa hücre
+yönergeyle kalır, rapor TASLAK olur. `verify-yonler.jsonl` render girdi özetine girer.
 
 ## Sorumlu birim kapsamı (`bidr/render/kapsam.py`)
 Her alt ölçüt için `bolum` (birim doldurur) | `ortak` (başka birimlerle birlikte) |
@@ -330,11 +354,19 @@ Kurallar (kılavuz "Yazım Kuralları", "Kanıt Gösterimi"; K31) ve düzeyleri:
 | kanıt dosya adı `[sıra-ODk]. Ad.uzantı` (kılavuz), klasör `A/A.1/A.1.1/`; listede olmayan dosya; evidence-index.csv ile fark | uyarı |
 | kanıtsız "bulunamamıştır" ifadeli ölçüt (insan kararı) | uyarı |
 | rubrikte insan onayı olmadan (kod önerisiyle) işaretlenen OD: `od_onay_bekliyor` "OD insan onayı bekliyor" | uyarı |
+| aracın iç dili Açıklamalar ya da yön hücresinde (`ic_dil`: "Eksik kanıt notu", "OD'ye sayılmamıştır", "eşleşmiş", "uygulama halkası" …) | kritik |
+| rubrikte OD işareti yok (`od_isaretsiz`; kapsam dışı hariç) ya da birden çok düzey işaretli (`od_isareti_belirsiz`) | kritik |
+| yön hücresinde `[doğrulanmadı]` maddesi | kritik |
 
 **OD onayı.** Render rubrikte önce komisyonun onayladığı `od_onayli`'yi (audit-olcutler.json;
 review.xlsx "Ölçüt özeti" ONAYLANAN OD → `bidr audit apply`) işaretler; yoksa kodun önerisi `od`
-(metnin `od_onerisi` onu aşamaz). `.bidr-render.json` `od_onay_bekliyor` (`{ölçüt: {od, kaynak:
-kod|metin}}`) onaysız işaretlenenleri tutar. `bidr denetle` bu listeyi kayıt denetlenen docx'i
+(metnin `od_onerisi` onu aşamaz), o da yoksa metnin önerisi; hiçbiri yoksa OD1 (`varsayilan`):
+kapsam dışı olmayan hiçbir ölçüt işaretsiz kalmaz (kapsam kararı bekleyen dahil). Onaysız işaret
+normal işarettir (ayırt edici biçim yok); onay bekleyişi `denetle` uyarısıdır. Kalın işarette öteki
+düzey hücrelerinin kalınlığı açıkça kapatılır (tablo stili ilk sütunu kalın yapabilir); `denetle`
+işareti satırdaki tek kalın ya da ayrık dolgulu hücreden okur (tablo stilinin ilk sütun biçimi
+dahil); şablon verilirse rubriği şablonla aynı kalan blok işaretsiz sayılır. `.bidr-render.json`
+`od_onay_bekliyor` (`{ölçüt: {od, kaynak: kod|metin|varsayilan}}`) onaysız işaretlenenleri tutar. `bidr denetle` bu listeyi kayıt denetlenen docx'i
 üretmişse (çıktı özeti aynı) kayıttan, değilse audit-olcutler.json'dan (`od` var, `od_onayli` yok)
 alır (`check.run.od_onay_bekleyenler`; render kodu çağrılmaz).
 

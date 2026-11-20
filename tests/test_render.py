@@ -198,10 +198,9 @@ def test_fill_cells_and_format(ws, tmp_path):
     assert cell_par.runs[0].font.size.pt == 10
     assert cell_par.paragraph_format.space_before.pt == 0
     assert cell_par.paragraph_format.space_after.pt == pytest.approx(0.6)
-    # metni olmayan ölçüt boş kalmaz: nötr ifade + audit eksik notu
+    # metni olmayan ölçüt boş kalmaz: nötr ifade; eksik kanıt notu komisyonundur, rapora girmez
     b = blocks["A.1.2"]
-    assert _lines(b.aciklama_tc) == ["Açıklamalar:", BOS_IFADE,
-                                     "Eksik kanıt notu: A.1.2 için uygulama kanıtı."]
+    assert _lines(b.aciklama_tc) == ["Açıklamalar:", BOS_IFADE]
     assert _lines(b.kanit_tc) == ["Kanıtlar:", BOS_KANIT]
     body = d.element.body.xml
     assert PLACEHOLDER_A not in body and PLACEHOLDER_K not in body
@@ -375,7 +374,8 @@ def test_scope_states(ws, tmp_path):
     assert _lines(blocks["A.1.3"].kanit_tc) == ["Kanıtlar:"]
     assert _lines(blocks["A.1.4"].aciklama_tc) == ["Açıklamalar:", KAPSAM_KARARI]
     assert _lines(blocks["A.1.4"].kanit_tc) == ["Kanıtlar:"]
-    assert _bold_cols(blocks["A.1.3"]) == [] and _bold_cols(blocks["A.1.4"]) == []   # OD işaretlenmez
+    assert _bold_cols(blocks["A.1.3"]) == []                 # kapsam dışı: OD işaretlenmez
+    assert _bold_cols(blocks["A.1.4"]) == [1]                # kapsam kararı bekleyen de işaretsiz kalmaz
     assert _bold_cols(blocks["A.1.1"]) == [1]
     assert res.kapsam_disi == ["A.1.3"] and res.karar_gerekli == ["A.1.4"]
     assert res.taslak and any("kapsam kararı" in n for n in res.taslak_nedenleri)
@@ -443,19 +443,22 @@ def test_strengths_cells(ws, tmp_path):
     assert cells["D a"] == ["• Sentetik izleme kanıtı bulunmamaktadır (D.1.2)."]
     assert YONERGE_G not in d.element.body.xml and not res.taslak, res.taslak_nedenleri
     assert set(res.yonler.values()) == {"dolu"} and len(res.yonler) == 8
-    # boş liste, doğrulanmamış, reddedilmiş ve eksik alan → hücre yönergeyle kalır / işaretli; TASLAK
+    # boş liste ve kaydı olmayan reddedilmiş alan → açık ifade (yönerge kalmaz); doğrulanmamış alan
+    # işaretli; hiç yazılmamış alan → yönerge + TASLAK
+    from bidr.render.run import YON_YOK
     _yon(yd, "A", guclu=[])
     _yon(yd, "B", durum="taslak")
     _yon(yd, "C", durum="reddedildi")
     (yd / "D.json").unlink()
     res, d, _ = _run(ws, tmp_path, yonler_dir=yd, hazirlayanlar=PEOPLE)
     cells = _yon_cells(d)
-    assert cells["A g"] == [YONERGE_G] and cells["A a"][0].startswith("• ")
+    assert cells["A g"] == [YON_YOK["guclu"]] and cells["A a"][0].startswith("• ")
     assert cells["B g"][0].startswith(DOGRULANMADI)
-    assert cells["C g"] == [YONERGE_G] and cells["D a"] == [YONERGE_A]
-    assert res.taslak
+    assert cells["C g"] == [YON_YOK["guclu"]] and cells["C a"] == [YON_YOK["gelisme"]]
+    assert cells["D a"] == [YONERGE_A]
+    assert res.taslak and set(res.yon_ifadeli) == {"A Güçlü Yönler", "C Güçlü Yönler", "C Gelişmeye Açık Yönler"}
     why = " | ".join(res.taslak_nedenleri)
-    assert "A Güçlü Yönler" in why and "C Gelişmeye Açık Yönler" in why and "D Güçlü Yönler" in why
+    assert "A Güçlü Yönler" not in why and "C Gelişmeye" not in why and "D Güçlü Yönler" in why
     assert "doğrulanmamış güçlü/gelişmeye açık yön maddeleri: B" in why
     sec = d.sections[0]
     assert TASLAK_METNI in [p.text for p in sec.header.paragraphs]
@@ -566,3 +569,57 @@ def test_uncited_filed_evidence_keeps_numbering(ws, tmp_path):
     kod = {b.kod for b in s.bulgular if b.yer == "A.1.1"}
     assert not kod & {"kanit_numarasi", "listede_olmayan_dosya", "kanit_dosyasi_yok", "dizinle_uyusmuyor"}
     assert "atifsiz_kanit" in kod
+
+
+def test_rejected_area_prints_supported_items(ws, tmp_path):
+    """Kör test 2026-11-20 (Matematik C): tek madde doğrulanamayınca bütün hücre boş basılıyordu.
+    Desteklenmeyen madde çıkar, doğrulanmış maddeler basılır; hiç kalmazsa açık ifade."""
+    from bidr.render.run import YON_YOK
+    from bidr.write.yonler import text_sha
+    make_template(tmp_path / "sablon.docx", full=True)
+    write_text(ws / "texts", "A.1.1")
+    yd = ws / "yonler"
+    for a in "ABD":
+        _yon(yd, a)
+    g = ["Bölümümüzde sentetik uygulama yürütülmektedir (C.1.1).", "Sentetik proje listesi vardır (C.1.2)."]
+    a = ["Sentetik izleme kanıtı bulunmamaktadır (C.1.2)."]
+    _yon(yd, "C", durum="reddedildi", guclu=g, gelisme=a)
+    t = json.loads((yd / "C.json").read_text(encoding="utf-8"))
+
+    def log(kararlar: dict, asama="model", sha=None):
+        rows = [{"yer": y, "metin": m, "karar": kararlar.get(y, "destekleniyor"), "gerekce": "-"}
+                for y, m in [("g1", g[0]), ("g2", g[1]), ("a1", a[0])]]
+        (ws / "verify-yonler.jsonl").write_text(json.dumps({
+            "alan": "C", "durum": "reddedildi", "asama": asama, "metin_sha": sha or text_sha(t),
+            "maddeler": rows if asama == "model" else []}, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    log({"g2": "kismen"})
+    res, d, _ = _run(ws, tmp_path, yonler_dir=yd, hazirlayanlar=PEOPLE)
+    cells = _yon_cells(d)
+    assert cells["C g"] == ["• " + g[0]] and cells["C a"] == ["• " + a[0]]
+    assert res.yon_cikarilan == {"C": ["g2"]} and not res.taslak, res.taslak_nedenleri
+    assert any("rapora alınmadı" in u for u in res.uyarilar)
+    # bütün güçlü maddeler desteklenmiyor → açık ifade; eski kayıt (metin değişti) ya da kod reddi → madde basılmaz
+    log({"g1": "desteklenmiyor", "g2": "desteklenmiyor"})
+    _, d, _ = _run(ws, tmp_path, yonler_dir=yd, hazirlayanlar=PEOPLE)
+    assert _yon_cells(d)["C g"] == [YON_YOK["guclu"]]
+    for kw in ({"sha": "eski"}, {"asama": "kod"}):
+        log({}, **kw)
+        _, d, _ = _run(ws, tmp_path, yonler_dir=yd, hazirlayanlar=PEOPLE)
+        assert _yon_cells(d)["C a"] == [YON_YOK["gelisme"]]
+
+
+def test_every_in_scope_criterion_marked(ws, tmp_path):
+    """Audit kaydı ve metni olmayan ölçüt de işaretsiz kalmaz (OD1, kaynak `varsayilan`); onaylı OD
+    önce gelir; kod önerisi normal işaretle basılır, onay bekleyişi kayıtta kalır."""
+    write_audit(ws, {"A.1.1": 3})
+    res, d, blocks = _run(ws, tmp_path)
+    assert _bold_cols(blocks["A.1.1"]) == [3] and _bold_cols(blocks["A.1.2"]) == [1]
+    assert res.od_kaynagi == {"A.1.1": "kod", "A.1.2": "varsayilan"}
+    assert set(res.od_onay_bekliyor) == {"A.1.1", "A.1.2"}
+    # öteki düzeylerin kalınlığı açıkça kapalı (tablo stili ilk sütunu kalın yapsa da tek işaret)
+    for od in (1, 2, 4, 5):
+        for tc in blocks["A.1.1"].rubric_cells(od):
+            for r in tc.iter(W + "r"):
+                if r.find(W + "t") is not None:
+                    assert r.find(W + "rPr/" + qn("w:b")).get(qn("w:val")) == "0"

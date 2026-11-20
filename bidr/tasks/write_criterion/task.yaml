@@ -1,4 +1,4 @@
-version: 2
+version: 3
 description: >-
   Ölçüt açıklama metni. Ölçüt tanımı/rubrik, audit'in önerilen OD'si ve PUKÖ zinciri,
   eksikler, ölçütün kanıtları (no, ad, alıntı, belge bağlamı), varsa geçen yılın aynı
@@ -7,11 +7,15 @@ description: >-
   v2: ölçütün kanıtlarının faaliyet özeti (faaliyetler.json) ve kural: "düzenlenmiştir/
   gerçekleştirilmiştir" yalnız gerçekleşmesi kanıtlı faaliyet için. v1 metinleri geçerli
   kalır (kanıt listesi/OD değişmedikçe yeniden paketlenmez).
+  v3 (kör test 2026-11-20): kanıt paketinde alıntı dışındaki dönem içi bilgi ve ölçütle ilgili
+  cümleler (önce bunlar); kurallar: dönem içi kaydı ve sayıyı atlama/küçültme, kanıttaki
+  bilgi varken "kanıt yok" deme, fakülte değerini bölümün değeri gibi verme; aracın iç dili
+  yok (kod `ic_dil`). v2 metinleri geçerli kalır (girdileri değişmedikçe).
 inputs:
   hitap: "kurumsal özne (ör. Bölümümüzde)"
   olcut: "ölçüt kimliği, başlığı, tanımı, rubrik 1-5"
   od_bilgisi: "önerilen OD, PUKÖ zinciri, eksik halkalar ve notlar (audit-olcutler.json)"
-  kanitlar: "ölçütün kanıtları: [n_ODk] no, ad, yuvalar, alıntı ve belge bağlamı"
+  kanitlar: "ölçütün kanıtları: [n_ODk] no, ad, dönem içi bilgi ve ölçütle ilgili cümleler (alıntı dışı), yuvalar, alıntı ve belge bağlamı"
   onceki_metin: "geçen yılın aynı ölçüt metni ve kanıt listesi (yoksa 'yok')"
   komisyon_bilgisi: "komisyonun bu ölçüt için verdiği bilgi (yoksa 'yok')"
   yazim_sorulari: "kılavuzdaki 'Açıklama Metni Yazımı' soruları"

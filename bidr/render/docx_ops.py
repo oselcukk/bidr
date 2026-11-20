@@ -171,6 +171,25 @@ def mark_bold(tc) -> int:
     return n
 
 
+def clear_bold(tc) -> int:
+    """Hücredeki metin çalışmalarının kalınlığını kaldırır (`w:b`/`w:bCs` açıkça kapatılır; tablo
+    stilinin koşullu kalınlığı — ör. ilk sütun — da etkisiz kalır). Kalın işaret ancak rubrik
+    satırındaki tek kalın hücre olarak okunur; FR-0833'te 1. düzey hücresi ilk sütun biçimini
+    açıkça kapatır, başka şablon sürümünde kapatmayabilir."""
+    n = 0
+    for r in tc.iter(W + "r"):
+        if r.find(W + "t") is None:
+            continue
+        rpr = r.find(W + "rPr")
+        if rpr is None:
+            rpr = OxmlElement("w:rPr")
+            r.insert(0, rpr)
+        for tag in ("b", "bCs"):
+            _set_ordered(rpr, tag, RPR_ORDER, {"val": "0"})
+        n += 1
+    return n
+
+
 def mark_shade(tc, fill: str) -> None:
     tcpr = tc.find(W + "tcPr")
     if tcpr is None:

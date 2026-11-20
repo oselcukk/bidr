@@ -245,6 +245,7 @@ def test_yonler_absence_claim_checked_against_evidence():
     assert ("a1", "kanitla_celiski") in _kodlar([], [claim], m)
     # nedeniyle yazılan hüküm çelişki değil
     assert not _kodlar([], ["Bölüme ait proje listesinin tarihi doğrulanamadığından OD'ye sayılmamıştır (C.1.2)."], m)
+    assert not _kodlar([], ["Bölüme ait proje listesinde projelerin tarihi belgede görülmemektedir (C.1.2)."], m)
     assert not _kodlar([], [claim.replace("C.1.2", "C.3.1")], m)          # kanıt durumu gerçekten boş
 
 
@@ -270,6 +271,28 @@ def test_yonler_below_target_indicator_not_strength():
     assert target_state("Gösterge değeri 0,36 olup hedefin altında kalmıştır.") == "alti"
     assert target_state("Yayın sayısı hedefine ulaşılmıştır.") == "ok"
     assert target_state("Yayın sayısı 7 olarak kaydedilmiştir.") is None
+    # söz yoksa sayılar karşılaştırılır (kör test: "hedeflenen değeri 1.08 … gerçekleşme değeri 0.36")
+    t = ("Göstergenin yılsonu hedeflenen değeri 1.08 ve gerçekleşme değeri 0.36 olarak yer almaktadır. "
+         "2025 hedefi 1,08 olarak belirlenmiştir.")
+    assert target_state(t) == "alti"
+    assert target_state("2025 hedefi 1,08; gerçekleşme değeri 1,20 olmuştur.") == "ok"
+    assert target_state("Hedef 2025 yılı için belirlenmiştir; gerçekleşme 2025 sonunda raporlanır.") is None
+    # hedefin altındaki göstergenin izleme verisi (değer anmasa da) güçlü yön olmaz
+    veri = "İzleme tablosunda bölüme ait yayın ve öğretim üyesi verisi yer almaktadır (C.3.1)."
+    assert ("g1", "hedef_alti_guclu") in _kodlar([veri], [], _meta({"C.3.1": bos}, {"C.3.1": "alti"}))
+    assert not _kodlar([veri], [], _meta({"C.3.1": bos}))
+
+
+def test_yonler_faculty_value_not_unit_value():
+    bos = {"kanit": True, "uygulama": False, "izleme": False, "iyilestirme": False, "birim_kaniti": []}
+    m = _meta({"C.3.1": bos}, {"C.3.1": "alti"})
+    fak = "Fakülte genelinde gösterge gerçekleşme değeri 0,36 olup hedefin altındadır (C.3.1)."
+    assert ("a1", "fakulte_degeri") in _kodlar([], [fak], m)
+    ikisi = "Bölümün gerçekleşme değeri 0,30, fakülte değeri 0,36 olup hedefin altındadır (C.3.1)."
+    assert not _kodlar([], [ikisi], m)
+    # "Fakülte Kurulu" kararı ve tarih gösterge değeri değildir
+    kurul = "Öğretim planı 25.08.2025 tarihli Fakülte Kurulu kararıyla güncellenmiştir (C.1.2)."
+    assert not _kodlar([kurul], [], _meta({"C.1.2": bos}))
 
 
 def test_yonler_finding_names_uncounted_unit_evidence():
@@ -280,10 +303,13 @@ def test_yonler_finding_names_uncounted_unit_evidence():
     rows = [{"ad": "Kurum Yönergesi", "isaretler": "kurum_geneli"},
             {"ad": "Bölüm Proje Listesi", "isaretler": "tarih_dogrulanmali, od_sayilmadi"}]
     f = " ".join(findings(a, True, rows))
-    assert "Bölüm Proje Listesi (tarihi doğrulanmalı)" in f and "OD'ye sayılmadı" in f
-    assert "birimin uygulama kanıtı eksik" not in f
+    assert "Bölüm Proje Listesi (tarihi belgede görülmüyor)" in f and "birime ait belge" in f
+    assert "birimin kendi uygulamasını gösteren belge yok" not in f
+    # bulgu rapor okurunun dilinde: düzey, halka, "OD'ye sayılmadı", "eşleşti" yok (kör test 2026-11-20)
+    from bidr.write.ic_dil import bul
+    assert not bul(f) and "OD" not in f
     o = facts(a, rows)
     assert o["birim_kaniti"] == ["Bölüm Proje Listesi"] and not o["uygulama"]
     # eski dizin (işaret sütunu yok): birim kanıtı bilinemez, eski bulgu
     assert facts(a, [{"ad": "x"}])["birim_kaniti"] == []
-    assert "yalnız kurum geneli" in " ".join(findings(a, True, [{"ad": "x"}]))
+    assert "dayanak yalnız kurum geneli" in " ".join(findings(a, True, [{"ad": "x"}]))
