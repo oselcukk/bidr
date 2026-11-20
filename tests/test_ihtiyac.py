@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -318,3 +319,125 @@ def test_description_sentence_is_guide_text():
     assert ac and ac.rstrip("…")[:60] in " ".join(c.description)
     assert R.aciklama_cumlesi(cs, "A.1.2", "zorvak pelim") == ""
     assert R.rubrik(cs, "A.1.2", 4) == R.kisalt(c.rubric[4]) and R.rubrik(cs, "A.1.2", None) == ""
+
+
+# -- sade "İstenen kanıtlar" listesi -------------------------------------------------------------
+
+from bidr.ihtiyac import sade as S  # noqa: E402
+
+TEKNIK = ("puan", "kaynak", "yuva", "halka", "OD", "planla", "uygula", "kontrol_et", "onlem_al", "ozgun")
+
+
+def test_sade_one_row_per_criterion_plain_language(ref_ws, tgt_ws, tmp_path):
+    res = _run(ref_ws, tgt_ws, tmp_path)
+    rows = res["sade"]
+    assert res["paths"]["sade"].name == S.FILE and res["paths"]["sade"].exists()
+    cids = [r["olcut"] for r in rows]
+    assert len(cids) == len(set(cids)) == len({t["olcut"] for t in res["talepler"]})   # ölçüt başına bir satır
+    assert len(rows) < len(res["talepler"])
+    # sıralama: öncelik, kanıtsız en üstte
+    assert [S.SIRA[r["oncelik"]] for r in rows] == sorted(S.SIRA[r["oncelik"]] for r in rows)
+    s = {x["olcut"]: x for x in res["satirlar"]}
+    assert s[rows[0]["olcut"]]["kanit_sayisi"] == 0 and rows[0]["oncelik"] == S.YUKSEK
+    r = {x["olcut"]: x for x in rows}
+    # A.1.1 kanıtsız: düz Türkçe gerekçe, somut belge listesi, geçen yılın seminer programı (yıl ilerletildi)
+    a11 = r["A.1.1"]
+    assert "hiç belge yok" in a11["neden"] and "olgunluk düzeyini 1'den" in a11["neden"]
+    assert all(m.startswith("• ") for m in a11["belgeler"].split("\n"))
+    assert "Bolum Seminer Programi 2025 (geçen yılki raporda: «Bolum Seminer Programi 2024»)" in a11["belgeler"]
+    assert "organizasyon şeması" in a11["belgeler"]                      # ihtiyac_somut.yaml A.1.1/1
+    assert a11["kilavuz"].startswith("Kılavuzun bu madde için örnek verdiği")
+    assert "Yönetişim modeli ve organizasyon şeması" in a11["kilavuz"]   # kılavuz metni, kod değil
+    for x in rows:
+        metin = " ".join([x["belgeler"], x["neden"], x["kilavuz"], x["kimden"]])
+        assert not re.search(r"\b[A-E]\.\d+\.\d+/\d+\b", metin)          # yuva kimliği yok
+        assert not any(re.search(rf"\b{re.escape(k)}\b", x["neden"]) for k in TEKNIK)
+        assert len(x["maddeler"]) <= S.KILAVUZ_EN_COK + 10
+    # B.1.1: tek belgeyle olgunluk düzeyi artar → Yüksek; elde olan belge notta
+    assert r["B.1.1"]["oncelik"] == S.YUKSEK and "2'den 3'e" in r["B.1.1"]["neden"]
+    assert "Bolum Kurulu Karari 2025" in r["B.1.1"]["not"]
+    # karşılanmış kılavuz maddesi istenmez
+    assert "Program tasarımı ve onayı için kullanılan tanımlı süreçler" not in r["B.1.1"]["kilavuz"]
+
+
+def test_sade_xlsx_layout(ref_ws, tgt_ws, tmp_path):
+    res = _run(ref_ws, tgt_ws, tmp_path)
+    wb = load_workbook(res["paths"]["sade"])
+    assert wb.sheetnames == list(S.SHEETS)
+    sh = wb[S.SHEETS[0]]
+    head = [c.value for c in sh[1]]
+    assert head == [h for _, h, _ in S.COLS]
+    for bad in ("Puan", "Kaynak", "Belge türü", "Kılavuz yuvaları", "Ölçüt açıklamasından (kılavuz)"):
+        assert bad not in head
+    assert sh.freeze_panes == "A2" and sh.page_setup.orientation == "landscape"
+    assert sh.print_title_rows.replace("$", "") == "1:1"
+    assert sh.cell(row=2, column=head.index("İstenen belgeler") + 1).alignment.wrap_text
+    assert sh.max_row == len(res["sade"]) + 1
+    k = wb[S.SHEETS[1]]
+    assert [c.value for c in k[1]][:2] == ["Kimden", "Madde"] and k.max_row > 1
+    assert 3 <= wb[S.SHEETS[2]].max_row <= 8
+
+
+def test_sade_manual_requests(tgt_ws, tmp_path):
+    md = tmp_path / "istenecekler.md"
+    md.write_text("# Başlık\n\nAçıklama satırı.\n\n"
+                  "- B.3.2 — 2025 ders izlenceleri (syllabus); ofis saatleri [yüksek]\n"
+                  "- **C.1.1**: Araştırma komisyonu görev dağılımı (kimden: Araştırma komisyonu)\n"
+                  "- B.1.x — Yeni açılan dersin ders programı\n"
+                  "- Madde kodu olmayan istek\n", encoding="utf-8")
+    ist = S.istekler_oku(md)
+    assert [x["madde"] for x in ist] == ["B.3.2", "C.1.1", "B.1.x", "Genel"]
+    assert ist[0]["oncelik"] == S.YUKSEK and "[" not in ist[0]["metin"]
+    assert ist[1]["kimden"] == "Araştırma komisyonu" and "kimden" not in ist[1]["metin"]
+    res = R.run(tgt_ws, out=tmp_path / "o", istekler=ist)
+    r = {x["olcut"]: x for x in res["sade"]}
+    assert r["B.3.2"]["belgeler"].startswith("• 2025 ders izlenceleri")
+    assert r["B.3.2"]["oncelik"] == S.YUKSEK and r["B.3.2"]["neden"].startswith("Komisyon")
+    assert "Araştırma komisyonu" in r["C.1.1"]["kimden"]
+    assert r["B.1"]["madde"].startswith("B.1 — ") and "alt madde" in r["B.1"]["madde"]
+    assert r["Genel"]["sira"] == len(res["sade"]) or r["Genel"]["oncelik"] != S.DUSUK
+    csvp = tmp_path / "ist.csv"
+    csvp.write_text("madde,istek,oncelik\nB.2.1,Ders izlencesi örnekleri,düşük\n", encoding="utf-8")
+    c = S.istekler_oku(csvp)
+    assert c == [{"madde": "B.2.1", "metin": "Ders izlencesi örnekleri", "oncelik": S.DUSUK, "kimden": ""}]
+    bad = tmp_path / "kotu.csv"
+    bad.write_text("olcut,ad\nB.2.1,x\n", encoding="utf-8")
+    with pytest.raises(ValueError):
+        S.istekler_oku(bad)
+
+
+def test_sade_suggestions_only_for_unmet(tmp_path):
+    """Komisyon önerisi yalnız eşlendiği kılavuz maddesi karşılanmamışsa listelenir."""
+    ws = _ws(tmp_path / "w", 2025, {
+        "a": ("bolum_kurulu_karari", True, "2025-02-01", "Bolum Kurulu Karari 2025", PLAN,
+              [_m("B.1.1", "B.1.1/1", "planla", 2)], "kabul"),
+    })
+    on = [{"metin": "Sentetik öneri X ({yil})", "yuvalar": ["B.1.1/3"], "kimden": ""},
+          {"metin": "Sentetik öneri Y", "yuvalar": ["B.1.1/1"], "kimden": ""}]
+    res = R.run(ws, out=tmp_path / "o", oneriler=on)
+    b = {x["olcut"]: x for x in res["sade"]}["B.1.1"]["belgeler"]
+    assert "Sentetik öneri X (2025)" in b and "Sentetik öneri Y" not in b
+
+
+def test_sade_data_tables_cover_guide():
+    from bidr.criteria.loader import load_criteria
+    from bidr.criteria.slots import load_tags
+    cs = load_criteria()
+    tags = load_tags(cs)
+    so = S.Somut()
+    ids = {s.id for s in cs.slots(include_footnotes=False)}
+    ozgun = {i for i in ids if tags.get(i) is not None and "ozgun" in tags[i].stages}
+    assert ids - ozgun <= set(so.yuva) and set(so.yuva) <= ids and so.ozgun
+    on = S.oneriler_yukle()
+    assert on and all(set(o["yuvalar"]) <= ids for o in on)
+    assert S.yil_ilerlet("Toplanti Tutanaklari 2024-2025", 1) == "Toplanti Tutanaklari 2025-2026"
+    assert S.yil_ilerlet("MAT113 Ders Formu", 1) == "MAT113 Ders Formu"
+
+
+def test_cli_sade(tgt_ws, tmp_path, capsys):
+    md = tmp_path / "ist.md"
+    md.write_text("- A.1.1 — Sentetik istek\n", encoding="utf-8")
+    out = tmp_path / "cli"
+    assert main(["ihtiyac", "-w", str(tgt_ws), "--out", str(out), "--istenecekler", str(md)]) == 0
+    assert (out / S.FILE).exists()
+    assert "elle istek 1" in capsys.readouterr().out

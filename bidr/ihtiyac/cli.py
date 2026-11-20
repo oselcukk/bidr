@@ -43,16 +43,25 @@ def _rapor(args) -> int:
     from .tablolar import Sorumlular, Turler
     ws = Path(args.workspace).expanduser().resolve()
     out = Path(args.out).expanduser().resolve() if args.out else ws
+    from . import sade
     try:
         ref = load_reference(Path(args.referans)) if args.referans else None
+        ist = sade.istekler_oku(args.istenecekler) if args.istenecekler else None
         res = rapor.run(ws, referans=ref, out=out,
                         sorumlular=Sorumlular(args.sorumlular) if args.sorumlular else None,
-                        turler=Turler(args.turler) if args.turler else None)
+                        turler=Turler(args.turler) if args.turler else None, istekler=ist,
+                        somut=sade.Somut(args.somut) if args.somut else None,
+                        oneriler=sade.oneriler_yukle(args.oneriler) if args.oneriler else None)
     except (FileNotFoundError, ValueError) as e:
         print(f"HATA: {e}", file=sys.stderr)
         return 1
     for t in res["talepler"][:10]:
         print(f"  {t['sira']}. {t['olcut']} [{t['puan']}] {t['istenecek'][:90]} — {t['kimden']}")
+    from collections import Counter
+    n = Counter(r["oncelik"] for r in res["sade"])
+    print(f"istenen kanıtlar: {len(res['sade'])} madde (" + ", ".join(f"{k} {n.get(k, 0)}" for k in
+                                                                    (sade.YUKSEK, sade.ORTA, sade.DUSUK))
+          + (f"; elle istek {len(ist)}" if ist else "") + ")")
     for k, p in res["paths"].items():
         print(f"{k}: {p}")
     if args.ic_taslak:
@@ -79,7 +88,7 @@ def _run(args) -> int:
 
 def register(sub):
     p = sub.add_parser("ihtiyac", help="kanıt ihtiyaç raporu: eksikler, öncelikli talepler, geçen yılın iyi "
-                                       "kanıtlarının bu yılki karşılığı (ihtiyac.xlsx, ihtiyac.md; model yok)")
+                                       "kanıtlarının bu yılki karşılığı (ihtiyac.xlsx, ihtiyac.md, sade istenen-kanitlar.xlsx; model yok)")
     p.add_argument("eylem", nargs="?", choices=["referans"],
                    help="referans: önceki çalışma alanından iyi kanıt seti (JSON) üret")
     p.add_argument("--workspace", "-w", default=None,
@@ -90,6 +99,13 @@ def register(sub):
                    help="referans: çıktı JSON yolu; rapor: çıktı klasörü (varsayılan çalışma alanı)")
     p.add_argument("--ic-taslak", action="store_true",
                    help="report.docx'in kopyasına (report-ic.docx) [EKSİK: …] işaretleri koy")
+    p.add_argument("--istenecekler", default=None,
+                   help="elle istekler (.md: '- B.3.2 — metin' satırları; .csv: madde,istek[,oncelik,kimden]); "
+                        "istenen-kanitlar.xlsx'e birleşir")
+    p.add_argument("--somut", default=None,
+                   help="kılavuz maddesi → somut belge tablosu (vars.: bidr/data/ihtiyac_somut.yaml)")
+    p.add_argument("--oneriler", default=None,
+                   help="istenebilecek kanıt önerileri (vars.: bidr/data/ihtiyac_oneriler.yaml)")
     p.add_argument("--turler", default=None, help="tekrarlayan tür tablosu (vars.: bidr/data/ihtiyac_turler.yaml)")
     p.add_argument("--sorumlular", default=None,
                    help="kimden istenir tablosu (vars.: bidr/data/ihtiyac_sorumlular.yaml)")

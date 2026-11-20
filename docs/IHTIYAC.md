@@ -3,8 +3,12 @@
 ```
 bidr ihtiyac referans -w ÖNCEKİ_WS [--ek iyi-kanitlar.csv] --out referans.json
 bidr ihtiyac -w WS [--referans referans.json] [--out DIR] [--ic-taslak]
+             [--istenecekler istenecekler.md|.csv] [--somut S.yaml] [--oneriler O.yaml]
              [--turler T.yaml] [--sorumlular S.yaml]
 ```
+
+İki Excel üretilir: **`istenen-kanitlar.xlsx`** bölümdeki kişilere/birimlere iletilecek sade listedir
+(bkz. 5); `ihtiyac.xlsx` model/teknik kullanım içindir (puan, kaynak, kılavuz yuvası, PUKÖ halkası).
 
 Rapor yazılırken belgeler parça parça gelir. `bidr ihtiyac` mevcut çalışma alanından şunu
 çıkarır: hangi ölçütte ne eksik, hangi belgenin eklenmesi raporu en çok güçlendirir, kılavuzun
@@ -122,8 +126,55 @@ komisyon, bölüm başkanlığı, kalite komisyonu…); birimin kendi düzenine 
 | Dosya | İçerik |
 |---|---|
 | `ihtiyac.xlsx` | "Öncelikli talepler" (puan sırasıyla; Kaynak, PUKÖ halkası, ölçüt açıklamasından sütunları), "Ölçüt özeti" (karşılanmamış kılavuz yuvaları, bir üst düzeyin tanımı), "Geçen yıl karşılıkları", "Açıklama" |
+| `istenen-kanitlar.xlsx` | sade liste (bölüme iletilecek; bkz. 5) |
 | `ihtiyac.md` | sayılar (önceliğe ve kaynağa göre), ilk 15 talep (kaynakla), kılavuz önerileri (ölçüt başına yuva kimlikleri), karşılığı bulunmayan iyi kanıtlar |
 | `report-ic.docx` | `--ic-taslak`: report.docx'in **kopyası**; her ölçütün "Açıklamalar" hücresinin sonuna kırmızı "[EKSİK: …]" ve başa "İÇ ÇALIŞMA TASLAĞI" satırı. Asıl `report.docx`'e yazılmaz (aynı yola yazma reddedilir); render kodu değişmez, blok bulucu (`bidr.render.template.find_blocks`) yalnız okunur. |
+
+## 5. Sade liste: `istenen-kanitlar.xlsx`
+
+Komisyon dışındaki okur (bölüm sekreterliği, komisyon başkanları, öğretim elemanları) için; her
+`bidr ihtiyac` çalışmasında yazılır. Model yok; metinler kodla şablonlanır (`bidr/ihtiyac/sade.py`).
+
+- **Satır = madde (alt ölçüt)**: talepler ölçüt başına tek satırda toplanır. Sıralama: öncelik, sonra
+  kanıtsız maddeler, sonra puan, sonra madde kodu.
+- **Sütunlar**: Sıra · Madde (`B.3.2 — Akademik destek hizmetleri`, kılavuz başlığı) · Öncelik ·
+  İstenen belgeler · Neden gerekli · Kimden istenebilir · Kılavuzdaki örnek kanıtlar · Not / örnek.
+  Puan, kaynak, belge türü ve yuva kimliği yazılmaz.
+- **Öncelik** (sözle): Yüksek = kanıtsız madde ya da tek belgeyle olgunluk düzeyi artan madde (puan
+  ≥ 80); Orta = geçen yılın karşılığı bulunamayan belgesi ya da bir üst düzeyin eksik belgesi (45–60);
+  Düşük = yalnız tamamlayıcı kılavuz önerileri. Elle istek satırın önceliğini yükseltebilir (varsayılan
+  Orta; satırda `[yüksek]`/`[düşük]`).
+- **İstenen belgeler** (madde madde, bu sırayla): (1) elle istekler; (2) geçen yılki raporda olup bu
+  yıl karşılığı bulunamayan belgeler — tekrarlayan belgede addaki yıl rapor yılına ilerletilir
+  ("… 2025-2026 (geçen yılki raporda: «… 2024-2025»)"), aynı türden 3+ belge tek maddede toplanır
+  (kurum yönetmelik/yönerge/iş akışları birlikte); (3) **komisyon önerileri**
+  (`bidr/data/ihtiyac_oneriler.yaml`: syllabus, TYYÇ matrisleri, ders bilgi paketi, kabul/mezuniyet
+  koşulları, diploma eki, fiziki olanaklar, seminer duyuruları, ders anketleri…; her öneri kılavuz
+  maddelerine eşlenir ve yalnız eşlendiği maddelerden biri karşılanmamışsa gösterilir); (4)
+  karşılanmamış kılavuz maddelerinin **somut karşılıkları** (`bidr/data/ihtiyac_somut.yaml`: her
+  "Örnek Kanıtlar" maddesi → bölüm düzeyinde 1–2 somut belge; `{yil}` rapor yılı; özgün uygulama
+  maddeleri ortak metinle ve yalnız son düzey istendiğinde). (3)+(4) satır başına en çok 6 madde;
+  öneriyle kapsanan kılavuz maddesi ayrıca yazılmaz. Tam liste `ihtiyac.xlsx`'tedir.
+- **Neden gerekli**: hazır cümleler — "Bu madde için şu an rapora konabilecek hiç belge yok. En çok
+  işe yarayacak belge … gösteren bir belgedir: tek başına maddenin olgunluk düzeyini 1'den 3'e
+  çıkarır.", "Bu maddede N belge var ama … gösteren belge yok …", "Geçen yılki raporda bu maddede
+  kullanılan N belgenin bu yılki hâli bulunamadı.", "Madde şu an olgunluk düzeyi 3'te. Bir üst düzeye
+  (4) çıkmak için … gerekiyor." Aşamalar düz Türkçe: plan/kural, gerçekten yapıldığı, izleme sonucu,
+  iyileştirme, özgün uygulama.
+- **Kılavuzdaki örnek kanıtlar**: maddenin henüz karşılanmamış "Örnek Kanıtlar" metinleri (kılavuzdan
+  birebir, madde madde; kod yok).
+- **Kimden istenebilir**: maddelerin sorumluları (en çok 3); `ihtiyac_sorumlular.yaml`, kayıtta varsa
+  `ihtiyac_somut.yaml`'daki `kimden`. Belirsiz "İlgili komisyon" yerine alanın sorumlusu yazılır.
+- **Not / örnek**: dosyada zaten olan belgeler (en çok 4) ve geçen yıl bu amaçla kullanılan belge.
+- **Sayfalar**: "İstenen kanıtlar", "Kime gönderilecek" (aynı istekler kişi/birim × madde),
+  "Nasıl okunur" (5 satır). Hücreler kaydırmalı, başlık satırı dondurulmuş ve her sayfada yinelenir,
+  yatay A4'e genişlikte sığar.
+
+**Elle istekler** (`--istenecekler`): inceleme sırasında komisyonun söylediği istekler.
+Markdown: yalnız madde işaretli satırlar okunur, `- B.3.2 — 2026 ders izlenceleri (syllabus)`
+(ayırıcı `—`, `–`, `:` ya da ` - `; `**B.3.2**` da olur). Satırda `[yüksek]`/`[orta]`/`[düşük]` ve
+`(kimden: …)` isteğe bağlı. `B.1.x` ya da `B.1` ana madde satırı olarak ("alt madde belirtilmedi"),
+kodsuz satır "Genel" satırı olarak eklenir. CSV: `madde,istek` zorunlu, `oncelik`, `kimden` isteğe bağlı.
 
 ## Sınırlar
 
@@ -135,3 +186,6 @@ komisyon, bölüm başkanlığı, kalite komisyonu…); birimin kendi düzenine 
 - Kılavuz önerileri yuva düzeyindedir: bir yuva farklı bir yuvaya eşlenmiş belgeyle fiilen
   karşılanmış olabilir (eşleştirme yuvayı seçer). Yuva metinleri kurum geneli ifadeler içerir
   ("Kurumun…"); birim düzeyinde karşılığı ayrıca düşünülmelidir. PUKÖ etiketleri öneridir.
+- Sade listedeki somut belge adları ve öneri eşlemesi geneldir (her birim için doğru değildir); birimin
+  düzenine göre `--somut` / `--oneriler` ile kopyası verilebilir. Elle istek ile öneri aynı belgeyi
+  farklı sözlerle isteyebilir (metin karşılaştırması yapılmaz).

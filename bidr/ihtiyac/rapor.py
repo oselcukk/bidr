@@ -278,7 +278,8 @@ def olcut_satirlari(criteria: list[dict], rows: list[dict], kapsam: dict[str, st
         satirlar.append({
             "olcut": cid, "baslik": c.get("baslik") or "", "kapsam": kps, "od": od,
             "zincir": c.get("zincir_kisa") or "", "kanit_sayisi": len(adlar), "kanitlar": adlar,
-            "eksik_halkalar": [HALKA_AD[h] for h in eksik_next], "sonraki_od": nxt, "gereken": gereken,
+            "eksik_halkalar": [HALKA_AD[h] for h in eksik_next], "eksik_kod": eksik_next,
+            "sonraki_od": nxt, "gereken": gereken,
             "karsiliksiz": [f"{it['kanit_adi']} ({(matches.get(it['id']) or {}).get('durum')})" for it in karsiliksiz],
             "kimden": list(dict.fromkeys(t["kimden"] for t in ctal)),
             "oncelik": _grup(puan) if ctal else "—", "puan": puan, "gerekce": gerek[0] if gerek else "",
@@ -433,8 +434,10 @@ def md_ozet(meta: dict, talepler: list[dict], satirlar: list[dict], gecen: list[
 
 
 def run(ws_root: Path, *, referans: dict | None = None, out: Path | None = None, sorumlular=None,
-        turler=None) -> dict:
-    """Raporu üretir; {"paths", "talepler", "satirlar", "gecen", "meta"} döner."""
+        turler=None, istekler: list[dict] | None = None, somut=None, oneriler: list[dict] | None = None
+        ) -> dict:
+    """Raporu üretir; {"paths", "talepler", "satirlar", "gecen", "meta", "sade"} döner. `istekler`:
+    elle istekler (`sade.istekler_oku`); `somut`/`oneriler`: sade liste tabloları (vars. bidr/data)."""
     from bidr.audit.run import FILES as AFILES
     from bidr.audit.run import build
     from bidr.criteria.slots import load_tags
@@ -481,5 +484,11 @@ def run(ws_root: Path, *, referans: dict | None = None, out: Path | None = None,
     gecen_x = [{**x, "durum": DURUM_AD.get(x["durum"], x["durum"])} for x in gecen]
     write_xlsx(paths["xlsx"], talepler, satirlar, gecen_x)
     paths["md"].write_text(md_ozet(meta, talepler, satirlar, gecen), encoding="utf-8")
+    from . import sade
+    sade_rows = sade.satirlar_kur(a.cs, tags, sor, talepler, satirlar, gecen, yil=a.donem,
+                                  ref_yil=(referans or {}).get("donem"), istekler=istekler, somut=somut,
+                                  oneriler=oneriler)
+    paths["sade"] = sade.write_xlsx(out / sade.FILE, sade_rows,
+                                    baslik=f"İstenen kanıtlar ({a.donem})" if a.donem else "İstenen kanıtlar")
     return {"paths": paths, "talepler": talepler, "satirlar": satirlar, "gecen": gecen, "meta": meta,
-            "audit": a}
+            "audit": a, "sade": sade_rows}
