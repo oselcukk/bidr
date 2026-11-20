@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "ogeler": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "olcutler": {"type": "array", "items": {"type": "string", "pattern": "^[A-E]\\.\\d+\\.\\d+$"}, "maxItems": 5},
+          "gerekce": {"type": "string", "maxLength": 200}
+        },
+        "required": ["id", "olcutler", "gerekce"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["ogeler"],
+  "additionalProperties": false
+}

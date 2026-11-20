@@ -47,11 +47,24 @@ def _rapor(args) -> int:
     try:
         ref = load_reference(Path(args.referans)) if args.referans else None
         ist = sade.istekler_oku(args.istenecekler) if args.istenecekler else None
+        from .katalog_esle import FILE as KFILE
+        from .katalog_esle import esleme_oku
+        if args.kurum_katalog:
+            kp = Path(args.kurum_katalog).expanduser()
+            if not (kp / KFILE if kp.is_dir() else kp).exists():
+                raise FileNotFoundError(f"kurum katalog eşlemesi yok: {kp}")
+        else:
+            kp = next((d / KFILE for d in (out, ws) if (d / KFILE).exists()), None)
+        kurum = esleme_oku(kp) if kp else None
+        if kurum:
+            print(f"kurum belgeleri: {sum(1 for o in kurum['ogeler'] if o.get('ilgili'))} ilgili / "
+                  f"{len(kurum['ogeler'])} ({kp})")
         res = rapor.run(ws, referans=ref, out=out,
                         sorumlular=Sorumlular(args.sorumlular) if args.sorumlular else None,
                         turler=Turler(args.turler) if args.turler else None, istekler=ist,
                         somut=sade.Somut(args.somut) if args.somut else None,
-                        oneriler=sade.oneriler_yukle(args.oneriler) if args.oneriler else None)
+                        oneriler=sade.oneriler_yukle(args.oneriler) if args.oneriler else None,
+                        kurum=kurum)
     except (FileNotFoundError, ValueError) as e:
         print(f"HATA: {e}", file=sys.stderr)
         return 1
@@ -106,6 +119,9 @@ def register(sub):
                    help="kılavuz maddesi → somut belge tablosu (vars.: bidr/data/ihtiyac_somut.yaml)")
     p.add_argument("--oneriler", default=None,
                    help="istenebilecek kanıt önerileri (vars.: bidr/data/ihtiyac_oneriler.yaml)")
+    p.add_argument("--kurum-katalog", default=None,
+                   help="kurum belge kataloğu eşlemesi (kurum-katalog-esleme.json ya da klasörü; vars. --out, "
+                        "sonra çalışma alanında aranır; `bidr kurum-katalog`)")
     p.add_argument("--turler", default=None, help="tekrarlayan tür tablosu (vars.: bidr/data/ihtiyac_turler.yaml)")
     p.add_argument("--sorumlular", default=None,
                    help="kimden istenir tablosu (vars.: bidr/data/ihtiyac_sorumlular.yaml)")

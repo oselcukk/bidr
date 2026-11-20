@@ -37,6 +37,11 @@ belge_turu:
   yonetmelik: Kurum mevzuat sayfası (bölüm sekreterliği indirir)
   yonerge: Kurum mevzuat sayfası (bölüm sekreterliği indirir)
   is_akisi: Kurum kalite birimi sayfası (bölüm kalite sorumlusu)
+  # kurum belge kataloğu türleri (bidr kurum-katalog): usul_esas, form, anket, talimat
+  usul_esas: Kurum mevzuat sayfası (bölüm sekreterliği indirir)
+  form: Kurum kalite birimi sayfası (bölüm kalite sorumlusu)
+  anket: Kurum kalite birimi sayfası (bölüm kalite sorumlusu)
+  talimat: Kurum kalite birimi sayfası (bölüm kalite sorumlusu)
   fotograf: Etkinliği düzenleyen öğretim elemanı
   sertifika: İlgili öğretim elemanı
 asama:
