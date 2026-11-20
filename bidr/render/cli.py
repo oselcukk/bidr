@@ -105,8 +105,8 @@ def register(sub):
     p.add_argument("--puan-isareti", choices=["kalin", "golge", "yok"], default="kalin",
                    help="öz değerlendirme düzeyinin rubrikte işaretlenmesi (vars.: kalin, Kimya 2025 raporu "
                         "usulü; öteki düzeylerin kalınlığı kaldırılır; yok: işaretsiz — bidr denetle KRİTİK sayar)")
-    p.add_argument("--kanit-bicimi", choices=["mat", "kilavuz"], default="mat",
-                   help="Kanıtlar listesi: mat '1_OD3: ad' (vars.) | kilavuz '[1-OD3]. ad'")
+    p.add_argument("--kanit-bicimi", choices=["mat", "kilavuz"], default="kilavuz",
+                   help="Kanıtlar listesi: kilavuz '[1-OD3]. ad' (vars.) | mat '1_OD3: ad'")
     p.add_argument("--bos-ifade", default=None, help="metni olmayan ölçüt için Açıklamalar ifadesi")
     p.add_argument("--bos-kanit", default=None, help="metni olmayan ölçüt için Kanıtlar ifadesi")
     p.add_argument("--eksik-notu-yok", action="store_true",

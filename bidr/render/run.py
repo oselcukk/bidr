@@ -64,7 +64,7 @@ def clean_text(m: str) -> str:
 @dataclass
 class Options:
     puan_isareti: str = "kalin"    # kalin (Kimya 2025 usulü) | golge | yok (Matematik/Fizik/MBG usulü)
-    kanit_bicimi: str = "mat"      # mat: "1_OD3: ad" | kilavuz: "[1-OD3]. ad"
+    kanit_bicimi: str = "kilavuz"  # kilavuz: "[1-OD3]. ad" (vars.; kılavuz örneği) | mat: "1_OD3: ad"
     bos_ifade: str = BOS_IFADE
     bos_kanit: str = BOS_KANIT
     # Eski seçenek (eksik kanıt notunu rapora yazma): artık etkisiz; not hiçbir durumda rapora girmez.
@@ -155,6 +155,11 @@ def kanit_parts(k: dict, bicim: str) -> tuple[str, str]:
     if bicim == "kilavuz":
         m = RE_NO.match(no)
         if m:
+            # kılavuz örneği dosya adını uzantısıyla yazar ("[1-OD3]. Uygulama Örnekleri.pdf"):
+            # dosyalanan kanıtın adı ile listedeki ad aynı olsun
+            ext = Path(str(k.get("dosya") or "")).suffix.lower()
+            if ext and not ad.lower().endswith(ext):
+                ad += ext
             return f"[{m.group(1)}-OD{m.group(2)}]. ", ad
     return f"{no}: ", ad
 

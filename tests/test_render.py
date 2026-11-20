@@ -182,7 +182,7 @@ def test_fill_cells_and_format(ws, tmp_path):
     assert _lines(a.aciklama_tc) == ["Açıklamalar:", "A.1.1 sentetik paragraf bir [1_OD3].",
                                      "A.1.1 sentetik paragraf iki [2_OD2].",
                                      "Önceki yıla göre sentetik fark."]
-    assert _lines(a.kanit_tc) == ["Kanıtlar:", "1_OD3: Sentetik kanıt bir", "2_OD2: Sentetik kanıt iki"]
+    assert _lines(a.kanit_tc) == ["Kanıtlar:", "[1-OD3]. Sentetik kanıt bir.pdf", "[2-OD2]. Sentetik kanıt iki.pdf"]
     # biçim: 10 pt, Times New Roman, kalın değil, önce 0 / sonra 0,6 nk (12 twip)
     for tc in (a.aciklama_tc, a.kanit_tc):
         for p in list(tc.iter(W + "p"))[1:]:
@@ -303,7 +303,7 @@ def test_cover_and_kilavuz_format(ws, tmp_path):
     assert "Sentetik Bölüm" in texts and "2026" in texts and "2025" not in texts
     assert not any("[Birim Adı]" in t for t in texts)
     assert "Yazım kuralları örneği 2547 sayılı kanun" in texts
-    assert _lines(blocks["A.1.1"].kanit_tc)[1:] == ["[1-OD3]. Sentetik kanıt bir", "[2-OD2]. Sentetik kanıt iki"]
+    assert _lines(blocks["A.1.1"].kanit_tc)[1:] == ["[1-OD3]. Sentetik kanıt bir.pdf", "[2-OD2]. Sentetik kanıt iki.pdf"]
     assert res.kapak == {"birim": "Sentetik Bölüm", "yil": "2026"}
 
 
@@ -557,8 +557,8 @@ def test_uncited_filed_evidence_keeps_numbering(ws, tmp_path):
                    "2_OD2,A.1.1,2,Sentetik kanıt iki,b.pdf,\n"
                    "3_OD2,A.1.1,2,Sentetik kanıt üç,c.pdf,\n", encoding="utf-8")
     res, d, blocks = _run(ws, tmp_path, index_path=idx)
-    assert _lines(blocks["A.1.1"].kanit_tc) == ["Kanıtlar:", "1_OD3: Sentetik kanıt bir",
-                                                "2_OD2: Sentetik kanıt iki", "3_OD2: Sentetik kanıt üç"]
+    assert _lines(blocks["A.1.1"].kanit_tc) == ["Kanıtlar:", "[1-OD3]. Sentetik kanıt bir.pdf",
+                                                "[2-OD2]. Sentetik kanıt iki.pdf", "[3-OD2]. Sentetik kanıt üç.pdf"]
     assert res.atifsiz_listelenen == {"A.1.1": ["2_OD2"]}
     # denetle: numaralar sıralı, klasördeki her dosya listede; atıfsız kanıt yalnız uyarı olarak görünür
     from bidr.check.run import denetle
