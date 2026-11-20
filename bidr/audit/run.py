@@ -246,8 +246,11 @@ def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | 
                        part_view(doc, m.get("alinti"), sv.text(did) if sv and doc.get("parcalar") else None))
            if rule is not None and etkin else None)
     if dz_ and karar not in ("ret", "duzelt"):
-        sayilir = dz_["sayilir"]
         flags.extend(dz_["flags"])
+        # İnsan `kabul`ü dönem/tarih kuşkusunu aşar (komisyon tarihi ya da yürürlüğü doğruladı):
+        # satır işaretini korur, sayılır. Yeni işaret eklenmez (YENİDEN BAK tetiklenmesin).
+        if karar != "kabul":
+            sayilir = dz_["sayilir"]
     if sv_out and sv_out["sayilir"] is False:
         sayilir = False
     od = STAGE_OD.get(etkin) if etkin else None
