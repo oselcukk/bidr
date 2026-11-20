@@ -384,3 +384,10 @@ def test_paket_maskeleme_yapilmadi(tmp_path):
     assert res.elle_bakilacak == [] and not res.maskeleme
     c = durum(Ctx(Workspace(ws), None, lambda s: s, {"komut": ["bidr teslim -w {ws}"]}))
     assert c.bitti and any("maskelemesi yapılmadı" in u for u in c.uyarilar)
+
+
+def test_paket_adi_birim_ve_donemden(tmp_path):
+    from bidr.teslim.run import paket_adi
+    assert paket_adi(tmp_path) == "teslim"
+    (tmp_path / "config.yaml").write_text("bidr:\n  birim: Sentetik Bölümü\n  donem: 2025\n", encoding="utf-8")
+    assert paket_adi(tmp_path) == "BIDR-2025-Sentetik-Bölümü"

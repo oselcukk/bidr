@@ -1,6 +1,6 @@
 """Teslim paketi (model yok): dekanlığa teslim edilecek tek klasör + zip.
 
-    <out>/                      (vars. WS/teslim/; zip: WS/teslim.zip, kökünde aynı klasör adı)
+    <out>/                      (vars. WS/BIDR-<dönem>-<Birim>/ (yapılandırma yoksa WS/teslim/); zip: aynı adla .zip)
       report.docx               dolu FR-0833 raporu (WS/report.docx'in kopyası)
       kanitlar/A/A.1/A.1.1/[1-OD3]. Ad.pdf
       kanitlar/.../[2-OD2]. Sayfa.html  +  [2-OD2]. Sayfa.pdf   (web kanıtının alınma tarihli PDF kopyası)
@@ -191,6 +191,20 @@ def _kaynak(ws: Path) -> Path | None:
     return Path(k).expanduser().resolve() if k else None
 
 
+def paket_adi(ws: Path) -> str:
+    """Varsayılan paket adı: `BIDR-<dönem>-<Birim>` (ör. BIDR-2025-Matematik-Bölümü); bilgi yoksa `teslim`."""
+    try:
+        from bidr.init.config import load_section
+        sec = load_section(Path(ws)) or {}
+    except Exception:  # noqa: BLE001 — ad için yapılandırma yoksa düz ad
+        sec = {}
+    birim = re.sub(r"[^\w]+", "-", str(sec.get("birim") or "")).strip("-")
+    donem = sec.get("donem")
+    if not birim or not donem:
+        return "teslim"
+    return f"BIDR-{donem}-{birim}"
+
+
 def build(ws: Path, out: Path | None = None, *, docx_path: Path | None = None, tarih: str | None = None,
           zip_yap: bool = True, arac: str | object = "otomatik", canli: bool = False,
           taslak: bool = False) -> Sonuc:
@@ -209,7 +223,7 @@ def build(ws: Path, out: Path | None = None, *, docx_path: Path | None = None, t
     if not ev.is_dir():
         raise TeslimError(f"kanıt klasörü yok: {ev} (önce bidr file)")
     gun = _tarih(tarih)
-    out = Path(out).expanduser().resolve() if out else ws / "teslim"
+    out = Path(out).expanduser().resolve() if out else ws / paket_adi(ws)
 
     listeler = kanit_listeleri(docx.Document(str(rep)))
     dosyalar = _kanit_dosyalari(ev)

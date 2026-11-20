@@ -55,7 +55,7 @@ def register(sub):
     p = sub.add_parser("teslim", help="dekanlığa teslim paketi: rapor + ölçüt klasörlü kanıtlar + web "
                                       "kanıtlarının alınma tarihli PDF kopyası + kanıt dizini (klasör + zip)")
     p.add_argument("--workspace", "-w", required=True)
-    p.add_argument("--out", default=None, help="paket klasörü (vars.: WS/teslim; zip: aynı adla .zip)")
+    p.add_argument("--out", default=None, help="paket klasörü (vars.: WS/BIDR-<dönem>-<Birim>; zip: aynı adla .zip)")
     p.add_argument("--docx", default=None, help="rapor (vars.: WS/report.docx)")
     p.add_argument("--tarih", default=None,
                    help="alınma (raporlama) tarihi, YYYY-AA-GG (vars.: bugün); web PDF damgasına ve dizine yazılır")
