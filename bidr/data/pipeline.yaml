@@ -178,11 +178,38 @@ asamalar:
     onay: yok
     skill: bidr-rapor
 
+  - id: belirsiz_okuma
+    ad: Birimi belirsiz OCR'lı belgelerin görsel yeniden okuması (koşullu; model işi ajanda)
+    uygulandi: true
+    katman: M
+    onkosul: [karar_ince]
+    girdi: [decisions.jsonl (birim_iliskisi belirsiz), inventory.csv (method/low_quality), transcribe.jsonl,
+            kaynak PDF/görseller (salt okunur)]
+    cikti: [work/transcribe/<doc_id>/ (tur belirsiz), work/transcribe/belirsiz.json, text/<doc_id>.txt,
+            transcribe.jsonl (tur belirsiz)]
+    komut:
+      - "bidr transcribe prepare -w {ws} --belirsiz"
+      - "(ajan) work/transcribe/README.md'ye göre her cevapsız <doc_id>/ için görüntüleri okuyup <doc_id>.out.json yaz"
+      - "bidr transcribe apply -w {ws} --model {ajan}"
+    sart:
+      denetim: belirsiz_okuma_tamam
+      metin: >-
+        Aday: ince kararda `birim_iliskisi: belirsiz` kalan, insan birim kararı olmayan, metni OCR'dan gelen
+        (ya da low_quality=1), PDF/görsel (en çok 40 sayfa) ve görsel okumadan hiç geçmemiş belge. Aday yoksa
+        kendiliğinden biter. Varsa her biri ajanın görsel okumasıyla yeniden okunmuş ve apply ile işlenmiş
+        (paketlenemeyen aday belirsiz.json'a yazılır, beklenmez). Metni değişen belgenin kararları geçersiz
+        kılınır: bidr next identify → candidates → kaba → ince kararı yalnız o belgeler için yeniden ister;
+        metni değişmeyen belgenin kararı korunur. Belge başına bir tur (transcribe.jsonl kaydı olan aday
+        olmaz). Sonra da belirsiz kalan belge komisyona gider (audit, gaps.md "Birim aitliği doğrulanmalı").
+        Kadro adı, grup bağlamı ya da klasör adıyla birim kabul edilmez.
+    onay: yok
+    skill: bidr-rapor
+
   - id: hakem
     ad: Geçmiş etiketle karşılaştırma ve hakem kararları
     uygulandi: true
     katman: I
-    onkosul: [karar_ince, etiketler]
+    onkosul: [karar_ince, belirsiz_okuma, etiketler]
     girdi: [decisions.jsonl, labels.jsonl]
     cikti: [label-compare.md, label-review.md, label-review.jsonl, label-answers.jsonl, consensus-labels.jsonl]
     komut:
@@ -203,7 +230,7 @@ asamalar:
     uygulandi: true
     istege_bagli: true
     katman: M
-    onkosul: [karar_ince]
+    onkosul: [karar_ince, belirsiz_okuma]
     girdi: [decisions.jsonl (kabul edilmiş eşleşmeler), documents.jsonl, text/]
     cikti: [work/name/<doc_id>.json, kanit-adlari.jsonl (kaynak: model)]
     komut:
@@ -223,7 +250,7 @@ asamalar:
     ad: Faaliyet kayıtları (aynı toplantı/etkinliğin belgeleri; belirleyici)
     uygulandi: true
     katman: D
-    onkosul: [karar_ince]
+    onkosul: [karar_ince, belirsiz_okuma]
     girdi: [decisions.jsonl (ince kararların faaliyet alanı)]
     cikti: [faaliyetler.json]
     komut: ["bidr faaliyet -w {ws}"]
@@ -240,7 +267,7 @@ asamalar:
     ad: Ölçüt OD'si, eksik kanıt raporu ve inceleme tablosu
     uygulandi: true
     katman: D
-    onkosul: [karar_ince, hakem, name, faaliyet]
+    onkosul: [karar_ince, belirsiz_okuma, hakem, name, faaliyet]
     girdi: [decisions.jsonl, documents.jsonl, kanit-adlari.jsonl]
     cikti: [review.xlsx, gaps.md, audit-olcutler.json, review-decisions.jsonl, slot-tags-oneri.yaml,
             kanit-adlari.jsonl (kaynak: insan), kanit-baglantilari.jsonl (kaynak: insan)]

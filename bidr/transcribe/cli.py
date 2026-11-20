@@ -10,28 +10,36 @@ def _ids(s: str | None) -> list[str] | None:
     return [x.strip() for x in s.split(",") if x.strip()] if s else None
 
 
-def _gate(ws) -> int | None:
-    """Aşama pipeline.yaml'a kayıtlıysa kapısını uygula; değilse (henüz kayıtsız) geç."""
+def _gate(ws, sid: str = "transcribe") -> int | None:
+    """Aşama pipeline.yaml'a kayıtlıysa kapısını uygula; değilse (henüz kayıtsız) geç.
+    `prepare --belirsiz` aşama `belirsiz_okuma`'nın kapısından geçer (önkoşul: ince karar)."""
     from bidr.pipeline.state import load_spec
-    if not any(s.get("id") == "transcribe" for s in load_spec().get("asamalar", [])):
+    if not any(s.get("id") == sid for s in load_spec().get("asamalar", [])):
         return None
     from bidr.pipeline.gate import check_gate
-    return check_gate(ws, "transcribe")
+    return check_gate(ws, sid)
 
 
 def _cmd(args) -> int:
-    if (rc := _gate(args.workspace)) is not None:
+    belirsiz = args.action == "prepare" and args.belirsiz
+    if (rc := _gate(args.workspace, "belirsiz_okuma" if belirsiz else "transcribe")) is not None:
         return rc
     from . import run as R
 
     if args.action == "prepare":
         only = _ids(args.only)
-        if not only and not args.all_low_quality:
-            print("seçim yok: --only DOC_ID,… ya da --all-low-quality verin")
+        if sum(map(bool, (only, args.all_low_quality, belirsiz))) != 1:
+            print("seçim: --only DOC_ID,…, --all-low-quality ya da --belirsiz (yalnız biri)")
             return 2
         st = R.prepare(args.workspace, only=only, all_low_quality=args.all_low_quality,
                        source=args.source, dpi=args.dpi, max_pages=args.max_pages,
-                       limit=args.limit, redo=args.redo)
+                       limit=args.limit, redo=args.redo, belirsiz=belirsiz)
+        if belirsiz:
+            s = st["secim"]
+            print(f"belirsiz turu: ince kararda birimi belirsiz {s['belirsiz']} belge → aday {s['aday']}"
+                  f" (elenen: OCR'lı değil {s['ocr_degil']}, biçim {s['bicim']}, >{args.max_pages} sayfa "
+                  f"{s['cok_sayfa']}, zaten görsel okundu {s['okundu']}, insan birim kararı {s['insan_karari']}, "
+                  f"önceden paketlenemedi {s['paketlenemedi']})")
         print(f"{st['paket']} paket ({st['yeni']} yeni/değişen), zaten_tamam={st['zaten_tamam']}, "
               f"bekleyen {st['bekleyen']} → {st['klasor']}")
         for did, why in st["atlandi"].items():
@@ -41,7 +49,8 @@ def _cmd(args) -> int:
     st = R.apply(args.workspace, model=args.model, accept_suspicious=args.kabul_supheli,
                  only=_ids(args.only))
     print(f"işlenen={st['islenen']} değişmedi={st['degismedi']} bekleyen={len(st['bekleyen'])} "
-          f"geçersiz={len(st['gecersiz'])} şüpheli={len(st['supheli'])} eski sürüm={len(st['eski_surum'])}")
+          f"geçersiz={len(st['gecersiz'])} şüpheli={len(st['supheli'])} eski sürüm={len(st['eski_surum'])}"
+          + (f" metni aynı (karar korunur)={len(st['metin_ayni'])}" if st["metin_ayni"] else ""))
     for did, c in sorted(st["tutarlilik"].items()):
         print(f"  {did}: {c['durum']} örtüşme={c['oran']} [okunamadı]={c['okunamadi']}")
     for did, errs in st["gecersiz"].items():
@@ -73,6 +82,9 @@ def register(sub):
     a.add_argument("--workspace", "-w", required=True)
     a.add_argument("--only", help="virgülle ayrılmış doc_id listesi")
     a.add_argument("--all-low-quality", action="store_true", help="inventory.csv'de low_quality=1 olanların hepsi")
+    a.add_argument("--belirsiz", action="store_true",
+                   help="aşama belirsiz_okuma: ince kararda birimi belirsiz kalan, metni OCR'lı (ya da düşük "
+                        "kaliteli) ve görsel okumadan hiç geçmemiş belgeler (belge başına bir tur)")
     a.add_argument("--source", help="kaynak klasör (vars. config.yaml bidr.kaynak); salt okunur")
     a.add_argument("--dpi", type=int, default=200, help="PDF sayfa görüntüsü çözünürlüğü (vars. 200)")
     a.add_argument("--max-pages", type=int, default=40, help="bundan uzun belge atlanır (vars. 40)")

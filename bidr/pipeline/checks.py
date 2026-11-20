@@ -873,6 +873,11 @@ def _transcribe_tamam(c: Ctx) -> Check:
     return transcribe_tamam(c)
 
 
+def _belirsiz_okuma_tamam(c: Ctx) -> Check:
+    from bidr.transcribe.check import belirsiz_okuma_tamam
+    return belirsiz_okuma_tamam(c)
+
+
 def _describe_tamam(c: Ctx) -> Check:
     from bidr.describe.check import describe_tamam
     return describe_tamam(c)
@@ -895,6 +900,7 @@ CHECKS: dict[str, Callable[[Ctx], Check]] = {
     "ikinci_arama_tamam": ikinci_arama_tamam,
     "denetle_tamam": denetle_tamam,
     "transcribe_tamam": _transcribe_tamam,
+    "belirsiz_okuma_tamam": _belirsiz_okuma_tamam,
     "describe_tamam": _describe_tamam,
     "name_tamam": name_tamam,
     "file_tamam": file_tamam,

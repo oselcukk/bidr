@@ -83,7 +83,12 @@ def test_spec_is_consistent():
     assert by["verify"]["onkosul"] == ["write"] and by["yonler"]["onkosul"] == ["verify"]
     assert by["render"]["onkosul"] == ["yonler"] and by["denetle"]["onkosul"] == ["render"]
     assert "name" in by["audit"]["onkosul"] and by["name"]["istege_bagli"]
-    assert by["faaliyet"]["onkosul"] == ["karar_ince"] and "faaliyet" in by["audit"]["onkosul"]
+    assert by["faaliyet"]["onkosul"] == ["karar_ince", "belirsiz_okuma"] and "faaliyet" in by["audit"]["onkosul"]
+    # belirsiz_okuma: koşullu (isteğe bağlı değil), ince karardan hemen sonra; kararı okuyan aşamalar onu bekler
+    assert by["belirsiz_okuma"]["onkosul"] == ["karar_ince"] and not by["belirsiz_okuma"].get("istege_bagli")
+    assert ids.index("belirsiz_okuma") == ids.index("karar_ince") + 1
+    for sid in ("hakem", "name", "faaliyet", "audit"):
+        assert "belirsiz_okuma" in by[sid]["onkosul"], sid
     assert by["ikinci_arama"]["onkosul"] == ["audit"] and by["ikinci_arama"]["istege_bagli"]
     assert ids.index("karar_ince") < ids.index("faaliyet") < ids.index("audit") < ids.index("ikinci_arama") \
         < ids.index("file") and ids.index("render") < ids.index("denetle")

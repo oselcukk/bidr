@@ -242,3 +242,125 @@ def test_apply_exit_code_explained(tmp_path, capsys):
     assert "çıkış 1: 0 geçersiz, 1 şüpheli" in out and "--kabul-supheli" in out
     assert main(["transcribe", "apply", "-w", str(ws), "--kabul-supheli"]) == 0
     assert "çıkış 1" not in capsys.readouterr().out
+
+
+# -- belirsiz turu (aşama belirsiz_okuma) -------------------------------------------------------
+
+def _fine(did: str, rel: str = "belirsiz") -> dict:
+    return {"doc_id": did, "sema": 1, "durum": "ok", "asama": "ince", "kaba": {"karar": "olcut_var"},
+            "ince": {"karar": "olcut_var", "birim_iliskisi": rel, "birim_iliskisi_kaynagi": "model"},
+            "eslesmeler": [], "olcutler": []}
+
+
+def _set_inv(ws: Path, did: str, **kw) -> None:
+    rows = _inv(ws)
+    for r in rows:
+        if r["doc_id"] == did:
+            r.update({k: str(v) for k, v in kw.items()})
+    with open(ws / "inventory.csv", "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0]))
+        w.writeheader()
+        w.writerows(rows)
+
+
+def _bctx(ws: Path):
+    from bidr.common import Workspace
+    from bidr.pipeline.checks import Ctx
+    from bidr.pipeline.state import stage
+    return Ctx(Workspace(ws), {}, lambda s: s, stage("belirsiz_okuma"))
+
+
+def test_belirsiz_selection(tmp_path):
+    names = ["aday", "metinli", "kendi", "insan", "uzun", "duskal", "okundu"]
+    ws, src, ids = _ws(tmp_path, {n: (".png", OCR_TEXT, 1) for n in names})
+    _set_inv(ws, ids["metinli"], method="pdftotext", low_quality="")    # metin katmanı: OCR değil
+    _set_inv(ws, ids["uzun"], pages=55)
+    _set_inv(ws, ids["duskal"], method="docx-xml", low_quality="1", ext=".docx")   # çevrilemez biçim
+    _set_inv(ws, ids["aday"], low_quality="")                              # yalnız method'da ocr
+    write_jsonl(ws / "decisions.jsonl", [_fine(ids[n], "kendi" if n == "kendi" else "belirsiz") for n in names])
+    write_jsonl(ws / "birim-kararlari.jsonl", [{"doc_id": ids["insan"], "birim_iliskisi": "kendi"}])
+    write_jsonl(ws / "transcribe.jsonl", [{"doc_id": ids["okundu"], "durum": "uygulandi"}])
+    sel, info = R.select_belirsiz(R.Workspace(ws))
+    assert sel == [ids["aday"]]
+    assert info == {"belirsiz": 6, "insan_karari": 1, "ocr_degil": 1, "bicim": 1, "cok_sayfa": 1,
+                    "okundu": 1, "paketlenemedi": 0, "envanterde_yok": 0}
+    # karar yoksa aday yok; aşama kendiliğinden biter
+    (ws / "decisions.jsonl").unlink()
+    assert R.select_belirsiz(R.Workspace(ws))[0] == []
+    from bidr.transcribe.check import belirsiz_okuma_tamam
+    ck = belirsiz_okuma_tamam(_bctx(ws))
+    assert ck.bitti and "aday yok" in ck.neden
+
+
+def test_belirsiz_round_reread_redecide_once(tmp_path):
+    from bidr.transcribe.check import belirsiz_okuma_tamam
+    ws, src, ids = _ws(tmp_path, {"foto": (".png", OCR_TEXT, 1), "diger": (".png", OCR_TEXT, 1)})
+    did = ids["foto"]
+    write_jsonl(ws / "documents.jsonl", [{"doc_id": did}, {"doc_id": ids["diger"]}])
+    write_jsonl(ws / "decisions.jsonl", [_fine(did), _fine(ids["diger"], "kendi")])
+    ctx = _bctx(ws)
+    ck = belirsiz_okuma_tamam(ctx)
+    assert ck.kim == "komut" and "--belirsiz" in ck.komutlar[0] and ck.ilerleme["aday"] == 1
+    st = R.prepare(ws, belirsiz=True, source=src)
+    assert st["paket"] == 1 and st["secim"]["aday"] == 1
+    d = ws / "work" / "transcribe"
+    assert json.loads((d / did / f"{did}.json").read_text(encoding="utf-8"))["tur"] == "belirsiz"
+    assert not (d / ids["diger"]).exists()
+    assert belirsiz_okuma_tamam(ctx).kim == "ajan"
+    _out(ws, did, [GOOD])
+    assert belirsiz_okuma_tamam(ctx).kim == "komut"
+    st = R.apply(ws, model="t")
+    assert st["degisen"] == [did] and not st["metin_ayni"]
+    log = {r["doc_id"]: r for r in read_jsonl(ws / "transcribe.jsonl")}
+    assert log[did]["tur"] == "belirsiz"
+    dec = {r["doc_id"]: r for r in read_jsonl(ws / "decisions.jsonl")}
+    assert dec[did]["durum"] == "metin_degisti" and dec[ids["diger"]]["durum"] == "ok"
+    assert [r["doc_id"] for r in read_jsonl(ws / "documents.jsonl")] == [ids["diger"]]
+    # yeniden ince karar yine belirsiz dedi: belge ikinci tura girmez, komisyona gider
+    write_jsonl(ws / "decisions.jsonl", [_fine(did), _fine(ids["diger"], "kendi")])
+    sel, info = R.select_belirsiz(R.Workspace(ws))
+    assert sel == [] and info["okundu"] == 1
+    ck = belirsiz_okuma_tamam(ctx)
+    assert ck.bitti and ck.ilerleme["hala_belirsiz"] == 1 and ck.ilerleme["yeniden_okunan"] == 1
+    assert any("komisyon" in u for u in ck.uyarilar)
+    assert R.prepare(ws, belirsiz=True, source=src)["paket"] == 0
+
+
+def test_belirsiz_same_text_keeps_decision(tmp_path):
+    from bidr.transcribe.check import belirsiz_okuma_tamam
+    ws, src, ids = _ws(tmp_path, {"foto": (".png", OCR_TEXT, 1)})
+    did = ids["foto"]
+    write_jsonl(ws / "documents.jsonl", [{"doc_id": did}])
+    write_jsonl(ws / "decisions.jsonl", [_fine(did)])
+    R.prepare(ws, belirsiz=True, source=src)
+    _out(ws, did, ["  " + OCR_TEXT.replace("\n", "\n\n") + "  "])   # yalnız boşluk farkı
+    before = (ws / "decisions.jsonl").read_text(encoding="utf-8")
+    st = R.apply(ws, model="t", accept_suspicious=True)
+    assert st["metin_ayni"] == [did] and st["degisen"] == []
+    assert (ws / "decisions.jsonl").read_text(encoding="utf-8") == before
+    assert (ws / "text" / f"{did}.txt").read_text(encoding="utf-8") == OCR_TEXT
+    assert [r["doc_id"] for r in read_jsonl(ws / "documents.jsonl")] == [did]
+    log = next(read_jsonl(ws / "transcribe.jsonl"))
+    assert log["metin_ayni"] is True and log["tur"] == "belirsiz"
+    assert R.is_done(R.Workspace(ws), did, {did: log})
+    assert R.apply(ws)["degismedi"] == 1                          # tekrar apply: iş yok
+    ck = belirsiz_okuma_tamam(_bctx(ws))
+    assert ck.bitti and ck.ilerleme["metin_ayni"] == 1 and ck.ilerleme["hala_belirsiz"] == 1
+
+
+def test_belirsiz_unpackable_is_not_waited(tmp_path, capsys):
+    from bidr.cli import main
+    from bidr.transcribe.check import belirsiz_okuma_tamam
+    ws, src, ids = _ws(tmp_path, {"foto": (".png", OCR_TEXT, 1)})
+    did = ids["foto"]
+    write_jsonl(ws / "decisions.jsonl", [_fine(did)])
+    (src / "alt" / "foto.png").unlink()
+    assert main(["transcribe", "prepare", "-w", str(ws), "--belirsiz", "--only", did]) == 2
+    assert main(["transcribe", "prepare", "-w", str(ws), "--belirsiz", "--source", str(src)]) == 0
+    assert "aday 1" in capsys.readouterr().out
+    assert json.loads((ws / "work" / "transcribe" / "belirsiz.json").read_text(encoding="utf-8"))["atlandi"] \
+        == {did: "kaynak_dosya_yok"}
+    sel, info = R.select_belirsiz(R.Workspace(ws))
+    assert sel == [] and info["paketlenemedi"] == 1
+    ck = belirsiz_okuma_tamam(_bctx(ws))
+    assert ck.bitti and ck.ilerleme["paketlenemeyen"] == 1 and any("belirsiz.json" in u for u in ck.uyarilar)
