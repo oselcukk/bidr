@@ -24,6 +24,7 @@ from collections import Counter
 from pathlib import Path
 
 from .detect import PLACEHOLDERS, MaskRules, detect, mask_text
+from .imza import IMZA_LABEL
 
 PDF_EXT = {".pdf"}
 DOCX_EXT = {".docx"}
@@ -314,6 +315,41 @@ def _covering_annot_rects(fitz, a) -> list:
     return out or [a.rect]
 
 
+def _write_labels(fitz, page, labels) -> None:
+    """Kapatılan kutulara yer tutucu (`[TC_NO]`, `[İMZA]` …): siyah kutunun içine koyu gri yazı, gerçek
+    metin olarak (metin katmanında). Model/okuyan orada neyin kapatıldığını bilir. Aynı yeri örten
+    kutulardan yalnız biri yazılır; kutu dar ise yazı küçülür (en az 3 pt)."""
+    if not labels:
+        return
+    font = fitz.Font("helv")
+    from .raster import LABEL_GRAY
+    g = LABEL_GRAY / 255.0                # koyu gri: yeniden taramada kutu tek parça blok kalır (bkz. raster)
+    tw = fitz.TextWriter(page.rect, color=(g, g, g))
+    done: list = []
+    for r, text in labels:
+        r = fitz.Rect(r)
+        if r.is_empty or r.width < 1 or r.height < 1:
+            continue
+        if any((r & d).get_area() >= 0.5 * min(r.get_area(), d.get_area()) for d in done):
+            continue
+        done.append(r)
+        size = min(r.height * 0.8, 14.0)
+        tl = font.text_length(text, fontsize=size)
+        if tl > r.width * 0.96:
+            size = max(3.0, size * r.width * 0.96 / tl)
+            tl = font.text_length(text, fontsize=size)
+        x = r.x0 + max(0.0, (r.width - tl) / 2)
+        y = r.y0 + (r.height + size * 0.7) / 2
+        try:
+            tw.append(fitz.Point(x, y), text, font=font, fontsize=size)
+        except Exception:
+            continue
+    try:
+        tw.write_text(page)
+    except Exception:
+        pass
+
+
 def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules) -> dict:   # pragma: no cover - isteğe bağlı
     from . import raster
     fitz = _fitz()
@@ -349,10 +385,13 @@ def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules) -> dict:   # pragma
         except Exception as e:   # yeniden tarama karar verir
             ps = {"bulgular": Counter(), "kutular": [], "imza": None, "imza_kutular": []}
             uyarilar.append(f"s.{page.number + 1}: görüntü katmanı işlenemedi ({type(e).__name__})")
-        for r in ps["kutular"]:
+        labels: list = []                 # (dikdörtgen, yer tutucu): kapatmadan sonra metin katmanına yazılır
+        for r, k in zip(ps["kutular"], ps.get("turler") or [None] * len(ps["kutular"])):
             page.add_redact_annot(r, fill=(0, 0, 0))
+            labels.append((r, PLACEHOLDERS.get(k, "[MASKELI]")))
         for r in ps["imza_kutular"]:
             page.add_redact_annot(r, fill=(0, 0, 0))
+            labels.append((r, IMZA_LABEL))
         imza_bolge += len(ps["imza_kutular"])
         if ps["imza"] is not None:
             ortusen += ps["imza"].ortusen_kelime
@@ -365,6 +404,7 @@ def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules) -> dict:   # pragma
             for part in [p.strip() for p in re.split(r"[\r\n]+", frag) if p.strip()]:
                 for r in page.search_for(part):
                     page.add_redact_annot(r, fill=(0, 0, 0))
+                    labels.append((r, PLACEHOLDERS.get(f.kind, f"[{f.kind.upper()}]")))
                     found = True
             if not found:
                 uyarilar.append(f"s.{page.number + 1}: bulgu konumu bulunamadı ({f.kind})")
@@ -386,10 +426,14 @@ def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules) -> dict:   # pragma
                 break
             for r in more:
                 page.add_redact_annot(r, fill=(0, 0, 0))
+            labels += [(r, PLACEHOLDERS.get(k, "[MASKELI]"))
+                       for r, k in zip(ps["kutular"], ps.get("turler") or [None] * len(ps["kutular"]))]
+            labels += [(r, IMZA_LABEL) for r in ps["imza_kutular"]]
             imza_bolge += len(ps["imza_kutular"])
             if ps["imza"] is not None:
                 ortusen += ps["imza"].ortusen_kelime
             page.apply_redactions(**flags)
+        _write_labels(fitz, page, labels)
     if doc.metadata and any(doc.metadata.values()):
         temiz.add("ust_veri")
     doc.set_metadata({})
@@ -763,7 +807,7 @@ def _mask_media_parts(pkg, rules: MaskRules, *, imza_label: bool) -> dict:
             out["ortusen_kelime"] += r.imza.ortusen_kelime
         if boxes:
             buf = io.BytesIO()
-            raster.save_like(raster.black_out(img, boxes), buf, ext)
+            raster.save_like(raster.draw_labels(raster.black_out(img, boxes), raster.label_items(r)), buf, ext)
             part._blob = buf.getvalue()
     return out
 

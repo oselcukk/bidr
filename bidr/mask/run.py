@@ -60,6 +60,59 @@ def _c(c) -> dict:
     return dict(sorted((k, v) for k, v in (c or {}).items() if v))
 
 
+def mask_and_check(src: Path, dst: Path, rules: MaskRules, eng: str) -> dict:
+    """Tek dosya: tara → maskele (`dst`) → maskeli kopyayı bağımsız yeniden tara.
+
+    → kayıt alanları: `durum` (tamam | basarisiz | taranamadi | hata), `elle_bakilmali`, `neden`,
+    `bulunan`/`maskelenen`/`kalan` (tür → sayı), `temizlenen`, `kalan_sorunlar`, `uyarilar`, imza
+    alanları. `hata`da `dst` silinir; diğer durumlarda maskeli kopya `dst`'de kalır (nereye
+    konacağına çağıran karar verir). Değerlerin kendisi yazılmaz."""
+    rec: dict = {}
+    try:
+        before = scan_file(src, rules)
+    except Exception as e:
+        before = {"bulgular": Counter(), "sorunlar": [f"kaynak taranamadı: {type(e).__name__}"], "imza": []}
+    try:
+        res = mask_file(src, dst, rules, engine=eng)
+        after = scan_file(dst, rules)
+    except (MaskError, Exception) as e:   # bozuk dosya vb.
+        if dst.exists():
+            dst.unlink()
+        rec.update(durum="hata", elle_bakilmali=True, neden=f"maskelenemedi: {type(e).__name__}: {e}"[:300],
+                   bulunan=_c(before["bulgular"]))
+        return rec
+    kalan = after["bulgular"]
+    sorunlar = list(after["sorunlar"])
+    taranamadi = list(after.get("taranamadi") or [])
+    if after.get("imza_aday"):
+        sorunlar.append(f"imza: kapatılamayan aday ×{after['imza_aday']}")
+    rec.update(bulunan=_c(before["bulgular"]), maskelenen=_c(res["maskelenen"]), kalan=_c(kalan),
+               temizlenen=res["temizlenen"], kalan_sorunlar=sorunlar,
+               uyarilar=list(res["uyarilar"]) + list(after.get("uyarilar") or []))
+    if before["imza"]:
+        rec["imza_uyarisi"] = before["imza"]
+    if res.get("imza_bolgesi"):
+        rec["imza_bolgesi"] = res["imza_bolgesi"]
+        rec["imza_ortusen_kelime"] = res.get("ortusen_kelime", 0)
+    if after.get("imza_elle"):
+        rec["imza_elle"] = after["imza_elle"]
+    if taranamadi:
+        rec["taranamadi"] = taranamadi
+    if kalan or sorunlar or taranamadi:
+        parts = [f"{k}×{n}" for k, n in sorted(kalan.items())] + list(sorunlar)
+        if kalan or sorunlar:
+            durum, neden = "basarisiz", "maskeleme başarısız; kalan: " + ", ".join(parts)
+            if taranamadi:
+                neden += "; taranamadı: " + "; ".join(taranamadi)
+        else:
+            durum = "taranamadi"
+            neden = "maskeleme eksik, elle bakılmalı: taranamadı (" + "; ".join(taranamadi) + ")"
+        rec.update(durum=durum, neden=neden[:600], elle_bakilmali=True)
+    else:
+        rec.update(durum="tamam", elle_bakilmali=False)
+    return rec
+
+
 def run(ws_root: Path, *, evidence: Path | None = None, out: Path | None = None, engine: str = "auto",
         names: list[str] | None = None, rules: MaskRules | None = None) -> dict:
     ws = Path(ws_root).expanduser().resolve()
@@ -102,62 +155,21 @@ def run(ws_root: Path, *, evidence: Path | None = None, out: Path | None = None,
             continue
         if kind == "pdf":
             rec["motor"] = eng
-        try:
-            before = scan_file(src, rules)
-        except Exception as e:
-            before = {"bulgular": Counter(), "sorunlar": [f"kaynak taranamadı: {type(e).__name__}"], "imza": []}
         dst = dst_root / rel
-        try:
-            res = mask_file(src, dst, rules, engine=eng)
-            after = scan_file(dst, rules)
-        except (MaskError, Exception) as e:   # bozuk dosya vb.: yayımlanamaz
-            if dst.exists():
-                dst.unlink()
-            rec.update(durum="hata", elle_bakilmali=True, neden=f"maskelenemedi: {type(e).__name__}: {e}"[:300],
-                       bulunan=_c(before["bulgular"]))
-            kayitlar.append(rec)
+        rec.update(mask_and_check(src, dst, rules, eng))
+        toplam["bulunan"].update(rec.get("bulunan") or {})
+        toplam["maskelenen"].update(rec.get("maskelenen") or {})
+        toplam["kalan"].update(rec.get("kalan") or {})
+        toplam_imza["bolge"] += rec.get("imza_bolgesi", 0)
+        toplam_imza["ortusen_kelime"] += rec.get("imza_ortusen_kelime", 0)
+        if rec["durum"] == "hata":
             yayimlanamaz.append({"dosya": rec["dosya"], "neden": rec["neden"]})
-            toplam["bulunan"].update(before["bulgular"])
-            continue
-        kalan = after["bulgular"]
-        sorunlar = list(after["sorunlar"])
-        taranamadi = list(after.get("taranamadi") or [])
-        if after.get("imza_aday"):
-            sorunlar.append(f"imza: kapatılamayan aday ×{after['imza_aday']}")
-        rec.update(bulunan=_c(before["bulgular"]), maskelenen=_c(res["maskelenen"]), kalan=_c(kalan),
-                   temizlenen=res["temizlenen"], kalan_sorunlar=sorunlar,
-                   uyarilar=list(res["uyarilar"]) + list(after.get("uyarilar") or []))
-        if before["imza"]:
-            rec["imza_uyarisi"] = before["imza"]
-        if res.get("imza_bolgesi"):
-            rec["imza_bolgesi"] = res["imza_bolgesi"]
-            rec["imza_ortusen_kelime"] = res.get("ortusen_kelime", 0)
-            toplam_imza["bolge"] += res["imza_bolgesi"]
-            toplam_imza["ortusen_kelime"] += res.get("ortusen_kelime", 0)
-        if after.get("imza_elle"):
-            rec["imza_elle"] = after["imza_elle"]
-        if taranamadi:
-            rec["taranamadi"] = taranamadi
-        toplam["bulunan"].update(before["bulgular"])
-        toplam["maskelenen"].update(res["maskelenen"])
-        toplam["kalan"].update(kalan)
-        if kalan or sorunlar or taranamadi:
+        elif rec["durum"] != "tamam":
             target = fail_root / rel
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(dst), str(target))
-            parts = [f"{k}×{n}" for k, n in sorted(kalan.items())] + list(sorunlar)
-            if kalan or sorunlar:
-                durum, neden = "basarisiz", "maskeleme başarısız; kalan: " + ", ".join(parts)
-                if taranamadi:
-                    neden += "; taranamadı: " + "; ".join(taranamadi)
-            else:
-                durum = "taranamadi"
-                neden = "maskeleme eksik, elle bakılmalı: taranamadı (" + "; ".join(taranamadi) + ")"
-            rec.update(durum=durum, neden=neden[:600], kopya=f"{FAIL_DIR}/{rel.as_posix()}", elle_bakilmali=True)
+            rec["kopya"] = f"{FAIL_DIR}/{rel.as_posix()}"
             yayimlanamaz.append({"dosya": rec["dosya"], "neden": rec["neden"]})
-        else:
-            rec["durum"] = "tamam"
-            rec["elle_bakilmali"] = False
         kayitlar.append(rec)
 
     # boş kalan klasörleri temizle

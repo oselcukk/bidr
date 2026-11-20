@@ -4,7 +4,8 @@ Türler (öncelik sırasıyla; çakışmada önce gelen kazanır):
   tc_no       11 hane + T.C. kimlik algoritması (ilk hane 0 değil, 10. ve 11. hane denetimi)
   iban        TR + 24 hane (boşluklu yazım dahil)
   eposta      ad@alan.uzantı
-  telefon     +90 / 0090 / 0 önekli ya da alan kodu parantezli Türkiye numarası
+  telefon     +90 / 0090 / 0 önekli ya da alan kodu parantezli Türkiye numarası (önünde "FR-",
+              "E-" gibi harf+tire varsa doküman kodudur, alınmaz)
   ogrenci_no  yapılandırılabilir desenler (`privacy.maskeleme.ogrenci_no_desenleri`)
   ad          yapılandırmadaki ad listesi (`privacy.maskeleme.ad_listesi`; ör. personel listesi)
 
@@ -25,9 +26,11 @@ PLACEHOLDERS = {"tc_no": "[TC_NO]", "iban": "[IBAN]", "eposta": "[EPOSTA]", "tel
                 "ogrenci_no": "[OGRENCI_NO]", "ad": "[AD]"}
 
 # Varsayılan öğrenci numarası desenleri: yıl önekli 9-10 hane ve "öğrenci no: …" bağlamı
-# (grup 1 varsa yalnız grup maskelenir).
+# (grup 1 varsa yalnız grup maskelenir). Yıl önekli desen bir kimlik/kod parçasını almaz: önünde harf,
+# `-`, `/`, `.`, `=`, `%` (EBYS "E-2019…", DOI "e2300…", URL "MevzuatNo=…", "%20…") ya da arkasında
+# `-`/`/`/`.` + rakam varsa eşleşmez.
 DEFAULT_STUDENT_PATTERNS = (
-    r"(?<!\d)(?:19|20)\d{7,8}(?!\d)",
+    r"(?<![\w\-/.=%])(?:19|20)\d{7,8}(?!\d)(?![\-/.]\d)",
     r"(?i)(?:öğrenci|ogrenci|ÖĞRENCİ|OGRENCI)\s*(?:no|numarası|numarasi|numara)\s*[:.]?\s*(\d{5,12})(?!\d)",
 )
 
@@ -36,10 +39,26 @@ _RE_IBAN = re.compile(r"(?<![A-Za-z0-9])[Tt][Rr][ \t]?(?:\d[ \t]?){23}\d(?!\d)")
 _RE_EMAIL = re.compile(r"(?<![\w.%+\-])[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}(?![\w])")
 _SEP = r"[ \t\-./]{0,2}"
 _RE_PHONE = re.compile(
-    r"(?<![\d+])(?:"
+    r"(?<![\d+])(?<![A-Za-zÇĞİÖŞÜçğıöşü]-)(?:"
     rf"(?:\+[ \t]?90|0090|0){_SEP}\(?[2-5]\d{{2}}\)?{_SEP}\d{{3}}{_SEP}\d{{2}}{_SEP}\d{{2}}"
     rf"|\((?:0[ \t]?)?[2-5]\d{{2}}\){_SEP}\d{{3}}{_SEP}\d{{2}}{_SEP}\d{{2}}"
     r")(?!\d)")
+
+
+# Belge kimliği bağlamı: "Sayı: 2023000123", "Proje No: 2019123456" gibi evrak/karar/proje
+# numaraları öğrenci numarası değildir. Grupsuz öğrenci no desenlerinde eşleşmenin hemen önü
+# (aynı satır, ≤ 30 karakter) bu sözcüklerden biriyle bitiyorsa eşleşme alınmaz. "Öğrenci no: …"
+# bağlamlı (gruplu) desen bundan etkilenmez.
+_DOC_ID_CTX = re.compile(
+    r"(?i)(?:sayı|sayi|sayısı|sayisi|karar|evrak|belge|doküman|dokuman|döküman|proje|protokol|toplantı|"
+    r"toplanti|oturum|dosya|referans|ref|isbn|issn|doi|fatura|sipariş|siparis|ihale|sözleşme|sozlesme|"
+    r"ebys|barkod|kod|kodu|rev|revizyon|form|tutanak)\b[^\n\d]{0,12}$")
+
+
+def _doc_id_context(text: str, start: int) -> bool:
+    line_start = text.rfind("\n", 0, start) + 1
+    before = text[max(line_start, start - 30):start]
+    return bool(_DOC_ID_CTX.search(before))
 
 
 def tc_valid(s: str) -> bool:
@@ -205,13 +224,16 @@ def _raw(text: str, rules: MaskRules) -> list[tuple[int, int, int, str]]:
     if "iban" in ks:
         out += [(pr["iban"], m.start(), m.end(), "iban") for m in _RE_IBAN.finditer(text)]
     if "eposta" in ks:
-        out += [(pr["eposta"], m.start(), m.end(), "eposta") for m in _RE_EMAIL.finditer(text)]
+        out += [(pr["eposta"], m.start(), m.end(), "eposta") for m in _RE_EMAIL.finditer(text)
+                if not m.group().lower().endswith("@maskeli.invalid")]   # maskeleyicinin yer tutucu adresi
     if "telefon" in ks:
         out += [(pr["telefon"], m.start(), m.end(), "telefon") for m in _RE_PHONE.finditer(text)]
     student, names = rules._compiled
     if "ogrenci_no" in ks:
         for rx in student:
             for m in rx.finditer(text):
+                if not rx.groups and _doc_id_context(text, m.start()):
+                    continue
                 s, e = (m.start(1), m.end(1)) if rx.groups and m.group(1) else (m.start(), m.end())
                 if e > s:
                     out.append((pr["ogrenci_no"], s, e, "ogrenci_no"))

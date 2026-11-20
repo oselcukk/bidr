@@ -31,7 +31,90 @@ Bu nedenle kurum iki yoldan birini **açıkça** seçmelidir:
 Gerçek veriyle çalışmaya bu karar verilmeden başlanmamalıdır. Repo ve testler yalnız sentetik
 veri içerir.
 
-## 1. Yayın kopyası maskeleme: `bidr maskele`
+## İki kullanım
+
+Maskeleme aynı yerel, kural tabanlı tespitçiyle (desenler + tesseract OCR + imza bölgesi; model
+kullanılmaz, ağ bağlantısı yok) iki yerde kullanılır:
+
+| kullanım | komut | ne zaman | girdi → çıktı |
+|---|---|---|---|
+| **A. Model öncesi kaynak maskeleme** | `bidr maskele --kaynak KLASÖR --out KOPYA` | belgeler modele (ajan/Claude) gösterilmeden **önce**; hat maskeli kopya üzerinde çalışır | bölüm belge klasörü (salt okunur) → aynı ağacın maskeli kopyası + rapor |
+| **B. Teslim kopyası maskeleme** | `bidr maskele -w WS` | rapor/kanıt paketi paylaşılmadan önce | `evidence/` → `evidence-maskeli/` + `maskeleme-raporu.json` |
+
+A, modele giden belge içeriğini azaltır: hat (`bidr ingest KOPYA -w WS`) yalnız maskeli kopyayı
+görür. B, hattın sonunda paylaşılacak kanıtların kopyasını üretir. İkisi birlikte de kullanılabilir.
+Ayrıca iş paketlerine giren metin için `privacy.mask_before_model` vardır (bölüm 2).
+
+### Neyin maskelendiği, neyin maskelenMEdiği
+
+| maskelenir (yer tutucuyla) | maskelenMEZ |
+|---|---|
+| T.C. kimlik no `[TC_NO]` (algoritma denetimli) | **adlar ve soyadlar** — yalnız `ad_listesi`'ndekiler `[AD]` olur; liste yoksa hiçbir ad maskelenmez |
+| IBAN `[IBAN]` | **yüzler ve fotoğraflar** (yüz tanıma yok; fotoğraf olduğu gibi kalır) |
+| e-posta `[EPOSTA]` (kurumsal adresler dahil) | **el yazısı** (OCR okuyamaz: el yazısıyla yazılmış numara/ad kalır; sayfa çoğu zaman `taranamadi` olur) |
+| Türkiye telefon numarası `[TELEFON]` (kurum santrali dahil) | adres, doğum tarihi, not/puan, unvan, imza sirküsü dışındaki kişisel bilgiler |
+| öğrenci no `[OGRENCI_NO]` (yıl önekli 9-10 hane ya da "öğrenci no: …" bağlamı) | düz metinde biçimi beklenmedik numaralar (kural tabanlı tespitin kaçırdıkları) |
+| imza `[İMZA]` (imza etiketi/unvan bloğu yakınındaki mürekkep) | etiketsiz imza (elle bakılmalı listesine girer), paraf |
+| belge üst verisi, yorumlar, izlenen değişiklikler, gömülü ekler | desteklenmeyen biçimlerin içi (eski `.doc`/`.xls`, `.pptx`, `.msg`, `.gif`/`.heic` …: olduğu gibi kopyalanır, elle bakılmalı) |
+
+Belge kimliği bilgisi korunur: evrak sayısı (`Sayı: E-…`), tarih, karar/toplantı no, ders kodu,
+sayfa no, doküman/form kodu (`FR-…`), DOI/URL içindeki sayılar maskelenmez. Yıl önekli öğrenci no
+deseni "Sayı/Karar/Evrak/Belge/Proje/Protokol/Toplantı/Doküman/Form/Kod …" sözcüğünün hemen
+ardındaki, harf/`-`/`/`/`.`/`=`/`%` ile başlayan ya da `-`/`/`/`.` + rakamla devam eden sayıyı
+almaz; telefon deseni harf+tire ("FR-", "E-") ile başlayan kodu almaz (bkz. testler
+`tests/test_mask_kaynak.py`).
+
+Yer tutucular gerçek metindir: DOCX/XLSX/HTML/metinde değerin yerine, PDF'te (PyMuPDF motoru)
+kapatılan siyah kutunun içine (koyu gri, metin katmanında) yazılır; görsellerde kutunun içine
+çizilir. pypdf motorunda PDF değeri `X`'lerle değiştirilir (yer tutucu yok). Böylece model orada
+bir kimlik no/telefon/imza bulunduğunu bilir ("belge imzalı") ama değeri görmez.
+
+## A. Model öncesi kaynak maskeleme: `bidr maskele --kaynak`
+
+```
+bidr maskele --kaynak BÖLÜM_KLASÖRÜ --out MASKELİ_KOPYA [-w WS] [--ad-listesi DOSYA]
+             [--motor auto|pymupdf|pypdf] [--is N] [--rapor DOSYA] [--ilerleme]
+```
+
+- Kaynak klasör **salt okunurdur**; hiçbir dosyasına yazılmaz. `--out` kaynakla iç içe olamaz; bidr'in
+  üretmediği dosyalar içeren bir klasöre yazılmaz.
+- Ağaç aynen kurulur (alt klasörler dahil). Desteklenen biçimler (PDF, DOCX, XLSX, düz metin, HTML,
+  görseller) maskelenir ve her kopya bağımsız olarak yeniden taranır (B ile aynı adım).
+- **Kaplar** (ingest'in açtığı türler) açılır, üyeleri aynı kurallarla — iç içe kaplar dahil —
+  maskelenir ve kap maskeli üyelerle yeniden paketlenir: `.zip` → `.zip`, `.tar(.gz/.bz2/.xz)` →
+  aynı biçim, `.eml` → `.eml` (başlıklar, gövde ve ekler; adres başlıklarında e-posta
+  `eposta@maskeli.invalid` olur, çünkü `[EPOSTA]` geçerli adres değildir), `.7z`/`.rar` → yazılamadığı
+  için `<ad>.7z.zip`. Üye yolları (`arsiv.zip!/alt/belge.pdf`) ingest'in okuduğu biçimde kalır.
+  Bozuk/şifreli kap olduğu gibi kopyalanır (`hata`); şifreli üye yeni kaba alınamaz (`hata`).
+- **Desteklenmeyen biçimler** olduğu gibi kopyalanır (`desteklenmiyor`, elle bakılmalı) — içleri
+  maskelenmemiştir. Gizli/sistem dosyaları (`.DS_Store`, `~$` kilit dosyaları, `__MACOSX`) ingest gibi
+  atlanır, kopyalanmaz.
+- **Dosya ve klasör adları** da maskelenir (adında öğrenci no ya da listedeki ad geçen dosya
+  `[OGRENCI_NO] transkript.pdf` olur; uzantı korunur; çakışırsa ` (2)`).
+- **Hiçbir kanıt düşmez**: maskelemesi eksik kalan dosyanın (`basarisiz`: yeniden taramada bulgu ya
+  da kapatılamayan imza adayı kaldı; `taranamadi`: OCR okuyamadı) maskeli kopyası, maskelenemeyen
+  (`hata`) dosyanın **özgünü** ağaçta kalır. Bunlar raporda `elle_bakilmali: true` ile listelenir;
+  komut 1 ile çıkar ve listeyi yazar. Modele vermeden önce bu liste gözden geçirilmelidir (gerekirse
+  dosya kopyadan elle çıkarılır ya da elle karartılır).
+- **Rapor**: `<out>.maskeleme-raporu.json` (ya da `--rapor`), **çıktı klasörünün dışında**. Dosya
+  başına `dosya` (özgün yol), `hedef` (maskeli yol), `bicim`, `durum`
+  (tamam/basarisiz/taranamadi/hata/desteklenmiyor/kap), `elle_bakilmali`, `neden`,
+  `bulunan`/`maskelenen`/`kalan` (tür → sayı), `imza_bolgesi`; özet ve `elle_bakilmali` listesi.
+  Değerlerin kendisi yazılmaz, ama **özgün dosya adları** (kişi adı içerebilir) yazılır: rapor
+  modele verilmez.
+- `-w WS` verilirse `config.yaml`'daki `privacy.maskeleme` kuralları (ad listesi, desenler) kullanılır;
+  `--ad-listesi` ekler. `--is N` dosyaları N süreçte paralel işler (OCR yavaştır).
+
+Sonra hat maskeli kopyayla çalıştırılır (`bidr ingest MASKELİ_KOPYA -w WS`). Alıntılar ve
+rapor metni maskeli metinden gelir (yer tutucular görünür); teslimde özgün belgeler gerekiyorsa
+kanıt dosyaları özgün klasörden eşlenir (`hedef` ↔ `dosya`).
+
+Sınırlar: kural tabanlıdır; adlar yalnız listeden bulunur; el yazısı, yüz, fotoğraf maskelenmez;
+desteklenmeyen biçimler maskelenmez; e-posta gövdesindeki satır içi görseller maskelenir ama
+ingest onları okumaz. Bu yüzden A **riski azaltır, kaldırmaz**; yukarıdaki kurum notu geçerlidir.
+
+## B. Teslim kopyası maskeleme: `bidr maskele -w WS`
+
 
 ```
 bidr maskele -w WS [--evidence DIR] [--out DIR] [--motor auto|pymupdf|pypdf] [--ad-listesi DOSYA]
@@ -66,7 +149,7 @@ Rapora bulunan değerlerin kendisi yazılmaz; yalnız tür ve sayı. Komut, yay�
 | `iban` | `[IBAN]` | `TR` + 24 hane (boşluklu yazım dahil) |
 | `eposta` | `[EPOSTA]` | ad@alan.uzantı |
 | `telefon` | `[TELEFON]` | `+90`/`0090`/`0` önekli ya da alan kodu parantezli Türkiye numarası |
-| `ogrenci_no` | `[OGRENCI_NO]` | yapılandırılabilir desenler; varsayılan: yıl önekli 9-10 hane ve "öğrenci no: …" bağlamı |
+| `ogrenci_no` | `[OGRENCI_NO]` | yapılandırılabilir desenler; varsayılan: yıl önekli 9-10 hane ve "öğrenci no: …" bağlamı (belge kimliği bağlamı hariç, yukarıda) |
 | `ad` | `[AD]` | yalnız yapılandırmadaki ad listesi (büyük/küçük harf ve ş/s, ı/i … duyarsız) |
 
 ### Görüntüdeki yazı: yerel OCR
@@ -104,6 +187,11 @@ Model kullanılmaz; basit görüntü işleme (Pillow):
 4. Metin katmanlı PDF sayfasında yalnız küçük gömülü görseller (≤ 4×2,5 inç, başlıkta değil)
    aranır; vektör çizimler (tablo, akış şeması), filigran ve kapak görselleri aranmaz.
 5. Yeniden tarama: maskeli kopyada kapatılmamış etiketli aday kalırsa `basarisiz`.
+6. **`[İMZA]` işareti**: kapatılan her imza kutusunun içine koyu gri `[İMZA]` yazılır — PDF'te gerçek
+   metin olarak (metin katmanında; model/okuyan belgenin imzalı olduğunu bilir), görselde ve DOCX'e
+   gömülü görselde piksel olarak. Yazı rengi bilerek koyu gridir: beyaz yazı kutuyu "dolu blok"
+   olmaktan çıkarır, harf araları yeniden taramada imza vuruşu sanılırdı. Maskeleyicinin yazdığı
+   köşeli ayraçlı işaretler imza etiketi sayılmaz.
 
 Yanlış karartma ölçüsü: kapatılan imza kutularıyla ≥%40 örtüşen güvenilir kelime sayısı raporda
 `imza_ortusen_kelime` (dosya ve özet). El yazısıyla doldurulmuş form alanları imza adayıyla
@@ -163,7 +251,7 @@ yakalar, dosya `basarisiz`); ad tespiti yalnız listedeki adları bulur; kural t
 biçimi yakalamaz. Yayından önce `maskeleme-raporu.json`, `imza_elle` sayfaları ve imza uyarıları
 insan tarafından gözden geçirilmelidir.
 
-## 2. Model öncesi maskeleme: `privacy.mask_before_model`
+## 2. İş paketi metni maskeleme: `privacy.mask_before_model`
 
 Açıksa iş paketlerine ve hat modu istemlerine giren metinlerde aynı kurallarla yer tutucu
 kullanılır (`[TC_NO]`, `[OGRENCI_NO]`, `[EPOSTA]` …). Varsayılan kapalıdır.
