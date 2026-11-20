@@ -16,10 +16,14 @@ description: >-
   kanıtı (birden çok doküman kodu ya da belge adının bazı yuvalarda `parca_uyumsuz` olması)
   yoksa atılır; aynı parça tek ad. Dosyalama yuvanın kesimine parça adını verir (insan > model
   parça adı > model belge adı > kural). Girdi `derleme`: kodla saptanan derleme bilgisi.
+  v3 (girdi zenginleşti, şema aynı): `derleme` parçaları da sayar (bidr/identify/parca.py: yeni
+  belge başlangıcı, künye bağlamındaki doküman kodu, tarihli üst bilgi). Derleme kanıtına "alıntılar
+  farklı parçalardan" da eklendi. Parça adı adımı hatta varsayılandır: `bidr name prepare` derleme
+  belgeleri kendiliğinden paketler; kayıtta `derleme` (parça adı soruldu mu).
 inputs:
   belge_bilgisi: "documents.jsonl içerik alanları (tür tahmini, tarih, akademik dönem, sayfa); yol/ad yok"
   baslik: "identify'ın metinden çıkardığı başlık (kural tabanlı; yanılabilir)"
   olcutler: "belgenin kabul edilmiş eşleşmeleri: ölçüt başlığı, yuva, alıntı"
   parcalar: "çok sayfalı belgede her alıntının sayfası (n/N) ve o sayfanın başı (derleme parçasının başlığı)"
-  derleme: "sayfa başlarındaki doküman kodlarından derleme bilgisi (evet: N farklı kod | kod ayrımı yok | tek sayfa)"
+  derleme: "sayfa başlarından derleme bilgisi (evet: N parça (sayfa aralıkları) [; doküman kodları] | parça ayrımı saptanmadı | tek sayfa)"
   belge_metni: "belge metninin başı (kısaltılmış)"

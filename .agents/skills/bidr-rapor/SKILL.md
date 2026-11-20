@@ -175,12 +175,15 @@ faaliyet ve audit'i yeniden ister; yeni satırlar (işaret `ikinci_arama`) revie
 kullanıcı açıkça isterse `config.yaml`'a `rapor: {ikinci_arama: false}` yazılır; status'ta
 "atlandi" görünür. Kendiliğinden atlama.
 
-## Kanıt adları (name, isteğe bağlı)
+## Kanıt adları ve parça adları (name)
 
 `bidr name prepare -w WS` → `work/name/README.md`; her `<doc_id>.json` için kısa, resmî bir
 kanıt dosyası adı yaz (3-7 sözcük; belgenin ne olduğu; kişi adı, unvan, e-posta YOK) →
 `bidr name apply -w WS --model <ajan adı>`. Reddedilenler `work/name/GECERSIZ.md`'de. Ad
-önceliği insan > model > kural: kullanıcı review.xlsx'te değiştirebilir.
+önceliği insan > model parça adı > model > kural: kullanıcı review.xlsx'te değiştirebilir.
+Birleşik/derleme dosyalar (DERLEME satırı "evet") adı olsa da kendiliğinden yeniden paketlenir:
+alıntılar farklı parçalardansa `parca_adlari`'na her yuvanın parçasının adını yaz. Bu adım
+atlanmaz; `bidr next` aday kalmayınca bitirir.
 
 ## Dosyalama (file) ve bağlantılar
 

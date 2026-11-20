@@ -24,7 +24,7 @@ EŞLEŞTİĞİ ÖLÇÜTLER
 ALINTILARIN SAYFALARI (alıntının geldiği sayfanın başı; derlemede parçanın başlığı)
 {{parcalar}}
 
-DERLEME (sayfa başlarındaki doküman kodlarından)
+DERLEME (sayfa başlarından: yeni belge başlangıcı, doküman kodu, tarihli üst bilgi)
 {{derleme}}
 
 BELGE METNİ (baş kısmı)

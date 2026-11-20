@@ -20,8 +20,10 @@ Sonuç adı reddetmez: `dogrulanmali` işaretidir (insan bakar).
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 
-from bidr.llm.quote import _fold_char, verify_quote
+from bidr.identify.parca import match_quote as verify_quote
+from bidr.llm.quote import _fold_char
 
 STOP = {"ve", "ile", "icin", "de", "da", "bir", "bu", "ait", "olan", "uzerine", "hakkinda",
         "ilgili", "ki", "veya", "ya"}
@@ -44,6 +46,7 @@ MADDELI = ("yonerge", "yonetmeli", "esasla", "esasi", "usul", "genelge")
 _MADDE = re.compile(r"\bmadde\s*\d")
 
 
+@lru_cache(maxsize=256)
 def fold(s: str) -> str:
     """Türkçe katlanmış, harf/rakam dışı boşluk; sözcük sınırları korunur."""
     out = []
@@ -116,14 +119,11 @@ def _pages(text: str) -> list[tuple[int, int]]:
     return out
 
 
-_KOD = re.compile(r"(?<![a-z0-9])([a-z]{2}) ?[-;:]? ?(\d{3,4})(?!\d)")
-KOD_BOLGE = 400
-
-
 def _page_code(page: str) -> str | None:
-    """Sayfa başındaki doküman/form kodu (YÖ-0087, FR-0356 …): derlemede parça sınırı."""
-    m = _KOD.search(fold(page[:KOD_BOLGE]))
-    return f"{m.group(1)}{int(m.group(2))}" if m else None
+    """Sayfa başındaki doküman/form kodu (YÖ-0087, FR-0356 …): derlemede parça sınırı. Yalnız
+    künye bağlamında (`bidr.identify.parca.page_code`; "na 2024", "No: 125" kod değildir)."""
+    from bidr.identify.parca import page_code
+    return page_code(page)
 
 
 def quote_window(text: str, quote: str) -> tuple[str, bool] | None:
@@ -172,16 +172,22 @@ def _coded_part(text: str, pages: list[tuple[int, int]], i: int) -> tuple[int, i
 
 
 def quote_part(text: str, quote: str) -> tuple | None:
-    """Alıntının geldiği parçanın kimliği: kodlu derlemede parçanın sayfa aralığı
-    (`("kod", lo, hi)`), değilse alıntının sayfası (`("sayfa", i)`; kodsuz derlemede sınır
-    bilinmez). Alıntı metinde yoksa None."""
+    """Alıntının geldiği parçanın kimliği: birleşik belgede parçanın sayfa aralığı
+    (`("parca", lo, hi)`; sınırlar `bidr.identify.parca.part_ranges`: yeni belge başlangıcı,
+    doküman kodu, tarihli üst bilgi), değilse alıntının sayfası (`("sayfa", i)`). Alıntı metinde
+    yoksa None."""
+    from bidr.identify.parca import part_of_page, text_parts
     m = verify_quote(quote, text) if quote else None
     if not (m and m.span):
         return None
     pages = _pages(text)
     i = next((k for k, (a, b) in enumerate(pages) if a <= m.span[0] <= b), len(pages) - 1)
-    part = _coded_part(text, pages, i) if len(pages) > 1 else None
-    return ("kod", *part) if part else ("sayfa", i)
+    if len(pages) > 1:
+        rs = text_parts(text)
+        j = part_of_page(rs, i) if len(rs) > 1 else None
+        if j is not None:
+            return ("parca", rs[j][0], rs[j][1])
+    return ("sayfa", i)
 
 
 def slot_issues(ad: str, text: str, quotes: dict[str, str]) -> list[str]:

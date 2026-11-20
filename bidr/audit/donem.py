@@ -308,10 +308,26 @@ def _stale_page(doc: dict, t: dict) -> str | None:
 
 
 def apply_row(rule: Rule, doc: dict, dtype: str, stage: str | None, dosya: str | None = None,
-              surum: str | None = None) -> dict:
+              surum: str | None = None, parca: dict | None = None) -> dict:
     """Bir eşleşmeye dönem kuralı: {sinif, zaman, yil, sayilir, flags, kaynak, not}. `sayilir`
     False ise satır görünür kalır ama hiçbir halkayı kanıtlamaz (döngü sonradan açabilir).
-    `surum`: belgenin sürüm grubundaki durumu (`version_status`)."""
+    `surum`: belgenin sürüm grubundaki durumu (`version_status`).
+    `parca`: birleşik belgede alıntının parçası (`bidr.identify.parca.part_view`): kural belgenin
+    değil parçanın tarih alanlarıyla işler; parça tarihi bilinmiyorsa belge tarihiyle işler ve
+    satır `tarih_dogrulanmali` alır. Kuralın kendisi değişmez."""
+    if parca:
+        out = _apply_row(rule, {**doc, **parca["alanlar"]}, dtype, stage, dosya, surum)
+        if parca.get("etiket") and out["kaynak"]:
+            out["kaynak"] = f"{parca['etiket']}: {out['kaynak']}"
+        if parca.get("dogrulanmali") and "tarih_dogrulanmali" not in out["flags"]:
+            out["flags"].append("tarih_dogrulanmali")
+            out["not"] = "; ".join(x for x in (out["not"], parca.get("not")) if x)
+        return out
+    return _apply_row(rule, doc, dtype, stage, dosya, surum)
+
+
+def _apply_row(rule: Rule, doc: dict, dtype: str, stage: str | None, dosya: str | None = None,
+               surum: str | None = None) -> dict:
     cls = rule.cls(dtype, stage)
     t = yapi_time(doc, dosya) if cls == YAPI else doc_time(doc, dosya)
     note = ""

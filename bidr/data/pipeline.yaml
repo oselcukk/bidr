@@ -226,7 +226,7 @@ asamalar:
     skill: bidr-hakem
 
   - id: name
-    ad: Kanıt adları (model önerisi; isteğe bağlı, model işi ajanda)
+    ad: Kanıt adları ve derleme belgelerin parça adları (model önerisi; model işi ajanda)
     uygulandi: true
     istege_bagli: true
     katman: M
@@ -241,8 +241,11 @@ asamalar:
       denetim: name_tamam
       metin: >-
         Kabul edilmiş eşleşmesi olan her belgenin (mükerrer kopyalar hariç) model ya da insan kanıt adı
-        var (kanit-adlari.jsonl ya da ince kararın kanit_adi'sı). config.yaml rapor.kanit_adi_modeli: false
-        ise ya da adlandırılacak belge yoksa atlanır; ad önceliği insan > model > kural.
+        var (kanit-adlari.jsonl ya da ince kararın kanit_adi'sı). Derleme/birleşik belge (birden çok doküman
+        kodu, alıntılar farklı parçalardan ya da ad alıntının parçasında tutmuyor) için parça adı da sorulmuş
+        (görevin güncel sürümüyle model kaydı, `derleme: true`); `bidr name prepare` bunları kendiliğinden
+        paketler, aday yoksa parça adı adımı kendiliğinden biter. config.yaml rapor.kanit_adi_modeli: false
+        ise ya da adlandırılacak belge yoksa atlanır; ad önceliği insan > model parça adı > model > kural.
     onay: yok
     skill: bidr-rapor
 

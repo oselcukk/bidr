@@ -1,6 +1,7 @@
 """`bidr name prepare|apply -w WS [--only DOC_ID,…]`: işlenmiş belgelere kanıt adı."""
 from __future__ import annotations
 
+import argparse
 import sys
 
 
@@ -29,7 +30,7 @@ def _cmd(args) -> int:
             st = R.prepare(ws.root, only=only, redo=args.redo, parca=args.parca)
             print(f"{st['paket']} paket ({st['yeni']} yeni/değişen), zaten adlı={st['zaten_adli']}, "
                   f"bekleyen {st['bekleyen']} → {st['klasor']}"
-                  + (f" (parça adı için derleme: {st['derleme']})" if st.get("derleme") else ""))
+                  + (f" (parça adı için derleme belgesi: {st['derleme']})" if st.get("derleme") else ""))
             if st["uygun_degil"]:
                 print("kabul edilmiş eşleşmesi yok ya da mükerrer kopya (paketlenmedi): "
                       + ", ".join(st["uygun_degil"]))
@@ -62,8 +63,9 @@ def register(sub):
     a.add_argument("--workspace", "-w", required=True)
     a.add_argument("--only", metavar="DOC_ID[,…]", help="yalnız bu belgeler (adı olsa da yeniden paketlenir)")
     a.add_argument("--redo", action="store_true", help="model adı olan belgeleri de paketle")
-    a.add_argument("--parca", action="store_true",
-                   help="model adı olan ama derleme olduğu saptanan belgeleri parça adı için yeniden paketle")
+    a.add_argument("--parca", action=argparse.BooleanOptionalAction, default=True,
+                   help="adı olan ama derleme olduğu saptanan belgeleri parça adı için (yeniden) paketle "
+                        "(varsayılan; --no-parca kapatır)")
     a.set_defaults(func=_cmd)
     a = act.add_parser("apply", help="<doc_id>.out.json cevaplarını doğrula ve kanit-adlari.jsonl'e yaz")
     a.add_argument("--workspace", "-w", required=True)
