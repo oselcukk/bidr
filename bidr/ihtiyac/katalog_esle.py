@@ -234,11 +234,7 @@ def olcut_belgeleri(es: dict | None) -> dict[str, list[dict]]:
 
 
 def madde_metni(o: dict) -> str:
-    """Sade listedeki madde: `Belge adı (kod) — bağlantı`."""
+    """Sade listedeki madde: `Belge adı (kod)` (bağlantı katalog dosyasında kalır, listeye yazılmaz)."""
     ad = o.get("ad") or ""
     kod = o.get("kod") or ""
-    s = f"{ad} ({kod})" if kod and kod not in ad else ad
-    if not o.get("baglanti"):
-        return s
-    from urllib.parse import unquote
-    return f"{s} — {unquote(o['baglanti']).replace(' ', '%20')}"     # okunur adres (boşluk kodlu)
+    return f"{ad} ({kod})" if kod and kod not in ad else ad
