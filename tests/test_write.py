@@ -389,3 +389,94 @@ def test_evidence_block_lists_period_info_first():
     i, j, k = (next(n for n, l in enumerate(out) if key in l)
                for key in ("dönem içi bilgi 1", "ölçütle ilgili bilgi 1", "alıntı 1"))
     assert i < j < k
+
+
+# -- güncelleme senaryosu: eski sürümle yazılmış metinler, tur sayacı, apply mesajları ------------
+
+def _old_version(ws: Path, olcut: str = "B.1.1", v: str = "2") -> None:
+    """Metni ve paketini görevin eski sürümüyle yazılmış gibi işaretler (araç güncellemesi)."""
+    tp = ws / "texts" / f"{olcut}.json"
+    t = json.loads(tp.read_text(encoding="utf-8"))
+    t["kaynak"]["gorev_surumu"] = v
+    tp.write_text(json.dumps(t, ensure_ascii=False), encoding="utf-8")
+    pp = ws / "work/write" / f"{olcut}.json"
+    p = json.loads(pp.read_text(encoding="utf-8"))
+    p["surum"] = v
+    pp.write_text(json.dumps(p, ensure_ascii=False), encoding="utf-8")
+
+
+def test_apply_does_not_report_applied_old_packages(tmp_path, capsys):
+    ws = make_report_ws(tmp_path)
+    W.prepare(ws)
+    answer(ws, "B.1.1", GOOD)
+    W.apply(ws)
+    _old_version(ws)
+    st = W.apply(ws)                     # önceki çalıştırmadan kalan, metni geçerli paket: iş yok
+    assert st["eski"] == [] and st["degismedi"] == 1
+    from bidr.cli import main
+    capsys.readouterr()
+    main(["write", "apply", "-w", str(ws)])
+    out = capsys.readouterr().out
+    assert "eski paket=0" in out and "yeniden prepare" not in out and "bidr next" in out
+    # metnin girdisi değişince (kanıt listesi/OD) eski: next de prepare der
+    a = json.loads((ws / S.AUDIT).read_text(encoding="utf-8"))
+    a["olcutler"][0]["od"] = 2
+    (ws / S.AUDIT).write_text(json.dumps(a, ensure_ascii=False), encoding="utf-8")
+    assert W.apply(ws)["eski"] == ["B.1.1"]
+
+
+def test_old_rule_texts_optional_refresh(tmp_path):
+    ws = make_report_ws(tmp_path)
+    W.prepare(ws)
+    answer(ws, "B.1.1", GOOD)
+    W.apply(ws)
+    _old_version(ws)
+    idx, aud = S.load_index(ws / S.INDEX), S.load_audit(ws / S.AUDIT)
+    assert W.old_rule_texts(W.Workspace(ws), idx, aud) == ["B.1.1"]
+    st = W.prepare(ws)                   # zorunlu değil: varsayılan prepare dokunmaz
+    assert st["paket"] == 0 and st["eski_surum"] == ["B.1.1"]
+    t = json.loads((ws / "texts/B.1.1.json").read_text(encoding="utf-8"))
+    t["tur"] = 2
+    (ws / "texts/B.1.1.json").write_text(json.dumps(t, ensure_ascii=False), encoding="utf-8")
+    st = W.prepare(ws, old_rules=True)   # tek komut: yalnız eski kuralla yazılmışlar
+    assert st["paket"] == 1 and st["yenilenen"] == ["B.1.1"]
+    pkg = json.loads((ws / "work/write/B.1.1.json").read_text(encoding="utf-8"))
+    assert pkg["surum"] == W.task_version() and pkg["meta"]["tur"] == 0      # yeni metin: tur baştan
+    answer(ws, "B.1.1", {**GOOD, "paragraflar": GOOD["paragraflar"][:1]})
+    assert W.apply(ws)["islenen"] == 1
+    assert W.old_rule_texts(W.Workspace(ws), idx, aud) == []
+    assert W.prepare(ws, old_rules=True)["paket"] == 0
+
+
+def test_rewrite_counter_resets_when_inputs_change(tmp_path):
+    ws = make_report_ws(tmp_path)
+    W.prepare(ws)
+    answer(ws, "B.1.1", GOOD)
+    W.apply(ws)
+    tp = ws / "texts/B.1.1.json"
+    t = json.loads(tp.read_text(encoding="utf-8"))
+    t["tur"] = 2
+    tp.write_text(json.dumps(t, ensure_ascii=False), encoding="utf-8")
+    W.prepare(ws, only=["B.1.1"])        # girdi aynı: tur korunur (sınırı aşmanın yolu değil)
+    assert json.loads((ws / "work/write/B.1.1.json").read_text(encoding="utf-8"))["meta"]["tur"] == 2
+    t["girdi_sha"] = "eski-kanit-seti"   # kanıt seti/OD değişti: yeni metin sayaçla başlar
+    tp.write_text(json.dumps(t, ensure_ascii=False), encoding="utf-8")
+    W.prepare(ws, only=["B.1.1"])
+    assert json.loads((ws / "work/write/B.1.1.json").read_text(encoding="utf-8"))["meta"]["tur"] == 0
+
+
+def test_status_counts_old_rule_texts(tmp_path):
+    from bidr.common import Workspace
+    from bidr.pipeline.checks import Ctx, write_tamam
+    ws = make_report_ws(tmp_path)
+    W.prepare(ws)
+    answer(ws, "B.1.1", GOOD)
+    W.apply(ws)
+    ctx = Ctx(Workspace(ws), None, lambda t: t,
+              {"komut": ["bidr write prepare -w WS", "(ajan)", "bidr write apply -w WS"]})
+    ck = write_tamam(ctx)
+    assert ck.bitti and not ck.uyarilar
+    _old_version(ws)
+    ck = write_tamam(ctx)
+    assert ck.bitti and ck.ilerleme["eski_kural"] == 1          # zorunlu değil: aşama bitti
+    assert any("1 metin eski yazım kuralıyla yazıldı" in u and "--eski-kurallar" in u for u in ck.uyarilar)

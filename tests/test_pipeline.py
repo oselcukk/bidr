@@ -463,10 +463,16 @@ def _report_layer(ws: Path, capsys) -> None:
     assert sorted(_yonler_answers(ws)) == ["A", "B", "C", "D"]
     assert ev("yonler").kim == "komut"
     assert main(["yonler", "apply", "-w", str(ws), "--model", "test-ajan"]) == 0
-    assert ev("verify").kim == "komut" and ev("yonler").durum == "engelli"    # doğrulama verify akışında
+    # alan doğrulaması verify komutlarıyla yapılır ama verify aşamasını bekletmez: yonler alan başına
+    # izler, kapısı açık kalır (bir alanın düzeltmesi ötekilerin doğrulaması bitmeden uygulanabilir)
+    assert ev("verify").durum == "bitti"
+    y = ev("yonler")
+    assert y.kim == "komut" and any(k.endswith("verify prepare -w " + str(ws)) for k in y.komutlar)
     assert main(["verify", "prepare", "-w", str(ws)]) == 0
-    v = ev("verify")
-    assert v.kim == "ajan" and any("verify/yonler" in k for k in v.komutlar)
+    y = ev("yonler")
+    assert y.kim == "ajan" and any("verify/yonler" in k for k in y.komutlar) and "doğrulama paketi" in y.neden
+    from bidr.pipeline.gate import check_gate
+    assert check_gate(ws, "yonler") is None                    # doğrulama bekliyorken yonler apply açık
     assert _verify_yonler_answers(ws, reject={"B"})
     assert main(["verify", "apply", "-w", str(ws), "--model", "test-dogrulayici"]) == 1
     assert ev("verify").durum == "bitti"

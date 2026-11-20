@@ -29,7 +29,7 @@ from .rules import (GEREKEN, KARAR_TURLERI, KISA, KURUM_GENELI_TURLER, LINKS, cr
 SURUM = 1
 FILES = {"xlsx": "review.xlsx", "gaps": "gaps.md", "json": "audit-olcutler.json",
          "decisions": "review-decisions.jsonl", "tag_oneri": "slot-tags-oneri.yaml",
-         "birim": BIRIM_KARARLARI, "od": "olcut-od-kararlari.jsonl"}
+         "birim": BIRIM_KARARLARI, "od": "olcut-od-kararlari.jsonl", "gorulen": "review-gorulen.jsonl"}
 ALINTI_KISA = 160                              # birim sayfasında alıntı kısaltması
 KARARLAR = ("kabul", "ret", "duzelt")
 ETIKET_KARARLARI = ("onayla", "duzelt")
@@ -51,6 +51,72 @@ def load_od_decisions(out: Path) -> dict[str, dict]:
 def load_review_decisions(out: Path) -> dict[str, dict]:
     p = Path(out) / FILES["decisions"]
     return {r["satir"]: r for r in read_jsonl(p)} if p.exists() else {}
+
+
+# -- "yeniden bakılmalı": kararlı satırın kararından sonra değişen durumu ----------------------
+# İnsan kararı verildiğinde satırın gördüğü durum (inceleme işaretleri, sayılan aşama, OD)
+# `review-gorulen.jsonl`'e yazılır. Audit yeniden çalışınca (araç güncellemesi, yeni belge) satıra
+# yeni işaret eklenmiş ya da sayılan aşaması/OD'si değişmişse karar KORUNUR ama satır "yeniden
+# bak" sütununda gerekçesiyle vurgulanır. İnsan satıra bakınca "bakıldı" sütununa `evet` yazar (ya da
+# kararı/notu değiştirir): `audit apply` görülen durumu günceller.
+# Kararın kendisinden doğan işaretler (insan ret/düzelt, birim onayı) karşılaştırmaya girmez.
+KARAR_ISARETLERI = frozenset({"insan_reddetti", "insan_duzeltti", "birim_aitligi_onaylandi",
+                              "birim_onay_bekliyor", "birim_aitligi_dogrulanmali"})
+
+
+def load_seen(out: Path) -> dict[str, dict]:
+    p = Path(out) / FILES["gorulen"]
+    return {r["satir"]: r for r in read_jsonl(p) if r.get("satir")} if p.exists() else {}
+
+
+def _save_seen(out: Path, seen: dict[str, dict]) -> None:
+    p = Path(out) / FILES["gorulen"]
+    if seen:
+        write_jsonl(p, [seen[k] for k in sorted(seen)])
+    elif p.exists():
+        p.unlink()
+
+
+def _od_int(v) -> int | None:
+    try:
+        return int(v) if v not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
+
+def seen_state(r: dict) -> dict:
+    """Satırın (audit satırı ya da tablodan okunan satır) karara esas durumu."""
+    fl = r.get("flags")
+    if fl is None:
+        fl = [x.strip() for x in str(r.get("isaretler") or "").split(",") if x.strip()]
+    return {"satir": r.get("satir"), "isaretler": sorted(set(fl) - KARAR_ISARETLERI),
+            "asama": str(r.get("etkin_asama") or ""), "od": _od_int(r.get("od"))}
+
+
+def relook_reason(base: dict, cur: dict, karar: str) -> str:
+    """Görülen durumdan bu yana değişen (boş: değişiklik yok). Sayılan aşama/OD yalnız `kabul`de
+    anlamlıdır (ret sayılmaz; duzelt aşamayı insan verir)."""
+    parts = []
+    yeni = [x for x in cur["isaretler"] if x not in set(base.get("isaretler") or [])]
+    if yeni:
+        parts.append("yeni işaret: " + ", ".join(yeni))
+    if karar == "kabul":
+        if (base.get("asama") or "") != cur["asama"]:
+            parts.append(f"sayılan aşama {base.get('asama') or '—'} → {cur['asama'] or '—'}")
+        if base.get("od") != cur["od"]:
+            parts.append(f"OD {base.get('od') or '—'} → {cur['od'] or '—'}")
+    return "; ".join(parts)
+
+
+def _acknowledged(xr: dict | None) -> bool:
+    """Tablo satırında "bakıldı" = evet (insan yeniden baktı, karar aynı kalsın)."""
+    return bool(xr) and _norm(xr.get("bakildi")) in ("evet", "e", "bakildi", "tamam")
+
+
+def relook_pending(xr: dict) -> bool:
+    """Tablo satırı yeniden bakılmayı bekliyor mu (karar var, gerekçe dolu, bakıldı değil)."""
+    return bool(str(xr.get("karar") or "").strip() and str(xr.get("yeniden_bak") or "").strip()
+                and not _acknowledged(xr))
 
 
 @dataclass
@@ -254,6 +320,7 @@ def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | 
         "vurgu": "; ".join(vurgu), "guven": m.get("guven") or "",
         "isaretler": ", ".join(dict.fromkeys(flags)), "flags": list(dict.fromkeys(flags)),
         "alinti": m.get("alinti") or "", "gerekce": m.get("gerekce") or "",
+        "yeniden_bak": "", "bakildi": "",
         **_decision_cells(dec),
     }
     row["donem_kurali"] = D.describe(row)
@@ -770,7 +837,14 @@ def audit(ws_root: Path, *, out: Path | None = None, profile: str | None = None)
             uy.append(f"{len(carry)} karar tabloda vardı ama uygulanmamıştı: yeni tabloya taşındı "
                       f"(OD'ye yansıması için `bidr audit apply`)")
         old.replace(outp / "review.onceki.xlsx")
+    else:
+        xrows = []
     a = build(ws_root, out=outp, profile=profile, review=applied)
+    n_rb = _mark_relook(a, outp, applied, carry, {str(xr.get("satir")): xr for xr in xrows})
+    if n_rb:
+        uy.append(f"{n_rb} kararlı satır yeniden bakılmalı (karardan sonra yeni inceleme işareti ya da sayılan "
+                  f"aşama/OD değişti): eski karar korundu; review.xlsx 'YENİDEN BAK' sütunu (tablonun başında). "
+                  f"Karar aynı kalacaksa 'bakıldı' = evet, sonra `bidr audit apply`")
     if carry_names:
         n = 0
         for r in a.rows:     # uygulanmamış kanıt adı düzeltmesi: tabloda kalır
@@ -812,6 +886,62 @@ def audit(ws_root: Path, *, out: Path | None = None, profile: str | None = None)
                 r.update(_decision_cells(d))
     paths = write_outputs(a)
     return a, paths
+
+
+def _mark_relook(a: Audit, outp: Path, applied: dict[str, dict], carry: dict[str, dict],
+                 old_rows: dict[str, dict]) -> int:
+    """İşlenmiş kararı olan satırlarda görülen durumla yeni durumu karşılaştırır; değişeni
+    `yeniden_bak` gerekçesiyle işaretler (karar değişmez). Görülen durum kaydı yoksa (bu özellikten
+    önceki çalışma alanı) önceki tablonun satırından alınır: o zaman yalnız yeni işaret karşılaştırılır
+    (önceki tablo kararsız hesaplanmış olabilir; aşama/OD karşılaştırması yanıltır).
+    Önceki tabloda 'bakıldı' = evet yazılmışsa görülen durum o satırdır."""
+    seen = load_seen(outp)
+    n = 0
+    for sid in list(seen):
+        if sid not in applied:
+            seen.pop(sid)
+    for r in a.rows:
+        sid = r["satir"]
+        dec = applied.get(sid)
+        if not dec or sid in carry:
+            continue
+        xr = old_rows.get(sid)
+        if xr is not None and "isaretler" in xr and (sid not in seen or _acknowledged(xr)):
+            seen[sid] = {**seen_state(xr), "tam": _acknowledged(xr)}
+        base = seen.get(sid)
+        if not base:
+            continue
+        cur = seen_state(r)
+        why = relook_reason(base, cur, dec["karar"] if base.get("tam") else "")
+        if why:
+            r["yeniden_bak"] = why
+            n += 1
+    _save_seen(outp, seen)
+    return n
+
+
+def _update_seen(a: Audit, outp: Path, prev: dict[str, dict], merged: dict[str, dict],
+                 xrows: list[dict]) -> int:
+    """`audit apply`: kararın gördüğü durumu kaydeder. Yeni/değişen kararda, 'bakıldı' = evet
+    satırda ya da kaydı olmayan satırda görülen durum = şimdiki durum; aksi halde (yeniden bakılmayı
+    bekleyen satır) eski görülen durum korunur. Döner: hâlâ yeniden bakılmayı bekleyen satır sayısı."""
+    seen = {k: v for k, v in load_seen(outp).items() if k in merged}
+    xr_by = {str(xr.get("satir")): xr for xr in xrows}
+    rows = a.by_key
+    n = 0
+    for sid, dec in merged.items():
+        r = rows.get(sid)
+        if not r:
+            continue
+        cur = seen_state(r)
+        base = seen.get(sid)
+        if (base is None or prev.get(sid) != dec or _acknowledged(xr_by.get(sid))
+                or not relook_reason(base, cur, dec["karar"] if base.get("tam") else "")):
+            seen[sid] = {**cur, "tam": True}
+        else:
+            n += 1
+    _save_seen(outp, seen)
+    return n
 
 
 # -- karar okuma / uygulama ---------------------------------------------------------------
@@ -1038,6 +1168,20 @@ def review_state(out: Path, ws_root: Path | None = None) -> dict:
             pend.add(f"birim:{ur['doc_id']}")
     pend |= _od_pending(sheet.read_od_sheet(x), load_od_decisions(out))
     st["uygulanmamis_duzeltme"] = len(pend)
+    # yeniden bakılmalı: işlenmiş kararı değişmemiş, 'bakıldı' yazılmamış satırlar
+    st["yeniden_bak"] = 0
+    seen = load_seen(out)
+    for xr in xrows:
+        dec, err = parse_decision(xr, cs)
+        if not dec or applied.get(dec["satir"]) != dec or not str(xr.get("yeniden_bak") or "").strip():
+            continue
+        if relook_pending(xr):
+            st["yeniden_bak"] += 1
+        else:       # 'bakıldı' yazıldı: görülen durum kaydına geçmediyse apply bekler
+            b = seen.get(dec["satir"])
+            if not (b and b.get("tam") and not relook_reason(b, seen_state(xr), dec["karar"])):
+                pend.add(f"bakildi:{dec['satir']}")
+    st["uygulanmamis_duzeltme"] = len(pend)
     return st
 
 
@@ -1099,6 +1243,7 @@ def apply(ws_root: Path, *, out: Path | None = None, profile: str | None = None)
             op.unlink()
     a = build(ws.root, out=outp, profile=profile, review=merged, pins=pins)
     write_outputs(a, xlsx=False)
+    n_rb = _update_seen(a, outp, prev, merged, xrows)
     from collections import Counter
     return {"satir": len(xrows), "kararli": len(yeni), "bos": bos, "gecersiz": hatalar,
             "karar": dict(Counter(d["karar"] for d in yeni.values())),
@@ -1106,7 +1251,7 @@ def apply(ws_root: Path, *, out: Path | None = None, profile: str | None = None)
             "kanit_adi": len(adlar), "kanit_adi_gecersiz": ad_hata,
             "baglanti": len(baglar), "baglanti_gecersiz": bag_hata,
             "birim": {k: v for k, v in birim_oz.items() if v}, "birim_gecersiz": birim_hata,
-            "od_onayli": len(load_od_decisions(outp)), "od_gecersiz": od_hata}
+            "od_onayli": len(load_od_decisions(outp)), "od_gecersiz": od_hata, "yeniden_bak": n_rb}
 
 
 def _name_edits(xrows: list[dict]) -> list[tuple[str, str, str]]:

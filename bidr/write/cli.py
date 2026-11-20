@@ -16,8 +16,8 @@ def _cmd(args) -> int:
 
     try:
         if args.action == "prepare" and args.reddedilenler:
-            if args.redo:
-                print("HATA --reddedilenler ile --redo birlikte kullanılmaz")
+            if args.redo or args.eski_kurallar:
+                print("HATA --reddedilenler ile --redo/--eski-kurallar birlikte kullanılmaz")
                 return 2
             st = R.prepare_rejected(args.workspace, only=olcut_list(args.only), index=args.index,
                                     audit=args.audit, onceki=args.onceki, notes=args.notlar, hitap=args.hitap)
@@ -34,7 +34,11 @@ def _cmd(args) -> int:
             return 0
         if args.action == "prepare":
             st = R.prepare(args.workspace, only=olcut_list(args.only), redo=args.redo, index=args.index,
-                           audit=args.audit, onceki=args.onceki, notes=args.notlar, hitap=args.hitap)
+                           audit=args.audit, onceki=args.onceki, notes=args.notlar, hitap=args.hitap,
+                           old_rules=args.eski_kurallar)
+            if args.eski_kurallar:
+                print(f"eski yazım kuralıyla yazılmış geçerli metin: {len(st['yenilenen'])}"
+                      + (f" ({', '.join(st['yenilenen'])})" if st["yenilenen"] else " — yenilenecek metin yok"))
             print(f"{st['paket']} paket ({st['yeni']} yeni/değişen), zaten_tamam={st['zaten_tamam']}, "
                   f"bekleyen {st['bekleyen']} → {st['klasor']}")
             print(f"önceki yıl metni: {st['onceki'] or 'yok'}"
@@ -42,8 +46,9 @@ def _cmd(args) -> int:
             if st["kanitsiz"]:
                 print(f"kanıtsız ölçüt (paket yok; metin yazılmaz): {', '.join(st['kanitsiz'])}")
             if st["eski_surum"]:
-                print(f"görevin eski sürümüyle yazılmış, girdileri güncel (geçerli; yeniden paketlenmedi): "
-                      f"{', '.join(st['eski_surum'])} — yeni kuralla yeniden yazmak için --only ya da --redo")
+                print(f"eski yazım kuralıyla yazılmış, girdileri güncel (geçerli; yeniden paketlenmedi): "
+                      f"{', '.join(st['eski_surum'])} — isteğe bağlı yenileme (yalnız bunlar): "
+                      f"bidr write prepare -w {args.workspace} --eski-kurallar")
             print(f"Ajan: {st['klasor']}/README.md")
             return 0
         st = R.apply(args.workspace, model=args.model, index=args.index, audit=args.audit)
@@ -58,6 +63,7 @@ def _cmd(args) -> int:
             print(f"    - {e}")
     if st["eski"]:
         print(f"  eski paket (kanıt listesi/OD/görev sürümü değişti; yeniden prepare): {', '.join(st['eski'])}")
+    print(f"Sıradaki: bidr next -w {args.workspace}")
     return 1 if st["gecersiz"] else 0
 
 
@@ -74,6 +80,9 @@ def register(sub):
     _src_args(a)
     a.add_argument("--only", metavar="OLCUT[,…]", help="yalnız bu ölçütler (yazılmış olsalar da)")
     a.add_argument("--redo", action="store_true", help="yazılmış metinleri de yeniden paketle")
+    a.add_argument("--eski-kurallar", action="store_true",
+                   help="isteğe bağlı yenileme: yalnız yazım görevinin eski sürümüyle yazılmış, girdisi değişmemiş "
+                        "geçerli metinleri yeni yazım kuralıyla yeniden paketle (sonra yeniden doğrulanır)")
     a.add_argument("--reddedilenler", action="store_true",
                    help="yeniden yazım turu: verify'ın reddettiği metinler için doğrulayıcının cümle bazlı "
                         "gerekçesiyle yeni paket (tur sınırı: config.yaml rapor.yeniden_yazim_siniri, vars. 2)")

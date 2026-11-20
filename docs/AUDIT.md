@@ -292,6 +292,21 @@ Sütunlar başlık adıyla okunur; kullanıcı sütun ekleyip sırayı değişti
 yazılır; tabloda olup işlenmemiş kararlar da kaybolmaz (yeni tabloya taşınır, eski tablo
 `review.onceki.xlsx`).
 
+**Yeniden bakılmalı (güncelleme, kör test 2026-11-20).** Karar verildiğinde satırın gördüğü durum
+— inceleme işaretleri (kararın kendisinden doğanlar hariç: `insan_reddetti`, `insan_duzeltti`,
+birim onayı), sayılan aşama ve OD — `audit apply` ile `review-gorulen.jsonl`'e yazılır. Audit yeniden
+çalışınca (araç sürümü, yeni belge, identify/decide değişikliği) işlenmiş kararı olan bir satıra yeni
+işaret eklendiyse (ör. `tarih_dogrulanmali`, `birim_sayfasi`, `fotograf_mekan`) ya da `kabul`
+satırının sayılan aşaması/OD'si değiştiyse karar **korunur ve geçerli kalır** (insan kararı ezilmez),
+ama satır "YENİDEN BAK: karardan sonra değişen" sütununda gerekçesiyle (ör. `yeni işaret: birim_sayfasi;
+OD 2 → 3`) turuncu vurgulanır ve tablonun başına alınır; `bidr audit` uyarısı ve `bidr status`/`next`
+(`audit_tamam`, `ilerleme.yeniden_bak`) sayısını verir. Kullanıcı satıra bakar: karar aynı kalacaksa
+"bakıldı (evet)" sütununa `evet` yazar, değilse KARAR/NOT'u değiştirir (değişen karar da bakılmış
+sayılır); `bidr audit apply` görülen durumu günceller. `apply` tek başına işareti kaldırmaz. Bu
+özellikten önce işlenmiş kararlarda (`review-gorulen.jsonl` yok) görülen durum önceki tablonun
+satırından alınır ve yalnız yeni işaret karşılaştırılır (önceki tablo karar işlenmeden üretilmiş
+olabilir; aşama/OD karşılaştırması yanıltır); ilk `apply`'dan sonra tam karşılaştırma yapılır.
+
 "Başka birime ait sayılanlar" (birim sayfası): ilk satır kısa açıklama, ikinci satır başlık;
 satır = modelin `baska_birim` ya da `belirsiz` dediği, ya da insanın birim kararı verdiği belge
 (belirsizde eşleşmeler sütunu onay bekleyen eşleşmeleri gösterir). Sütunlar: belge
@@ -356,8 +371,8 @@ işlemek kullanıcı onayıyla ayrı bir adımdır. gaps.md yeniden yazılırken
 review.xlsx var ve güncel `decisions.jsonl`'den üretilmiş (`_meta.kararlar_sha`); her satırın
 geçerli kararı var; tablodaki her karar `review-decisions.jsonl`'de birebir; kanıt adı ve
 bağlantı düzeltmeleri ve birim sayfası kararları da işlenmiş (`uygulanmamis_duzeltme` = 0);
-birim kararları tablodan sonra değiştiyse tablo yeniden üretilmiş. Aşama
-`onay: insan`: kararı ajan vermez.
+birim kararları tablodan sonra değiştiyse tablo yeniden üretilmiş; "yeniden bakılmalı" satır yok
+(her biri için `bakıldı` = evet ya da değişen karar, işlenmiş). Aşama `onay: insan`: kararı ajan vermez.
 
 ## Faaliyet kayıtları (faaliyet → audit)
 

@@ -208,6 +208,8 @@ def facts(a: dict | None, rows: list[dict] | None) -> dict:
             "iyilestirme": var("onlem_al"), "birim_kaniti": [r.get("ad") or r.get("doc_id") or "" for r in unit][:5]}
 
 
+HEDEF_BULGU = ("doğrulanmış metindeki göstergenin gerçekleşme değeri hedefin altında kalmış (değer, düzeyi ve "
+               "dönemi metinde yazıldığı gibi verilir; fakülte/kurum geneli değer bölümün değeri sayılmaz)")
 HEDEF_OK = re.compile(r"hedef\w* (?:ulasil|asil|karsilan|tuttur|gerceklestiril)|hedefin (?:uzerinde|ustunde)"
                       r"|hedef\w* (?:ustunde|uzerinde)")
 HEDEF_ALTI = re.compile(r"hedefin (?:altinda|gerisinde)|hedef\w* (?:ulasilama|tutturulama|karsilanama|"
@@ -287,6 +289,16 @@ class Inputs:
         return int((self.audit.get(c) or {}).get("od") or 1)
 
     def findings(self, c: str) -> list[str]:
+        """Gelişmeye açık yönün dayanağı (BULGULAR satırı; yazar ve doğrulayıcı aynısını görür). Audit
+        bulgularına, doğrulanmış metindeki göstergenin hedefin altında kalması eklenir: kod bunu güçlü
+        yön saymaz (`hedef_alti_guclu`), doğrulayıcı da gelişmeye açık yön olarak ancak BULGULAR'da
+        görürse kabul eder (kör test 2026-11-20: iki kural birbirini dışlıyordu)."""
+        out = self.base_findings(c)
+        if self.target(c) == "alti":
+            out.append(HEDEF_BULGU)
+        return out
+
+    def base_findings(self, c: str) -> list[str]:
         return findings(self.audit.get(c), bool(self.index.get(c)), self.index.get(c))
 
     def facts(self, c: str) -> dict:
@@ -302,7 +314,8 @@ class Inputs:
         return [c for c in self.criteria(alan) if self.findings(c)]
 
     def girdi_sha(self, alan: str) -> str:
-        rows = [(c, W.text_sha(self.verified[c]) if c in self.verified else None, self.od(c), self.findings(c),
+        # hedef bulgusu doğrulanmış metinden türer (metin özeti zaten girdide): taban bulgular yeter
+        rows = [(c, W.text_sha(self.verified[c]) if c in self.verified else None, self.od(c), self.base_findings(c),
                  self.facts(c)) for c in self.criteria(alan)]
         return K.sha(json.dumps(rows, ensure_ascii=False))
 
@@ -409,6 +422,7 @@ H_BIRIM = re.compile(r"bolum(?:un|umuzun)? (?:duzeyinde|donem icindeki|kendi|tar
                      r"|birim(?:in)? (?:duzeyinde|uygulama)|yalniz(?:ca)? kurum|kurum(?: geneli)? duzeyinde"
                      r"|kurum geneli\w*(?: \w+){0,2} (?:ile|yle) sinirli|kurum geneli duzenleme\w*le eslesmekte")
 H_UYGULAMA = re.compile(r"uygulama(?:sina|ya|larina)? (?:iliskin |dair )?(?:\w+ )?kanit|uygulama kanit|uygulandig")
+YALNIZ_KURUM = re.compile(r"yalniz(?:ca)? kurum|kurum geneli\w*(?: \w+){0,2} (?:ile|yle) sinirli")
 H_HIC = re.compile(r"(?:bu donemde |olcute iliskin |hicbir )?kanit bulunama|kanit(?:i)? (?:yoktur|bulunmamaktadir)")
 # güçlü yönde birimin bir uygulamayı yaptığını/kaydettiğini söyleyen fiil (yalnız "tanımlanmıştır",
 # "hazırlanmıştır" gibi plan dili değil; "izlenmesi" gibi ad biçimleri değil)
@@ -495,6 +509,7 @@ def cross_check(t: dict, meta: dict) -> list[dict]:
             cl = _claims(KOD.sub(" ", s))
             if not cl:
                 continue
+            low = _f(KOD.sub(" ", s))
             for c in dict.fromkeys(KOD.findall(s)):
                 o = olg.get(c) or {}
                 bad = []
@@ -504,7 +519,10 @@ def cross_check(t: dict, meta: dict) -> list[dict]:
                     bad.append("iyileştirme halkası kanıtlı")
                 if ({"birim", "uygulama"} & cl) and o.get("uygulama"):
                     bad.append("uygulama halkası kanıtlı")
-                elif "birim" in cl and o.get("birim_kaniti"):
+                elif "birim" in cl and o.get("birim_kaniti") and (YALNIZ_KURUM.search(low) or "uygula" not in low):
+                    # "bölümün bu dönemdeki uygulamasını gösteren belge yok" BULGULAR satırının kendisidir
+                    # (uygulama halkası yok; birime ait kanıt izleme/plan olabilir): çelişki değil. Genel
+                    # "bölüm düzeyinde kanıt yok" ya da "yalnız kurum geneli" hükmü birim kanıtıyla çelişir.
                     bad.append("kanıt listesinde birime ait kanıt var (" + "; ".join(o["birim_kaniti"][:2])
                                + "): sayılmadıysa nedeniyle yazılır")
                 if "hic" in cl and o.get("kanit"):

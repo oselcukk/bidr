@@ -479,12 +479,24 @@ def prepare_rejected(ws_root: Path, *, only: list[str] | None = None, index: Pat
 
 def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
             index: Path | None = None, audit: Path | None = None, onceki=None, notes: Path | None = None,
-            hitap: str | None = None, backend: Backend | None = None) -> dict:
+            hitap: str | None = None, backend: Backend | None = None, old_rules: bool = False) -> dict:
+    """`old_rules` (`--eski-kurallar`): yalnız yazım görevinin eski sürümüyle yazılmış, girdisi değişmemiş
+    ve reddedilmemiş metinleri yeni kuralla yeniden paketler (isteğe bağlı yenileme; bkz. `old_rule_texts`)."""
     backend = backend or Backend()
     src = Sources(ws_root, index=index, audit=audit, onceki=onceki, notes=notes, verify=backend.verify_quote)
     unknown = [c for c in only or [] if c not in src.cs._index]
     if unknown:
         raise KeyError(f"bilinmeyen ölçüt: {', '.join(unknown)}")
+    if old_rules:
+        if redo:
+            raise KeyError("--eski-kurallar ile --redo birlikte kullanılmaz")
+        olds = old_rule_texts(src.ws, src.index, src.audit, task_version())
+        only = [c for c in olds if not only or c in only]
+        if not only:
+            return {"paket": 0, "yeni": 0, "zaten_tamam": 0, "kanitsiz": [], "onceki": src.previous_name,
+                    "onceki_olcut": 0, "eski_surum": [], "yenilenen": [], "klasor": str(work_dir(src.ws)),
+                    "bekleyen": K.write_readme(work_dir(src.ws), task=TASK, version=task_version(), cmd="write",
+                                               rule=RULE) if work_dir(src.ws).exists() else 0}
     save_source_paths(src, onceki if onceki is not None else S.configured_previous(src.ws.root), notes)
     _, profile = S.unit_name(src.ws.root)
     h = hitap_for(profile, hitap)
@@ -492,7 +504,8 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
     d.mkdir(parents=True, exist_ok=True)
     yes, no = _criteria(src, only)
     st = {"paket": 0, "yeni": 0, "zaten_tamam": 0, "kanitsiz": no, "onceki": src.previous_name,
-          "onceki_olcut": sum(c in src.previous for c in yes), "eski_surum": []}
+          "onceki_olcut": sum(c in src.previous for c in yes), "eski_surum": [],
+          "yenilenen": list(only) if old_rules else []}
     for c in yes:
         inputs, meta = write_inputs(src, c, h)
         r = backend.render_task(TASK, inputs)
@@ -505,13 +518,33 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
         if t and not redo and not only and old_version_valid(t, str(r["version"]), inputs_sha(src, c)):
             st["eski_surum"].append(c)          # görevin eski sürümüyle yazılmış, girdileri güncel: geçerli
             continue
-        meta.update({"tur": int((t or {}).get("tur") or 0), "temel_istem_sha": K.sha(r["prompt"]),
-                     "girdi_sha": inputs_sha(src, c)})
+        gsha = inputs_sha(src, c)
+        # doğrulama tur sayacı metnin girdisine bağlıdır: kanıt listesi/OD değişince ya da metin yeni
+        # kuralla yenilenince yeni metin baştan sayılır (eski metnin turları yeni metne yük olmaz)
+        same = bool(t) and t.get("girdi_sha") == gsha and not old_rules
+        meta.update({"tur": int(t.get("tur") or 0) if same else 0, "temel_istem_sha": K.sha(r["prompt"]),
+                     "girdi_sha": gsha})
         st["paket"] += 1
         st["yeni"] += K.write_pkg(d, c, r, meta, force=bool(redo and t))
     st["bekleyen"] = K.write_readme(d, task=TASK, version=task_version(), cmd="write", rule=RULE)
     st["klasor"] = str(d)
     return st
+
+
+def old_rule_texts(ws: Workspace, index: dict, audit: dict, version: str | None = None) -> list[str]:
+    """Yazım görevinin eski sürümüyle (eski yazım kuralıyla) yazılmış, girdisi (kanıt listesi, OD)
+    değişmemiş ve doğrulamada reddedilmemiş metinler: geçerlidir; yeni kuralla yeniden yazmak isteğe
+    bağlıdır (`bidr write prepare --eski-kurallar`)."""
+    version = version or task_version()
+    out = []
+    for c in sorted(index, key=id_key):
+        t = load_text(ws, c)
+        if not t or t.get("durum") == "reddedildi":
+            continue
+        od = int((audit.get(c) or {}).get("od") or 1)
+        if old_version_valid(t, version, girdi_sha(index[c], od)):
+            out.append(c)
+    return out
 
 
 def old_version_valid(t: dict, version: str, cur_inputs_sha: str) -> bool:
@@ -558,6 +591,18 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", index: Path | Non
             st["bekleyen"].append(c)
             continue
         meta = pkg["meta"]
+        old = load_text(src.ws, c)
+        okay = old and (old.get("kaynak") or {})
+        if okay and okay.get("istem_sha") == pkg["istem_sha"] \
+                and okay.get("cevap_sha") == K.sha(outp.read_text(encoding="utf-8")):
+            # bu paketin bu cevabı zaten metin oldu (önceki çalıştırmadan kalan paket): write_tamam gibi
+            # işlenmiş sayılır, görev sürümü eski olsa da; metnin girdisi sonradan değiştiyse paket değil
+            # metin eskidir (prepare)
+            if old.get("girdi_sha") and old["girdi_sha"] != inputs_sha(src, c):
+                st["eski"].append(c)
+            else:
+                st["degismedi"] += 1
+            continue
         if str(pkg["surum"]) != version:
             st["eski"].append(c)
             continue
@@ -588,7 +633,6 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", index: Path | Non
                "kaynak": {"model": model, "gorev_surumu": str(pkg["surum"]), "istem_sha": pkg["istem_sha"],
                           "temel_istem_sha": meta.get("temel_istem_sha") or pkg["istem_sha"],
                           "cevap_sha": K.sha(raw), "onceki": meta.get("onceki"), "zaman": K.now()}}
-        old = load_text(src.ws, c)
         if old and text_sha(old) == text_sha(rec) and (old.get("kaynak") or {}).get("istem_sha") == pkg["istem_sha"]:
             st["degismedi"] += 1
             continue

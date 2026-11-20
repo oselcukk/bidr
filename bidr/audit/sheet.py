@@ -61,6 +61,8 @@ COLS = [
     ("alinti_kaynagi", "alıntı kaynağı (belge/betimleme)", 10, False),
     ("alinti", "alıntı", 60, False),
     ("gerekce", "gerekçe", 50, False),
+    ("yeniden_bak", "YENİDEN BAK: karardan sonra değişen", 30, False),
+    ("bakildi", "bakıldı (evet)", 9, True),
     ("karar", "KARAR (kabul/ret/duzelt)", 14, True),
     ("duzelt_olcut", "düzelt: ölçüt", 10, True),
     ("duzelt_yuva", "düzelt: yuva", 10, True),
@@ -144,6 +146,10 @@ HELP = [
     f"'{SHEET_SUM}' sayfası: 'önerilen OD' kodun önerisidir; komisyonun onayladığı nihai düzeyi "
     f"'{SUM_OD}' sütununa (1-5) yazın, gerekirse '{SUM_NOT}'. Kod önerisi değişmez; ikisi ayrı kaydedilir "
     "(olcut-od-kararlari.jsonl, audit-olcutler.json `od_kod_onerisi` / `od_onayli`). OD5 önerisi insan onayı bekler.",
+    "YENİDEN BAK (turuncu): satırın kararı verildikten sonra audit yeniden çalıştı ve satıra yeni bir "
+    "inceleme işareti eklendi (ör. tarih_dogrulanmali, birim_sayfasi, fotograf_mekan) ya da sayılan aşaması/OD'si "
+    "değişti. Eski karar KORUNUR ve geçerlidir; satıra yeniden bakın: karar aynı kalacaksa 'bakıldı' sütununa "
+    "evet yazın, değilse KARAR/NOT'u değiştirin; sonra `bidr audit apply`. Bu satırlar tablonun başındadır.",
     "Tabloyu doldurduktan sonra: bidr audit apply -w <çalışma alanı>",
 ]
 
@@ -167,7 +173,7 @@ def write_review(a, path: Path) -> None:
         ws.column_dimensions[get_column_letter(i)].width = w
     idx = {k: i for i, (k, _, _, _) in enumerate(COLS, 1)}
     # birim aitliği onay bekleyen satırlar öne (insan onaylamadıkça sayılmaz)
-    for r in sorted(a.rows, key=lambda r: not r.get("birim_onay_bekliyor")):
+    for r in sorted(a.rows, key=lambda r: (not r.get("birim_onay_bekliyor"), not r.get("yeniden_bak"))):
         ws.append([_fmt(r.get(k, "")) for k, _, _, _ in COLS])
         n = ws.max_row
         for i in range(1, len(COLS) + 1):
@@ -192,12 +198,16 @@ def write_review(a, path: Path) -> None:
             ws.cell(row=n, column=idx["vurgu"]).font = Font(bold=True)
         elif r.get("birim_iliskisi") == "belirsiz":
             ws.cell(row=n, column=idx["birim_iliskisi"]).fill = F_LOW
+        if r.get("yeniden_bak"):
+            for k in ("yeniden_bak", "bakildi"):
+                ws.cell(row=n, column=idx[k]).fill = F_ONERI
+            ws.cell(row=n, column=idx["yeniden_bak"]).font = Font(bold=True)
         if r.get("alinti_kaynagi") == "betimleme":
             ws.cell(row=n, column=idx["alinti_kaynagi"]).fill = F_LOW
         for k in ("kanit_adi", "baglanti", "karar", "duzelt_olcut", "duzelt_yuva", "duzelt_asama", "etiket_karari", "etiket_yeni", "not"):
             ws.cell(row=n, column=idx[k]).fill = F_USER
     last = max(ws.max_row, 2)
-    for key, opts in (("karar", "kabul,ret,duzelt"), ("etiket_karari", "onayla,duzelt"),
+    for key, opts in (("karar", "kabul,ret,duzelt"), ("bakildi", "evet"), ("etiket_karari", "onayla,duzelt"),
                       ("duzelt_asama", ",".join(LINKS))):
         dv = DataValidation(type="list", formula1=f'"{opts}"', allow_blank=True)
         col = get_column_letter(idx[key])

@@ -47,6 +47,9 @@ def _run(args) -> int:
                       + ",".join(b["yeniden_karar"]))
             if st["bos"]:
                 print(f"{st['bos']} satır karar bekliyor.")
+            if st.get("yeniden_bak"):
+                print(f"{st['yeniden_bak']} kararlı satır yeniden bakılmalı ('YENİDEN BAK' sütunu; eski karar "
+                      "geçerli): karar aynı kalacaksa 'bakıldı' = evet, sonra yeniden apply.")
             return 0
         a, paths = run.audit(ws, out=args.out, profile=args.profile)
     except (FileNotFoundError, RuntimeError, ValueError) as e:

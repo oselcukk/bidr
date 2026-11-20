@@ -207,3 +207,73 @@ def test_decisions_change_makes_table_stale(ws, tmp_path):
 def test_apply_without_table(ws, tmp_path):
     with pytest.raises(FileNotFoundError):
         apply(ws, out=tmp_path / "yok")
+
+
+# -- karardan sonra değişen satır: "yeniden bak" (karar korunur) -----------------------------
+
+def _set_doc(ws, did, **kw):
+    rows = [json.loads(x) for x in (ws / "documents.jsonl").read_text(encoding="utf-8").splitlines() if x]
+    for r in rows:
+        if r["doc_id"] == did:
+            r.update(kw)
+    (ws / "documents.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+
+
+@pytest.mark.parametrize("eski_calisma_alani", [False, True])
+def test_relook_after_new_flag_keeps_decision(ws, tmp_path, eski_calisma_alani):
+    out = tmp_path / "out"
+    audit(ws, out=out)
+    _fill(out / "review.xlsx", {"*": {"karar": "kabul"}})
+    st = apply(ws, out=out)
+    assert st["yeniden_bak"] == 0 and len(list(read_jsonl(out / FILES["gorulen"]))) == 8
+    if eski_calisma_alani:          # özellikten önce işlenmiş kararlar: görülen durum önceki tablodan
+        (out / FILES["gorulen"]).unlink()
+        audit(ws, out=out)
+    sid = "d_plan|B.1.1/1"
+    # yeni sürüm/yeni belge: aynı satırın belgesi artık önceki yıla ait (yeni işaret)
+    _set_doc(ws, "d_plan", donem_ici=False)
+    a, _ = audit(ws, out=out)
+    r = a.by_key[sid]
+    assert r["karar"] == "kabul"                                  # insan kararı ezilmez
+    assert r["yeniden_bak"] == "yeni işaret: guncellik_dogrulanmali"
+    assert not a.by_key["d_uyg|B.1.1/3"]["yeniden_bak"]           # değişmeyen satır işaretsiz
+    assert any("yeniden bakılmalı" in u for u in a.uyarilar)
+    st = review_state(out, ws)
+    assert st["yeniden_bak"] == 1 and st["uygulanmamis"] == 0
+    wb = load_workbook(out / "review.xlsx")
+    sh = wb[SHEET_ROWS]
+    head = [c.value for c in sh[1]]
+    assert sh.cell(row=2, column=1).value == sid                  # yeniden bakılacak satır başta
+    assert sh.cell(row=2, column=head.index("YENİDEN BAK: karardan sonra değişen") + 1).fill.fgColor.rgb.endswith("F8CBAD")
+    # apply tek başına işareti kaldırmaz (insan bakmadı)
+    assert apply(ws, out=out)["yeniden_bak"] == 1
+    assert "yeni işaret" in audit(ws, out=out)[0].by_key[sid]["yeniden_bak"]
+    # insan baktı: bakıldı = evet → apply → işaret kalkar, karar aynı
+    _fill(out / "review.xlsx", {sid: {"bakildi": "evet"}})
+    st = review_state(out, ws)
+    assert st["yeniden_bak"] == 0 and st["uygulanmamis_duzeltme"] == 1
+    assert apply(ws, out=out)["yeniden_bak"] == 0
+    assert review_state(out, ws)["uygulanmamis_duzeltme"] == 0
+    a, _ = audit(ws, out=out)
+    assert not a.by_key[sid]["yeniden_bak"] and a.by_key[sid]["karar"] == "kabul"
+    assert review_state(out, ws)["yeniden_bak"] == 0
+
+
+def test_relook_od_change_and_redecision(ws, tmp_path):
+    out = tmp_path / "out"
+    audit(ws, out=out)
+    _fill(out / "review.xlsx", {"*": {"karar": "kabul"}})
+    apply(ws, out=out)
+    # kurum geneli yönerge "uygula" eşleşmesi planla'ya iniyordu; tür birime ait karar olunca sayılan
+    # aşama ve OD değişir
+    sid = "d_yon|B.2.3/2"
+    before = audit(ws, out=out)[0].by_key[sid]
+    _set_doc(ws, "d_yon", doc_type="bolum_kurulu_karari", donem_ici=True)
+    a, _ = audit(ws, out=out)
+    r = a.by_key[sid]
+    assert r["etkin_asama"] != before["etkin_asama"]
+    assert "sayılan aşama" in r["yeniden_bak"] and "OD" in r["yeniden_bak"]
+    # kararı değiştirmek de yeniden bakmaktır
+    _fill(out / "review.xlsx", {sid: {"karar": "ret"}})
+    apply(ws, out=out)
+    assert not audit(ws, out=out)[0].by_key[sid]["yeniden_bak"]

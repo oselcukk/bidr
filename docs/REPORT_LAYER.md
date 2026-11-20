@@ -181,6 +181,15 @@ gerçekleşme/hedef değeri cümleleri) alıntılardan önce verilir (`write/sou
 sayıyı küçültme ("4 proje", "birinin" değil), kanıtta bilgi varken "kanıt yok" deme, fakülte
 değerini bölümün değeri gibi verme ve hedefle karşılaştırmayı açık yaz; kural 13: aracın iç dili yok
 (kod `ic_dil`). v2 metinleri girdileri değişmedikçe geçerli kalır.
+**Eski yazım kuralıyla yazılmış metinler (isteğe bağlı yenileme).** `write_tamam` bunları sayar
+(`ilerleme.eski_kural`; uyarı: "N metin eski yazım kuralıyla yazıldı … `bidr write prepare -w WS
+--eski-kurallar`"); aşama bitmiş sayılır, yenileme zorunlu değildir. `--eski-kurallar` yalnız görev
+sürümü eski, `girdi_sha`'sı güncel ve reddedilmemiş metinleri yeni kuralla paketler (`write.run.old_rule_texts`);
+yeni metin taslak olur ve yeniden doğrulanır.
+**Paket artığı:** `write apply`, cevabı zaten metne dönüşmüş paketi (metnin `istem_sha` ve
+`cevap_sha`'sı paketinkiyle aynı; önceki çalıştırmadan kalan, görev sürümü eski olsa da) işlenmiş
+sayar (`değişmedi`); "eski paket … yeniden prepare" yalnız gerçekten yeniden hazırlanması gereken
+(girdisi değişmiş ya da cevaplanmamış eski sürüm) paket içindir, `bidr next` ile aynı.
 Her cümle en az bir atıf taşır; atıflar `evidence-index.csv`'de olmalı. Metin OD'yi
 `audit-olcutler.json`'daki önerilen düzeyin üstünde iddia etmez. `[komisyon]` işareti
 cümlenin kanıta değil komisyon bilgisine (`rapor-notlari.yaml`) dayandığını gösterir; rapora
@@ -197,7 +206,9 @@ paket yazar; istemin sonuna doğrulayıcının bütün gerekçeleri — destekle
 denetiminin `uydurma_suphesi` soruları (soru, yerler, gerekçe), kod denetimi sorunları ve
 `gerekce` listesinde bunlarla gösterilmeyen her satır — ve reddedilen metin eklenir (doğrulayıcının
 paketi verilmez). Ajan yeniden yazar → `write apply` (metnin `tur`u bir artar)
-→ `verify prepare/apply` yeniden. Yeniden yazımı ve doğrulamayı ayrı, taze ajanlar yapar.
+→ `verify prepare/apply` yeniden. Tur sayacı metnin girdisine bağlıdır: kanıt listesi/OD değişip
+(`girdi_sha`) metin `write prepare` ile yeniden yazılınca ya da `--eski-kurallar` ile yenilenince yeni
+metin tur 0'dan başlar; girdi aynıyken `--only`/`--redo` sayacı sıfırlamaz. Yeniden yazımı ve doğrulamayı ayrı, taze ajanlar yapar.
 `rapor.yeniden_yazim_siniri` (vars. 2) turdan sonra hâlâ reddedilen ölçüt "insan gerekli"dir:
 kullanıcı `bidr verify karar -w WS <ölçüt> cikar|tekrar` ile karar verir (`verify-insan.jsonl`;
 `cikar` metni rapordan çıkarır, `tekrar` bir tur ekler).
@@ -225,14 +236,23 @@ kanıt yok/yalnız kurum geneli"; nedenli hüküm — "tarihi belgede görülmü
 çelişki değildir); aynı ölçütte güçlü yönün söylediği uygulamayı yok saymaz (`ic_celiski`); hedefe
 ulaşıldığı doğrulanmış metinde görünmeyen gösterge/performans değeri güçlü yön olmaz; metindeki
 gösterge hedefin altındaysa (söz ya da sayı: "hedeflenen değeri 1.08 … gerçekleşme değeri 0.36")
-o ölçütün izleme verisi de güçlü yön olmaz (`hedef_alti_guclu`); fakülte/kurum geneli gösterge
+o ölçütün izleme verisi de güçlü yön olmaz (`hedef_alti_guclu`) ve bu olgu BULGULAR satırına
+gelişmeye açık yön dayanağı olarak eklenir (`yonler.HEDEF_BULGU`; doğrulayıcı gelişmeye açık yönü
+yalnız BULGULAR'dan kabul ettiği için iki kural aynı bilgiyi görür; `girdi_sha` bu satırı ayrıca
+saymaz, doğrulanmış metin özeti zaten girdidir). "Bölümün bu dönemdeki uygulamasını gösteren belge
+bulunmamaktadır" BULGULAR'daki uygulama eksikliğinin kendisidir: listede birime ait (izleme/plan)
+kanıt olsa da `kanitla_celiski` sayılmaz; genel "bölüm düzeyinde kanıt yok" ve "yalnız kurum geneli"
+hükmü sayılır. Fakülte/kurum geneli gösterge
 değeri bölümün değeri yanında olmadan verilmez (`fakulte_degeri`); aracın iç dili yok (`ic_dil`).
 Bulgular sade dildedir (düzey/halka/"OD'ye sayılmadı" yok): birime ait ama dönem kanıtı sayılmayan
 belge nedeniyle anılır. `girdi_sha`:
 alanın ölçütleri, doğrulanmış metin özetleri, OD, bulgular ve kanıt durumu; değişirse maddeler eskir.
 Bağımsız doğrulama `bidr verify prepare|apply` akışına katılır: `work/verify/yonler/<alan>.json`
 (görev `verify_yonler`; doğrulayıcıya yalnız maddeler ve atıf yapılan ölçütlerin metni/bulgusu
-verilir) → `verify-yonler.jsonl`. Her madde "destekleniyor" ise `dogrulandi`. Reddedilen alan
+verilir) → `verify-yonler.jsonl`. Her madde "destekleniyor" ise `dogrulandi`. Alanlar birbirini
+beklemez: yön doğrulaması `verify` aşamasını bekletmez (`verify_tamam` yalnız ölçüt metinlerine
+bakar); `yonler_tamam` her alanın sıradaki işini (yazım paketi, apply, doğrulama paketi/cevabı,
+yeniden yazım turu) ayrı listeler, bir alanın düzeltmesi ötekilerin doğrulaması bitmeden uygulanır. Reddedilen alan
 `bidr yonler prepare --reddedilenler` (gerekçeli; `rapor.yeniden_yazim_siniri`). Render reddedilmiş
 alanda bütün hücreyi boşaltmaz: doğrulayıcının (model aşaması, kaydı güncel) "destekleniyor" dediği
 maddeleri basar, ötekileri çıkarır (`.bidr-render.json` `yon_cikarilan`, uyarı); kod aşamasında

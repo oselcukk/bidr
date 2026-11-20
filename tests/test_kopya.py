@@ -313,3 +313,33 @@ def test_yonler_finding_names_uncounted_unit_evidence():
     # eski dizin (işaret sütunu yok): birim kanıtı bilinemez, eski bulgu
     assert facts(a, [{"ad": "x"}])["birim_kaniti"] == []
     assert "dayanak yalnız kurum geneli" in " ".join(findings(a, True, [{"ad": "x"}]))
+
+
+def test_yonler_code_check_and_verifier_rule_see_same_findings():
+    """Kod denetimi (`cross_check`) ile doğrulayıcı kuralı (gelişmeye açık yön yalnız BULGULAR'dan)
+    birbirini dışlamaz (kör test güncelleme 2026-11-20, A.2.2)."""
+    from types import SimpleNamespace
+
+    from bidr.write import yonler as Y
+    from bidr.write.ic_dil import bul
+    # 1) BULGULAR "birimin bu dönemdeki uygulamasını gösteren belge yok" diyorsa, birime ait izleme kanıtı
+    #    olsa da bulgunun kendisini söyleyen madde çelişki değil; genel "bölüm düzeyinde kanıt yok" çelişki
+    izl_birim = {"kanit": True, "uygulama": False, "izleme": True, "iyilestirme": False,
+                 "birim_kaniti": ["Stratejik Plan İzleme Değerlendirme Tablosu"]}
+    m = _meta({"C.3.1": izl_birim})
+    bulgu = ("Dayanak çoğunlukla kurum geneli düzenlemedir; bölümün bu dönemdeki uygulamasını gösteren belge "
+             "bulunmamaktadır (C.3.1).")
+    assert not _kodlar([], [bulgu], m)
+    assert ("a1", "kanitla_celiski") in _kodlar([], ["Bölüm düzeyinde kanıt bulunmamaktadır (C.3.1)."], m)
+    assert ("a1", "kanitla_celiski") in _kodlar([], [bulgu.replace("çoğunlukla", "yalnız")], m)
+    # 2) hedefin altındaki gösterge güçlü yön olamaz (kod) → BULGULAR'da gelişmeye açık yön dayanağı olur
+    #    (doğrulayıcı yalnız BULGULAR'ı kabul eder); yazar ve doğrulayıcı aynı satırı görür
+    fake = SimpleNamespace(base_findings=lambda c: ["birimin bu dönemdeki uygulamasını gösteren belge yok"],
+                           target=lambda c: "alti")
+    f = Y.Inputs.findings(fake, "C.3.1")
+    assert f[-1] == Y.HEDEF_BULGU and not bul(Y.HEDEF_BULGU)
+    fake.target = lambda c: "ok"
+    assert Y.HEDEF_BULGU not in Y.Inputs.findings(fake, "C.3.1")
+    madde = "Metindeki göstergenin gerçekleşme değeri hedefin altında kalmıştır (C.3.1)."
+    assert not _kodlar([], [madde], _meta({"C.3.1": izl_birim}, {"C.3.1": "alti"}))
+    assert not Y.check_item(madde, liste="gelisme", alan="C", allowed={"C.3.1"}, od={"C.3.1": 2})
