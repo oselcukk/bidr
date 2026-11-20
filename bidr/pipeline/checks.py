@@ -799,7 +799,7 @@ def yonler_tamam(c: Ctx) -> Check:
     over = sorted(a for a in rej if int(rej[a].get("tur") or 0) >= lim and a not in pending | todo)
     if over:
         uy.append(f"{len(over)} alanın maddeleri {lim} yeniden yazım turundan sonra hâlâ reddedildi ({', '.join(over)}): "
-                  "render yalnız doğrulanan maddeleri basar (desteklenmeyenler çıkarılır), rapor TASLAK damgalı olur; gerekçeyi (verify-yonler.jsonl) "
+                  "render yalnız doğrulanan maddeleri basar (desteklenmeyenler çıkarılır), reddedilmiş alan raporu her durumda TASLAK damgalı yapar; gerekçeyi (verify-yonler.jsonl) "
                   "kullanıcıya göster")
     why: list[str] = []
     komut: list[str] = []

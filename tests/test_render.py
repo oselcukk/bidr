@@ -460,6 +460,8 @@ def test_strengths_cells(ws, tmp_path):
     why = " | ".join(res.taslak_nedenleri)
     assert "A Güçlü Yönler" not in why and "C Gelişmeye" not in why and "D Güçlü Yönler" in why
     assert "doğrulanmamış güçlü/gelişmeye açık yön maddeleri: B" in why
+    # reddedilmiş alan (C) her durumda TASLAK nedenidir (kullanıcı kararı 2026-11-20)
+    assert "doğrulamada reddedilen güçlü/gelişmeye açık yön alanı: C" in why
     sec = d.sections[0]
     assert TASLAK_METNI in [p.text for p in sec.header.paragraphs]
 
@@ -597,9 +599,12 @@ def test_rejected_area_prints_supported_items(ws, tmp_path):
     res, d, _ = _run(ws, tmp_path, yonler_dir=yd, hazirlayanlar=PEOPLE)
     cells = _yon_cells(d)
     assert cells["C g"] == ["• " + g[0]] and cells["C a"] == ["• " + a[0]]
-    # çıkarılan maddenin ölçütü (C.1.2) gelişmeye açık yönde kalıyor: kapsam kaybı yok, TASLAK değil
-    assert res.yon_cikarilan == {"C": ["g2"]} and not res.taslak, res.taslak_nedenleri
-    assert not res.yon_kapsam_kaybi
+    # çıkarılan maddenin ölçütü (C.1.2) gelişmeye açık yönde kalıyor: kapsam kaybı yok; ama alan
+    # doğrulamada reddedilmiş olduğu için rapor yine TASLAK (kullanıcı kararı 2026-11-20)
+    assert res.yon_cikarilan == {"C": ["g2"]} and not res.yon_kapsam_kaybi
+    assert res.taslak and res.taslak_nedenleri == [
+        "doğrulamada reddedilen güçlü/gelişmeye açık yön alanı: C (yalnız desteklenen maddeler basıldı; "
+        "gerekçe verify-yonler.jsonl)"], res.taslak_nedenleri
     assert any("rapora alınmadı" in u for u in res.uyarilar)
     # kör test 2026-11-20 (Kimya C): reddedilen madde çıkınca ölçüt hiçbir yön hücresinde kalmıyorsa TASLAK
     log({"g2": "kismen", "a1": "desteklenmiyor"})

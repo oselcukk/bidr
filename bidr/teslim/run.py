@@ -110,8 +110,10 @@ def _kanit_dosyalari(ev: Path) -> dict[tuple[str, int], list[tuple[int, Path]]]:
 
 
 def _dizin(index: Path) -> dict[tuple[str, int], list[dict]]:
-    """evidence-index.csv → {(ölçüt, sıra): [satır, …]}. Aynı kaynağın belgeleri (sürüm/kopya/parça
-    grubu, `ayni_kaynak_tek_numara`) bir ölçütte tek numarayı paylaşır: numarada birden çok satır."""
+    """evidence-index.csv → {(ölçüt, sıra): [satır, …]}. Yalnız aynı belgenin kopyaları ve sürümleri
+    (sürüm/kopya grubu, tek belgenin bölünmüş taramaları; `ayni_kaynak_tek_numara`) bir ölçütte tek
+    numarayı paylaşır: numarada birden çok satır. Birleşik dosyanın farklı parçaları ayrı numaradır
+    (`parca_ayrildi`, bkz. bidr/file/run.py split_parts)."""
     out: dict[tuple[str, int], list[dict]] = {}
     if not index.exists():
         return out
