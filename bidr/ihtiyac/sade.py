@@ -361,7 +361,7 @@ def satirlar_kur(cs, tags, sor, talepler: list[dict], satirlar: list[dict], gece
         n_kur = 0
         for o in kb:
             if n_kur >= KURUM_EN_COK:
-                ekle(f"… ve kurumun bu maddeyle ilgili {len(kb) - n_kur} belgesi daha (tam liste: kurum-katalog-esleme.json)",
+                ekle(f"… ve kurumun bu maddeyle ilgili {len(kb) - n_kur} belgesi daha var (kurumun mevzuat ve kalite sayfalarında)",
                      sor.kim(belge_turu=o.get("tur"), olcut=cid), "kurum")
                 break
             n0 = len(maddeler)
