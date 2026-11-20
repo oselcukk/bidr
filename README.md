@@ -44,7 +44,8 @@ Aşamalar (`bidr/data/pipeline.yaml`, ayrıntı `docs/ARCHITECTURE.md`):
    verify (kod + metni yazmamış, taze bir ajan; reddedilen metin gerekçesiyle yeniden yazılır,
    2 turdan sonra kullanıcı karar verir) → yonler (alan düzeyi Güçlü / Gelişmeye Açık Yönler;
    yalnız doğrulanmış metin ve audit bulgusundan, aynı bağımsız doğrulamayla) → render
-   (`report.docx`, FR-0833 şablonu; kapak hazırlayanları, ölçüt kapsamı).
+   (`report.docx`, FR-0833 şablonu; kapak hazırlayanları, ölçüt kapsamı) → denetle (kılavuz
+   biçim denetimi) → teslim (dekanlığa teslim paketi; aşağıda).
 
 **Sandbox'lı ajan ortamı** (Codex, Claude Code sandbox gibi; yalnız çalışma klasörüne yazılabilir,
 `export X=…` ya da `X=… komut` biçimi izin ister): hazır sarmalayıcıyı kullanın. Geçici klasörü
@@ -71,7 +72,7 @@ yoksa `sablon: null` kalır; render'dan önce `bidr next` yeniden ister.
 
 Çıkış kodları: 0 tamam · 2 eksik/yanlış argüman · 3 önkoşul aşaması bitmemiş · 5 `init`
 kullanıcı onayı ister; `apply` komutlarında 1 = geçersiz ya da şüpheli cevap uygulanmadı
-(`work/<aşama>/GECERSIZ.md`), `denetle`'de 1 = kritik bulgu (ayrıntı `docs/ARCHITECTURE.md`).
+(`work/<aşama>/GECERSIZ.md`), `denetle`'de 1 = kritik bulgu, `teslim`'de 1 = eksik paket (ayrıntı `docs/ARCHITECTURE.md`).
 Çalışma alanı repo ve kaynak klasör dışında olmalıdır; kaynak salt okunurdur.
 
 **Alt ajanlarla çalışmak.** Kaba/ince karar gibi binlerce paketli aşamalarda paketler alt
@@ -84,10 +85,31 @@ Rapor ayarları `config.yaml`'ın `rapor:` bölümündedir (hepsi isteğe bağl�
 `docs/REPORT_LAYER.md`): `sablon` (boş FR-0833 .docx; answers.yaml `sablon` ile `bidr init`
 yazar), `hazirlayanlar` (kapak; answers.yaml ile), `onceki_rapor` (geçen yılın raporu),
 `kanit_kok_baglanti` (kanıt klasörünü yüklediğiniz kök adres), `yayin_alan_adlari`,
-`yeniden_yazim_siniri`. Raporda kanıt adı tıklanabilir bağlantıdır: kamuya açık belge
-yayımlandığı adrese (belge metnindeki web adresi ya da review.xlsx "bağlantı" sütunu),
-yayımlanmamış belge kanıt klasöründeki yoluna bağlanır; bağlantısızlar gaps.md'de listelenir.
-Yükleme sizin işinizdir; bidr hiçbir yere dosya göndermez.
+`yeniden_yazim_siniri`, `teslim` (aşağıda).
+
+**Teslim modu** (`config.yaml` `rapor.teslim`; varsayılan `dekanlik`):
+
+- `dekanlik` (2025 raporu): birim kanıtlara bağlantı vermez; rapor ve kanıt dosyaları dekanlığa
+  teslim edilir, yüklemeyi dekanlık yapar. Bağlantısız kanıt yalnız bilgidir (`bidr denetle`
+  "yayıma hazır"ı engellemez). Kaydedilmiş web sayfası kanıtının (.html) satırında raporda ad
+  (bağlantılı) ve özgün adres birlikte görünür: `[2-OD2]. Ad (https://…)`. Adres kanıt dizininden
+  ya da sayfanın kendi kaydından (canonical, og:url, "saved from" yorumu) okunur; bulunamazsa
+  uydurulmaz. Son adım `bidr teslim -w <çalışma alanı>`: `teslim/` klasörü ve `teslim.zip` —
+  `report.docx`, `kanitlar/A/A.1/A.1.1/[1-OD3]. Ad.pdf` düzeninde kanıtlar, her web kanıtının
+  yanında aynı adla "Kaynak: <URL> · Alınma (erişim) tarihi: <tarih>" damgalı PDF kopyası ve
+  `kanit-dizini.xlsx`/`.csv` (ölçüt, kanıt no, OD, ad, paketteki dosya, özgün bağlantı, alınma
+  tarihi, maskeleme). `bidr maskele` çalıştırıldıysa kanıtların maskeli kopyası girer; maskelenemeyen
+  kanıt çıkarılmaz, özgün haliyle girer ve dizinde "eksik: elle bakılmalı" yazar (maskeleme hiç
+  yapılmadıysa "yapılmadı"). Raporun kanıt listesindeki her satır paketteki bir dosyayla birebir eşleşir; eşleşmeyen
+  ya da PDF'i üretilemeyen satır varsa paket `EKSIK.txt` ile yazılır ve çıkış kodu 1 olur.
+  Web PDF'i için kurulu bir araç gerekir (ücretsiz): Google Chrome / Chromium / Edge (yolu
+  standart değilse `BIDR_CHROME`) ya da `pip install weasyprint`; ikisi de yoksa komut kurulum
+  notuyla durur. Tarih `--tarih YYYY-AA-GG` (vars. bugün); `--taslak` biçim denetimi geçmeden
+  taslak paket üretir.
+- `baglanti` (sonraki yıllar için): raporda kanıt adı tıklanabilir bağlantıdır: kamuya açık belge
+  yayımlandığı adrese (belge metnindeki web adresi ya da review.xlsx "bağlantı" sütunu),
+  yayımlanmamış belge `kanit_kok_baglanti` altındaki yoluna bağlanır; bağlantısızlar gaps.md'de
+  listelenir ve `bidr denetle`'de uyarıdır. Yükleme sizin işinizdir; bidr hiçbir yere dosya göndermez.
 
 **Kurala dönüşmüş kararlar veri dosyasıdır, kod değil.** Kanıt ilkeleri
 (`bidr/data/profiles/kanit_ilkeleri.yaml`: ör. kurum geneli yönerge yalnız plan kanıtıdır),

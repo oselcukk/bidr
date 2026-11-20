@@ -83,6 +83,23 @@ Rapor (`bidr render`) boş FR-0833 .docx şablonunu ister (`config.yaml` `rapor.
    bırak: render'a kadar `bidr next` yeniden ister; o zaman aynı yolla (answers.yaml + `bidr init`)
    eklenir. Var olan farklı bir şablonun yerine yenisi yazılacaksa init çıkış 5 verir (onay).
 
+### Teslim biçimi (rapor ve kanıtlar nasıl teslim edilecek)
+
+Varsayılan `dekanlik` (2025 raporu): birim kanıtlara bağlantı vermez; rapor ve kanıt dosyaları
+dekanlığa teslim edilir, yüklemeyi dekanlık yapar. Hattın son adımı `bidr teslim -w <calisma_alani>`
+tek klasör + zip üretir: dolu rapor, ölçüt klasörlü kanıtlar (`A/A.1/A.1.1/[1-OD3]. Ad.pdf`), web
+sayfası kanıtlarının yanında "Kaynak: <URL> · Alınma (erişim) tarihi" damgalı PDF kopyası ve kanıt
+dizini (Excel + CSV). Kurulumda:
+1. Kullanıcıya teslim biçimini söyle. Varsayılan için `config.yaml`'a bir şey yazılmaz. Kullanıcı
+   kanıtları kendisi yükleyip raporda bağlantı verecekse (sonraki yıllar) bu onun kararıdır:
+   sözüyle `config.yaml` `rapor:` bölümüne `teslim: baglanti` ve `kanit_kok_baglanti: <kök adres>`
+   yazılır; adres uydurma.
+2. Web sayfası PDF'i için kurulu bir araç gerekir (ücretsiz): Google Chrome / Chromium / Edge ya da
+   Python `weasyprint`. Denetle: `<python> -c "from bidr.teslim.web import pdf_araci; print(pdf_araci().ad)"`
+   (`<python>` bidr'in kurulu olduğu ortam). Hata verirse kurulum notunu kullanıcıya göster; Chrome
+   standart yerde değilse yolunu `BIDR_CHROME` ortam değişkenine yazdır. Araç yoksa kurulum yine
+   biter; yalnız `bidr teslim` web kanıtı varken durur.
+
 ## 4. Çıkış kodları
 
 - `0`: kuruldu. Çıktıda yazan `config.yaml`, `AGENTS.md`, `CLAUDE.md` ve skill kopyaları oluşur.
@@ -93,7 +110,8 @@ Rapor (`bidr render`) boş FR-0833 .docx şablonunu ister (`config.yaml` `rapor.
 Kurulumdan sonraki bütün komutlarda aynı anlamlar: `3` önkoşul aşaması bitmemiş (kapı; atlatmaya
 çalışma, `bidr next`'e dön); `apply` komutlarında `1` = en az bir cevap geçersiz ya da şüpheli
 olduğu için uygulanmadı (çıktının son satırı sayıları, `work/<aşama>/GECERSIZ.md` nedenleri
-söyler; cevapsız paket 1 yapmaz).
+söyler; cevapsız paket 1 yapmaz); `teslim`'de `1` = paket eksik (`teslim/EKSIK.txt`), `2` = PDF
+aracı yok ya da girdi hatası.
 
 ## 5. İsteğe bağlı: Claude Code hook'u
 

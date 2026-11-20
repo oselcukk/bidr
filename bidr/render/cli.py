@@ -1,7 +1,9 @@
 """`bidr render -w WS [--sablon FR-0833.docx] [--out report.docx] [--birim "…"] [--yil 2026]`.
 
 Şablon verilmezse config.yaml `rapor.sablon`. Kanıt bağlantıları `evidence-index.csv`'den
-(`baglanti` sütunu); bağlantısız kanıtlar gaps.md "bağlantı yok" bölümüne yazılır. Kapak
+(`baglanti` sütunu), teslim moduna göre (config.yaml `rapor.teslim`, vars. `dekanlik`: kök klasör
+bağlantısı girmez, web sayfası kanıtının özgün adresi görünür yazılır; `baglanti`: eski davranış);
+bağlantısız kanıtlar gaps.md "bağlantı yok" bölümüne yazılır (dekanlik'te bilgi notu). Kapak
 hazırlayanları config.yaml `rapor.hazirlayanlar`; ölçüt kapsamı profil + `rapor.kapsam`
 (bidr/render/kapsam.py; kapsam kararı soruları gaps.md); alan maddeleri `yonler/<alan>.json`."""
 from __future__ import annotations
@@ -16,7 +18,7 @@ def _run(args) -> int:
     from bidr.write.sources import rapor_section
 
     from .run import (YONLER_DIR, Options, render, update_link_gaps, update_scope_gaps, workspace_inputs,
-                      workspace_sha, write_manifest)
+                      workspace_sha, workspace_teslim, write_manifest)
 
     ws = Path(args.workspace).expanduser().resolve()
     if (rc := check_gate(ws, "render")) is not None:
@@ -46,15 +48,17 @@ def _run(args) -> int:
         opts.kapsam_disi = args.kapsam_disi
     kapsam, people, pre = workspace_inputs(ws)
     try:
+        teslim = workspace_teslim(ws)
         res = render(sablon, out, texts_dir=texts, audit_path=audit,
                      birim=birim, yil=args.yil, opts=opts, index_path=index,
-                     kapsam=kapsam, yonler_dir=ws / YONLER_DIR, hazirlayanlar=people)
+                     kapsam=kapsam, yonler_dir=ws / YONLER_DIR, hazirlayanlar=people, teslim=teslim,
+                     evidence_dir=ws / "evidence")
     except (FileNotFoundError, ValueError) as e:
         print(f"HATA {e}", file=sys.stderr)
         return 2
     write_manifest(ws, res, workspace_sha(ws, sablon, texts, audit, index), sablon, texts_dir=texts,
                    audit_path=audit, index_path=index)
-    update_link_gaps(ws, index)
+    update_link_gaps(ws, index, teslim)
     update_scope_gaps(ws, res.karar_gerekli)
     for u in pre + res.uyarilar:
         print(f"uyarı: {u}")
@@ -68,8 +72,11 @@ def _run(args) -> int:
         print(f"not: {n} kanıt metinde atıf almıyor ama kanıt klasöründe; numara sırası bozulmasın diye "
               f"listede ({', '.join(sorted(res.atifsiz_listelenen))}). Metne atıf eklemek için write "
               "yeniden; kanıtı çıkarmak için review.xlsx'te ret → audit apply → file")
-    if res.baglantisiz:
+    if res.baglantisiz and teslim == "baglanti":
         print(f"uyarı: {len(res.baglantisiz)} kanıtın bağlantısı yok (gaps.md 'Bağlantısı olmayan kanıtlar')")
+    elif res.baglantisiz:
+        print(f"bilgi: {len(res.baglantisiz)} kanıtın adı bağlantısız — teslim modu {teslim}: bağlantı gerekmez, "
+              "kanıtlar dosya olarak teslim edilir (bidr teslim)")
     print(json.dumps(res.ozet(), ensure_ascii=False, indent=1))
     if res.taslak:
         print("Belge TASLAK damgalı:")

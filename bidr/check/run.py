@@ -287,8 +287,10 @@ def denetle(docx_path: Path, *, rules: Rules | None = None, sablon: Path | None 
             kanit_klasoru: Path | None = None, index_path: Path | None = None,
             beklenen: tuple[list[str], list[str]] | None = None,
             od_bekleyen: dict[str, dict] | None = None,
-            taslak_nedenleri: list[str] | None = None) -> Sonuc:
+            taslak_nedenleri: list[str] | None = None, teslim_modu: str | None = None) -> Sonuc:
     """`beklenen`: (alt ölçütler, ölçütler); vars. paket ölçüt verisi (46 alt ölçüt).
+    `teslim_modu`: `dekanlik` | `baglanti` (config.yaml `rapor.teslim`; bidr/teslim/mod.py); verilirse
+    kanıt bağlantıları denetlenir: dekanlik'te bağlantısız kanıt bilgi, baglanti'da uyarı.
     `od_bekleyen`: {ölçüt: {od, kaynak}}: rubrikte insan onayı olmadan (kod/metin önerisiyle)
     işaretlenen düzeyler (`od_onay_bekleyenler`); her biri `od_onay_bekliyor` uyarısı olur.
     `taslak_nedenleri`: bu belgeyi üreten render'ın TASLAK gerekçeleri (`taslak_nedenleri()`);
@@ -314,6 +316,8 @@ def denetle(docx_path: Path, *, rules: Rules | None = None, sablon: Path | None 
     if index_path is not None and Path(index_path).exists():
         _kanit_dizini(Path(index_path), listeler, s)
     _od_onay(od_bekleyen or {}, s)
+    if teslim_modu:
+        _baglantilar(doc, s, teslim_modu)
     return s
 
 
@@ -447,6 +451,66 @@ def _liste_satiri(t: str):
     if (m := RE_LISTE_MAT.match(t)):
         return "mat", int(m.group(1)), int(m.group(2)), m.group(3).strip()
     return None
+
+
+@dataclass
+class KanitSatiri:
+    """Raporun 'Kanıtlar' hücresindeki bir liste satırı."""
+    olcut: str
+    no: int
+    od: int
+    ad: str
+    metin: str
+    baglanti: str | None = None      # satırdaki ilk dış bağlantının adresi (yoksa None)
+
+
+def kanit_listeleri(doc) -> dict[str, list[KanitSatiri]]:
+    """Belgedeki kanıt listeleri: {alt ölçüt: [KanitSatiri]} (tanınmayan satırlar atlanır).
+    Satır `[n-ODk]. ad` ya da `n_ODk: ad`; bağlantı `<w:hyperlink r:id>` ilişkisinden okunur."""
+    from docx.oxml.ns import qn
+    rels = doc.part.rels
+    out: dict[str, list[KanitSatiri]] = {}
+    blks, _, _ = bloklar(doc)
+    for sid, b in blks.items():
+        if b.kanit_tc is None:
+            continue
+        ps, rest = icerik(b.kanit_tc, KANIT)
+        items = ([(rest, None)] if rest else []) + [(" ".join(_ptext(p).split()), p) for p in ps]
+        for t, p in items:
+            parsed = _liste_satiri(t) if t else None
+            if parsed is None:
+                continue
+            _, n, od, ad = parsed
+            url = None
+            if p is not None:
+                for h in p.iter(W + "hyperlink"):
+                    rid = h.get(qn("r:id"))
+                    if rid and rid in rels and rels[rid].is_external:
+                        url = rels[rid].target_ref
+                        break
+            out.setdefault(sid, []).append(KanitSatiri(sid, n, od, ad, t, url))
+    return out
+
+
+def _baglantilar(doc, s: Sonuc, teslim_modu: str) -> None:
+    """Bağlantısız kanıt satırları. `dekanlik`: bilgi (rapor ve kanıtlar dekanlığa teslim edilir,
+    bağlantı gerekmez; yayımı engellemez). `baglanti`: uyarı (yayımı engellemez; file/render'ın
+    eski 'bağlantı yok' uyarısıyla aynı düzey)."""
+    from bidr.teslim.mod import DEKANLIK
+    satirlar = [k for ks in kanit_listeleri(doc).values() for k in ks]
+    yok = [k for k in satirlar if not k.baglanti]
+    s.bilgi["teslim_modu"] = teslim_modu
+    s.bilgi["baglanti"] = {"kanit_satiri": len(satirlar), "baglantili": len(satirlar) - len(yok),
+                           "baglantisiz": len(yok)}
+    if teslim_modu == DEKANLIK:
+        if yok:
+            s.bilgi["baglanti"]["not"] = ("teslim modu dekanlik: kanıtlar dekanlığa dosya olarak teslim edilir "
+                                          "(bidr teslim); bağlantısız kanıt yayımı engellemez")
+        return
+    for k in yok:
+        s.ekle(UYARI, "baglantisiz_kanit", k.olcut,
+               f"{k.no}. kanıtın (OD{k.od}) adı bağlantısız: «{k.ad[:50]}» (teslim modu baglanti: "
+               "review.xlsx 'bağlantı' ya da config.yaml rapor.kanit_kok_baglanti)")
 
 
 def _olcutler(doc, d: Denetci, s: Sonuc, beklenen) -> dict[str, dict[int, int]]:

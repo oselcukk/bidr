@@ -170,6 +170,48 @@ def load_links(index: Path | None) -> dict[tuple[str, str], str]:
     return out
 
 
+@dataclass
+class KanitBaglantisi:
+    url: str
+    web: bool = False          # kaydedilmiş web sayfası kanıtı (adres listede görünür yazılır)
+
+
+def load_link_rows(index: Path | None, teslim: str = "baglanti",
+                   evidence_dir: Path | None = None) -> dict[tuple[str, str], KanitBaglantisi]:
+    """evidence-index.csv → {(ölçüt, kanıt no): KanitBaglantisi}, teslim moduna göre.
+
+    `baglanti` (eski davranış): dizindeki `baglanti` olduğu gibi. `dekanlik`: kanıtlar dekanlığa dosya
+    olarak teslim edilir; kanıt klasörü kök bağlantısından türeyen (`klasor`) bağlantı girmez (yükleme
+    birimin işi değil). Web sayfası kanıtının (`.html`) özgün adresi dizinde yoksa sayfanın kendi
+    kaydından okunur (bidr/teslim/web.py; bulunamazsa bağlantısız kalır, uydurulmaz)."""
+    import csv
+
+    from bidr.teslim.mod import DEKANLIK
+    from bidr.teslim.web import is_web, web_url
+    if index is None or not Path(index).exists():
+        return {}
+    out: dict[tuple[str, str], KanitBaglantisi] = {}
+    with open(index, encoding="utf-8", newline="") as f:
+        for r in csv.DictReader(f):
+            c, no = (r.get("olcut") or "").strip(), (r.get("kanit_no") or "").strip()
+            if not (c and no):
+                continue
+            u, src = (r.get("baglanti") or "").strip(), (r.get("baglanti_kaynagi") or "").strip()
+            if teslim != DEKANLIK:
+                if u:
+                    out[(c, no)] = KanitBaglantisi(u)
+                continue
+            dosya = (r.get("dosya") or "").strip()
+            web = bool(dosya) and is_web(dosya)
+            if web:
+                u, _ = web_url(Path(evidence_dir) / dosya if evidence_dir else None, u, src)
+            elif src == "klasor":
+                u = ""
+            if u and (c, no) not in out:
+                out[(c, no)] = KanitBaglantisi(u, web)
+    return out
+
+
 def load_index_rows(index: Path | None) -> dict[str, list[dict]]:
     """evidence-index.csv → {ölçüt: [{no, ad, dosya}]} (kanıt klasöründeki dosyalar). Yoksa boş."""
     import csv
@@ -356,9 +398,13 @@ def render(template: Path, out: Path, *, texts_dir: Path, audit_path: Path | Non
            birim: str | None = None, yil: int | str | None = None,
            opts: Options | None = None, index_path: Path | None = None,
            kapsam: dict[str, str] | None = None, yonler_dir: Path | None = None,
-           hazirlayanlar: list[dict] | None = None) -> Result:
+           hazirlayanlar: list[dict] | None = None, teslim: str = "baglanti",
+           evidence_dir: Path | None = None) -> Result:
     """`kapsam`: {ölçüt: bolum|ortak|baska_birim|karar_gerekli} (verilmezse hepsi bolum);
-    `yonler_dir`: `yonler/<alan>.json` klasörü; `hazirlayanlar`: config.yaml `rapor.hazirlayanlar`."""
+    `yonler_dir`: `yonler/<alan>.json` klasörü; `hazirlayanlar`: config.yaml `rapor.hazirlayanlar`;
+    `teslim`: config.yaml `rapor.teslim` (bidr/teslim/mod.py). `dekanlik`ta web sayfası kanıtının
+    satırı adı (bağlantılı) ve özgün adresi görünür yazar: "[1-OD3]. Ad (https://…)"; `evidence_dir`
+    web kanıtının adresini sayfanın kendi kaydından okumak için (vars. dizinin yanındaki evidence/)."""
     import docx
 
     opts = opts or Options()
@@ -378,7 +424,9 @@ def render(template: Path, out: Path, *, texts_dir: Path, audit_path: Path | Non
     audit, uy = load_audit(audit_path)
     res.uyarilar += uy
 
-    links = load_links(index_path)
+    if evidence_dir is None and index_path is not None:
+        evidence_dir = Path(index_path).parent / "evidence"
+    links = load_link_rows(index_path, teslim, evidence_dir)
     filed = load_index_rows(index_path)
     if index_path is not None and not Path(index_path).exists():
         res.uyarilar.append(f"evidence-index.csv yok ({index_path}); kanıt adları bağlantısız")
@@ -451,9 +499,12 @@ def render(template: Path, out: Path, *, texts_dir: Path, audit_path: Path | Non
                 res.atifsiz_listelenen[cid] = atifsiz
             for k in liste:
                 pre, ad = kanit_parts(k, opts.kanit_bicimi)
-                url = links.get((cid, str(k.get("no", "")).strip()))
-                if url:
-                    seg = [(pre, {}), (ad, {"rid": ops.link_rid(doc.part, url)})]
+                kb = links.get((cid, str(k.get("no", "")).strip()))
+                if kb:
+                    rid = ops.link_rid(doc.part, kb.url)
+                    seg = [(pre, {}), (ad, {"rid": rid})]
+                    if kb.web and teslim != "baglanti":
+                        seg += [(" (", {}), (kb.url, {"rid": rid}), (")", {})]
                     res.baglantili += 1
                 else:
                     seg = [(pre + ad, {})]
@@ -574,12 +625,25 @@ def workspace_inputs(ws: Path) -> tuple[dict[str, str], list[dict] | None, list[
     return kapsam, people, uy
 
 
+def workspace_teslim(ws: Path) -> str:
+    """config.yaml `rapor.teslim` (geçersizse ValueError)."""
+    from bidr.teslim.mod import teslim_modu
+    return teslim_modu(Path(ws))
+
+
 def workspace_sha(ws: Path, template: Path, texts_dir: Path, audit_path: Path | None,
                   index_path: Path | None) -> str:
-    """render_tamam ile render CLI'nin ortak girdi özeti."""
+    """render_tamam ile render CLI'nin ortak girdi özeti (teslim modu dahil; geçersiz mod da özete
+    girer, render onu hatayla durdurur)."""
     kapsam, people, _ = workspace_inputs(ws)
-    return inputs_sha(template, texts_dir, audit_path, index_path, Path(ws) / YONLER_DIR,
-                      {"hazirlayanlar": people or [], "kapsam": kapsam})
+    try:
+        teslim = workspace_teslim(ws)
+    except ValueError as e:
+        teslim = f"gecersiz:{e}"
+    extra = {"hazirlayanlar": people or [], "kapsam": kapsam}
+    if teslim != "baglanti":            # bağlantı modunda özet eskisiyle aynı kalır
+        extra["teslim"] = teslim
+    return inputs_sha(template, texts_dir, audit_path, index_path, Path(ws) / YONLER_DIR, extra)
 
 
 YONLER_DIR = "yonler"
@@ -647,13 +711,24 @@ def load_manifest(ws: Path) -> dict | None:
         return None
 
 
-def update_link_gaps(ws: Path, index_path: Path | None) -> None:
-    """gaps.md "bağlantı yok" bölümünü kanıt dizininden yeniler (bkz. bidr/file/links.py)."""
+def update_link_gaps(ws: Path, index_path: Path | None, teslim: str = "baglanti") -> None:
+    """gaps.md "bağlantı yok" bölümünü kanıt dizininden yeniler (bkz. bidr/file/links.py).
+    `dekanlik` modunda bölüm bilgi notudur: bağlantı gerekmez, kanıtlar dosya olarak teslim edilir."""
     import csv
 
-    from bidr.file.links import gaps_block, update_gaps
+    from bidr.file.links import GAPS_BEGIN, GAPS_END, gaps_block, update_gaps
     if index_path is None or not Path(index_path).exists():
         return
     with open(index_path, encoding="utf-8", newline="") as f:
         rows = list(csv.DictReader(f))
-    update_gaps(Path(ws) / "gaps.md", gaps_block(rows))
+    if teslim == "baglanti":
+        update_gaps(Path(ws) / "gaps.md", gaps_block(rows))
+        return
+    miss = [r for r in rows if not (r.get("baglanti") or "").strip() or r.get("baglanti_kaynagi") == "klasor"]
+    L = [GAPS_BEGIN, "## Bağlantısı olmayan kanıtlar (bilgi)", "",
+         f"Teslim modu `{teslim}` (config.yaml rapor.teslim): rapor ve kanıt dosyaları dekanlığa teslim edilir "
+         "(`bidr teslim`); kanıtların bağlantısı gerekmez, bu liste yalnız bilgidir. Web sayfası kanıtlarının "
+         "özgün adresi raporda görünür; teslim paketinde alınma tarihli PDF kopyaları vardır. "
+         f"Bağlantısı olmayan kanıt: {len(miss)}."]
+    L.append(GAPS_END)
+    update_gaps(Path(ws) / "gaps.md", "\n".join(L) + "\n")

@@ -1,8 +1,8 @@
-# Rapor katmanı (name → file → write → verify → yonler → render) — arayüz sözleşmesi
+# Rapor katmanı (name → file → write → verify → yonler → render → denetle → teslim) — arayüz sözleşmesi
 
 Sahibi: şef. Aşamalar `bidr/data/pipeline.yaml`'da; tamamlanma denetimleri
 `bidr/pipeline/checks.py`'de (`name_tamam`, `file_tamam`, `write_tamam`, `verify_tamam`,
-`yonler_tamam`, `render_tamam`). Her komut önkoşulu bitmeden çıkış kodu 3 ile durur.
+`yonler_tamam`, `render_tamam`, `denetle_tamam`, `teslim_tamam`). Her komut önkoşulu bitmeden çıkış kodu 3 ile durur.
 
 ## Girdi: onaylı eşleşmeler
 `decisions.jsonl` içindeki kabul edilmiş eşleşmeler; varsa `review-decisions.jsonl`
@@ -264,7 +264,13 @@ sorularıdır (ölçüt sırasıyla); kapsamı bilinmeyen ölçütler `denetlenm
 FR-0833 şablonunun (config.yaml `rapor.sablon` ya da `--sablon`; salt okunur) ölçüt
 bloklarında "Açıklamalar" ve "Kanıtlar" hücreleri doldurulur; biçim kılavuza uygun. Kanıtlar
 hücresinde kanıt adı `evidence-index.csv` `baglanti` adresine tıklanabilir bağlantıdır
-(Word köprüsü). `[komisyon]` işareti metinden temizlenir. Son tablodaki 8 hücreye
+(Word köprüsü), teslim moduna göre (`rapor.teslim`; aşağıda "teslim"): `baglanti`'da dizindeki adres
+olduğu gibi; `dekanlik`'ta (varsayılan) kök klasör bağlantısı (`baglanti_kaynagi: klasor`) girmez ve
+kaydedilmiş web sayfası kanıtının (.html) satırı ad + görünür özgün adres olur:
+`[2-OD2]. Ad (https://…)` (ikisi de bağlantılı). Web kanıtının adresi dizinde yoksa sayfanın kendi
+kaydından okunur (`bidr/teslim/web.py` `web_url`: "saved from" yorumu, SingleFile başlığı,
+canonical, og:url, base; ana sayfa adresi sayılmaz); bulunamazsa ad bağlantısız kalır. Teslim modu
+render girdi özetine girer (değişince rapor eskir). `[komisyon]` işareti metinden temizlenir. Son tablodaki 8 hücreye
 `yonler/<alan>.json` maddeleri ("• " ile) yazılır. Kapakta "[Birim Adı]", yıl ve "Raporu
 Hazırlayanlar" yer tutucuları (`[Üye Unvan, Adı Soyadı, eposta adresi, Görevi]`) doldurulur:
 satır "Unvan Ad Soyad, eposta, Görev"; kişi yer tutucudan çoksa satır eklenir ve ardındaki boş
@@ -336,12 +342,65 @@ varsayılanı (`--kanit-bicimi mat`) listeyi `1_OD3: ad` yazar (geçen yılın M
 denetçi bunu `kanit_gosterimi_karar` uyarısıyla raporlar, iki gösterim karışıksa
 `kanit_gosterimi_karisik`. Kurum kılavuz gösterimini isterse render `--kanit-bicimi kilavuz`.
 
-**Hat aşaması `denetle`** (D; önkoşul `render`; son aşama). `denetim.json` `docx_sha` denetlenen
+**Hat aşaması `denetle`** (D; önkoşul `render`; ardından isteğe bağlı `teslim`). `denetim.json` `docx_sha` denetlenen
 dosyanın sha256'sıdır. `checks.denetle_tamam`: denetim.json yok, başka bir docx'e ait ya da sha'sı
 güncel report.docx'inkiyle aynı değil (rapor yeniden üretildi ya da elle değişti) → `bidr denetle`;
 kritik bulgu varsa bekliyor, KULLANICI gerekli, neden "yayıma hazır değil: N kritik bulgu (kodlar)"
 (düzeltme kaynakta, sonra render + denetle); kritik yoksa bitti ("yayıma hazır"), uyarılar engel
-değil.
+değil. Bağlantısız kanıt satırı (Kanıtlar hücresinde `w:hyperlink` yok) teslim moduna göre:
+`dekanlik`'ta yalnız `denetim.json` `bilgi.baglanti` (sayı + not; bulgu değil), `baglanti`'da
+`baglantisiz_kanit` uyarısı; ikisinde de yayımı engellemez. Geçersiz `rapor.teslim` çıkış 2.
+
+## teslim → `teslim/` + `teslim.zip` (dekanlığa teslim paketi; `bidr/teslim/`)
+2025 raporunda bölüm kanıtlara bağlantı vermez: rapor ve kanıt dosyaları dekanlığa teslim edilir,
+yüklemeyi dekanlık yapar (`rapor.teslim: dekanlik`, varsayılan). Bağlantı modu (`baglanti`:
+`kanit_kok_baglanti`, bağlantı denetimi) sonraki yıllar için araçta kalır.
+
+`bidr teslim -w WS [--out DIR] [--docx yol] [--tarih YYYY-AA-GG] [--zip-yok]
+[--pdf-araci otomatik|chrome|weasyprint] [--canli] [--taslak]` yazar (model yok, salt okur):
+
+```
+WS/teslim/                       (--out; zip: aynı adla .zip, kökünde klasör adı; adlar NFC)
+  report.docx                    WS/report.docx'in kopyası
+  kanitlar/A/A.1/A.1.1/[1-OD3]. Ad.pdf
+  kanitlar/A/A.1/A.1.4/[3-OD2]. Sayfa.html + [3-OD2]. Sayfa.pdf   (web kanıtı + damgalı PDF kopyası)
+  kanit-dizini.xlsx / .csv       Ölçüt, Kanıt no, OD, Kanıt adı, Paketteki dosya, PDF kopyası,
+                                 Özgün bağlantı, Bağlantı kaynağı, Alınma tarihi, Maskeleme, Durum
+  EKSIK.txt                      yalnız eksik ya da --taslak paket
+WS/.bidr-teslim.json             özet (teslim_tamam): report_sha, index_sha, evidence_sha, eksik, …
+```
+
+- **Eşleşme:** raporun Kanıtlar listesindeki her satır (ölçüt, sıra, OD; `check.run.kanit_listeleri`)
+  `evidence/` altında tam bir dosyayla eşleşir. Pakete yalnız listedeki kanıtlar girer (listede
+  olmayan dosya uyarı). Dosya yok / OD uyuşmuyor / birden çok aday / PDF üretilemedi → satır
+  `Durum: eksik: …`, paket `EKSIK.txt` ile yazılır, çıkış 1.
+- **Web kanıtı** (`.html`, `.htm`, `.xhtml`): yanına aynı adla PDF kopyası. Sayfanın bir kopyasının
+  başına (gövdenin ilk öğesi) ve sonuna (`body::after`: kapanmamış tablo içinde kalmaz)
+  "Kaynak: <URL> · Alınma (erişim) tarihi: <GG.AA.YYYY>" damgası eklenir; betikler kapalı (CSP),
+  yerel sayfada ağ erişimi engelli. Özgün adres: dizindeki bağlantı (insan / belge metni; `klasor`
+  sayılmaz) → sayfanın kendi kaydı; yoksa damgada ve dizinde "bağlantı bilinmiyor" (uydurma yok,
+  uyarı). Alınma tarihi raporlama (teslim) tarihidir (`--tarih`, vars. bugün). `--canli`: adres
+  biliniyorsa sayfa özgün adresten yeniden indirilip basılır.
+- **Kişisel veri maskeleme** (`bidr maskele` çıktısı, yalnız okunur): `maskeleme-raporu.json` ve
+  `evidence-maskeli/` varsa kanıtın maskeli kopyası pakete girer (web PDF'i maskeli HTML'den basılır).
+  Maskelenemedi diye hiçbir kanıt rapordan ya da paketten çıkarılmaz (kullanıcı kararı, 2026-11-20):
+  maskeleme başarısız / hata / desteklenmiyor, dosya raporda yok ya da maskeli kopya eski (kanıt
+  maskelemeden sonra yeniden dosyalandı) ise özgün dosya girer. "Maskeleme" sütunu: `tamam` |
+  `eksik: elle bakılmalı` | `yapılmadı` (maskeleme çalıştırılmamış; paket yine üretilir). Elle
+  bakılacak dosyalar nedenleriyle komut çıktısında ve `.bidr-teslim.json` `elle_bakilacak`'ta;
+  `teslim_tamam` bunları (ve hiç maskeleme yapılmadıysa onu) uyarı olarak gösterir, engellemez.
+- **PDF aracı** (ücretsiz, kurulu olanı): Google Chrome / Chromium / Edge headless `--print-to-pdf`
+  (standart yerde değilse `BIDR_CHROME`), yoksa Python `weasyprint` (isteğe bağlı). Web kanıtı varken
+  araç yoksa komut hiçbir şey yazmadan kurulum notuyla durur (çıkış 2).
+- **Güvenli yazım:** çıktı klasörü çalışma alanının kendisi/üstü ya da kaynakla iç içe olamaz; var
+  olan klasör yalnız bidr teslim'in işaret dosyasını (`.bidr-teslim`) taşıyorsa silinip yeniden
+  yazılır, değilse ve boş değilse hata.
+
+**Hat aşaması `teslim`** (D; isteğe bağlı; önkoşul `denetle`). `checks.teslim_tamam`
+(`teslim.run.durum`): `baglanti` modunda paket yoksa atlandi; `dekanlik`'ta paket yoksa ya da rapor,
+kanıt dizini, kanıt klasörü, maskeleme raporu ya da teslim modu değiştiyse `bidr teslim`; `--taslak` paketi bitmiş
+sayılmaz; eksik paket KULLANICI gerekli; tamamsa bitti, özgün adresi bulunamayan web kanıtı uyarı.
+Kapı: biçim denetimi geçmeden komut çıkış 3 ile durur; `--taslak` kapıyı atlar, paketi TASLAK işaretler.
 
 ## config.yaml `rapor:` bölümü (hepsi isteğe bağlı; kullanıcı yazar, `bidr init` korur)
 | anahtar | anlamı |
@@ -355,4 +414,5 @@ değil.
 | `kanit_adi_modeli` | `false`: `name` aşaması atlanır |
 | `hazirlayanlar` | kapaktaki "Raporu Hazırlayanlar": `[{unvan, ad_soyad, eposta, gorev}, …]` (`ad_soyad` gerekli; `bidr init` sorar ve yazar); boşsa rapor TASLAK |
 | `kapsam` | `{ölçüt: bolum\|ortak\|baska_birim\|karar_gerekli}`: kullanıcının kapsam kararı (profilin üstüne) |
+| `teslim` | `dekanlik` (vars.: rapor ve kanıtlar dekanlığa dosya olarak teslim edilir; bağlantısız kanıt bilgi; `bidr teslim` paketi) \| `baglanti` (birim yükler, raporda bağlantı verir; bağlantısız kanıt uyarı) |
 | `denetim` | biçim denetçisi kuralları (`paragraf_sonrasi_nk` vars. 0,6 — kılavuz değeri; `yazi_tipi`, `govde_punto`, `baslik_punto`, `aciklama_punto`, `paragraf_oncesi_nk`) |

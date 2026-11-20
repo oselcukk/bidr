@@ -398,3 +398,25 @@ asamalar:
         render ve denetle yeniden çalışır; report.docx elle düzenlenirse denetim yeniden ister. Uyarılar engel değildir.
     onay: yok
     skill: bidr-rapor
+
+  - id: teslim
+    ad: Teslim paketi (rapor + ölçüt klasörlü kanıtlar + web kanıtlarının PDF kopyası + kanıt dizini; zip)
+    uygulandi: true
+    istege_bagli: true
+    katman: D
+    onkosul: [denetle]
+    girdi: [report.docx, evidence/, evidence-index.csv, config.yaml rapor.teslim]
+    cikti: [teslim/ (report.docx, kanitlar/, kanit-dizini.xlsx, kanit-dizini.csv), teslim.zip, .bidr-teslim.json]
+    komut: ["bidr teslim -w {ws}"]
+    sart:
+      denetim: teslim_tamam
+      metin: >-
+        config.yaml rapor.teslim: baglanti ise (birim kanıtları kendisi yükler, raporda bağlantı verir) paket
+        istenmedikçe atlanır. dekanlik (varsayılan) ise teslim/ ve teslim.zip güncel report.docx ve kanıt
+        dizininden üretilmiş: raporun kanıt listesindeki her satır paketteki bir dosyayla birebir eşleşir, her
+        web sayfası kanıtının yanında aynı adla alınma tarihli PDF kopyası var, kanıt dizini (ölçüt, kanıt no,
+        OD, ad, paketteki yol, özgün bağlantı, alınma tarihi) yazılmış. Eşleşmeyen satır ya da üretilemeyen PDF
+        varsa paket "eksik" (EKSIK.txt) ve aşama bitmez. Özgün adresi bulunamayan web kanıtı uyarıdır
+        (dizinde "bağlantı bilinmiyor"; adres uydurulmaz).
+    onay: yok
+    skill: bidr-rapor

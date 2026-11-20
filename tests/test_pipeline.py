@@ -71,7 +71,7 @@ def _agent_answers(ws: Path, stage: str, broken: set[str] = frozenset()) -> int:
 def test_spec_is_consistent():
     spec = load_spec()
     ids = [s["id"] for s in spec["asamalar"]]
-    assert ids[:2] == ["kurulum", "ingest"] and ids[-1] == "denetle"
+    assert ids[:2] == ["kurulum", "ingest"] and ids[-2:] == ["denetle", "teslim"]
     for s in spec["asamalar"]:
         if s["uygulandi"]:
             assert s["komut"] and s["skill"], s["id"]
@@ -364,7 +364,9 @@ def _report_layer(ws: Path, capsys) -> None:
     assert main(["render", "-w", str(ws), "--sablon", str(ws / "yok.docx")]) == GATE_EXIT
     assert ev("write").durum == "engelli" and ev("render").durum == "engelli"
 
-    # file: bağlantı — belge metnindeki yayın adresi; kök yoksa öteki kanıt bağlantısız
+    # file: bağlantı — belge metnindeki yayın adresi; kök yoksa öteki kanıt bağlantısız. Bu bölüm bağlantı
+    # modunu sınar (config.yaml rapor.teslim: baglanti; varsayılan dekanlik'te bağlantısızlık uyarı değildir)
+    _rapor_config(ws, teslim="baglanti")
     assert main(["file", "-w", str(ws)]) == 0
     f = ev("file")
     assert f.durum == "bitti" and any("bağlantısı yok" in u for u in f.uyarilar)
