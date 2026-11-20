@@ -1,9 +1,11 @@
 """`bidr maskele`: dosyalanmış kanıtların (evidence/) maskeli yayın kopyası → `evidence-maskeli/`.
 
 Asıl dosyalara dokunulmaz. Her kopya maskelemeden sonra bağımsız olarak yeniden taranır;
-kişisel veri ya da temizlenmemiş üst veri/yorum/ek kalırsa kopya `evidence-maskeli/`'ye girmez,
-`maskeleme-basarisiz/` altına alınır ve `maskeleme-raporu.json`'da `yayimlanamaz` listesine yazılır.
-Desteklenmeyen biçimler (görseller, sunumlar …) taranamadığı için kopyalanmaz, aynı listeye girer.
+kişisel veri, imza şüphesi ya da temizlenmemiş üst veri/yorum/ek kalırsa (`basarisiz`) ya da
+metin katmanı olmayan sayfa/görsel OCR'dan geçemezse (`taranamadi`) kopya `evidence-maskeli/`'ye
+girmez, `maskeleme-basarisiz/` altına alınır ve `maskeleme-raporu.json`'da `yayimlanamaz`
+listesine yazılır (`elle_bakilmali: true`). Özgün kanıt rapordan/paketten çıkarılmaz; maskeleme
+kanıt seçimini etkilemez. Desteklenmeyen biçimler (sunumlar …) kopyalanmaz, aynı listeye girer.
 Rapora bulunan değerlerin kendisi yazılmaz; yalnız tür ve sayı.
 """
 from __future__ import annotations
@@ -17,6 +19,7 @@ from pathlib import Path
 
 from .detect import MaskRules, mask_text, read_ws_config
 from .formats import MaskError, kind_of, mask_file, pdf_engine, scan_file
+from .ocr import ocr_available as raster_ocr_available
 
 OUT_DIR = "evidence-maskeli"
 FAIL_DIR = "maskeleme-basarisiz"
@@ -78,18 +81,22 @@ def run(ws_root: Path, *, evidence: Path | None = None, out: Path | None = None,
     _prepare_dir(fail_root)
 
     uyarilar = list(rules.warnings)
+    if not raster_ocr_available():
+        uyarilar.append("OCR yok (tesseract + tur/eng dil verisi): metin katmanı olmayan PDF sayfaları ve "
+                        "görseller taranamadı; bu dosyalar 'taranamadi' durumunda kalır")
     if eng == "pypdf":
         uyarilar.append("PyMuPDF kurulu değil: PDF'ler pypdf ile en iyi çabayla maskelendi; gerçek "
                         "kaldırma (redaction) için `pip install 'bidr[maske]'`")
     kayitlar, yayimlanamaz = [], []
     toplam = {"bulunan": Counter(), "maskelenen": Counter(), "kalan": Counter()}
+    toplam_imza = Counter()
     for src in _files(ev):
         rel = src.relative_to(ev)
         kind = kind_of(src)
         rec: dict = {"dosya": rel.as_posix(), "bicim": kind or (src.suffix.lower().lstrip(".") or "?")}
         if kind is None:
-            rec.update(durum="desteklenmiyor",
-                       neden="biçim taranamıyor (görsel/sunum vb.); kopyalanmadı, elle incelenmeli")
+            rec.update(durum="desteklenmiyor", elle_bakilmali=True,
+                       neden="biçim taranamıyor (sunum vb.); kopyalanmadı, elle incelenmeli")
             kayitlar.append(rec)
             yayimlanamaz.append({"dosya": rec["dosya"], "neden": rec["neden"]})
             continue
@@ -106,31 +113,51 @@ def run(ws_root: Path, *, evidence: Path | None = None, out: Path | None = None,
         except (MaskError, Exception) as e:   # bozuk dosya vb.: yayımlanamaz
             if dst.exists():
                 dst.unlink()
-            rec.update(durum="hata", neden=f"maskelenemedi: {type(e).__name__}: {e}"[:300],
+            rec.update(durum="hata", elle_bakilmali=True, neden=f"maskelenemedi: {type(e).__name__}: {e}"[:300],
                        bulunan=_c(before["bulgular"]))
             kayitlar.append(rec)
             yayimlanamaz.append({"dosya": rec["dosya"], "neden": rec["neden"]})
             toplam["bulunan"].update(before["bulgular"])
             continue
         kalan = after["bulgular"]
-        sorunlar = after["sorunlar"]
+        sorunlar = list(after["sorunlar"])
+        taranamadi = list(after.get("taranamadi") or [])
+        if after.get("imza_aday"):
+            sorunlar.append(f"imza: kapatılamayan aday ×{after['imza_aday']}")
         rec.update(bulunan=_c(before["bulgular"]), maskelenen=_c(res["maskelenen"]), kalan=_c(kalan),
-                   temizlenen=res["temizlenen"], kalan_sorunlar=sorunlar, uyarilar=res["uyarilar"])
+                   temizlenen=res["temizlenen"], kalan_sorunlar=sorunlar,
+                   uyarilar=list(res["uyarilar"]) + list(after.get("uyarilar") or []))
         if before["imza"]:
             rec["imza_uyarisi"] = before["imza"]
+        if res.get("imza_bolgesi"):
+            rec["imza_bolgesi"] = res["imza_bolgesi"]
+            rec["imza_ortusen_kelime"] = res.get("ortusen_kelime", 0)
+            toplam_imza["bolge"] += res["imza_bolgesi"]
+            toplam_imza["ortusen_kelime"] += res.get("ortusen_kelime", 0)
+        if after.get("imza_elle"):
+            rec["imza_elle"] = after["imza_elle"]
+        if taranamadi:
+            rec["taranamadi"] = taranamadi
         toplam["bulunan"].update(before["bulgular"])
         toplam["maskelenen"].update(res["maskelenen"])
         toplam["kalan"].update(kalan)
-        if kalan or sorunlar:
+        if kalan or sorunlar or taranamadi:
             target = fail_root / rel
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(dst), str(target))
             parts = [f"{k}×{n}" for k, n in sorted(kalan.items())] + list(sorunlar)
-            rec.update(durum="basarisiz", neden="maskeleme başarısız; kalan: " + ", ".join(parts),
-                       kopya=f"{FAIL_DIR}/{rel.as_posix()}")
+            if kalan or sorunlar:
+                durum, neden = "basarisiz", "maskeleme başarısız; kalan: " + ", ".join(parts)
+                if taranamadi:
+                    neden += "; taranamadı: " + "; ".join(taranamadi)
+            else:
+                durum = "taranamadi"
+                neden = "maskeleme eksik, elle bakılmalı: taranamadı (" + "; ".join(taranamadi) + ")"
+            rec.update(durum=durum, neden=neden[:600], kopya=f"{FAIL_DIR}/{rel.as_posix()}", elle_bakilmali=True)
             yayimlanamaz.append({"dosya": rec["dosya"], "neden": rec["neden"]})
         else:
             rec["durum"] = "tamam"
+            rec["elle_bakilmali"] = False
         kayitlar.append(rec)
 
     # boş kalan klasörleri temizle
@@ -146,7 +173,10 @@ def run(ws_root: Path, *, evidence: Path | None = None, out: Path | None = None,
         "kurallar": {"turler": list(rules.kinds), "ogrenci_no_desen_sayisi": len(rules.student_patterns),
                      "ad_listesi_sayisi": len(rules.names)},
         "ozet": {"dosya": len(kayitlar), **dict(sorted(durumlar.items())),
-                 **{k: _c(v) for k, v in toplam.items()}},
+                 **{k: _c(v) for k, v in toplam.items()},
+                 "imza_bolgesi": toplam_imza["bolge"], "imza_ortusen_kelime": toplam_imza["ortusen_kelime"],
+                 "imza_elle_dosya": sum(1 for r in kayitlar if r.get("imza_elle"))},
+        "ocr": raster_ocr_available(),
         "yayimlanamaz": yayimlanamaz, "uyarilar": uyarilar, "dosyalar": kayitlar,
         "maskeli_dizin": str(index_out) if index_out else None,
     }

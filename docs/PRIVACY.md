@@ -45,9 +45,15 @@ dokunulmaz.
 | dosya | içerik |
 |---|---|
 | `evidence-maskeli/` | yayımlanabilir kopyalar (yalnız yeniden taramadan temiz geçenler) |
-| `maskeleme-basarisiz/` | yeniden taramada sızıntı kalan kopyalar (elle inceleme için; **yayımlanmaz**) |
-| `maskeleme-raporu.json` | dosya başına `bulunan` / `maskelenen` / `kalan` (tür → sayı), temizlenen üst veri, uyarılar, `yayimlanamaz` listesi |
-| `evidence-index-maskeli.csv` | `evidence-index.csv` varsa: `ad`, `alintilar`, `kaynak` maskeli; `maskeleme` sütunu (tamam/basarisiz/desteklenmiyor/hata) |
+| `maskeleme-basarisiz/` | yeniden taramada sızıntı/şüphe kalan ya da taranamayan dosyaların kopyaları (elle inceleme için; **yayımlanmaz**) |
+| `maskeleme-raporu.json` | dosya başına `durum`, `elle_bakilmali`, `bulunan` / `maskelenen` / `kalan` (tür → sayı), `imza_bolgesi`, `imza_elle`, `taranamadi`, temizlenen üst veri, uyarılar, `yayimlanamaz` listesi |
+| `evidence-index-maskeli.csv` | `evidence-index.csv` varsa: `ad`, `alintilar`, `kaynak` maskeli; `maskeleme` sütunu (tamam/basarisiz/taranamadi/desteklenmiyor/hata) |
+
+Dosya durumları: `tamam` (yayın kopyası `evidence-maskeli/`'de), `basarisiz` (kişisel veri ya da
+imza şüphesi kaldı), `taranamadi` (metin katmanı yok ve OCR'dan geçemedi), `desteklenmiyor`,
+`hata`. `tamam` dışındaki her durumda `elle_bakilmali: true`: özgün kanıt rapor ve paketten
+**çıkarılmaz**, yalnız yayın kopyası yoktur ("maskeleme eksik, elle bakılmalı"). Maskeleme kanıt
+seçimini etkilemez.
 
 Rapora bulunan değerlerin kendisi yazılmaz; yalnız tür ve sayı. Komut, yayımlanamaz dosya varsa
 1, hata varsa 2 ile çıkar.
@@ -63,12 +69,53 @@ Rapora bulunan değerlerin kendisi yazılmaz; yalnız tür ve sayı. Komut, yay�
 | `ogrenci_no` | `[OGRENCI_NO]` | yapılandırılabilir desenler; varsayılan: yıl önekli 9-10 hane ve "öğrenci no: …" bağlamı |
 | `ad` | `[AD]` | yalnız yapılandırmadaki ad listesi (büyük/küçük harf ve ş/s, ı/i … duyarsız) |
 
-İmza bölgesi bu sürümde **yalnız uyarıdır**: görsel içeren ve metninde "imza" geçen PDF sayfası
-(DOCX/XLSX'te belge düzeyinde) raporda `imza_uyarisi` olarak listelenir; elle bakılmalıdır.
+### Görüntüdeki yazı: yerel OCR
+
+Metin katmanı olmayan (taranmış) PDF sayfaları, sayfanın ≥%40'ını kaplayan görüntülü sayfalar,
+görsel dosyalar (`.jpg .jpeg .png .tif .tiff .bmp .webp`) ve DOCX'e gömülü görseller yerel
+**tesseract** (`tur+eng`; sistem aracı, Python bağımlılığı yok) ile kelime kutularına ayrılır. Aynı
+desenler satır metnine uygulanır; OCR'ın sayılardaki karışıklıkları (O→0, l/I→1, S→5, B→8),
+sayı içindeki boşluklar ve "E-posta:" etiketinden sonra `@`'si okunamayan adresler için ek
+geçişler yapılır (T.C. algoritması yanlış pozitifi süzer). Eşleşen kutular siyah dikdörtgenle
+kapatılır: PDF'te PyMuPDF redaction görüntü piksellerini de değiştirir (yalnız üstüne kutu
+çizilmez); görselde Pillow ile, üst verisiz (EXIF/konum yok) yeni dosya yazılır. Maskeli kopya
+yeniden OCR'lanır; bulgu kalırsa `basarisiz`.
+
+**Taranamadı**: metin katmanı olmayan bir sayfa/görsel OCR'dan geçemezse — tesseract ya da dil
+verisi yok, araç hatası, ya da mürekkepli sayfada güvenilir kelime çok az / ortalama güven < 50
+(el yazısı, fotoğraf, kötü tarama) — dosya `taranamadi` olur; asla `tamam` sayılmaz. Boş sayfa
+taranamadı sayılmaz.
+
+### İmza
+
+Model kullanılmaz; basit görüntü işleme (Pillow):
+
+1. **Etiket bölgesi**: "İmza", "İmzası", "İmza:" (kısa satırda, `:` ile ya da tablo başlığında
+   komşularından uzak; "… güvenli elektronik imza ile imzalanmıştır" notu etiket değildir). Etiketin
+   sağı ve altı ile "İmza" sütununun altı (sütunda basılı metin başlayana kadar) imza bölgesidir.
+2. **Mürekkep adayı**: koyu ya da renkli (mavi tükenmez) pikseller → güvenilir OCR/metin
+   kelimeleri, uzun düz çizgiler (hafif eğik tablo kenarları dahil) ve dolu bloklar çıkarılır →
+   bağlantılı bileşenler kümelenir → boyutu, seyrekliği, inceliği (aşındırınca kaybolan vuruş) ve
+   yüksekliği/rengi imzaya benzeyen kümeler adaydır.
+3. İmza etiketinin ya da imza bloğu sözcüklerinin (Üye, Başkan, Dekan, Rektör, Prof., Dr., Onay,
+   Hazırlayan …; kısa satırda) yakınındaki aday kümesi (yakınındaki küçük vuruşlarla) siyah
+   dikdörtgenle kapatılır. Etiketsiz aday kalan taranmış sayfa/görsel **"imza: elle bakılmalı"**
+   olur (durum `basarisiz`); sayfanın üst %15'i (logo) bu kurala girmez.
+4. Metin katmanlı PDF sayfasında yalnız küçük gömülü görseller (≤ 4×2,5 inç, başlıkta değil)
+   aranır; vektör çizimler (tablo, akış şeması), filigran ve kapak görselleri aranmaz.
+5. Yeniden tarama: maskeli kopyada kapatılmamış etiketli aday kalırsa `basarisiz`.
+
+Yanlış karartma ölçüsü: kapatılan imza kutularıyla ≥%40 örtüşen güvenilir kelime sayısı raporda
+`imza_ortusen_kelime` (dosya ve özet). El yazısıyla doldurulmuş form alanları imza adayıyla
+karışabilir: etiketsizse sayfa elle bakılmalı olur, etiket yakınındaysa kapatılır.
+
+Eski davranış da sürer: görsel içeren ve metninde "imza" geçen PDF sayfası (DOCX/XLSX'te belge
+düzeyinde) `imza_uyarisi` olarak listelenir.
 
 ### Biçimler
 
-- **PDF**: PyMuPDF kuruluysa (`pip install 'bidr[maske]'`) gerçek kaldırma (redaction): bulunan
+- **PDF**: PyMuPDF kuruluysa (`pip install 'bidr[maske]'`; varsayılan motor; yoksa uyarı ve
+  pypdf) gerçek kaldırma (redaction): bulunan
   bölge içerikten ve metin katmanından silinir, siyah kutu konur. PyMuPDF yoksa pypdf ile **en iyi
   çaba**: içerik akışındaki metin işlemlerinin baytları değiştirilir; iki baytlı/özel kodlamalı
   yazı tiplerinde, iç içe biçim nesnelerinde ve görüntüdeki (taranmış) metinde işe yaramaz — bu
@@ -76,15 +123,30 @@ Rapora bulunan değerlerin kendisi yazılmaz; yalnız tür ve sayı. Komut, yay�
   XMP, gömülü ekler, yorum/açıklamalar, form alanları, yer imleri ve yapı ağacı temizlenir; yalnız
   sayfalar yeni dosyaya taşınır (silinen nesneler dosyada kalmaz). PyMuPDF'in lisansı AGPL'dir;
   bu yüzden zorunlu bağımlılık değil, isteğe bağlıdır.
+  **Örten açıklamalar**: elle karartma için çizilmiş kalın çizgi/mürekkep (Line/Ink ≥ 2 pt), dolu
+  kutu, damga ve koyu (siyah) vurgulama açıklamaları silinmeden önce kapladıkları alan karartma
+  olarak uygulanır (altındaki görüntü pikselleri ve metin silinir). Önceki sürüm bunları "yorum"
+  diye siliyordu ve altındaki imza/ad açığa çıkıyordu. pypdf motoru bunu yapamaz: böyle bir dosya
+  `hata` (elle bakılmalı) olur.
 - **DOCX**: paragraf metni koşulara bölünmüş olsa da birleşik taranır, değer yer tutucuyla
   değiştirilir (gövde, tablolar, üst/alt bilgi, dipnotlar). Yorumlar ve izlenen değişikliklerin
   silinen metni kaldırılır; çekirdek, özel ve uygulama üst verisi ile küçük resim temizlenir;
-  görsel alternatif metni ve harici bağlantı adresleri (mailto) maskelenir.
+  görsel alternatif metni, alan kodları (`fldSimple`), içerik denetimi etiketleri ve harici
+  bağlantı adresleri (mailto) maskelenir. Gömülü görseller OCR'lanır; belgede imza etiketi varsa
+  görseldeki imza benzeri mürekkep de kapatılır. Yapısal sayı öznitelikleri (nesne kimliği, rsid,
+  Word'ün verdiği "Resim 123" adı) kişisel veri sayılmaz (önceki sürümde bunlar yanlışlıkla
+  "öğrenci no" sayılıp DOCX'leri başarısız yapıyordu).
 - **XLSX**: hücre metinleri ve sayı olarak yazılmış numaralar (ör. TC hücresi), üst/alt bilgi ve
   sayfa adları maskelenir; hücre yorumları ve belge üst verisi silinir. openpyxl görselleri ve
   grafikleri korumaz (uyarı verilir).
 - **Düz metin** (`.txt`, `.csv`, `.md`, `.tsv`): metin değiştirme.
-- **Diğerleri** (görseller, sunumlar …): taranamaz; kopyalanmaz, `yayimlanamaz` listesine girer.
+- **Görseller** (`.jpg .jpeg .png .tif .tiff .bmp .webp`): OCR + imza (yukarıda); aynı biçimde,
+  üst verisiz kopya.
+- **HTML** (`.html`, `.htm`; kaydedilmiş web sayfası): metin ve öznitelikler (`mailto:`, `title`,
+  `alt`, `value` …) maskelenir, betikler ve HTML yorumları silinir; maskeli HTML yazılır (teslimde
+  PDF'e çevirme teslim aşamasının işidir). Yeniden taramada öğeler arası bölünmüş değerler için
+  birleşik metin ve `&#64;` gibi kodlanmış karakterler de aranır.
+- **Diğerleri** (sunumlar …): taranamaz; kopyalanmaz, `yayimlanamaz` listesine girer.
 
 ### Yeniden tarama
 
@@ -94,9 +156,12 @@ veri ve sıkıştırılmamış bütün akışlarda ham arama; DOCX/XLSX: pakette
 "maskeleme başarısız" işaretlenir, `evidence-maskeli/`'den çıkarılıp `maskeleme-basarisiz/`'e
 alınır ve yayımlanamaz listesine yazılır.
 
-Sınırlar: OCR yok (taranmış sayfadaki yazı görülmez; metin katmanı varsa o taranır); ad tespiti
-yalnız listedeki adları bulur; kural tabanlı tespit her biçimi yakalamaz. Yayından önce
-`maskeleme-raporu.json` ve imza uyarıları insan tarafından gözden geçirilmelidir.
+Sınırlar: OCR el yazısını okuyamaz (el yazısı sayfa `taranamadi` ya da imza şüphesiyle elle
+bakılmalı olur); imza tespiti sezgiseldir (etiketsiz imza ve imzaya benzeyen çizimler elle
+bakılmalı); PyMuPDF yoksa taranmış sayfadaki bulgu ve imza kapatılamaz (yeniden tarama
+yakalar, dosya `basarisiz`); ad tespiti yalnız listedeki adları bulur; kural tabanlı tespit her
+biçimi yakalamaz. Yayından önce `maskeleme-raporu.json`, `imza_elle` sayfaları ve imza uyarıları
+insan tarafından gözden geçirilmelidir.
 
 ## 2. Model öncesi maskeleme: `privacy.mask_before_model`
 

@@ -22,6 +22,8 @@ def _run(args) -> int:
     for f in r["dosyalar"]:
         if f.get("imza_uyarisi"):
             print(f"uyarı: imza bölgesi olabilir (elle bakın): {f['dosya']} {', '.join(f['imza_uyarisi'])}")
+        if f.get("imza_elle"):
+            print(f"uyarı: imza elle bakılmalı: {f['dosya']} {', '.join(f['imza_elle'])}")
     print(json.dumps(r["ozet"], ensure_ascii=False, indent=1))
     if r["yayimlanamaz"]:
         print(f"YAYIMLANAMAZ ({len(r['yayimlanamaz'])}):")
