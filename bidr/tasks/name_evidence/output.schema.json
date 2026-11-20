@@ -6,6 +6,12 @@
   "additionalProperties": false,
   "properties": {
     "kanit_adi": {"type": "string", "minLength": 3, "maxLength": 80},
+    "parca_adlari": {
+      "type": "object",
+      "maxProperties": 6,
+      "propertyNames": {"pattern": "^[A-Z](\\.[0-9]+)+/[0-9]+$"},
+      "additionalProperties": {"type": "string", "minLength": 3, "maxLength": 80}
+    },
     "gerekce": {"type": "string", "maxLength": 300}
   }
 }

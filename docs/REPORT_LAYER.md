@@ -23,7 +23,7 @@ bugünkü `eksik_text` çıktısıyla aynıdır; alan yoksa (eski audit çıktı
 davranışı sürdürür. `--eksik-notu-yok` ikisini de kapatır. Kapsam dışı (`baska_birim`) ölçütte
 yazılmaz. Metni olup not alan ölçütler `.bidr-render.json` `eksik_notlu_metin`.
 
-## Kanıt adı (`ad`, `ad_kaynagi`) — öncelik insan > model > kural
+## Kanıt adı (`ad`, `ad_kaynagi`) — öncelik insan > model parça adı > model > kural
 - `insan`: review.xlsx "kanıt adı" düzeltmesi (`bidr audit apply` → `kanit-adlari.jsonl`,
   inceleme klasörüne).
 - `model`: `bidr name prepare|apply` (ajan; isteğe bağlı aşama `name`, audit'ten önce) ya da
@@ -31,7 +31,18 @@ yazılmaz. Metni olup not alan ölçütler `.bidr-render.json` `eksik_notlu_meti
   belirlenir (`birim-kararlari.jsonl`, audit/file ile aynı görünüm): geri alınan belge kanıttır;
   ince kararın kabul edilmiş `kanit_adi`'sı olan belge paketlenmez.
 - `kural`: identify başlığı, yoksa tür etiketi (`bidr/file/naming.py`).
-Her ad yeniden denetlenir (kişi adı/unvan/e-posta yok); tutmayan kaynak atlanır.
+- `model_parca`: derleme belgede (birleştirilmiş PDF) yuva başına parça adı
+  (`kanit-adlari.jsonl` model kaydının `parca_adlari`'sı, `name_evidence` v3). Kalem (ölçüt ×
+  belge) yuvalarından karar sırasıyla ilkinin parça adını alır; aynı belgenin farklı parçaları
+  farklı ölçütlerde farklı dosya adı alır, aynı parça tek ad (apply süzer). Apply parça adını
+  yalnız derleme kanıtı olan belgede tutar (sayfa başlarında birden çok doküman kodu ya da belge
+  adı bazı alıntıların çevresinde tutmuyor). İnsan adı varsa parça adı kullanılmaz. Model adı
+  olan derlemeleri parça adı için yeniden paketlemek: `bidr name prepare --parca`.
+Her ad yeniden denetlenir (kişi adı/unvan/e-posta yok); tutmayan kaynak atlanır. Model adının
+belgede dayanağı (`bidr/name/ground.py`) dizinin `isaretler` sütununa geçer: `ad_dogrulanmali`
+(adın türü/birimi/niteliği/sayısı belgede yok), `ad_parca_uyumsuz` (adın türü/konusu kalemin bir
+alıntısının çevresinde yok: derlemenin başka parçası; parça adlı yuvada parça adıyla denetlenir),
+`parca_adi_coklu` (tek dosyadaki yuvalar farklı parça adlarına düşüyor). İnsan adı denetlenmez.
 config.yaml `rapor.kanit_adi_modeli: false` `name` aşamasını atlar.
 
 ## Kanıt bağlantısı (`baglanti`, `baglanti_kaynagi`) — öncelik insan > belge metni > klasör
@@ -51,7 +62,7 @@ Bağlantısı olmayan kanıtlar `gaps.md`'nin "Bağlantısı olmayan kanıtlar" 
 Sözleşme sütunları: `kanit_no` (ölçüt içinde sıra + OD, kılavuz gösterimi: `1_OD3`),
 `olcut`, `od`, `ad` (insan okur kanıt adı), `dosya` (evidence/'e göre göreli yol), `doc_id`,
 `sayfalar` (boş = tüm belge), `yuvalar`, `alintilar` (JSON liste).
-Ek sütunlar: `inceleme`, `kopyalar`, `kaynak`, `isaretler`, `ad_kaynagi` (insan|model|kural),
+Ek sütunlar: `inceleme`, `kopyalar`, `kaynak`, `isaretler`, `ad_kaynagi` (insan|model_parca|model|kural),
 `baglanti` (raporda kanıt adının adresi; boş olabilir), `baglanti_kaynagi`
 (insan|belge_metni|klasor|boş).
 Bir belge bir ölçütte bir kez numaralanır; farklı ölçütlerde ayrı numara alır. **Numara ve kod

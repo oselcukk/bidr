@@ -139,17 +139,49 @@ def quote_window(text: str, quote: str) -> tuple[str, bool] | None:
     if len(pages) == 1:
         return text[max(0, s - TEK_SAYFA_PENCERE):e + TEK_SAYFA_PENCERE], False
     i = next((k for k, (a, b) in enumerate(pages) if a <= s <= b), len(pages) - 1)
-    codes = [_page_code(text[a:b]) for a, b in pages]
-    own = codes[i]
-    if own and len({c for c in codes if c}) > 1:
-        lo = hi = i
-        while lo > 0 and codes[lo - 1] in (own, None):
-            lo -= 1
-        while hi < len(pages) - 1 and codes[hi + 1] in (own, None):
-            hi += 1
-        return text[pages[lo][0]:pages[hi][1]], True
+    part = _coded_part(text, pages, i)
+    if part:
+        return text[pages[part[0]][0]:pages[part[1]][1]], True
     lo, hi = max(0, i - SAYFA_ONCE), min(len(pages) - 1, i + SAYFA_SONRA)
     return text[pages[lo][0]:pages[hi][1]], False
+
+
+def page_codes(text: str) -> list[str | None]:
+    """Her sayfanın başındaki doküman/form kodu (yoksa None)."""
+    return [_page_code(text[a:b]) for a, b in _pages(text)]
+
+
+def coded_compilation(text: str) -> bool:
+    """Sayfa başlarında birden çok farklı doküman kodu: kodlu derleme."""
+    return len({c for c in page_codes(text) if c}) > 1
+
+
+def _coded_part(text: str, pages: list[tuple[int, int]], i: int) -> tuple[int, int] | None:
+    """Kodlu derlemede i. sayfanın parçası (aynı kodu ya da kodsuz sayfaları taşıyan bitişik
+    sayfalar; 0 tabanlı kapalı aralık). Kodlu derleme değilse ya da sayfanın kodu yoksa None."""
+    codes = [_page_code(text[a:b]) for a, b in pages]
+    own = codes[i]
+    if not (own and len({c for c in codes if c}) > 1):
+        return None
+    lo = hi = i
+    while lo > 0 and codes[lo - 1] in (own, None):
+        lo -= 1
+    while hi < len(pages) - 1 and codes[hi + 1] in (own, None):
+        hi += 1
+    return lo, hi
+
+
+def quote_part(text: str, quote: str) -> tuple | None:
+    """Alıntının geldiği parçanın kimliği: kodlu derlemede parçanın sayfa aralığı
+    (`("kod", lo, hi)`), değilse alıntının sayfası (`("sayfa", i)`; kodsuz derlemede sınır
+    bilinmez). Alıntı metinde yoksa None."""
+    m = verify_quote(quote, text) if quote else None
+    if not (m and m.span):
+        return None
+    pages = _pages(text)
+    i = next((k for k, (a, b) in enumerate(pages) if a <= m.span[0] <= b), len(pages) - 1)
+    part = _coded_part(text, pages, i) if len(pages) > 1 else None
+    return ("kod", *part) if part else ("sayfa", i)
 
 
 def slot_issues(ad: str, text: str, quotes: dict[str, str]) -> list[str]:

@@ -364,3 +364,151 @@ def test_name_task_parts_and_grounding_record(env, capsys):
     assert recs["d_anket"]["dogrulanmali"] == {"belge": ["tur_yok"], "parca_uyumsuz": ["B.1.1/5", "B.1.1/6"]}
     assert "dogrulanmali" not in recs["d_karar"]
     assert "d_anket" in (d / "GECERSIZ.md").read_text(encoding="utf-8")
+
+
+# -- derleme belgede parça adı (name_evidence v3) ----------------------------------------------
+
+from bidr.name.run import normalize_parts  # noqa: E402
+
+Q_STAJ = "Bu esasların amacı öğrencilerin staj çalışmalarının düzenlenmesidir"
+Q_STAJ5 = "Madde 5 Bu esasların amacı"
+
+
+def test_normalize_parts_compilation_only_and_one_name_per_part():
+    q = {"B.1.6/1": Q_STAJ, "B.1.6/2": Q_STAJ5, "C.1.1/1": Q_ARAS}
+    raw = {"B.1.6/1": "Örnek Üniversitesi Staj Esasları", "B.1.6/2": "Staj Esasları Başka Ad",
+           "C.1.1/1": "Araştırma Birimi Yönergesi", "D.1.1/1": "Kabul Edilmemiş Yuva Adı"}
+    parts, notes = normalize_parts(raw, "Örnek Üniversitesi Staj Esasları", DERLEME, q)
+    # belge adıyla aynı parça adı yazılmaz; aynı parçadaki ikinci yuva ilk yuvanın adını alır
+    assert parts == {"C.1.1/1": "Araştırma Birimi Yönergesi"}
+    assert any("ayni parca tek ad" in n and "B.1.6/2" in n for n in notes)
+    assert any("D.1.1/1" in n for n in notes)
+    # belge adı ikinci parçayı anlatıyorsa ilk parçanın yuvaları tek adla gelir
+    parts, _ = normalize_parts(raw, "Araştırma Birimi Yönergesi", DERLEME, q)
+    assert parts == {"B.1.6/1": "Örnek Üniversitesi Staj Esasları", "B.1.6/2": "Örnek Üniversitesi Staj Esasları"}
+    # kişi adı içeren parça adı reddedilir
+    parts, notes = normalize_parts({"C.1.1/1": "Prof. Dr. Deneme Kişi Yönergesi"}, "Staj Esasları", DERLEME, q)
+    assert parts == {} and "reddedildi" in notes[0]
+    # derleme kanıtı yoksa (tek belge, ad bütün alıntılarda tutuyor) parça adı atılır
+    tek = _STAJ + "\f" + _STAJ.replace("Madde 1", "Madde 5")
+    parts, notes = normalize_parts({"B.1.6/2": "Başka Bir Parça Adı"}, "Örnek Üniversitesi Staj Esasları", tek,
+                                   {"B.1.6/1": Q_STAJ, "B.1.6/2": Q_STAJ5})
+    assert parts == {} and notes == ["derleme_saptanmadi: parca_adlari kullanilmadi"]
+    # kodsuz derleme: belge adı bir yuvada tutmuyor → derleme kanıtı; parça = alıntının sayfası
+    parts, _ = normalize_parts({"D.1.1/3": "Laboratuvar Etkinliği Raporu"}, "Bölüm Kurulu Kararı 2025-1",
+                               KARAR_EKLI, {"B.1.5/2": Q_KARAR, "D.1.1/3": Q_ETK})
+    assert parts == {"D.1.1/3": "Laboratuvar Etkinliği Raporu"}
+
+
+def test_schema_accepts_optional_part_names():
+    from bidr.llm import validate_output
+    ok = {"kanit_adi": "Staj Esasları", "gerekce": "x", "parca_adlari": {"C.1.1/1": "Araştırma Birimi Yönergesi"}}
+    assert validate_output("name_evidence", ok)[0] == ok
+    assert validate_output("name_evidence", {"kanit_adi": "Staj Esasları", "gerekce": "x"})[0]
+    assert validate_output("name_evidence", {**ok, "parca_adlari": {"sayfa 3": "Araştırma Yönergesi"}})[0] is None
+
+
+def test_resolver_part_name_priority_and_flags():
+    docs = {"d": {"doc_id": "d", "doc_type": "yonerge"}}
+    dec = {"d": {"eslesmeler": [{"yuva": "B.1.6/1", "alinti": Q_STAJ, "kabul": True},
+                                {"yuva": "C.1.1/1", "alinti": Q_ARAS, "kabul": True}]}}
+    rec = {"ad": "Örnek Üniversitesi Staj Esasları", "kaynak": "model",
+           "parca_adlari": {"C.1.1/1": "Araştırma Birimi Yönergesi"}}
+    r = Resolver({"d": {"model": rec}}, dec, docs, text_of=lambda did: DERLEME)
+    base = r.resolve("d")[:2]
+    assert base == ("Örnek Üniversitesi Staj Esasları", "model")
+    # parça adı yalnız onu taşıyan yuvanın kalemine; diğer kalem belge adında
+    assert r.item_name("d", ["C.1.1/1"], base) == ("Araştırma Birimi Yönergesi", "model_parca")
+    assert r.item_name("d", ["B.1.6/1"], base) == base
+    # parça adı yuvanın dayanağını düzeltir: işaret yok; tek dosyada iki parça → parca_adi_coklu
+    assert r.dogrulanmali == {} and r.item_flags("d", ["C.1.1/1"]) == []
+    assert r.item_flags("d", ["B.1.6/1", "C.1.1/1"]) == ["parca_adi_coklu"]
+    # parça adı yoksa aynı yuva ad_parca_uyumsuz
+    r2 = Resolver({"d": {"model": {**rec, "parca_adlari": {}}}}, dec, docs, text_of=lambda did: DERLEME)
+    r2.resolve("d")
+    assert r2.item_flags("d", ["C.1.1/1"]) == ["ad_parca_uyumsuz"] and r2.item_flags("d", ["B.1.6/1"]) == []
+    # yanlış parça adı (alıntının parçasında türü yok) o yuvayı işaretler
+    r3 = Resolver({"d": {"model": {**rec, "parca_adlari": {"C.1.1/1": "Araştırma Birimi Tutanağı"}}}}, dec, docs,
+                  text_of=lambda did: DERLEME)
+    r3.resolve("d")
+    assert r3.item_flags("d", ["C.1.1/1"]) == ["ad_parca_uyumsuz"]
+    # insan adı her şeyin önünde: parça adı kullanılmaz (kopyanın satırındaki insan adı da)
+    names = {"d": {"model": rec, "insan": {"ad": "Staj ve Araştırma Düzenlemeleri"}}}
+    ri = Resolver(names, dec, docs, text_of=lambda did: DERLEME)
+    b = ri.resolve("d")[:2]
+    assert ri.item_name("d", ["C.1.1/1"], b) == ("Staj ve Araştırma Düzenlemeleri", "insan")
+    names = {"d": {"model": rec}, "k": {"insan": {"ad": "Kopya Satırından Ad"}}}
+    rk = Resolver(names, dec, docs, text_of=lambda did: DERLEME)
+    b = rk.resolve("d", ["k"])[:2]
+    assert rk.item_name("d", ["C.1.1/1"], b, ["k"])[1] == "insan"
+
+
+# sentetik kodlu derleme: 1-2. sayfa kurul kararı (ÖR-0101), 3. sayfa staj yönergesi (YÖ-0202)
+P_DER = ("ÖR-0101 BÖLÜM KURULU KARARI ve bir kapak sayfası birinci\f"
+         "ÖR-0101 İkinci sayfa: bölüm kurulu uygulama kararı alınmıştır ve bu karar bildirilmiştir\f"
+         "YÖ-0202 STAJ YÖNERGESİ Üçüncü sayfa ek: staj çalışmaları bu yönerge ile düzenlenir")
+
+
+def _make_compilation(ws):
+    """env'deki d_karar'ı kodlu derlemeye çevirir (aynı yuvalar, alıntılar yeni metinde)."""
+    from test_file import _m
+    (ws / "text" / "d_karar.txt").write_text(P_DER, encoding="utf-8")
+    recs = [json.loads(x) for x in (ws / "decisions.jsonl").read_text(encoding="utf-8").splitlines()]
+    for r in recs:
+        if r["doc_id"] == "d_karar":
+            r["eslesmeler"] = [
+                _m("B.1.1", "B.1.1/3", "uygula", 3, "bölüm kurulu uygulama kararı", P_DER),
+                _m("B.1.1", "B.1.1/1", "planla", 2, "İkinci sayfa", P_DER),
+                _m("A.1.1", "A.1.1/2", "uygula", 3, "staj çalışmaları bu yönerge ile düzenlenir", P_DER)]
+    (ws / "decisions.jsonl").write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in recs),
+                                        encoding="utf-8")
+
+
+def test_file_part_names_and_name_flags(env, tmp_path, capsys):
+    ws, src = env
+    _make_compilation(ws)
+    # 1) parça adı yok: model belge adı A.1.1 yuvasında dayanaksız → işaret
+    upsert(ws / NAMES, [{"doc_id": "d_karar", "kaynak": "model", "ad": "Bölüm Kurulu Uygulama Kararı"}])
+    out = tmp_path / "o1"
+    FR.run(ws, out=out, source=src)
+    by = {(r["olcut"], r["doc_id"]): r for r in _index(out)}
+    a, b = by[("A.1.1", "d_karar")], by[("B.1.1", "d_karar")]
+    assert a["ad"] == b["ad"] == "Bölüm Kurulu Uygulama Kararı"
+    assert "ad_parca_uyumsuz" in a["isaretler"] and "ad_" not in b["isaretler"]
+    # 2) name v3: paket derleme bilgisini taşır; cevaptaki parça adları süzülür
+    NR.prepare(ws, only=["d_karar"])
+    d = ws / "work" / "name"
+    pkg = json.loads((d / "d_karar.json").read_text(encoding="utf-8"))
+    assert "DERLEME" in pkg["istem"] and "2 farklı doküman kodu" in pkg["istem"] and pkg["surum"] == "3"
+    (d / "d_karar.out.json").write_text(json.dumps({
+        "kanit_adi": "Bölüm Kurulu Uygulama Kararı", "gerekce": "x",
+        "parca_adlari": {"B.1.1/3": "Bölüm Kurulu Uygulama Kararı", "B.1.1/1": "Kurul Kararı Kapak Sayfası",
+                         "A.1.1/2": "Staj Yönergesi"}}, ensure_ascii=False), encoding="utf-8")
+    assert main(["name", "apply", "-w", str(ws), "--model", "test", "--only", "d_karar"]) == 0
+    assert "parça adlı=1" in capsys.readouterr().out
+    rec = {r["doc_id"]: r for r in read_jsonl(ws / NAMES)}["d_karar"]
+    assert rec["parca_adlari"] == {"A.1.1/2": "Staj Yönergesi"} and "dogrulanmali" not in rec
+    assert any("B.1.1/1" in n and "ayni parca tek ad" in n for n in rec["parca_not"])
+    # 3) dosyalama: A.1.1 kesimi parça adını alır, B.1.1 belge adında; işaret kalmaz
+    out = tmp_path / "o2"
+    FR.run(ws, out=out, source=src)
+    by = {(r["olcut"], r["doc_id"]): r for r in _index(out)}
+    a, b = by[("A.1.1", "d_karar")], by[("B.1.1", "d_karar")]
+    assert (a["ad"], a["ad_kaynagi"], a["sayfalar"]) == ("Staj Yönergesi", "model_parca", "3")
+    assert a["dosya"] == "A/A.1/A.1.1/[2-OD3]. Staj Yönergesi.pdf" and (out / "evidence" / a["dosya"]).is_file()
+    assert (b["ad"], b["ad_kaynagi"]) == ("Bölüm Kurulu Uygulama Kararı", "model")
+    assert "ad_" not in a["isaretler"] and "parca_adi_coklu" not in a["isaretler"]
+    # 4) insan adı parça adının önüne geçer
+    rev = tmp_path / "rev"
+    rev.mkdir()
+    upsert(rev / NAMES, [{"doc_id": "d_karar", "kaynak": "insan", "ad": "Kurul Kararı ve Staj Yönergesi"}])
+    out = tmp_path / "o3"
+    FR.run(ws, out=out, source=src, review_dir=rev)
+    by = {(r["olcut"], r["doc_id"]): r for r in _index(out)}
+    assert {by[(c, "d_karar")]["ad_kaynagi"] for c in ("A.1.1", "B.1.1")} == {"insan"}
+    # 5) --parca: model adı olan derleme yeniden paketlenmez (v3 ile alınmış), v2 kaydı paketlenir
+    st = NR.prepare(ws, parca=True)
+    assert st["derleme"] == 0
+    upsert(ws / NAMES, [{**rec, "gorev": {"name_evidence": "2"}, "parca_adlari": {}}])
+    st = NR.prepare(ws, parca=True)
+    assert st["derleme"] == 1
