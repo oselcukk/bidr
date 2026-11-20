@@ -4,7 +4,12 @@
   1. kanıtsız ölçüt                  (puan 100)
   2. tek belgeyle OD artışı           (puan 80–84; düşük OD'de biraz daha yüksek)
   3. karşılığı olmayan iyi kanıt      (puan 60; eski sürümü olan 58)
-  4. diğer (bir üst düzey için)       (puan 20)
+  4. kılavuz önerisi                  (puan 32–45: kabul edilmiş hiçbir kanıtın karşılamadığı "Örnek
+                                       Kanıtlar" yuvası; bir üst düzeyin eksik halkası 45, daha üst
+                                       düzeyin halkası 38, kanıtı olan halka 32)
+  5. diğer (bir üst düzey için)       (puan 20)
+Aynı öneri iki kaynaktan geliyorsa (eksik halka / geçen yıl talebinin yuvaları + karşılanmamış yuva)
+tek satırda birleşir: satır en yüksek puanı alır, `kaynak` alanında bütün kaynaklar yazılır.
 Kapsam dışı ölçütler (sorumlu birim kapsamı `baska_birim`) listelenmez.
 """
 from __future__ import annotations
@@ -13,15 +18,24 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+import re
+
 from bidr.audit.rules import GEREKEN, KISA, LEVELS, criterion_od
 from bidr.criteria.model import id_key
+from bidr.criteria.slots import STAGE_OD
 
 from .eslestir import ESKI, VAR, YOK
+from .referans import IYI_GUVEN, KABUL, ad_sozcukleri
 from .tablolar import Sorumlular
 
 P_KANITSIZ, P_TEK, P_REF, P_REF_ESKI, P_DIGER = 100, 80, 60, 58, 20
+P_KLV_HALKA, P_KLV_UST, P_KLV_MEVCUT = 45, 38, 32     # kılavuz önerisi (karşılanmamış yuva)
 GRUP = {P_KANITSIZ: "kanıtsız ölçüt", P_TEK: "tek belgeyle OD artışı", P_REF: "karşılığı olmayan iyi kanıt",
-        P_DIGER: "diğer"}
+        P_KLV_HALKA: "kılavuz önerisi", P_DIGER: "diğer"}
+K_KANITSIZ, K_OD, K_REF, K_KLV = "kanıtsız", "OD artışı", "geçen yıl", "kılavuz"
+KAYNAKLAR = (K_KANITSIZ, K_OD, K_REF, K_KLV)
+RUBRIK_N = 160          # gerekçeye eklenen rubrik tanımı en çok bu kadar karakter
+ACIKLAMA_MIN = 2        # açıklama cümlesi için en az ortak sözcük kökü
 HALKA_AD = {"planla": "planlama", "uygula": "uygulama", "kontrol_et": "izleme (kontrol)",
             "onlem_al": "iyileştirme (önlem)", "ozgun": "özgün uygulama"}
 FILES = {"xlsx": "ihtiyac.xlsx", "md": "ihtiyac.md", "json": "ihtiyac.json"}
@@ -34,20 +48,112 @@ def _grup(puan: int) -> str:
         return GRUP[P_TEK]
     if puan >= P_REF_ESKI:
         return GRUP[P_REF]
+    if puan >= P_KLV_MEVCUT:
+        return GRUP[P_KLV_HALKA]
     return GRUP[P_DIGER]
+
+
+def karsilar(r: dict) -> bool:
+    """Satır yuvasını karşılayan kabul edilmiş kanıt mı: sayılan, reddedilmemiş; güveni orta/yüksek ya
+    da incelemede kabul/düzelt edilmiş (insan kararı düşük güveni aşar; audit ve referans setle aynı)."""
+    return (bool(r.get("sayilir")) and r.get("karar") != "ret"
+            and (r.get("guven") in IYI_GUVEN or r.get("karar") in KABUL))
+
+
+def kisalt(s: str, n: int = RUBRIK_N) -> str:
+    s = " ".join((s or "").split())
+    return s if len(s) <= n else s[:n].rsplit(" ", 1)[0] + "…"
+
+
+def rubrik(cs, cid: str, od: int | None) -> str:
+    """Kılavuzdaki olgunluk düzeyi tanımı (kısaltılmış; uydurma yok, yoksa boş)."""
+    if not od:
+        return ""
+    try:
+        return kisalt(cs.get(cid).rubric.get(od) or "")
+    except KeyError:
+        return ""
+
+
+def _kok(s: str) -> set[str]:
+    return {w[:5] for w in ad_sozcukleri(s) if len(w) >= 4}
+
+
+def aciklama_cumlesi(cs, cid: str, metin: str) -> str:
+    """Ölçüt açıklamasından (kılavuz `description`) metinle en çok ortak sözcük kökü olan cümle
+    (en az ACIKLAMA_MIN kök); yoksa boş."""
+    try:
+        paras = cs.get(cid).description
+    except KeyError:
+        return ""
+    k = _kok(metin)
+    best, n = "", ACIKLAMA_MIN - 1
+    for p in paras:
+        for c in re.split(r"(?<=[.;])\s+", p):
+            m = len(k & _kok(c))
+            if m > n:
+                best, n = c.strip(), m
+    return kisalt(best, 200)
+
+
+def _rubrik_ek(cs, cid: str, od: int | None) -> str:
+    r = rubrik(cs, cid, od)
+    return f" · OD{od} tanımı (kılavuz): «{r}»" if r else ""
+
+
+def _yuvalar(cs, cid: str) -> list:
+    try:
+        return [s for s in cs.get(cid).slots if not s.footnote]
+    except KeyError:
+        return []
 
 
 def yuva_metinleri(cs, tags, cid: str, halka: str) -> list[str]:
     """Kılavuzda ölçütün bu aşamaya etiketli yuvaları (`A.1.1/3: metin`)."""
     out = []
-    try:
-        slots = [s for s in cs.get(cid).slots if not s.footnote]
-    except KeyError:
-        return out
-    for s in slots:
+    for s in _yuvalar(cs, cid):
         t = tags.get(s.id)
         if t is not None and halka in t.stages:
             out.append(f"{s.id}: {s.text}")
+    return out
+
+
+def _yuva_idleri(yuvalar: str) -> set[str]:
+    """Talebin `yuvalar` alanındaki yuva kimlikleri (`A.1.1/3: metin | …` ya da `A.1.1/2, A.1.1/3`)."""
+    return set(re.findall(r"\b[A-E]\.\d+\.\d+/\d+\b", yuvalar or ""))
+
+
+def kilavuz_onerileri(cs, tags, cid: str, rows: list[dict], od: int, present: set[str],
+                      eksik_next: list[str], nxt: int | None, sor: Sorumlular) -> list[dict]:
+    """Kabul edilmiş hiçbir kanıtın karşılamadığı "Örnek Kanıtlar" yuvaları (dipnotlar hariç)."""
+    dolu = {r["yuva"] for r in rows if r.get("olcut") == cid and karsilar(r)}
+    out = []
+    for s in _yuvalar(cs, cid):
+        if s.id in dolu:
+            continue
+        t = tags.get(s.id)
+        st = [h for h in (t.stages if t is not None else ()) if h in HALKA_AD]
+        if any(h in eksik_next for h in st):
+            puan, hedef = P_KLV_HALKA, nxt
+        elif any(h not in present for h in st):
+            puan, hedef = P_KLV_UST, None
+        else:
+            puan, hedef = P_KLV_MEVCUT, None
+        eksik = [h for h in st if h not in present]
+        h0 = ([h for h in st if h in eksik_next] or eksik or st or [""])[0]
+        duzey = nxt if puan == P_KLV_HALKA else min((STAGE_OD[h] for h in (eksik or st)), default=None)
+        if puan == P_KLV_HALKA:
+            neden = f"karşılanmamış kılavuz yuvası; OD{nxt} için eksik {HALKA_AD[h0]} halkası"
+        elif puan == P_KLV_UST:
+            neden = f"karşılanmamış kılavuz yuvası; daha üst düzeyin ({HALKA_AD[h0]}, OD{duzey}) halkası"
+        else:
+            neden = ("karşılanmamış kılavuz yuvası; halkada kanıt var, yuva boş"
+                     if st else "karşılanmamış kılavuz yuvası (PUKÖ etiketi yok)")
+        out.append({"puan": puan, "halka": ",".join(st), "hedef_od": hedef, "istenecek": s.text,
+                    "yuvalar": s.id, "belge_turu": "",
+                    "kimden": sor.kim(asama=h0 or None, olcut=cid), "ornek": "",
+                    "gerekce": neden + (_rubrik_ek(cs, cid, duzey) if puan != P_KLV_MEVCUT else ""),
+                    "kaynak": K_KLV})
     return out
 
 
@@ -116,7 +222,9 @@ def olcut_satirlari(criteria: list[dict], rows: list[dict], kapsam: dict[str, st
             ctal.append({"puan": P_KANITSIZ if kanitsiz else P_TEK + max(0, 3 - od) * 2, "halka": h,
                          "hedef_od": yeni, "istenecek": f"{HALKA_AD[h]} kanıtı: {GEREKEN[h]}",
                          "yuvalar": " | ".join(ys), "belge_turu": "",
-                         "kimden": sor.kim(asama=h, olcut=cid), "ornek": ornek(h), "gerekce": neden})
+                         "kimden": sor.kim(asama=h, olcut=cid), "ornek": ornek(h),
+                         "gerekce": neden + _rubrik_ek(cs, cid, yeni),
+                         "kaynak": K_KANITSIZ if kanitsiz else K_OD})
         for it in karsiliksiz:
             m = matches.get(it["id"]) or {}
             eski = m.get("durum") == ESKI
@@ -129,11 +237,13 @@ def olcut_satirlari(criteria: list[dict], rows: list[dict], kapsam: dict[str, st
                          "ornek": it["kanit_adi"],
                          "gerekce": ("geçen yılın iyi kanıtı" + (f" ({it['tekrarlayan_ad']}, tekrarlayan)"
                                                                 if it.get("tekrarlayan") else "")
-                                     + "; " + (m.get("gerekce") or ""))})
+                                     + "; " + (m.get("gerekce") or "")),
+                         "kaynak": K_REF})
         if not ctal and nxt:
             ys = []
             for h in eksik_next:
                 ys += yuva_metinleri(cs, tags, cid, h)
+            ys = list(dict.fromkeys(ys))                  # birden çok halkaya etiketli yuva bir kez
             ctal.append({"puan": P_DIGER, "halka": ",".join(eksik_next), "hedef_od": nxt,
                          "istenecek": "; ".join(f"{HALKA_AD[h]} kanıtı" for h in eksik_next) or "—",
                          "yuvalar": " | ".join(ys), "belge_turu": "",
@@ -141,9 +251,27 @@ def olcut_satirlari(criteria: list[dict], rows: list[dict], kapsam: dict[str, st
                                    or sor.kim(olcut=cid),
                          "ornek": "",
                          "gerekce": f"OD{nxt} için {len(eksik_next)} halka birlikte gerekli "
-                                    f"({', '.join(HALKA_AD[h] for h in eksik_next)})"})
+                                    f"({', '.join(HALKA_AD[h] for h in eksik_next)})" + _rubrik_ek(cs, cid, nxt),
+                         "kaynak": K_OD})
+        # kılavuz önerileri: aynı yuva zaten bir talepte istenmişse o satıra kaynak olarak birleşir
+        klv = kilavuz_onerileri(cs, tags, cid, rows, od, present, eksik_next, nxt, sor)
+        for k in klv:
+            sahip = [t for t in ctal if k["yuvalar"] in _yuva_idleri(t["yuvalar"])]
+            if not sahip:
+                ctal.append(k)
+                continue
+            for t in sahip:
+                if K_KLV not in t["kaynak"].split(" + "):
+                    t["kaynak"] += " + " + K_KLV
+                if k["puan"] > t["puan"]:
+                    t["puan"] = k["puan"]
+                    if t["hedef_od"] is None:
+                        t["hedef_od"] = k["hedef_od"]
         for t in ctal:
-            t.update({"olcut": cid, "baslik": c.get("baslik") or "", "od": od, "oncelik": _grup(t["puan"])})
+            ac = aciklama_cumlesi(cs, cid, t["istenecek"] + " " + t["yuvalar"]) if t["yuvalar"] else ""
+            t.update({"olcut": cid, "baslik": c.get("baslik") or "", "od": od, "oncelik": _grup(t["puan"]),
+                      "halka_ad": ", ".join(HALKA_AD[h] for h in t["halka"].split(",") if h in HALKA_AD),
+                      "aciklama": ac})
         talepler += ctal
         puan = max((t["puan"] for t in ctal), default=0)
         gerek = [t["gerekce"] for t in ctal if t["puan"] == puan][:1]
@@ -155,6 +283,8 @@ def olcut_satirlari(criteria: list[dict], rows: list[dict], kapsam: dict[str, st
             "kimden": list(dict.fromkeys(t["kimden"] for t in ctal)),
             "oncelik": _grup(puan) if ctal else "—", "puan": puan, "gerekce": gerek[0] if gerek else "",
             "tek_belge": tek,
+            "karsilanmamis_yuvalar": [k["yuvalar"] for k in klv],
+            "sonraki_od_tanimi": rubrik(cs, cid, nxt),
         })
     talepler.sort(key=lambda t: (-t["puan"], id_key(t["olcut"]), t["halka"], t["istenecek"]))
     for i, t in enumerate(talepler, 1):
@@ -164,16 +294,21 @@ def olcut_satirlari(criteria: list[dict], rows: list[dict], kapsam: dict[str, st
 
 # -- çıktılar -----------------------------------------------------------------------------------
 
-T_COLS = [("sira", "Sıra", 6), ("puan", "Puan", 6), ("oncelik", "Öncelik", 24), ("olcut", "Ölçüt", 8),
+T_COLS = [("sira", "Sıra", 6), ("puan", "Puan", 6), ("oncelik", "Öncelik", 24),
+          ("kaynak", "Kaynak", 22), ("olcut", "Ölçüt", 8),
           ("baslik", "Ölçüt başlığı", 30), ("od", "Önerilen OD", 8), ("hedef_od", "Hedef OD", 8),
+          ("halka_ad", "PUKÖ halkası", 16),
           ("istenecek", "İstenecek kanıt", 60), ("yuvalar", "Kılavuz yuvaları", 60),
           ("belge_turu", "Belge türü", 18), ("kimden", "Kimden istenir", 30),
-          ("ornek", "Geçen yılın örneği", 40), ("gerekce", "Gerekçe", 70)]
+          ("ornek", "Geçen yılın örneği", 40), ("gerekce", "Gerekçe", 70),
+          ("aciklama", "Ölçüt açıklamasından (kılavuz)", 60)]
 O_COLS = [("olcut", "Ölçüt", 8), ("baslik", "Başlık", 30), ("kapsam", "Kapsam", 12), ("od", "Önerilen OD", 8),
           ("zincir", "PUKÖ zinciri", 16), ("kanit_sayisi", "Mevcut kanıt sayısı", 8),
           ("kanitlar", "Mevcut kanıtlar", 50), ("eksik_halkalar", "Eksik halkalar (bir üst düzey)", 26),
           ("gereken", "Bir üst düzey için gereken", 80),
           ("karsiliksiz", "Geçen yılın karşılığı olmayan iyi kanıtları", 50),
+          ("karsilanmamis_yuvalar", "Karşılanmamış kılavuz yuvaları", 24),
+          ("sonraki_od_tanimi", "Bir üst düzeyin tanımı (kılavuz)", 60),
           ("kimden", "Kimden istenir", 30), ("oncelik", "Öncelik", 22), ("puan", "Puan", 6),
           ("gerekce", "Gerekçe", 60)]
 G_COLS = [("id", "No", 6), ("olcut", "Ölçüt", 8), ("yuva", "Yuva", 9), ("asama", "Aşama", 10),
@@ -188,7 +323,15 @@ ACIKLAMA = [
     "Kanıt ihtiyaç raporu (bidr ihtiyac). Hatırlatma ve öncelik aracıdır, kesin kontrol listesi değildir.",
     "Kaynak: çalışma alanının mevcut çıktıları (decisions, inceleme kararları, audit). Model çağrısı yok.",
     "Öncelik: kanıtsız ölçüt (100) > tek belgeyle OD artışı (80–84) > geçen yılın karşılığı olmayan iyi "
-    "kanıtı (60; eski sürümü olan 58) > diğer (20).",
+    "kanıtı (60; eski sürümü olan 58) > kılavuz önerisi (32–45) > diğer (20).",
+    "Kılavuz önerisi: boş FR-0833 şablonundaki 'Örnek Kanıtlar' yuvalarından, kabul edilmiş (sayılan, "
+    "reddedilmemiş; güveni orta/yüksek ya da incelemede kabul edilmiş) hiçbir kanıtın karşılamadığı yuva. "
+    "Bir üst düzeyin eksik halkası 45, daha üst düzeyin halkası 38, kanıtı olan halkanın boş yuvası 32. "
+    "Referans set verilmese de üretilir.",
+    "Kaynak sütunu: kanıtsız / OD artışı / geçen yıl / kılavuz. Aynı öneri birden çok kaynaktan geliyorsa "
+    "tek satırdır (en yüksek puan; kaynaklar '+' ile).",
+    "Gerekçedeki 'OD n tanımı' ve 'Ölçüt açıklamasından' sütunu kılavuz metnidir (kısaltılmış); "
+    "açıklama cümlesi sözcük örtüşmesiyle seçilir, ipucudur.",
     "Geçen yıl karşılıkları: var = dönem içi (ya da dönemden bağımsız yapı belgesi) karşılık; eski sürüm = "
     "yalnız önceki dönemden; yok = aynı türden benzer belge yok, istenmeli. Eşleşme benzerliğe dayanır: "
     "'var' satırlarını gözle doğrulayın.",
@@ -242,6 +385,7 @@ def write_xlsx(path: Path, talepler: list[dict], satirlar: list[dict], gecen: li
 def md_ozet(meta: dict, talepler: list[dict], satirlar: list[dict], gecen: list[dict], n: int = 15) -> str:
     from collections import Counter
     g = Counter(t["oncelik"] for t in talepler)
+    kc = Counter(k for t in talepler for k in t.get("kaynak", "").split(" + ") if k)
     d = Counter(x.get("durum") for x in gecen)
     kanitsiz = [s["olcut"] for s in satirlar if s["kanit_sayisi"] == 0]
     tek = [s["olcut"] for s in satirlar if s["tek_belge"] and s["kanit_sayisi"]]
@@ -252,7 +396,9 @@ def md_ozet(meta: dict, talepler: list[dict], satirlar: list[dict], gecen: list[
          f"- Listelenen ölçüt: {len(satirlar)} (kapsam dışı ölçütler hariç)",
          f"- Kanıtsız ölçüt: {len(kanitsiz)}" + (f" ({', '.join(kanitsiz)})" if kanitsiz else ""),
          f"- Tek belgeyle OD'si artacak ölçüt: {len(tek)}" + (f" ({', '.join(tek)})" if tek else ""),
-         f"- Talep: {len(talepler)} — " + ", ".join(f"{k}: {v}" for k, v in g.most_common())]
+         f"- Talep: {len(talepler)} — " + ", ".join(f"{k}: {v}" for k, v in g.most_common()),
+         "- Kaynağa göre (birleşen satır her kaynağında sayılır): "
+         + ", ".join(f"{k}: {kc.get(k, 0)}" for k in KAYNAKLAR)]
     if meta.get("referans"):
         L.append(f"- Geçen yılın iyi kanıtı: {len(gecen)} — var {d.get(VAR, 0)}, eski sürüm {d.get(ESKI, 0)}, "
                  f"yok (istenmeli) {d.get(YOK, 0)}; dönemi doğrulanmalı {sum(1 for x in gecen if x.get('donem_dogrulanmali'))}")
@@ -262,8 +408,20 @@ def md_ozet(meta: dict, talepler: list[dict], satirlar: list[dict], gecen: list[
         L.append(f"- Uyarı: {u}")
     L += ["", f"## İlk {min(n, len(talepler))} talep", ""]
     for t in talepler[:n]:
-        L.append(f"{t['sira']}. **{t['olcut']}** ({t['oncelik']}, puan {t['puan']}): {t['istenecek']} — "
-                 f"kimden: {t['kimden']}. _{t['gerekce']}_")
+        L.append(f"{t['sira']}. **{t['olcut']}** ({t['oncelik']}, puan {t['puan']}; kaynak: {t.get('kaynak', '')}): "
+                 f"{t['istenecek']} — kimden: {t['kimden']}. _{t['gerekce']}_")
+    klv = [t for t in talepler if t.get("kaynak") == K_KLV]
+    if klv:
+        by: dict[str, list[dict]] = {}
+        for t in klv:
+            by.setdefault(t["olcut"], []).append(t)
+        L += ["", "## Kılavuz önerileri (karşılanmamış örnek kanıt yuvaları)", "",
+              f"{len(klv)} yuva, {len(by)} ölçüt; başka kaynakla birleşenler yukarıdaki satırlardadır. "
+              "Metinler `ihtiyac.xlsx`'te.", ""]
+        for cid in sorted(by, key=id_key):
+            xs = sorted(by[cid], key=lambda t: (-t["puan"], t["yuvalar"]))
+            L.append(f"- **{cid}**: " + "; ".join(
+                f"{t['yuvalar']} ({t['halka_ad'] or '?'}, {t['puan']})" for t in xs))
     yok = [x for x in gecen if x.get("durum") in (YOK, ESKI)]
     if yok:
         L += ["", "## Geçen yılın karşılığı bulunmayan iyi kanıtları", ""]

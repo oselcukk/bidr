@@ -223,3 +223,98 @@ def test_cli(ref_ws, tgt_ws, tmp_path, capsys):
     assert (out / "ihtiyac.xlsx").exists() and (out / "ihtiyac.md").exists()
     assert _snapshot(tgt_ws) == before
     assert main(["ihtiyac", "referans", "--out", str(rp)]) == 2      # -w ya da --ek gerekli
+
+
+# -- kılavuz önerileri (Örnek Kanıtlar yuvaları, rubrik, açıklama) --------------------------------
+
+def _yuva_sayaci(talepler: list[dict], cid: str) -> dict[str, int]:
+    import re
+    n: dict[str, int] = {}
+    for t in talepler:
+        if t["olcut"] == cid:
+            for y in set(re.findall(r"[A-E]\.\d+\.\d+/\d+", t["yuvalar"])):
+                n[y] = n.get(y, 0) + 1
+    return n
+
+
+def test_guide_suggestions_without_reference(tgt_ws, tmp_path):
+    from bidr.criteria.loader import load_criteria
+    cs = load_criteria()
+    res = R.run(tgt_ws, out=tmp_path / "o")
+    t = res["talepler"]
+    assert R.P_REF_ESKI > R.P_KLV_HALKA > R.P_KLV_UST > R.P_KLV_MEVCUT > R.P_DIGER
+    klv = [x for x in t if x["kaynak"] == R.K_KLV]
+    assert klv and all(R.P_KLV_MEVCUT <= x["puan"] <= R.P_KLV_HALKA for x in klv)
+    assert all(x["oncelik"] == "kılavuz önerisi" for x in klv)
+    assert {k for x in t for k in x["kaynak"].split(" + ")} <= set(R.KAYNAKLAR)
+    # B.1.1/1 kabul edilmiş planlama kanıtıyla karşılandı: kılavuz önerisi olarak istenmez
+    b11 = [x for x in klv if x["olcut"] == "B.1.1"]
+    assert "B.1.1/1" not in {x["yuvalar"] for x in b11}
+    # her karşılanmamış yuva tek satırda (birleşen satırlar dahil); dipnotlar hariç
+    yuvalar = {s.id for s in cs.get("B.1.1").slots if not s.footnote}
+    n = _yuva_sayaci(t, "B.1.1")
+    assert set(n) >= yuvalar - {"B.1.1/1"}
+    assert all(v == 1 for k, v in n.items() if k != "B.1.1/1")
+    s = {x["olcut"]: x for x in res["satirlar"]}
+    assert "B.1.1/1" not in s["B.1.1"]["karsilanmamis_yuvalar"] and s["B.1.1"]["sonraki_od_tanimi"]
+    # halka ve kimden dolu; tek tek yuva satırının yuva metni şablondan birebir
+    for x in b11:
+        assert x["halka_ad"] and x["kimden"]
+        assert x["istenecek"] == cs.get_slot(x["yuvalar"]).text
+    # referans yok ama kanıtsız ölçütte de öneri var
+    assert any(x["olcut"] == "A.1.1" for x in t)
+
+
+def test_guide_merges_with_missing_link_and_reference(ref_ws, tgt_ws, tmp_path):
+    res = _run(ref_ws, tgt_ws, tmp_path)
+    t = res["talepler"]
+    a11 = [x for x in t if x["olcut"] == "A.1.1"]
+    kanitsiz = next(x for x in a11 if x["puan"] == R.P_KANITSIZ)
+    assert kanitsiz["kaynak"] == f"{R.K_KANITSIZ} + {R.K_KLV}"
+    # kanıtsız talebin yuvaları ayrıca kılavuz satırı olarak tekrarlanmaz
+    assert not (R._yuva_idleri(kanitsiz["yuvalar"])
+                & {x["yuvalar"] for x in a11 if x["kaynak"] == R.K_KLV})
+    sem = next(x for x in a11 if x["puan"] == R.P_REF)
+    assert sem["kaynak"].startswith(R.K_REF) and R.K_KLV in sem["kaynak"]
+    assert all(v == 1 for v in _yuva_sayaci([x for x in a11 if x is not kanitsiz], "A.1.1").values())
+    # sonraki OD'nin kılavuz tanımı gerekçede (birebir kılavuz metninden)
+    from bidr.criteria.loader import load_criteria
+    rub = load_criteria().get("A.1.1").rubric[kanitsiz["hedef_od"]]
+    assert f"OD{kanitsiz['hedef_od']} tanımı (kılavuz): «" in kanitsiz["gerekce"]
+    assert R.kisalt(rub) in kanitsiz["gerekce"]
+    # çıktılarda kaynak görünür
+    wb = load_workbook(res["paths"]["xlsx"])
+    head = [c.value for c in wb["Öncelikli talepler"][1]]
+    assert "Kaynak" in head and "PUKÖ halkası" in head
+    vals = {r[head.index("Kaynak")] for r in wb["Öncelikli talepler"].iter_rows(min_row=2, values_only=True)}
+    assert R.K_KLV in vals
+    md = res["paths"]["md"].read_text(encoding="utf-8")
+    assert "Kılavuz önerileri" in md and "Kaynağa göre" in md and "kaynak: kanıtsız + kılavuz" in md
+
+
+def test_guide_coverage_uses_acceptance(tmp_path):
+    """Düşük güvenli, incelenmemiş eşleşme yuvayı karşılamaz; incelemede kabul edilen karşılar."""
+    assert R.karsilar({"sayilir": True, "guven": "orta", "karar": None})
+    assert R.karsilar({"sayilir": True, "guven": "dusuk", "karar": "kabul"})
+    assert not R.karsilar({"sayilir": True, "guven": "dusuk", "karar": None})
+    assert not R.karsilar({"sayilir": True, "guven": "yuksek", "karar": "ret"})
+    assert not R.karsilar({"sayilir": False, "guven": "yuksek", "karar": "kabul"})
+    ws = _ws(tmp_path / "w", 2025, {
+        "a": ("bolum_kurulu_karari", True, "2025-02-01", "Bolum Kurulu Karari 2025", PLAN,
+              [_m("B.1.1", "B.1.1/1", "planla", 2)], "kabul"),
+        "b": ("toplanti_tutanagi", True, "2025-03-01", "Dusuk Guvenli Tutanak", SEMINER,
+              [_m("B.1.1", "B.1.1/3", "uygula", 3, guven="dusuk")], None),
+    })
+    res = R.run(ws, out=tmp_path / "o")
+    s = {x["olcut"]: x for x in res["satirlar"]}["B.1.1"]
+    assert "B.1.1/3" in s["karsilanmamis_yuvalar"] and "B.1.1/1" not in s["karsilanmamis_yuvalar"]
+
+
+def test_description_sentence_is_guide_text():
+    from bidr.criteria.loader import load_criteria
+    cs = load_criteria()
+    c = cs.get("A.1.2")
+    ac = R.aciklama_cumlesi(cs, "A.1.2", c.example_evidence[1])
+    assert ac and ac.rstrip("…")[:60] in " ".join(c.description)
+    assert R.aciklama_cumlesi(cs, "A.1.2", "zorvak pelim") == ""
+    assert R.rubrik(cs, "A.1.2", 4) == R.kisalt(c.rubric[4]) and R.rubrik(cs, "A.1.2", None) == ""

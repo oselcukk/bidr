@@ -17,6 +17,8 @@ def isaret(s: dict, talepler: list[dict], n: int = 3) -> str | None:
     parca = []
     for t in ts:
         x = t["istenecek"].split(":")[0] if t["puan"] >= 80 else t["istenecek"]
+        if len(x) > 90:                                   # kılavuz yuva metinleri uzun olabilir
+            x = x[:90].rsplit(" ", 1)[0] + "…"
         parca.append(f"{x} ({t['kimden']})")
     return "[EKSİK: " + "; ".join(parca) + "]"
 

@@ -7,8 +7,10 @@ bidr ihtiyac -w WS [--referans referans.json] [--out DIR] [--ic-taslak]
 ```
 
 Rapor yazılırken belgeler parça parça gelir. `bidr ihtiyac` mevcut çalışma alanından şunu
-çıkarır: hangi ölçütte ne eksik, hangi belgenin eklenmesi raporu en çok güçlendirir, geçen yıl iyi
-kanıt olan belgelerin bu yılki karşılığı var mı ve belge kimden istenir. **Hatırlatma ve öncelik
+çıkarır: hangi ölçütte ne eksik, hangi belgenin eklenmesi raporu en çok güçlendirir, kılavuzun
+(boş FR-0833 şablonu) "Örnek Kanıtlar" yuvalarından hangileri henüz karşılanmadı, geçen yıl iyi
+kanıt olan belgelerin bu yılki karşılığı var mı ve belge kimden istenir. Referans set (geçen yıl)
+verilmeden de çalışır: öneriler kılavuzdan ve çalışma alanının kendi durumundan gelir. **Hatırlatma ve öncelik
 aracıdır, kesin kontrol listesi değildir.**
 
 - Model çağrısı yok; yalnız mevcut çıktılar (decisions.jsonl, review-decisions.jsonl,
@@ -81,10 +83,35 @@ Kapsam dışı ölçütler (profil/`config.yaml rapor.kapsam` → `baska_birim`)
 | kanıtsız ölçüt | 100 | ölçütte sayılan kanıt yok |
 | tek belgeyle OD artışı | 80–84 | tek halka (tek belge) OD'yi yükseltir (`audit.rules.criterion_od` ile denenir); OD düşükse biraz daha yüksek |
 | karşılığı olmayan iyi kanıt | 60 (eski sürüm 58) | geçen yılın iyi kanıtı `yok_istenmeli` / `eski_surum` |
+| kılavuz önerisi | 45 / 38 / 32 | karşılanmamış "Örnek Kanıtlar" yuvası: bir üst düzeyin eksik halkası 45, daha üst düzeyin halkası 38, kanıtı olan halkanın boş yuvası 32 (bkz. 3.1) |
 | diğer | 20 | yukarıdakiler yoksa: bir üst düzey birden çok halka ister |
 
 Kanıtsız ve tek belge taleplerinde OD'yi en çok yükselten halka istenir (eşitlikte zincirde önce
 gelen; aynı etkiyi yapan öteki halkalar gerekçede yazılır).
+
+Gerekçeye hedeflenen düzeyin **kılavuzdaki olgunluk düzeyi tanımı** (`SubCriterion.rubric`)
+kısaltılarak eklenir: `OD3 tanımı (kılavuz): «…»` (yalnız kılavuz metni; 160 karakterde kesilir).
+
+### 3.1 Kılavuz önerileri
+
+Her ölçütte, dipnot olmayan her örnek kanıt yuvası (`SubCriterion.example_evidence`; yuva PUKÖ
+etiketleri `slot-tags-yokak-2025.yaml`) için **kabul edilmiş** bir kanıt aranır: satırın yuvası bu
+yuva, satır sayılıyor, reddedilmemiş ve güveni orta/yüksek ya da incelemede kabul/düzelt edilmiş
+(insan kararı düşük güveni aşar; audit ve referans setin kabul mantığı). Bulunmayan yuva
+"kılavuz önerisi" olur: yuva metni (şablondan birebir), PUKÖ halkası, kimden istenir (eksik
+halkanın sorumlusu), puan ve gerekçe (halka + hedef düzeyin rubrik tanımı; kanıtı olan halkanın
+boş yuvasında rubrik yazılmaz).
+
+- **Birleştirme**: yuva zaten bir talebin yuvalarında geçiyorsa (kanıtsız / tek belge / çok halka
+  talebinin halka yuvaları ya da geçen yılın iyi kanıtının yuvası) ayrı satır açılmaz; o satırın
+  `kaynak`ına "kılavuz" eklenir, puanı ikisinin büyüğü olur. Bu yüzden bir üst düzeyin eksik
+  halkasını isteyen "diğer" satırı karşılanmamış yuva içeriyorsa 45 puanla "kılavuz önerisi"
+  grubuna geçer.
+- **Açıklama metni** (`SubCriterion.description`): her yuvalı talebe, istenen metinle en çok ortak
+  sözcük kökü (ilk 5 harf, en az 2) olan açıklama cümlesi "Ölçüt açıklamasından (kılavuz)"
+  sütununda gösterilir. Sözcük örtüşmesine dayanır; ipucudur, eşleşme değildir.
+- **Kaynak** sütunu: `kanıtsız`, `OD artışı` (tek belge ya da çok halka), `geçen yıl`, `kılavuz`;
+  birleşen satırda `+` ile.
 
 **Kimden istenir** (`bidr/data/ihtiyac_sorumlular.yaml`, `--sorumlular` ile değiştirilir): belge
 türü → eksik aşama → ölçüt alanı → varsayılan. Varsayılanlar geneldir (bölüm sekreterliği, ilgili
@@ -94,8 +121,8 @@ komisyon, bölüm başkanlığı, kalite komisyonu…); birimin kendi düzenine 
 
 | Dosya | İçerik |
 |---|---|
-| `ihtiyac.xlsx` | "Öncelikli talepler" (puan sırasıyla), "Ölçüt özeti", "Geçen yıl karşılıkları", "Açıklama" |
-| `ihtiyac.md` | sayılar, ilk 15 talep, karşılığı bulunmayan iyi kanıtlar |
+| `ihtiyac.xlsx` | "Öncelikli talepler" (puan sırasıyla; Kaynak, PUKÖ halkası, ölçüt açıklamasından sütunları), "Ölçüt özeti" (karşılanmamış kılavuz yuvaları, bir üst düzeyin tanımı), "Geçen yıl karşılıkları", "Açıklama" |
+| `ihtiyac.md` | sayılar (önceliğe ve kaynağa göre), ilk 15 talep (kaynakla), kılavuz önerileri (ölçüt başına yuva kimlikleri), karşılığı bulunmayan iyi kanıtlar |
 | `report-ic.docx` | `--ic-taslak`: report.docx'in **kopyası**; her ölçütün "Açıklamalar" hücresinin sonuna kırmızı "[EKSİK: …]" ve başa "İÇ ÇALIŞMA TASLAĞI" satırı. Asıl `report.docx`'e yazılmaz (aynı yola yazma reddedilir); render kodu değişmez, blok bulucu (`bidr.render.template.find_blocks`) yalnız okunur. |
 
 ## Sınırlar
@@ -105,3 +132,6 @@ komisyon, bölüm başkanlığı, kalite komisyonu…); birimin kendi düzenine 
 - Dönem kararı identify/audit'in tarih bilgisine dayanır; tarihi okunamayan ya da sonradan
   indirilmiş (dönem sonrası tarihli) web sayfaları "doğrulanmalı" diye işaretlenir.
 - Referans set yalnız incelemesi yapılmış (karar yazılmış) çalışma alanından iyi kanıt çıkarır.
+- Kılavuz önerileri yuva düzeyindedir: bir yuva farklı bir yuvaya eşlenmiş belgeyle fiilen
+  karşılanmış olabilir (eşleştirme yuvayı seçer). Yuva metinleri kurum geneli ifadeler içerir
+  ("Kurumun…"); birim düzeyinde karşılığı ayrıca düşünülmelidir. PUKÖ etiketleri öneridir.
