@@ -6,7 +6,9 @@
 (`.bidr-render.json`) kullanılır. Kural değerleri config.yaml `rapor.denetim`. Rubrikte insan
 onayı olmadan (kod önerisiyle) işaretlenen OD'ler `od_onay_bekliyor` uyarısı olur (render kaydı ya
 da `audit-olcutler.json` `od_onayli`). TASLAK damgasının nedeni bu docx'i üreten render
-kaydından okunur (`taslak_nedenleri`)."""
+kaydından okunur (`taslak_nedenleri`). Kanıt bağlantıları teslim moduna göre (config.yaml `rapor.teslim`,
+vars. `dekanlik`): dekanlik'te bağlantısız kanıt bilgi düzeyindedir (rapor ve kanıtlar dekanlığa teslim
+edilir; `bidr teslim`), baglanti'da uyarı; ikisinde de yayımı engellemez."""
 from __future__ import annotations
 
 import json
@@ -33,8 +35,15 @@ def _run(args) -> int:
     from .rules import load_rules
     from .run import denetle, od_onay_bekleyenler, tablo, taslak_nedenleri, yaz
 
+    from bidr.teslim.mod import teslim_modu
+
     ws = Path(args.workspace).expanduser().resolve()
     rapor = rapor_section(ws)
+    try:
+        mod = teslim_modu(ws)
+    except ValueError as e:
+        print(f"HATA {e}", file=sys.stderr)
+        return 2
     docx_path = Path(args.docx).expanduser() if args.docx else ws / "report.docx"
     if not docx_path.exists():
         print(f"HATA rapor yok: {docx_path} (önce bidr render ya da --docx)", file=sys.stderr)
@@ -47,12 +56,16 @@ def _run(args) -> int:
         res = denetle(docx_path, rules=rules, sablon=_sablon(ws, args.sablon, rapor),
                       kanit_klasoru=kanit if (args.kanit or kanit.is_dir()) else None,
                       index_path=index, od_bekleyen=od_onay_bekleyenler(ws, docx_path)[0],
-                      taslak_nedenleri=taslak_nedenleri(ws, docx_path))
+                      taslak_nedenleri=taslak_nedenleri(ws, docx_path), teslim_modu=mod)
     except Exception as e:  # bozuk docx vb.
         print(f"HATA denetlenemedi: {e}", file=sys.stderr)
         return 2
     out = yaz(res, Path(args.out).expanduser() if args.out else ws / "denetim.json")
     print(tablo(res, satir_siniri=args.satir))
+    b = res.bilgi.get("baglanti") or {}
+    if mod == "dekanlik" and b.get("baglantisiz"):
+        print(f"\nbilgi: {b['baglantisiz']}/{b['kanit_satiri']} kanıt satırı bağlantısız — teslim modu dekanlik "
+              "(kanıtlar dekanlığa dosya olarak teslim edilir: bidr teslim); yayımı engellemez")
     print(f"\ndenetim: {out}")
     return 1 if res.kritik else 0
 

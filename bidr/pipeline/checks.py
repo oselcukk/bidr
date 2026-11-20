@@ -519,7 +519,7 @@ def file_tamam(c: Ctx) -> Check:
     if st["eksik_dosya"]:
         uy.append(f"{st['eksik_dosya']} kanıtın dosyası kopyalanamadı (evidence-index.csv `isaretler`: "
                   "kaynak_dosya_yok / envanterde_yok)")
-    if st["baglantisiz"]:
+    if st["baglantisiz"] and _teslim(c) == "baglanti":
         uy.append(f"{st['baglantisiz']} kanıtın bağlantısı yok (gaps.md 'Bağlantısı olmayan kanıtlar'): kamuya açık "
                   "belgenin adresini review.xlsx 'bağlantı' sütununa yazın ya da kanıt klasörünü yükleyip "
                   "config.yaml rapor.kanit_kok_baglanti girin")
@@ -814,7 +814,7 @@ def render_tamam(c: Ctx) -> Check:
     if m.get("karar_gerekli"):
         uy.append(f"{len(m['karar_gerekli'])} ölçütte kapsam kararı gerekli (gaps.md 'Kapsam kararı gereken "
                   "ölçütler'): KULLANICI karar verir, cevabı config.yaml rapor.kapsam'a yazılır")
-    if m.get("baglantisiz_kanit"):
+    if m.get("baglantisiz_kanit") and _teslim(c) == "baglanti":
         uy.append(f"{m['baglantisiz_kanit']} kanıtın adı bağlantısız (gaps.md)")
     prog = {"dolu": m.get("dolu"), "bos": m.get("bos"), "baglantili_kanit": m.get("baglantili_kanit")}
     return Check(bitti=True, ilerleme=prog, uyarilar=uy, neden=f"report: {m['cikti']}")
@@ -854,6 +854,20 @@ def denetle_tamam(c: Ctx) -> Check:
     return Check(bitti=True, ilerleme=prog, uyarilar=uy, neden="yayıma hazır: kritik bulgu yok")
 
 
+def _teslim(c: Ctx) -> str:
+    """config.yaml `rapor.teslim` (geçersiz değerde `gecersiz`). dekanlik'te bağlantısız kanıt bilgidir."""
+    from bidr.teslim.mod import teslim_modu
+    try:
+        return teslim_modu(c.ws.root)
+    except ValueError:
+        return "gecersiz"
+
+
+def teslim_tamam(c: Ctx) -> Check:
+    from bidr.teslim.run import durum
+    return durum(c)
+
+
 def _transcribe_tamam(c: Ctx) -> Check:
     from bidr.transcribe.check import transcribe_tamam
     return transcribe_tamam(c)
@@ -888,5 +902,6 @@ CHECKS: dict[str, Callable[[Ctx], Check]] = {
     "verify_tamam": verify_tamam,
     "yonler_tamam": yonler_tamam,
     "render_tamam": render_tamam,
+    "teslim_tamam": teslim_tamam,
     "yok": yok,
 }
