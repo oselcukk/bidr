@@ -9,11 +9,16 @@
            Uygunluk insan birim kararıyla (`birim-kararlari.jsonl`, insan > model) belirlenir:
            başka birim sayılıp komisyonca geri alınan belgenin geri yüklenen eşleşmeleri kanıttır;
            komisyonun başka birim onayladığı belgeninki değildir (audit/file ile aynı görünüm).
+           `--parca`: model adı olan ama derleme olduğu saptanan (`derleme_kaniti`) ve parça adı
+           almamış belgeler de paketlenir (parça adı için yeniden adlandırma).
   apply    `<doc_id>.out.json` cevaplarını şemaya ve `check_name`'e göre doğrular,
            `kanit-adlari.jsonl`'e `kaynak: model` olarak yazar. Kişi adı/unvan/e-posta içeren
            ya da biçimsiz ad reddedilir (`GECERSIZ.md`), belge kural adında kalır. Belgede
            dayanağı olmayan ad (`ground.grounding`) kabul edilir, kayıtta `dogrulanmali` ve
-           `GECERSIZ.md`'de ayrı bölümde listelenir.
+           `GECERSIZ.md`'de ayrı bölümde listelenir. Derleme belgede isteğe bağlı
+           `parca_adlari` ({yuva: ad}) `normalize_parts` ile süzülür: belge derleme
+           saptanmamışsa atılır; aynı parçanın yuvaları ilk yuvanın adını alır; belge adıyla
+           aynı ad yazılmaz. Kayıtta `parca_adlari`, süzme notları `parca_not`.
 """
 from __future__ import annotations
 
@@ -26,8 +31,8 @@ from bidr.common import Workspace, read_jsonl
 from bidr.decide import prompt as P
 
 from .check import YASAKLI_GOSTERIM, check_name_noted
-from .ground import _pages, grounding
-from .resolve import NAMES, decision_name, load_names, upsert
+from .ground import _pages, coded_compilation, grounding, page_codes, quote_part
+from .resolve import NAMES, decision_name, load_names, part_grounding, upsert
 
 TASK = "name_evidence"
 NAME_CHARS = 2500        # belge metni bütçesi (baş ağırlıklı)
@@ -122,6 +127,70 @@ def part_heads(text: str, quotes: list[tuple[str, str]]) -> str:
     return "\n".join(out) or "(yok)"
 
 
+def compilation_hint(text: str) -> str:
+    """İstem için derleme bilgisi (kodla saptanan; kodsuz derlemeyi model sayfa başlarından görür)."""
+    if len(_pages(text)) < 2:
+        return "tek sayfa: derleme değil"
+    codes = [c for c in dict.fromkeys(page_codes(text)) if c]
+    if len(codes) > 1:
+        return f"evet: sayfa başlarında {len(codes)} farklı doküman kodu (" + ", ".join(codes[:8]) + ")"
+    return "doküman kodu ayrımı yok (sayfa başları farklı belgeler gösteriyorsa derlemedir)"
+
+
+def accepted_quotes(rec: dict | None) -> dict[str, str]:
+    """{yuva: alıntı}, kabul edilmiş eşleşmeler, karar sırasıyla."""
+    return {m["yuva"]: m.get("alinti") or "" for m in (rec or {}).get("eslesmeler") or []
+            if m.get("kabul") and m.get("yuva")}
+
+
+def derleme_kaniti(ad: str | None, text: str, quotes: dict[str, str]) -> bool:
+    """Belgenin derleme olduğuna kod kanıtı: birden çok doküman kodu ya da belge adı bazı
+    alıntıların çevresinde tutmuyor (`parca_uyumsuz`: alıntı başka parçadan)."""
+    if len(_pages(text)) < 2:
+        return False
+    if coded_compilation(text):
+        return True
+    return bool(ad and grounding(ad, text, quotes)["parca_uyumsuz"])
+
+
+def normalize_parts(raw: dict | None, ad: str, text: str, quotes: dict[str, str]) -> tuple[dict, list[str]]:
+    """Modelin `parca_adlari`'nı süzer → ({yuva: ad}, notlar). Yalnız derleme kanıtı olan
+    belgede; yalnız kabul edilmiş yuvalar; `check_name`'den geçen adlar. Aynı parça (kodlu
+    derlemede aynı kodlu sayfa aralığı, değilse aynı sayfa) tek ad alır: karar sırasıyla ilk
+    yuvanın adı. Belge adıyla aynı parça adı yazılmaz (belge adı zaten o)."""
+    if not raw:
+        return {}, []
+    if not derleme_kaniti(ad, text, quotes):
+        return {}, ["derleme_saptanmadi: parca_adlari kullanilmadi"]
+    notes: list[str] = []
+    cand: dict[str, str] = {}
+    for y, v in raw.items():
+        if y not in quotes:
+            notes.append(f"{y}: kabul edilmis yuva degil")
+            continue
+        ok, errs, _ = check_name_noted(v)
+        if errs:
+            notes.append(f"{y}: ad reddedildi ({', '.join(errs)})")
+            continue
+        cand[y] = ok
+    first: dict[tuple, str] = {}
+    out: dict[str, str] = {}
+    for y, q in quotes.items():               # karar sırası: aynı parçada ilk yuva belirler
+        if y not in cand:
+            continue
+        key = quote_part(text, q)
+        if key is None:
+            notes.append(f"{y}: alinti metinde bulunamadi")
+            continue
+        if key in first and first[key] != cand[y]:
+            notes.append(f"{y}: ayni parca tek ad ({json.dumps(cand[y], ensure_ascii=False)} -> "
+                         f"{json.dumps(first[key], ensure_ascii=False)})")
+        name = first.setdefault(key, cand[y])
+        if name.casefold() != (ad or "").casefold():
+            out[y] = name
+    return out, notes
+
+
 def inputs_of(ws: Workspace, did: str, rec: dict, doc: dict | None, cs=None) -> dict:
     if cs is None:
         from bidr.criteria.loader import load_criteria
@@ -143,11 +212,12 @@ def inputs_of(ws: Workspace, did: str, rec: dict, doc: dict | None, cs=None) -> 
             "baslik": bas.strip() if isinstance(bas, str) and bas.strip() else "(yok)",
             "olcutler": "\n".join(lines) or "(yok)",
             "parcalar": part_heads(text, [(m["yuva"], m.get("alinti") or "") for m in acc]),
+            "derleme": compilation_hint(text),
             "belge_metni": body or "(metin yok)"}
 
 
 def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
-            render=None) -> dict:
+            parca: bool = False, render=None) -> dict:
     if render is None:
         from bidr.llm import render_task as render
     from bidr.criteria.loader import load_criteria
@@ -158,7 +228,7 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
     have = load_names(ws.root)
     d = work_dir(ws)
     d.mkdir(parents=True, exist_ok=True)
-    st = {"paket": 0, "yeni": 0, "zaten_adli": 0, "uygun_degil": [], "klasor": str(d)}
+    st = {"paket": 0, "yeni": 0, "zaten_adli": 0, "derleme": 0, "uygun_degil": [], "klasor": str(d)}
     pool = eligible(recs)
     if only is not None:
         ids = list(dict.fromkeys(only))
@@ -168,8 +238,10 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
         ids = pool
     for did in ids:
         if only is None and not redo and ("model" in (have.get(did) or {}) or decision_name(recs[did])):
-            st["zaten_adli"] += 1
-            continue
+            if not (parca and _needs_parts(ws, did, recs[did], have.get(did) or {})):
+                st["zaten_adli"] += 1
+                continue
+            st["derleme"] += 1
         r = render(TASK, inputs_of(ws, did, recs[did], docs.get(did), cs))
         sha = _sha(r["prompt"])[:16]
         p = d / f"{did}.json"
@@ -191,6 +263,18 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
     return st
 
 
+def _needs_parts(ws: Workspace, did: str, rec: dict, have: dict) -> bool:
+    """Model adı olan belge parça adı için yeniden paketlenmeli mi: insan adı yok, ad görevin bu
+    sürümüyle (parça adı sorularak) alınmamış, derleme kanıtı var."""
+    if "insan" in have:
+        return False
+    m = have.get("model") or {}
+    if str((m.get("gorev") or {}).get(TASK)) == task_version():
+        return False
+    q = accepted_quotes(rec)
+    return len(q) > 0 and derleme_kaniti(m.get("ad") or decision_name(rec), _text(ws, did), q)
+
+
 def _pkgs(d: Path) -> list[Path]:
     return sorted(p for p in d.glob("*.json") if not p.name.endswith(".out.json")) if d.exists() else []
 
@@ -207,7 +291,7 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", only: list[str] |
     d = work_dir(ws)
     ver = task_version()
     st = {"islenen": 0, "degismedi": 0, "bekleyen": [], "gecersiz": {}, "reddedilen": {}, "eski_surum": [],
-          "dogrulanmali": {}}
+          "dogrulanmali": {}, "parca": {}, "parca_not": {}}
     have = load_names(ws.root)
     dp = ws.root / "decisions.jsonl"
     recs = {r["doc_id"]: r for r in read_jsonl(dp) if r.get("doc_id")} if dp.exists() else {}
@@ -239,9 +323,14 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", only: list[str] |
         if notes:
             rec["oneri"] = out.get("kanit_adi")
             rec["not"] = notes
-        g = grounding(ad, _text(ws, did), {m["yuva"]: m.get("alinti") or ""
-                                          for m in (recs.get(did) or {}).get("eslesmeler") or []
-                                          if m.get("kabul") and m.get("yuva")})
+        text, quotes = _text(ws, did), accepted_quotes(recs.get(did))
+        parts, pnotes = normalize_parts(out.get("parca_adlari"), ad, text, quotes)
+        if parts:
+            rec["parca_adlari"] = st["parca"][did] = parts
+        if pnotes:
+            rec["parca_not"] = st["parca_not"][did] = pnotes
+        g = grounding(ad, text, {y: q for y, q in quotes.items() if y not in parts})
+        g = part_grounding(g, text, quotes, parts)
         if g["dogrulanmali"]:
             rec["dogrulanmali"] = {"belge": g["belge"], "parca_uyumsuz": g["parca_uyumsuz"]}
             st["dogrulanmali"][did] = {"ad": ad, **rec["dogrulanmali"]}

@@ -1,4 +1,4 @@
-"""Kanıt adının kaynağı ve öncelik sırası: insan > model > kural.
+"""Kanıt adının kaynağı ve öncelik sırası: insan > model parça adı > model belge adı > kural.
 
 - `kanit-adlari.jsonl` (satır = `{doc_id, ad, kaynak: insan|model, …}`; `(doc_id, kaynak)`
   başına tek kayıt). Model kayıtlarını `bidr name apply` çalışma alanına, insan kayıtlarını
@@ -11,7 +11,13 @@ Model kaynakları arasında `kanit-adlari.jsonl` önce gelir (adlandırma görev
 Belge metni verilmişse model adının belgede dayanağı da denetlenir (`ground.grounding`): adın
 resmî türü/birimi/niteliği/sayısı metinde yoksa ya da kabul edilmiş alıntı derlemenin başka bir
 parçasından geliyorsa ad kullanılır ama "doğrulanmalı" uyarısı verilir ve `dogrulanmali[doc_id]`
-kaydedilir (dosyalama yuva işaretine çevirebilir: `slot_flags`). İnsan adı denetlenmez.
+kaydedilir (dosyalama yuva işaretine çevirir: `slot_flags`). İnsan adı denetlenmez.
+
+Derleme belgede (`name_evidence` v3) model kaydı yuva başına parça adı taşıyabilir
+(`parca_adlari: {yuva: ad}`, apply'da derleme saptanmış ve aynı parça tek ad olacak biçimde
+düzeltilmiş). Dosyalama kalemin (ölçüt × belge) yuvalarından ilkinin parça adını kullanır
+(`item_name`; kaynak `model_parca`); insan adı varsa parça adı kullanılmaz. Parça adlı yuvanın
+dayanağı parça adıyla denetlenir.
 """
 from __future__ import annotations
 
@@ -21,7 +27,7 @@ from pathlib import Path
 from bidr.common import read_jsonl, write_jsonl
 
 from .check import check_name
-from .ground import grounding
+from .ground import grounding, slot_issues
 
 NAMES = "kanit-adlari.jsonl"
 KAYNAKLAR = ("insan", "model")
@@ -57,6 +63,16 @@ def upsert(path: Path, recs: list[dict]) -> int:
     path.parent.mkdir(parents=True, exist_ok=True)
     write_jsonl(path, [cur[k] for k in sorted(cur)])
     return n
+
+
+def part_grounding(g: dict, text: str, quotes: dict[str, str], parts: dict[str, str]) -> dict:
+    """Belge adının dayanağına (`grounding`, parça adlı yuvalar hariç) parça adlı yuvaların
+    dayanağını ekler: parça adı alıntının çevresinde tutmuyorsa yuva `parca_uyumsuz`."""
+    bad = [y for y, ad in parts.items() if y in quotes and slot_issues(ad, text, {y: quotes[y]})]
+    if not bad:
+        return g
+    p = sorted({*g["parca_uyumsuz"], *bad})
+    return {**g, "dogrulanmali": True, "parca_uyumsuz": p}
 
 
 def decision_name(rec: dict | None) -> str | None:
@@ -128,10 +144,49 @@ class Resolver:
         return {m["yuva"]: m.get("alinti") or "" for m in rec.get("eslesmeler") or []
                 if m.get("kabul") and m.get("yuva")}
 
+    def parts(self, did: str, aliases: list[str] | tuple = ()) -> dict[str, str]:
+        """Belgenin geçerli parça adları ({model yuvası: ad}). Yalnız belge adı insan değilse ve
+        model kaydı (`kanit-adlari.jsonl`) belge adı olarak kabul edilebiliyorsa."""
+        if any((self.names.get(x) or {}).get("insan") for x in [did, *aliases]):
+            return {}
+        rec = (self.names.get(did) or {}).get("model") or {}
+        if not rec or not check_name(rec.get("ad"))[0]:
+            return {}
+        from bidr.file.naming import safe_name
+        out = {}
+        for y, ad in (rec.get("parca_adlari") or {}).items():
+            ok, _ = check_name(ad)
+            if ok:
+                out[y] = safe_name(ok)
+        return out
+
+    def item_name(self, did: str, yuvalar: list[str], base: tuple[str, str],
+                  aliases: list[str] | tuple = ()) -> tuple[str, str]:
+        """Kalemin (ölçüt × belge) adı: yuvalarından (model yuvası, eşleşme sırasıyla) ilkinin
+        parça adı (`model_parca`), yoksa belge adı `base` (`resolve`'un (ad, kaynak)'ı)."""
+        if base[1] != "model":
+            return base
+        pa = self.parts(did, aliases)
+        y = next((y for y in yuvalar if y in pa), None)
+        return (pa[y], "model_parca") if y else base
+
+    def item_flags(self, did: str, yuvalar: list[str], aliases: list[str] | tuple = ()) -> list[str]:
+        """Kalemin işaretleri: yuvalarının `slot_flags`'i; yuvaları farklı adlara (parça adı /
+        belge adı) düşüyorsa `parca_adi_coklu` (tek dosya, tek ad: ad yuvaların bir kısmını anlatır)."""
+        out = [f for y in yuvalar for f in self.slot_flags(did, y)]
+        pa = self.parts(did, aliases)
+        if pa and len({pa.get(y, "") for y in yuvalar}) > 1:
+            out.append("parca_adi_coklu")
+        return list(dict.fromkeys(out))
+
     def _ground(self, did: str, ad: str) -> list[str]:
         if self.text_of is None:
             return []
-        g = grounding(ad, self.text_of(did) or "", self.quotes(did))
+        text = self.text_of(did) or ""
+        q = self.quotes(did)
+        pa = self.parts(did)
+        g = grounding(ad, text, {y: x for y, x in q.items() if y not in pa})
+        g = part_grounding(g, text, q, pa)
         if not g["dogrulanmali"]:
             self.dogrulanmali.pop(did, None)
             return []

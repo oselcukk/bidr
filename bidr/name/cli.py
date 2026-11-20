@@ -26,9 +26,10 @@ def _cmd(args) -> int:
             return 2
     try:
         if args.action == "prepare":
-            st = R.prepare(ws.root, only=only, redo=args.redo)
+            st = R.prepare(ws.root, only=only, redo=args.redo, parca=args.parca)
             print(f"{st['paket']} paket ({st['yeni']} yeni/değişen), zaten adlı={st['zaten_adli']}, "
-                  f"bekleyen {st['bekleyen']} → {st['klasor']}")
+                  f"bekleyen {st['bekleyen']} → {st['klasor']}"
+                  + (f" (parça adı için derleme: {st['derleme']})" if st.get("derleme") else ""))
             if st["uygun_degil"]:
                 print("kabul edilmiş eşleşmesi yok ya da mükerrer kopya (paketlenmedi): "
                       + ", ".join(st["uygun_degil"]))
@@ -40,7 +41,8 @@ def _cmd(args) -> int:
         return 2
     print(f"işlenen={st['islenen']} değişmedi={st['degismedi']} bekleyen={len(st['bekleyen'])} "
           f"geçersiz={len(st['gecersiz'])} reddedilen={len(st['reddedilen'])} "
-          f"eski sürüm={len(st['eski_surum'])} doğrulanmalı={len(st['dogrulanmali'])} → {st['dosya']}")
+          f"eski sürüm={len(st['eski_surum'])} doğrulanmalı={len(st['dogrulanmali'])} "
+          f"parça adlı={len(st['parca'])} → {st['dosya']}")
     for did, errs in st["gecersiz"].items():
         print(f"  geçersiz {did}: {'; '.join(errs)}")
     for did, x in st["reddedilen"].items():
@@ -48,6 +50,8 @@ def _cmd(args) -> int:
     for did, x in st["dogrulanmali"].items():
         why = x["belge"] + ([f"parca_uyumsuz: {', '.join(x['parca_uyumsuz'])}"] if x["parca_uyumsuz"] else [])
         print(f"  doğrulanmalı {did} ({'; '.join(why)}): {x['ad']}")
+    for did, notes in st["parca_not"].items():
+        print(f"  parça adı notu {did}: {'; '.join(notes)}")
     return 1 if (st["gecersiz"] or st["reddedilen"]) else 0
 
 
@@ -58,6 +62,8 @@ def register(sub):
     a.add_argument("--workspace", "-w", required=True)
     a.add_argument("--only", metavar="DOC_ID[,…]", help="yalnız bu belgeler (adı olsa da yeniden paketlenir)")
     a.add_argument("--redo", action="store_true", help="model adı olan belgeleri de paketle")
+    a.add_argument("--parca", action="store_true",
+                   help="model adı olan ama derleme olduğu saptanan belgeleri parça adı için yeniden paketle")
     a.set_defaults(func=_cmd)
     a = act.add_parser("apply", help="<doc_id>.out.json cevaplarını doğrula ve kanit-adlari.jsonl'e yaz")
     a.add_argument("--workspace", "-w", required=True)

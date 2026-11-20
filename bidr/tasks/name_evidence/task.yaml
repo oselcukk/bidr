@@ -1,4 +1,4 @@
-version: 2
+version: 3
 description: >-
   Kanıt adı (ucuz, sonradan). Zaten karara bağlanmış bir belge için kısa bağlam (belge
   metninin başı ve eşleştiği ölçütlerden alıntılar) + tür + tarih → kanıt dosyasının okur adı
@@ -10,9 +10,16 @@ description: >-
   "Derlemesi") ve tür eklenmez. Girdi `parcalar`: her alıntının sayfa numarası ve sayfanın başı.
   Kod adın belgede dayanağını denetler (bidr/name/ground.py): tür/birim/nitelik/sayı metinde
   yoksa ya da alıntı başka parçadansa ad kabul edilir, kayıtta `dogrulanmali`. Şema aynı.
+  v3: derleme belgede yuva başına parça adı. Şemaya isteğe bağlı `parca_adlari` ({yuva: ad});
+  model yalnız derlemede (DERLEME satırı ya da sayfa başları ayrı belgeler gösteriyor) ve
+  alıntılar farklı parçalardansa verir. Kod süzer (bidr/name/run.py normalize_parts): derleme
+  kanıtı (birden çok doküman kodu ya da belge adının bazı yuvalarda `parca_uyumsuz` olması)
+  yoksa atılır; aynı parça tek ad. Dosyalama yuvanın kesimine parça adını verir (insan > model
+  parça adı > model belge adı > kural). Girdi `derleme`: kodla saptanan derleme bilgisi.
 inputs:
   belge_bilgisi: "documents.jsonl içerik alanları (tür tahmini, tarih, akademik dönem, sayfa); yol/ad yok"
   baslik: "identify'ın metinden çıkardığı başlık (kural tabanlı; yanılabilir)"
   olcutler: "belgenin kabul edilmiş eşleşmeleri: ölçüt başlığı, yuva, alıntı"
   parcalar: "çok sayfalı belgede her alıntının sayfası (n/N) ve o sayfanın başı (derleme parçasının başlığı)"
+  derleme: "sayfa başlarındaki doküman kodlarından derleme bilgisi (evet: N farklı kod | kod ayrımı yok | tek sayfa)"
   belge_metni: "belge metninin başı (kısaltılmış)"

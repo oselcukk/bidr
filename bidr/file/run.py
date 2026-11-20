@@ -173,6 +173,7 @@ class Item:
     secim: str = ""                                            # neden yayımlandı (select.NEDEN)
     donem_disi: str = ""                                       # sayılmayan: "sonra" | "gecmis" (select.donem_disi)
     birim_bekliyor: bool = False                               # birim aitliği insanca onaylanmadı
+    yuvalar_model: list[str] = field(default_factory=list)     # temsilcinin model yuvaları (karar sırası; ad/işaret)
 
 
 def _names_sha(ws_root: Path, review_dir: Path) -> str:
@@ -280,7 +281,8 @@ def plan(ws_root: Path, *, review_dir: Path | None = None, profile: str | None =
             dolayli_isaretler=set().union(*dol) if dol else set(),
             dolayli=bool(dol) and all(dol),
             donem_disi="" if counted else S.donem_disi(rows),
-            birim_bekliyor=all(r.get("birim_onay_bekliyor") for r in rows)))
+            birim_bekliyor=all(r.get("birim_onay_bekliyor") for r in rows),
+            yuvalar_model=list(dict.fromkeys(r["yuva_model"] for r in own if r.get("yuva_model")))))
     meta = {"inceleme": reviewed, "review": str(rpath) if reviewed else None,
             "kararlar_sha": _sha(ws.root / "decisions.jsonl"), "inceleme_sha": _sha(rpath),
             "profil": a.profile, "secim_sha": settings.sha(), "secim": None}
@@ -380,17 +382,21 @@ def run(ws_root: Path, *, out: Path | None = None, source: str | Path | None = N
         lst = sorted(by_c[olcut], key=lambda i: (i.od, (docs.get(i.doc_id) or {}).get("calisma_adi") or "",
                                                  i.doc_id))
         numbered = number_sources(lst, key=lambda i: source_key(i.doc_id, docs, i), od=lambda i: i.od)
+        item_names: dict[str, tuple[str, str]] = {}
         for it in lst:
             if it.doc_id not in names:       # öncelik: insan > model > kural (bidr/name/resolve.py)
                 ad, src, uy = resolver.resolve(it.doc_id, it.kopyalar)
                 names[it.doc_id] = (ad, src)
                 uyarilar.extend(uy)
+            # derleme belgede kalemin (yuvalarının) parça adı belge adının önüne geçer (insan hariç)
+            item_names[it.doc_id] = resolver.item_name(it.doc_id, it.yuvalar_model, names[it.doc_id],
+                                                       it.kopyalar)
         groups: dict[int, list[Item]] = {}
         for sira, _, it in numbered:
             groups.setdefault(sira, []).append(it)
         # listede görünen ad numaranın adıdır (grubun ilk üyesi); farklı numaralarda aynı ad tarihle
         # (yoksa kısa kimlikle) ayrılır
-        shown = {sira: names[mem[0].doc_id][0] for sira, mem in groups.items()}
+        shown = {sira: item_names[mem[0].doc_id][0] for sira, mem in groups.items()}
         seen = Counter(shown.values())
         for sira, mem in groups.items():
             if seen[shown[sira]] > 1:
@@ -403,9 +409,11 @@ def run(ws_root: Path, *, out: Path | None = None, source: str | Path | None = N
             mem = groups[sira]
             ad = shown[sira]
             fad = ad if len(mem) == 1 else safe_name(
-                f"{names[it.doc_id][0]} ({date_of(docs.get(it.doc_id)) or it.doc_id[:6]})")
+                f"{item_names[it.doc_id][0]} ({date_of(docs.get(it.doc_id)) or it.doc_id[:6]})")
             inv_row = inv.get(it.doc_id)
             flags = list(it.isaretler)
+            # model adının dayanağı (ad_dogrulanmali, ad_parca_uyumsuz) ve tek dosyada birden çok parça adı
+            flags += resolver.item_flags(it.doc_id, it.yuvalar_model, it.kopyalar)
             if len(mem) > 1:
                 flags.append("ayni_kaynak_tek_numara")
             pages_txt, rel_out = "", ""
@@ -443,7 +451,7 @@ def run(ws_root: Path, *, out: Path | None = None, source: str | Path | None = N
                 "doc_id": it.doc_id, "sayfalar": pages_txt, "yuvalar": "; ".join(it.yuvalar),
                 "alintilar": json.dumps(it.alintilar, ensure_ascii=False), "inceleme": it.inceleme,
                 "kopyalar": "; ".join(dict.fromkeys([*it.kopyalar, *it.kopyalar_surum])), "kaynak": (inv_row or {}).get("rel_path", ""),
-                "isaretler": ", ".join(dict.fromkeys(flags)), "ad_kaynagi": names[mem[0].doc_id][1],
+                "isaretler": ", ".join(dict.fromkeys(flags)), "ad_kaynagi": item_names[mem[0].doc_id][1],
                 "baglanti": link, "baglanti_kaynagi": link_src})
         _share_links(crows)
         rows += crows
