@@ -14,6 +14,12 @@ bağlantı olur. Öncelik: insan > belge metni > klasör.
    kullanıcının işidir; bidr hiçbir yere yüklemez.
 
 Hiçbiri yoksa bağlantı boş kalır ve kanıt gaps.md'nin "bağlantı yok" listesine girer.
+
+Belge metninden alınan adres OCR'dan gelebilir (kör test 2026-11-20: "https://Wwww.gebzeyenigun.con/…",
+satır içinde bölünmüş "…/26567/d isplay.aspx" → "…/26567/d", "…/mail/id/[okunamadı"). Böyle şüpheli
+adres (`url_issue`: alan adı biçimi, bilinmeyen üst alan adı, OCR yer tutucusu, kesik yol, oturum
+gerektiren posta/giriş sayfası) bağlantı olarak kullanılmaz: kanıt `baglanti_supheli` işareti alır ve
+gaps.md'de adres ve nedeniyle "doğrulanmalı" diye listelenir (insan review.xlsx'te düzeltir).
 """
 from __future__ import annotations
 
@@ -52,6 +58,49 @@ def clean_url(u: str) -> str | None:
     return u
 
 
+# bilinen genel üst alan adları (iki harfli ülke kodları ayrıca kabul edilir)
+_TLD = frozenset("""com net org edu gov mil int info biz name pro aero coop museum mobi asia tel travel jobs
+cat post xxx app dev io ai co me tv cc eu online site web blog news shop store tech cloud academy
+education university school science institute media global page live world""".split())
+_LABEL = re.compile(r"^(?!-)[a-z0-9-]{1,63}(?<!-)$")
+_YER_TUTUCU = re.compile(r"[\[\]{}…]|okunamad|okunmuyor|illegible|\.\.\.", re.IGNORECASE)
+# adresin metinde boşlukla bölündüğünü gösteren devam: "d isplay.aspx", "dno=KİM 197&bolum=216"
+_DEVAM = re.compile(r"^[ \t]+(?:[a-z]{1,12}(?:\.[a-z0-9]{2,5}|/)\S*|[^\s&=]*[&=][^\s=]*=\S*)")
+_OTURUM = re.compile(r"/(?:mail|owa)/|oturumac|/login|/signin|/auth/", re.IGNORECASE)
+
+
+def url_issue(u: str, after: str = "") -> str | None:
+    """Belge metninden alınan adresin şüphe nedeni ya da None. `after`: metinde adresten hemen
+    sonra gelen metin (aynı satır); boşlukla ayrılmış küçük harfli devam ("d isplay.aspx")
+    OCR'ın adresi böldüğünü gösterir."""
+    if _YER_TUTUCU.search(u):
+        return "OCR yer tutucusu"
+    try:
+        sp = urlsplit(u)
+        host = (sp.hostname or "").lower()
+    except ValueError:
+        return "biçim"
+    labels = host.split(".")
+    if len(labels) < 2 or not all(_LABEL.match(x) for x in labels):
+        return "alan adı biçimi"
+    if "www" in labels[0] and labels[0] != "www":
+        return f"alan adı biçimi ({labels[0]})"
+    tld = labels[-1]
+    if not (tld in _TLD or (len(tld) == 2 and tld.isalpha())):
+        return f"bilinmeyen üst alan adı (.{tld})"
+    segs = [x for x in sp.path.split("/") if x]
+    last = segs[-1] if segs else ""
+    if _DEVAM.match(after or ""):
+        return "kesik yol (adres metinde bölünmüş)"
+    if u.endswith(("-", "%", "_")) or re.search(r"%[0-9A-Fa-f]?$", u):
+        return "kesik yol (satır sonunda bölünmüş)"
+    if len(segs) >= 2 and len(last) <= 2 and last.isalpha() and not sp.path.endswith("/") and not sp.query:
+        return "kesik yol"
+    if _OTURUM.search(sp.path + "?" + sp.query):
+        return "oturum gerektiren sayfa (yayın adresi değil)"
+    return None
+
+
 def _host(u: str) -> str:
     return urlsplit(u).hostname or ""
 
@@ -69,14 +118,22 @@ def _is_root(u: str) -> bool:
 
 
 def published_url(text: str | None, domains: list[str] | tuple = ()) -> str | None:
-    """Belge metninde yayın adresi (yoksa None).
+    """Belge metninde yayın adresi (yoksa None); bkz. `published_url_checked`."""
+    return published_url_checked(text, domains)[0]
+
+
+def published_url_checked(text: str | None, domains: list[str] | tuple = ()) -> tuple[str | None, dict[str, str]]:
+    """(belge metnindeki yayın adresi ya da None, {şüpheli adres: neden}).
 
     Güçlü: sayfanın üst/altbilgisindeki (ilk/son EDGE_LINES satır) URL ya da birden çok sayfada
     tek başına satır olarak yinelenen URL (tarayıcı çıktısı). Zayıf (yalnız `domains`
     içindeyse): gövdede ya da tek başına satırda bir kez geçen URL. Ana sayfa adresleri
-    (yolsuz) sayılmaz. En sık geçen kazanır, eşitlikte ilk."""
+    (yolsuz) sayılmaz. En sık geçen kazanır, eşitlikte ilk. Şüpheli adres (`url_issue`) aday
+    olmaz; aday olabilecek konumdaysa (kenar, tek başına satır ya da yayın alan adı) ikinci değerde
+    döner."""
     if not text:
-        return None
+        return None, {}
+    bad: dict[str, str] = {}
     strong: Counter = Counter()
     weak: Counter = Counter()
     pages_alone: dict[str, set[int]] = {}
@@ -90,9 +147,14 @@ def published_url(text: str | None, domains: list[str] | tuple = ()) -> str | No
                 u = clean_url(m.group(0))
                 if not u or _is_root(u):
                     continue
+                alone = len(ln) - len(m.group(0)) <= 12          # satırda URL'den başka az şey (sayfa no)
+                why = url_issue(u, ln[m.end():])
+                if why:
+                    if i in edge or alone or _in_domains(u, list(domains)):
+                        bad.setdefault(u, why)
+                    continue
                 pos += 1
                 first.setdefault(u, pos)
-                alone = len(ln) - len(m.group(0)) <= 12          # satırda URL'den başka az şey (sayfa no)
                 if i in edge:
                     strong[u] += 1
                 elif alone:
@@ -104,8 +166,8 @@ def published_url(text: str | None, domains: list[str] | tuple = ()) -> str | No
             strong[u] += len(ps)
     for c in (strong, weak):
         if c:
-            return sorted(c, key=lambda u: (-c[u], first[u]))[0]
-    return None
+            return sorted(c, key=lambda u: (-c[u], first[u]))[0], bad
+    return None, bad
 
 
 def folder_url(root: str | None, rel: str | None) -> str | None:
@@ -190,6 +252,7 @@ class LinkResolver:
                  domains: list[str] | tuple = ()):
         self.human, self.text_of, self.root, self.domains = human, text_of, root, list(domains or [])
         self._pub: dict[str, str | None] = {}
+        self._bad: dict[str, dict[str, str]] = {}
 
     @classmethod
     def load(cls, ws_root: Path, *extra_dirs, text_of=None) -> "LinkResolver":
@@ -212,8 +275,15 @@ class LinkResolver:
 
     def published(self, did: str) -> str | None:
         if did not in self._pub:
-            self._pub[did] = published_url(self.text_of(did), self.domains)
+            self._pub[did], self._bad[did] = published_url_checked(self.text_of(did), self.domains)
         return self._pub[did]
+
+    def suspicious(self, did: str, aliases: list[str] | tuple = ()) -> dict[str, str]:
+        """Belge metninde bulunan ama kullanılmayan şüpheli adresler {adres: neden}; insan bağlantısı
+        ya da geçerli yayın adresi varsa boş (kanıtın bağlantısı zaten var)."""
+        if any(self.human.get(x) for x in [did, *aliases]) or self.published(did):
+            return {}
+        return dict(self._bad.get(did) or {})
 
     def suggest(self, did: str, aliases: list[str] | tuple = ()) -> tuple[str, str]:
         """Dosya yolu bilinmeden (audit): insan ya da belge metni."""
@@ -246,9 +316,11 @@ def links_sha(ws_root: Path, review_dir: Path | None = None) -> str:
 
 # -- gaps.md "bağlantı yok" bölümü -------------------------------------------------------------
 
-def gaps_block(rows: list[dict]) -> str:
-    """evidence-index satırlarından "bağlantı yok" bölümü (işaretleyicilerle)."""
+def gaps_block(rows: list[dict], suspicious: dict[str, dict[str, str]] | None = None) -> str:
+    """evidence-index satırlarından "bağlantı yok" bölümü (işaretleyicilerle). `suspicious`:
+    doc_id → {belge metnindeki şüpheli adres: neden} (bağlantı olarak kullanılmadı)."""
     miss = [r for r in rows if not (r.get("baglanti") or "").strip()]
+    suspicious = suspicious or {}
     L = [GAPS_BEGIN, "## Bağlantısı olmayan kanıtlar", ""]
     if not miss:
         L.append("Bütün kanıtların bağlantısı var.")
@@ -260,6 +332,14 @@ def gaps_block(rows: list[dict]) -> str:
               "config.yaml'a girin.", ""]
         for r in miss:
             L.append(f"- {r.get('olcut')} [{r.get('kanit_no')}] {r.get('ad')} (`{r.get('doc_id')}`)")
+    sus = [(r, suspicious[r.get("doc_id")]) for r in rows if suspicious.get(r.get("doc_id"))]
+    if sus:
+        L += ["", "### Doğrulanmalı: belge metnindeki şüpheli adres kullanılmadı", "",
+              "Adres belge metninden (çoğunlukla OCR) okundu ama biçimi bozuk, kesik ya da oturum gerektiriyor; "
+              "rapora bağlantı olarak konmadı. Doğru adres biliniyorsa review.xlsx \"bağlantı\" sütununa yazın.", ""]
+        for r, bad in sus:
+            why = "; ".join(f"`{u}` ({n})" for u, n in bad.items())
+            L.append(f"- {r.get('olcut')} [{r.get('kanit_no')}] {r.get('ad')} (`{r.get('doc_id')}`): {why}")
     L.append(GAPS_END)
     return "\n".join(L) + "\n"
 

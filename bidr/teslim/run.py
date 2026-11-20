@@ -9,7 +9,9 @@
       EKSIK.txt                 yalnız eşleşmeyen satır ya da üretilemeyen PDF varsa
 
 Eşleşme: raporun "Kanıtlar" listesindeki her satır (ölçüt, sıra no, OD) kanıt klasöründe
-(`evidence/<A>/<A.1>/<A.1.1>/[n-ODk]. Ad.uzantı`) tam bir dosyayla eşleşmeli. Pakete yalnız listedeki
+(`evidence/<A>/<A.1>/<A.1.1>/[n-ODk]. Ad.uzantı`) tam bir dosyayla eşleşmeli; aynı kaynağın
+belgeleri tek numarayı paylaşıyorsa (`evidence-index.csv`'de numaranın birden çok satırı) dizinin
+o numaraya yazdığı dosyaların hepsi pakete girer (dizinde her biri ayrı satır). Pakete yalnız listedeki
 kanıtlar girer; listede olmayan dosya pakete alınmaz (uyarı). Eşleşmeyen satır, birden çok aday ya da
 üretilemeyen web PDF'i paketi "eksik" yapar: paket yine yazılır, eksikler listelenir.
 
@@ -107,16 +109,45 @@ def _kanit_dosyalari(ev: Path) -> dict[tuple[str, int], list[tuple[int, Path]]]:
     return out
 
 
-def _dizin(index: Path) -> dict[tuple[str, int], dict]:
-    out: dict[tuple[str, int], dict] = {}
+def _dizin(index: Path) -> dict[tuple[str, int], list[dict]]:
+    """evidence-index.csv → {(ölçüt, sıra): [satır, …]}. Aynı kaynağın belgeleri (sürüm/kopya/parça
+    grubu, `ayni_kaynak_tek_numara`) bir ölçütte tek numarayı paylaşır: numarada birden çok satır."""
+    out: dict[tuple[str, int], list[dict]] = {}
     if not index.exists():
         return out
     with open(index, encoding="utf-8", newline="") as f:
         for r in csv.DictReader(f):
             m = re.match(r"^(\d+)_OD([1-5])$", (r.get("kanit_no") or "").strip())
             if m and r.get("olcut"):
-                out.setdefault((r["olcut"].strip(), int(m.group(1))), r)
+                out.setdefault((r["olcut"].strip(), int(m.group(1))), []).append(r)
     return out
+
+
+def _dizin_dosyalari(rows: list[dict]) -> dict[str, dict]:
+    """Numaranın dizin satırları → {dosya adı (NFC): satır}."""
+    return {unicodedata.normalize("NFC", Path(r.get("dosya") or "").name): r for r in rows if r.get("dosya")}
+
+
+def _eslestir(k, cand: list[tuple[int, Path]], rows: list[dict]) -> tuple[list[Path], str, list[Path]]:
+    """Rapor satırı → (pakete girecek dosyalar, eksik nedeni, dizinde olmayan artık dosyalar).
+
+    Bir numarada birden çok dosya varsa dizinin o numaraya yazdığı dosyalar (aynı kaynağın
+    belgeleri: `bidr file` aynı kaynağa tek numara verir, her belgeyi kendi adıyla dosyalar) birlikte
+    pakete girer. Kör test 2026-11-20 (Kimya): 18 EKSIK satırının 17'si buydu: paket tek dosya
+    beklediği için numarayı "birden çok dosya" diye eksik sayıyordu. Dizinde olmayan dosyalar
+    (eski dosyalamadan kalan) ya da dizin yoksa eski kural: birden çok aday eksiktir."""
+    same = [f for od, f in cand if od == k.od]
+    if len(same) == 1:
+        return same, "", []
+    if len(same) > 1:
+        names = _dizin_dosyalari(rows)
+        listed = [f for f in same if unicodedata.normalize("NFC", f.name) in names]
+        if listed and len(listed) == len(names):
+            return listed, "", [f for f in same if f not in listed]
+        return [], "birden çok dosya: " + ", ".join(f.name for f in same), []
+    if cand:
+        return [], (f"OD uyuşmuyor: listede OD{k.od}, dosyada OD" + "/".join(str(od) for od, _ in cand)), []
+    return [], "kanıt klasöründe dosya yok", []
 
 
 class Maske:
@@ -235,27 +266,20 @@ def build(ws: Path, out: Path | None = None, *, docx_path: Path | None = None, t
         res.eksik.append("raporda tanınan kanıt listesi satırı yok ('[1-OD3]. Ad' ya da '1_OD3: Ad')")
 
     # eşleşme (önce, araç gerekip gerekmediği bilinsin)
-    plan: list[tuple[object, Path | None, str]] = []
+    plan: list[tuple[object, list[Path], str]] = []
     for olcut in sorted(listeler, key=_olcut_key):
         for k in listeler[olcut]:
-            cand = dosyalar.get((olcut, k.no), [])
-            same = [f for od, f in cand if od == k.od]
-            if len(same) == 1:
-                plan.append((k, same[0], ""))
-            elif len(same) > 1:
-                plan.append((k, None, "birden çok dosya: " + ", ".join(f.name for f in same)))
-            elif cand:
-                plan.append((k, None, f"OD uyuşmuyor: listede OD{k.od}, dosyada OD"
-                                      + "/".join(str(od) for od, _ in cand)))
-            else:
-                plan.append((k, None, "kanıt klasöründe dosya yok"))
+            fs, neden, artik = _eslestir(k, dosyalar.get((olcut, k.no), []), dizin.get((olcut, k.no), []))
+            plan.append((k, fs, neden))
+            for f in artik:
+                res.uyarilar.append(f"dizinde olmayan dosya pakete alınmadı: {olcut}/{f.name}")
     listed = {(k.olcut, k.no) for k, _, _ in plan}
     for (olcut, n), lst in sorted(dosyalar.items(), key=lambda kv: (_olcut_key(kv[0][0]), kv[0][1])):
         if (olcut, n) not in listed:
             res.uyarilar.append(f"listede olmayan dosya pakete alınmadı: {olcut}/{lst[0][1].name}")
 
     pdf = None
-    if any(f is not None and is_web(f) for _, f, _ in plan):
+    if any(is_web(f) for _, fs, _ in plan for f in fs):
         pdf = pdf_araci(arac) if isinstance(arac, str) else arac       # PdfAraciYok: hiçbir şey yazılmaz
         res.pdf_araci = getattr(pdf, "ad", type(pdf).__name__)
 
@@ -263,8 +287,7 @@ def build(ws: Path, out: Path | None = None, *, docx_path: Path | None = None, t
     shutil.copyfile(rep, out / RAPOR)
     kok = out / KANITLAR
     damga_tarihi = gun.strftime("%d.%m.%Y")
-    for k, f, neden in plan:
-        r = dizin.get((k.olcut, k.no)) or {}
+    for k, f, r, neden in _satirlar(plan, dizin):
         no = f"{k.no}_OD{k.od}"
         ad = (r.get("ad") or "").strip() or _ad_sade(k.ad, k.baglanti)
         row = {"olcut": k.olcut, "kanit_no": no, "od": k.od, "ad": ad, "dosya": "", "pdf_kopya": "",
@@ -329,6 +352,19 @@ def build(ws: Path, out: Path | None = None, *, docx_path: Path | None = None, t
            "evidence_sha": sha(ev / ".bidr-evidence.json"), "maske_sha": sha(ws / MASKE_RAPOR)}
     (ws / MANIFEST).write_text(json.dumps(man, ensure_ascii=False, indent=1), encoding="utf-8")
     return res
+
+
+def _satirlar(plan, dizin):
+    """Plan → (rapor satırı, dosya ya da None, dizin satırı, eksik nedeni); numaranın her dosyası
+    kanıt dizininde ayrı satır (aynı numara) olur."""
+    for k, fs, neden in plan:
+        rows = dizin.get((k.olcut, k.no)) or []
+        if not fs:
+            yield k, None, (rows[0] if rows else {}), neden
+            continue
+        by = _dizin_dosyalari(rows)
+        for f in fs:
+            yield k, f, by.get(unicodedata.normalize("NFC", f.name)) or (rows[0] if rows else {}), ""
 
 
 def _ad_sade(ad: str, url: str | None) -> str:

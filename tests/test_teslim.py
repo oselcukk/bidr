@@ -272,6 +272,42 @@ def test_paket_eksik(tmp_path):
     assert sum(r["Durum"].startswith("eksik") for r in rows) == 4
 
 
+def test_paket_ayni_kaynak_tek_numara(tmp_path):
+    """Aynı kaynağın belgeleri tek numarayı paylaşır (dizinde numaranın birden çok satırı): dizinin o
+    numaraya yazdığı dosyaların hepsi pakete girer; dizinde olmayan artık dosya eksik saydırmaz
+    (kör test 2026-11-20, Kimya: 18 EKSIK satırının 17'si)."""
+    ws = _ws(tmp_path)
+    _render(ws, tmp_path, "dekanlik")
+    d = ws / "evidence" / "A" / "A.1" / "A.1.2"
+    (d / "[1-OD3]. Kurul kararı.pdf").rename(d / "[1-OD3]. Kurul kararı (2025-01-14).pdf")
+    (d / "[1-OD3]. Kurul kararı (2025-03-17).pdf").write_bytes(b"%PDF-1.4 ikinci")
+    (d / "[1-OD3]. Eski dosyalama artığı.pdf").write_bytes(b"%PDF-1.4 artik")
+    with open(ws / "evidence-index.csv", encoding="utf-8", newline="") as f:
+        rows = list(csv.reader(f))
+    for r in rows:
+        if r[4].endswith("Kurul kararı.pdf"):
+            r[4] = r[4].replace("Kurul kararı.pdf", "Kurul kararı (2025-01-14).pdf")
+    rows.append(["1_OD3", "A.1.2", "3", "Kurul kararı", "A/A.1/A.1.2/[1-OD3]. Kurul kararı (2025-03-17).pdf", "", ""])
+    with open(ws / "evidence-index.csv", "w", encoding="utf-8", newline="") as f:
+        csv.writer(f).writerows(rows)
+    res = build(ws, tarih="2025-12-31", arac=Sahte(), zip_yap=False)
+    assert res.eksik == []
+    got = sorted(p.name for p in (ws / "teslim" / "kanitlar" / "A" / "A.1" / "A.1.2").iterdir())
+    assert got == ["[1-OD3]. Kurul kararı (2025-01-14).pdf", "[1-OD3]. Kurul kararı (2025-03-17).pdf",
+                   "[2-OD2]. Adressiz sayfa.html", "[2-OD2]. Adressiz sayfa.pdf"]
+    assert any("Eski dosyalama artığı" in u and "dizinde olmayan" in u for u in res.uyarilar)
+    dz = [r for r in _rows(ws / "teslim" / "kanit-dizini.csv") if r["Ölçüt"] == "A.1.2" and r["Kanıt no"] == "1_OD3"]
+    assert len(dz) == 2 and all(r["Durum"] == "tamam" and r["Kanıt adı"] == "Kurul kararı" for r in dz)
+    # dizin numaranın dosyalarını bilmiyorsa (dizinde tek satır, klasörde iki aday) eski kural: eksik
+    rows = [r for r in rows if not r[4].endswith("(2025-03-17).pdf")]
+    with open(ws / "evidence-index.csv", "w", encoding="utf-8", newline="") as f:
+        csv.writer(f).writerows(rows)
+    (d / "[1-OD3]. Eski dosyalama artığı.pdf").unlink()
+    (d / "[1-OD3]. Kurul kararı (2025-01-14).pdf").rename(d / "[1-OD3]. Başka ad.pdf")
+    res = build(ws, tarih="2025-12-31", arac=Sahte(), zip_yap=False)
+    assert len(res.eksik) == 1 and "birden çok dosya" in res.eksik[0]
+
+
 def test_paket_hatalar(tmp_path, monkeypatch):
     ws = _ws(tmp_path)
     with pytest.raises(TeslimError, match="rapor yok"):

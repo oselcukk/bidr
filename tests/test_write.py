@@ -381,6 +381,35 @@ def test_period_and_topic_snippets():
     assert S.topic_snippets(text, "Öğrenci kabulü ve diploma", cov) == []
 
 
+def test_part_scope_birlesik_belge():
+    """Birleşik PDF: paket penceresi (bağlam, dönem içi, ölçütle ilgili bilgi) alıntının parçasıyla sınırlı;
+    başka parçanın kararı kanıta mal edilmez (kör test 2026-11-20, Senato kararı / 24.09 tutanağı)."""
+    from bidr.llm import verify_quote
+    from bidr.write import sources as S
+    pages = ["Ders Değerlendirme Sonucu\nDersi alan öğrenci sayısı 14, ortalama puan 4,2 olarak bulunmuştur.\n"
+             + "a " * 300,
+             "Ders değerlendirme sonuçları bölüm kurulunda 12.06.2025 tarihinde görüşülmüştür.\n" + "b " * 50,
+             "Sentetik Yönerge\nYönergede değişiklik yapan Senato kararı 18.06.2025 tarih ve 2025/12 sayılıdır.\n"
+             "Etkinlik bütçesi üniversitemiz tarafından karşılanmıştır.\n" + "c " * 50]
+    text = "\f".join(pages)
+    parts = [{"sayfa": [1, 2], "tarih": "2025-06-12", "emin": True},
+             {"sayfa": [3, 3], "tarih": "2025-06-18", "emin": True}]
+    q = ["Dersi alan öğrenci sayısı 14, ortalama puan 4,2 olarak bulunmuştur."]
+    scoped, part = S.part_scope(text, parts, q, verify_quote)
+    assert part["tarih"] == "2025-06-12" and "Senato" not in scoped and "12.06.2025" in scoped
+    cov = S.quote_spans(scoped, q, verify_quote)
+    assert all("2025/12" not in x for x in S.period_snippets(scoped, 2025, cov))
+    assert any("12.06.2025" in x for x in S.period_snippets(scoped, 2025, cov))
+    assert S.topic_snippets(scoped, "Toplumsal katkı kaynakları (mali)", cov) == []
+    assert all("Senato" not in c["baglam"] for c in S.evidence_context(scoped, q, verify_quote))
+    # parçasız belge, bulunamayan alıntı: pencere değişmez
+    assert S.part_scope(text, [], q, verify_quote) == (text, None)
+    assert S.part_scope(text, parts, ["metinde olmayan bir alıntı cümlesi burada"], verify_quote) == (text, None)
+    # alıntılar iki parçada: iki parça da pencerede
+    both, _ = S.part_scope(text, parts, q + ["Etkinlik bütçesi üniversitemiz tarafından karşılanmıştır."], verify_quote)
+    assert "Senato" in both and "Dersi alan" in both
+
+
 def test_evidence_block_lists_period_info_first():
     ev = [{"no": "1_OD3", "ad": "Bölüm Projeler Listesi", "belge_turu": "", "tarih": "", "yuvalar": [],
            "donem_ici": ["PRJ-2 27.03.2025 Dönem içi proje"], "konu": ["Bütçe karşılanmıştır."],

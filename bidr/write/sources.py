@@ -78,6 +78,40 @@ def load_notes(path: Path) -> dict[str, list[str]]:
             for k, v in d.items() if v}
 
 
+def part_scope(text: str | None, parts: list[dict], quotes: list[str],
+               verify: Callable) -> tuple[str | None, dict | None]:
+    """Birleşik belgede kanıt paketinin metin penceresi: yalnız alıntıların geçtiği parçaların
+    sayfaları (`documents.jsonl` `parcalar`; sayfalar metinde form feed ile ayrılır) → (kısıtlı
+    metin, alıntının ilk parçası). Parçasız belgede, metin yoksa ya da hiçbir alıntı bir parçaya
+    yerleşmezse (metin, None): pencere değişmez.
+
+    Kör test 2026-11-20: alıntı bağlamı, "dönem içi bilgi" ve "ölçütle ilgili bilgi" pencereleri
+    bütün metinden alınınca aynı PDF'e eklenmiş ilgisiz bir yönergenin Senato kararı ya da başka
+    tarihli bir tutanak kanıtın kendisine mal ediliyordu."""
+    if not text or len(parts or []) < 2:
+        return text, None
+    from bidr.identify.parca import part_of_page
+    pages = text.split("\f")
+    starts, pos = [], 0
+    for p in pages:
+        starts.append(pos)
+        pos += len(p) + 1
+    hit: list[int] = []
+    for q in quotes[:MAX_QUOTES]:
+        ok, _score, span = verify(q, text)
+        if not (ok and span):
+            continue
+        pg = max(i for i, s in enumerate(starts) if s <= span[0])
+        j = part_of_page(parts, pg)
+        if j is not None and j not in hit:
+            hit.append(j)
+    if not hit:
+        return text, None
+    keep = sorted({i for j in hit for i in range(parts[j]["sayfa"][0] - 1, parts[j]["sayfa"][1])
+                   if 0 <= i < len(pages)})
+    return "\f".join(pages[i] for i in keep), parts[hit[0]]
+
+
 def evidence_context(text: str | None, quotes: list[str], verify: Callable) -> list[dict]:
     """Her alıntı için belgedeki konumu ve çevresi. Metin yoksa yalnız alıntı."""
     out = []

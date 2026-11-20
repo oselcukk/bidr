@@ -58,7 +58,12 @@ config.yaml `rapor.kanit_adi_modeli: false` `name` aşamasını atlar.
   çıktısının üst/altbilgisi (sayfanın ilk/son iki satırı) ya da birden çok sayfada tek başına
   satır olarak yinelenen URL; gövdedeki (ya da bir kez tek başına geçen) URL yalnız
   `rapor.yayin_alan_adlari` listesindeki alan adındaysa (alt alan adları dahil). Ana sayfa
-  adresi (yolsuz; kurum yazısı altbilgisi) sayılmaz.
+  adresi (yolsuz; kurum yazısı altbilgisi) sayılmaz. Metinden okunan adres OCR'dan gelebilir:
+  şüpheli adres (`links.url_issue`: alan adı biçimi — "Wwww." —, bilinmeyen üst alan adı — ".con" —,
+  OCR yer tutucusu — "[okunamadı" —, kesik yol — satırda boşlukla bölünmüş "…/d isplay.aspx",
+  "dno=KİM 197&…", tireyle biten —, oturum gerektiren posta/giriş sayfası) bağlantı olmaz; kanıt
+  `baglanti_supheli` işareti alır, gaps.md'nin "Doğrulanmalı" alt bölümünde adres ve nedeniyle
+  listelenir (kör test 2026-11-20).
 - `klasor`: yayımlanmamış belge; kanıt klasörü kullanıcı tarafından yüklendikten sonra
   `rapor.kanit_kok_baglanti` + `evidence/`'e göre göreli yol (her parça yüzde kodlu). bidr yüklemez.
 Bağlantısı olmayan kanıtlar `gaps.md`'nin "Bağlantısı olmayan kanıtlar" bölümünde
@@ -91,6 +96,11 @@ klasörde büyük/küçük harf duyarsız tekildir: çakışmada kısa kimlik ek
 bu satırın temsil ettiği öteki belgeler (mükerrer metin ve tek kanıt sayılan sürümler).
 Ek dosya `evidence-secim.json`: seçilenler (neden), elenenler (neden), sürüm birleştirmeleri,
 metin atıflarının belge eşlemesi ve ayarlar.
+**Metin adları dizinden:** `texts/<ölçüt>.json` `kanitlar[].ad/dosya` dizinin kopyasıdır; `bidr file`
+(çıktı çalışma alanıysa) girdisi güncel (`girdi_sha`: kanıt no + doc_id + OD aynı) metinlerde bu
+alanları dizinle eşitler (`sync_text_names`; metin, durum ve doğrulama değişmez). Kör test
+2026-11-20: metin adlandırmadan önce yazıldığı için rapor, dizinde ve dosya adında doğru olan parça
+adı yerine birleşik PDF'in ilk parçasının adını basıyordu (Mat B.4.1, C.2.1; Kimya C.1.1, C.2.1).
 
 ### Kanıt seçimi (`bidr/file/select.py`)
 Eşleşme kümesi audit'le aynıdır ve audit OD'si bütün kabul edilmiş eşleşmelerden hesaplanır;
@@ -177,7 +187,11 @@ dışında kalan "dönem içi bilgi" (belgede rapor yılını anan pencereler; y
 künyesi tarihleri sayılmaz; kurum geneli düzenlemede yok) ve "ölçütle ilgili bilgi" (ölçüt tanımı
 mali kaynak, görev tanımı ya da performans soruyorsa bütçe/karşılanma, temsilci/görevlendirme,
 gerçekleşme/hedef değeri cümleleri) alıntılardan önce verilir (`write/sources.py` `period_snippets`,
-`topic_snippets`; dönem `config.yaml bidr.donem`). İstem kuralları 8–11: dönem içi kaydı önce anlat,
+`topic_snippets`; dönem `config.yaml bidr.donem`). **Parça penceresi:** birleşik belgede (`documents.jsonl`
+`parcalar`, ≥2 parça) alıntı bağlamı, dönem içi ve ölçütle ilgili bilgi yalnız alıntıların geçtiği
+parçaların sayfalarından alınır; kanıtın `tarih`'i alıntının parçasının tarihidir
+(`write/sources.py` `part_scope`; doğrulayıcı aynı paketi görür). Kör test 2026-11-20: aynı PDF'e
+eklenmiş ilgisiz yönergenin Senato kararı ve başka tarihli tutanak kanıta mal ediliyordu. İstem kuralları 8–11: dönem içi kaydı önce anlat,
 sayıyı küçültme ("4 proje", "birinin" değil), kanıtta bilgi varken "kanıt yok" deme, fakülte
 değerini bölümün değeri gibi verme ve hedefle karşılaştırmayı açık yaz; kural 13: aracın iç dili yok
 (kod `ic_dil`). v2 metinleri girdileri değişmedikçe geçerli kalır.
@@ -435,7 +449,10 @@ WS/.bidr-teslim.json             özet (teslim_tamam): report_sha, index_sha, ev
 
 - **Eşleşme:** raporun Kanıtlar listesindeki her satır (ölçüt, sıra, OD; `check.run.kanit_listeleri`)
   `evidence/` altında tam bir dosyayla eşleşir. Pakete yalnız listedeki kanıtlar girer (listede
-  olmayan dosya uyarı). Dosya yok / OD uyuşmuyor / birden çok aday / PDF üretilemedi → satır
+  olmayan dosya uyarı). Aynı kaynağın belgeleri tek numarayı paylaşıyorsa (dizinde numaranın
+  birden çok satırı, `ayni_kaynak_tek_numara`) dizinin o numaraya yazdığı dosyaların hepsi girer
+  (kanıt dizininde her biri ayrı satır; dizinde olmayan artık dosya uyarı). Dosya yok / OD uyuşmuyor
+  / dizinin bilmediği birden çok aday / PDF üretilemedi → satır
   `Durum: eksik: …`, paket `EKSIK.txt` ile yazılır, çıkış 1.
 - **Web kanıtı** (`.html`, `.htm`, `.xhtml`): yanına aynı adla PDF kopyası. Sayfanın bir kopyasının
   başına (gövdenin ilk öğesi) ve sonuna (`body::after`: kapanmamış tablo içinde kalmaz)
