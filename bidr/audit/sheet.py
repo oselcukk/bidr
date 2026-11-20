@@ -18,6 +18,7 @@ SHEET_UNIT = "Başka birime ait sayılanlar"
 UNIT_COLS = [
     ("doc_id", "belge kimliği", 20, False),
     ("belge", "belge (çalışma adı)", 36, False),
+    ("kaynak_dosya", "kaynak dosya (özgün ad)", 40, False),
     ("kanit_adi", "kanıt adı", 30, False),
     ("gerekce", "modelin gerekçesi", 50, False),
     ("eslesmeler", "eşleşmeler: başka birimde reddedilen, belirsizde onay bekleyen (ölçüt yuva · aşama · OD: alıntı)", 70, False),
@@ -41,6 +42,7 @@ UNIT_NOTE = ("İnce karar bu belgeleri başka bir bölüm/birimin belgesi saydı
 COLS = [
     ("satir", "satır kimliği", 24, False),
     ("belge", "belge (çalışma adı)", 42, False),
+    ("kaynak_dosya", "kaynak dosya (özgün ad)", 40, False),
     ("kanit_adi", "kanıt adı (düzeltilebilir)", 36, True),
     ("belge_turu", "belge türü", 18, False),
     ("birim_iliskisi", "birim ilişkisi", 14, False),

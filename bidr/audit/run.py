@@ -731,6 +731,8 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
         ek[c]["faaliyetler"] = sv.activities_for(by_c.get(c, []))
     rows += _puko(cs, tags, ws, docs, own, sv, by_c, ek, review, rule, names, links, inv, surum, uy)
     rows.sort(key=lambda r: (id_key(r["olcut"]), r["yuva"], r["belge"]))
+    for x in (*rows, *sayfa):  # komisyon kontrolü: tablodan özgün dosyaya gidebilsin
+        x["kaynak_dosya"] = inv.get(x.get("doc_id") or "", "")
     crits = [_criterion(cs, tags, c, by_c.get(c, []), allowed, rule, cyc[c], ek[c], od_kar.get(c)) for c in ids]
     sayfa.sort(key=lambda x: x["belge"])
     return Audit(ws, out, profile, cs, tags, rows, crits, file_sha(dpath), uy, period, birim, sayfa,
