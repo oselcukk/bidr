@@ -18,7 +18,7 @@ Kaynak klasör salt okunurdur; hiçbir dosyasına yazılmaz. Çıktı klasörü 
 
 Maskeleme hiçbir kanıtı düşürmez: maskelemesi eksik kalan (`basarisiz`, `taranamadi`) dosyanın
 maskeli kopyası, maskelenemeyen (`hata`, `desteklenmiyor`) dosyanın özgünü ağaçta kalır; hepsi
-raporda `elle_bakilmali: true` olur. `siki=True` (`--siki`): bu dosyalar maskeli kopyaya girmez,
+raporda `elle_bakilmali: true` olur. `ayir=True` (`--ayir`): bu dosyalar maskeli kopyaya girmez,
 kopyanın DIŞINDA ayrı bir klasöre (`<out>.elle-bakilmali/`, aynı göreli yol; kap üyeleri
 `<kap>/<üye>`) konur ve raporda `ayrilan` listesinde yer alır (kaptaki e-posta eki yerine kısa
 bir not eklenir). Dosya/klasör adlarındaki kişisel veri de (ad, öğrenci no …) yer
@@ -63,21 +63,21 @@ ADDR_PLACEHOLDER = "eposta@maskeli.invalid"
 
 
 class _Ctx:
-    def __init__(self, rules: MaskRules, eng: str, siki: Path | None = None):
+    def __init__(self, rules: MaskRules, eng: str, ayir: Path | None = None):
         self.rules = rules
         self.eng = eng
-        self.siki = siki                    # --siki: elle bakılmalı dosyaların ayrı klasörü
+        self.ayir = ayir                    # --ayir: elle bakılmalı dosyaların ayrı klasörü
         self.records: list[dict] = []
         self.last: dict | None = None       # son `_handle` çağrısının ana kaydı
 
     def set_aside(self, written: Path, rec: dict | None) -> bool:
-        """--siki: elle bakılmalı (kap dışı) dosyayı ayrı klasöre kopyala. → ayrıldı mı."""
-        if self.siki is None or rec is None or not rec.get("elle_bakilmali") or rec.get("durum") == "kap":
+        """--ayir: elle bakılmalı (kap dışı) dosyayı ayrı klasöre kopyala. → ayrıldı mı."""
+        if self.ayir is None or rec is None or not rec.get("elle_bakilmali") or rec.get("durum") == "kap":
             return False
         if not written.exists() or not rec.get("hedef"):
             return False
         rel = rec["hedef"].replace(C.SEP, "/")
-        target = self.siki / rel
+        target = self.ayir / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(written, target)
         rec["ayrildi"] = rel
@@ -333,7 +333,7 @@ def _handle_archive(src: Path, rel: str, hedef: str, dst: Path, ctx: _Ctx, depth
                     if ctx.set_aside(written, ctx.last):
                         shutil.rmtree(d_in, ignore_errors=True)
                         shutil.rmtree(d_out, ignore_errors=True)
-                        continue                 # --siki: elle bakılmalı üye kaba girmez
+                        continue                 # --ayir: elle bakılmalı üye kaba girmez
                     arc = "/".join(mparts[:-1] + [renamed(mparts[-1], base, written.name)])   # 7z → +.zip; .doc → .docx
                     if ck == "tar":
                         writer.add(str(written), arcname=arc, recursive=False)
@@ -581,7 +581,7 @@ def _handle_eml(src: Path, rel: str, hedef: str, dst: Path, ctx: _Ctx, depth: in
 
 
 def _aside_note(name: str) -> str:
-    return (f"[{name}: maskelemesi eksik kaldığı için --siki ile maskeli kopyanın dışına ayrıldı; "
+    return (f"[{name}: maskelemesi eksik kaldığı için --ayir ile maskeli kopyanın dışına ayrıldı; "
             "maskeleme raporundaki 'ayrilan' listesine bakın]\n")
 
 
@@ -599,8 +599,8 @@ def _files(src: Path) -> tuple[list[Path], list[str]]:
 
 
 def _work(args) -> list[dict]:
-    src, rel, hedef, dst, rules, eng, siki = args
-    ctx = _Ctx(rules, eng, Path(siki) if siki else None)
+    src, rel, hedef, dst, rules, eng, ayir = args
+    ctx = _Ctx(rules, eng, Path(ayir) if ayir else None)
     try:
         written = _handle(Path(src), rel, hedef, Path(dst), ctx)
     except Exception as e:      # beklenmeyen: kanıt düşmesin
@@ -611,7 +611,7 @@ def _work(args) -> list[dict]:
                                      "olduğu gibi kopyalandı"})
         ctx.last = ctx.records[-1]
     if ctx.last is not None and ctx.last.get("dosya") == rel and ctx.set_aside(written, ctx.last):
-        written.unlink()           # --siki: maskeli kopyada kalmaz
+        written.unlink()           # --ayir: maskeli kopyada kalmaz
         root, d = Path(dst).parents[len(hedef.split("/")) - 1], written.parent
         while d != root and d.is_dir() and not any(d.iterdir()):
             d.rmdir()
@@ -629,12 +629,12 @@ def report_path(out: Path) -> Path:
     return out.parent / (out.name + REPORT_SUFFIX)
 
 
-def siki_path(out: Path) -> Path:
+def ayir_path(out: Path) -> Path:
     return out.parent / (out.name + SIKI_SUFFIX)
 
 
 def run_source(source: Path, out: Path, *, rules: MaskRules | None = None, engine: str = "auto",
-               workers: int = 1, report: Path | None = None, progress=None, siki: bool = False) -> dict:
+               workers: int = 1, report: Path | None = None, progress=None, ayir: bool = False) -> dict:
     src = Path(source).expanduser().resolve()
     if not src.is_dir():
         raise FileNotFoundError(f"kaynak klasör yok: {src}")
@@ -644,14 +644,14 @@ def run_source(source: Path, out: Path, *, rules: MaskRules | None = None, engin
     rep_p = Path(report).expanduser().resolve() if report else report_path(out)
     if _inside(rep_p, src) or _inside(rep_p, out):
         raise MaskRunError(f"rapor kaynak ya da çıktı klasörünün içinde olamaz: {rep_p}")
-    siki_d = siki_path(out) if siki else None
-    if siki_d is not None and (_inside(siki_d, src) or _inside(src, siki_d)):
-        raise MaskRunError(f"--siki klasörü kaynak klasörle iç içe olamaz: {siki_d}")
+    ayir_d = ayir_path(out) if ayir else None
+    if ayir_d is not None and (_inside(ayir_d, src) or _inside(src, ayir_d)):
+        raise MaskRunError(f"--ayir klasörü kaynak klasörle iç içe olamaz: {ayir_d}")
     rules = rules or MaskRules()
     eng = pdf_engine(engine)
     _prepare_dir(out)
-    if siki_d is not None:
-        _prepare_dir(siki_d)
+    if ayir_d is not None:
+        _prepare_dir(ayir_d)
     uyarilar = list(rules.warnings)
     if not ocr_available():
         uyarilar.append("OCR yok (tesseract + tur/eng dil verisi): taranmış sayfalar ve görseller taranamadı; "
@@ -665,7 +665,7 @@ def run_source(source: Path, out: Path, *, rules: MaskRules | None = None, engin
     for p in files:
         rel = p.relative_to(src).as_posix()
         hedef = "/".join(namer.path(rel.split("/")))
-        jobs.append((str(p), rel, hedef, str(out / hedef), rules, eng, str(siki_d) if siki_d else None))
+        jobs.append((str(p), rel, hedef, str(out / hedef), rules, eng, str(ayir_d) if ayir_d else None))
     records: list[dict] = []
     if workers > 1 and len(jobs) > 1:
         with ProcessPoolExecutor(max_workers=workers) as ex:
@@ -703,15 +703,15 @@ def run_source(source: Path, out: Path, *, rules: MaskRules | None = None, engin
                  "imza_ortusen_kelime": sum(r.get("imza_ortusen_kelime", 0) for r in records),
                  "imza_metinle_ortusen_elle": sum(r.get("imza_metin_elle", 0) for r in records),
                  "eski_bicim_cevrilen": sum(1 for r in records if r.get("donusum")),
-                 **({"ayrilan": len(ayrilan)} if siki else {}),
+                 **({"ayrilan": len(ayrilan)} if ayir else {}),
                  "ad_degisen": sum(1 for r in records if r.get("hedef") and
                                    _base(r["hedef"], r.get("donusum")) != _base(r["dosya"], r.get("donusum")))},
         "uyarilar": uyarilar, "elle_bakilmali": elle, "atlanan": skipped, "dosyalar": records,
     }
-    if siki_d is not None:
-        rapor["siki_klasor"] = str(siki_d)
+    if ayir_d is not None:
+        rapor["ayrilan_klasor"] = str(ayir_d)
         rapor["ayrilan"] = ayrilan
-        (siki_d / MARKER).write_text(json.dumps({"surum": SURUM, "mod": "kaynak-siki", "rapor": str(rep_p)},
+        (ayir_d / MARKER).write_text(json.dumps({"surum": SURUM, "mod": "kaynak-ayir", "rapor": str(rep_p)},
                                                 ensure_ascii=False, indent=1), encoding="utf-8")
     rep_p.parent.mkdir(parents=True, exist_ok=True)
     rep_p.write_text(json.dumps(rapor, ensure_ascii=False, indent=1), encoding="utf-8")

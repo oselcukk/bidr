@@ -1,4 +1,4 @@
-"""Maskeleme: eski biçim çevirisi (.doc/.xls/.msg/.ppt), `--siki` ayrı klasörü ve metinle örtüşen
+"""Maskeleme: eski biçim çevirisi (.doc/.xls/.msg/.ppt), `--ayir` ayrı klasörü ve metinle örtüşen
 imza kutusunun karartılmaması (yalnız sentetik veri)."""
 from __future__ import annotations
 
@@ -230,7 +230,7 @@ def test_msg_converted_to_eml(tmp_path, monkeypatch):
     assert NAME not in data and PHONE not in data and EMAIL not in data
 
 
-# ------------------------------------------------------------------ --siki
+# ------------------------------------------------------------------ --ayir
 
 @pytest.fixture
 def src(tmp_path):
@@ -257,10 +257,10 @@ def test_default_keeps_unmaskable_in_copy(src, tmp_path):
     assert "ayrilan" not in rep and not (tmp_path / ("o" + K.SIKI_SUFFIX)).exists()
 
 
-def test_siki_sets_unmaskable_aside(src, tmp_path):
+def test_ayir_sets_unmaskable_aside(src, tmp_path):
     out = tmp_path / "o"
-    rep = K.run_source(src, out, rules=RULES, siki=True)
-    aside = Path(rep["siki_klasor"])
+    rep = K.run_source(src, out, rules=RULES, ayir=True)
+    aside = Path(rep["ayrilan_klasor"])
     assert aside == tmp_path / ("o" + K.SIKI_SUFFIX)
     # maskeli kopyada yok, ayrı klasörde aynı göreli yolda
     assert not (out / "Kurul/sunum.ppt").exists() and (out / "Kurul/not.txt").exists()
@@ -279,15 +279,15 @@ def test_siki_sets_unmaskable_aside(src, tmp_path):
     assert rep["ozet"]["ayrilan"] == 3
     assert all(e.get("ayrildi") for e in rep["elle_bakilmali"])
     # yeniden çalıştırma: kendi klasörlerinin üstüne yazar
-    K.run_source(src, out, rules=RULES, siki=True)
+    K.run_source(src, out, rules=RULES, ayir=True)
 
 
-def test_cli_siki(src, tmp_path, capsys):
+def test_cli_ayir(src, tmp_path, capsys):
     out = tmp_path / "cikti"
-    rc = main(["maskele", "--kaynak", str(src), "--out", str(out), "--siki", "--is", "2"])
+    rc = main(["maskele", "--kaynak", str(src), "--out", str(out), "--ayir", "--is", "2"])
     assert rc == 1
     o = capsys.readouterr().out
-    assert "--siki: 3 dosya" in o
+    assert "--ayir: 3 dosya" in o
     rep = json.loads((tmp_path / "cikti.maskeleme-raporu.json").read_text(encoding="utf-8"))
     assert len(rep["ayrilan"]) == 3 and not (out / "Kurul/sunum.ppt").exists()
 

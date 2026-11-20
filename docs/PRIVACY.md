@@ -73,7 +73,7 @@ bir kimlik no/telefon/imza bulunduğunu bilir ("belge imzalı") ama değeri gör
 
 ```
 bidr maskele --kaynak BÖLÜM_KLASÖRÜ --out MASKELİ_KOPYA [-w WS] [--ad-listesi DOSYA]
-             [--motor auto|pymupdf|pypdf] [--is N] [--rapor DOSYA] [--ilerleme] [--siki]
+             [--motor auto|pymupdf|pypdf] [--is N] [--rapor DOSYA] [--ilerleme] [--ayir]
 ```
 
 - Kaynak klasör **salt okunurdur**; hiçbir dosyasına yazılmaz. `--out` kaynakla iç içe olamaz; bidr'in
@@ -106,7 +106,7 @@ bidr maskele --kaynak BÖLÜM_KLASÖRÜ --out MASKELİ_KOPYA [-w WS] [--ad-liste
   (`hata`) dosyanın **özgünü** ağaçta kalır. Bunlar raporda `elle_bakilmali: true` ile listelenir;
   komut 1 ile çıkar ve listeyi yazar. Modele vermeden önce bu liste gözden geçirilmelidir (gerekirse
   dosya kopyadan elle çıkarılır ya da elle karartılır).
-- **`--siki`**: elle bakılmalı dosyalar (`basarisiz`, `taranamadi`, `hata`, `desteklenmiyor`) maskeli
+- **`--ayir`**: elle bakılmalı dosyalar (`basarisiz`, `taranamadi`, `hata`, `desteklenmiyor`) maskeli
   kopyaya **girmez**; kopyanın dışında `<out>.elle-bakilmali/` klasörüne aynı göreli yolla konur
   (kap üyesi: `<kap adı>/<üye yolu>`; kaptan çıkarılır, e-posta ekinin yerine kısa bir
   `<ek>.ayrildi.txt` notu konur). Raporda kayıt başına `ayrildi`, ayrıca `ayrilan` listesi ve
@@ -117,7 +117,7 @@ bidr maskele --kaynak BÖLÜM_KLASÖRÜ --out MASKELİ_KOPYA [-w WS] [--ad-liste
   (tamam/basarisiz/taranamadi/hata/desteklenmiyor/kap), `elle_bakilmali`, `neden`,
   `bulunan`/`maskelenen`/`kalan` (tür → sayı), `imza_bolgesi`, `imza_ortusen_kelime`,
   `imza_metin_elle` (metinle örtüştüğü için kapatılmayan imza sayfası/görseli); özet
-  (`eski_bicim_cevrilen`, `imza_metinle_ortusen_elle`, `--siki` ile `ayrilan`) ve `elle_bakilmali` listesi.
+  (`eski_bicim_cevrilen`, `imza_metinle_ortusen_elle`, `--ayir` ile `ayrilan`) ve `elle_bakilmali` listesi.
   Değerlerin kendisi yazılmaz, ama **özgün dosya adları** (kişi adı içerebilir) yazılır: rapor
   modele verilmez.
 - `-w WS` verilirse `config.yaml`'daki `privacy.maskeleme` kuralları (ad listesi, desenler) kullanılır;
