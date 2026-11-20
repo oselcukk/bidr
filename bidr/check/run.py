@@ -403,7 +403,7 @@ def _od_onay(bek: dict[str, dict], s: Sonuc) -> None:
         s.ekle(UYARI, "od_onay_bekliyor", c,
                f"OD insan onayı bekliyor: rubrikte OD{v.get('od')} işaretli "
                f"({OD_KAYNAK.get(v.get('kaynak'), v.get('kaynak') or 'kod önerisi')}); komisyon review.xlsx "
-               "\"Ölçüt özeti\" ONAYLANAN OD sütununu doldurmalı → bidr audit apply → bidr render")
+               "\"Maddeler\" sayfasında \"Onayladığınız düzey\" sütununu doldurmalı → bidr audit apply → bidr render")
 
 
 def _kapak(doc, s: Sonuc) -> None:

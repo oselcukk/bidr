@@ -119,16 +119,35 @@ kullanıcıya gerçekleşme belgesinin (tutanak, katılım listesi, rapor) eksik
 1. `bidr audit -w WS --profile <profil>` (`next` tam komutu verir). Çıktı: `review.xlsx`,
    `gaps.md`, `audit-olcutler.json`. Komutun yazdığı OD dağılımını ve öncelikli eksikleri
    kullanıcıya özetle (sayıları çıktıdan al).
-2. DUR: `review.xlsx`'teki KARAR sütununu (kabul/ret/duzelt) **kullanıcı** doldurur. Kararı sen
-   verme, tabloyu sen doldurma (tek istisna aşağıdaki yetki devri). Kullanıcı isterse satırları birlikte gözden geçir: önce turuncu
-   (OD4/OD5'e yükselten, özellikle "ÖNERİ etiket") ve sarı (düşük güven) satırlar. Önerin
-   olabilir ama karar ve yazım kullanıcının.
+2. DUR: kararı **kullanıcı** verir. Kararı sen verme; tabloya yalnız kullanıcının söylediği kararı
+   yazabilirsin (aşağıdaki (b) yolu; tek istisna yetki devri). `review.xlsx` son kullanıcı içindir; açılınca yalnız sade sayfalar görünür:
+   - **İnceleme**: satır = bir öneri (Madde · Belge (klasördeki dosya) · Önerilen kanıt adı ·
+     Belgede ne yazıyor · Neden bu maddeye · Dikkat · Önerimiz · **KARARINIZ** · Doğru madde · Not).
+     KARARINIZ: `Kabul` · `Kabul — etkinlik yapıldı` · `Ret` · `Başka maddeye taşı` (+ Doğru madde)
+     · `Başka maddeye taşı — etkinlik yapıldı`. Bölümler: 1) bakılması gerekenler (düşük güven,
+     işaretli, birim onayı, yeniden bakılacak), 2) sorunsuz görünenler (başlık satırındaki
+     KARARINIZ hücresinde `Hepsini kabul` seçilirse boş satırlar kabul sayılır; seçilmezse boş satır
+     karar bekler), 3) daha önce karar verilenler.
+   - **Bölümünüze ait mi**: birimi belirsiz/başka birim sayılan belgeler (Evet/Hayır…).
+   - **Maddeler**: önerilen olgunluk düzeyi; "Onayladığınız düzey" boş = öneri.
+   - **Nasıl doldurulur**. Teknik sayfalar ("Eşleşmeler", "Ölçüt özeti", birim sayfası) gizlidir;
+     `apply` ikisini birleştirir (sade sayfada değişen hücre önce gelir).
+   Kullanıcıya iki yol sun: (a) dosyayı kendisi doldurur; (b) **sohbette tek tek sor**: 1. bölümden
+   başlayarak her satır için kısa sor — "Belge `<özgün dosya adı>` → `<madde>`; belgede: «alıntı»;
+   dikkat: <Dikkat>; önerimiz: <Önerimiz>. Kabul / Kabul — etkinlik yapıldı / Ret / başka madde?" —
+   cevabı aynen İnceleme sayfasının KARARINIZ (taşımada Doğru madde) hücresine yaz, kullanıcının
+   gerekçesini Not'a ("kullanıcı: …"). 2. bölümü tek soruyla sor ("bunların hepsini kabul ediyor
+   musunuz; itiraz ettiğiniz var mı?"); evet derse başlık satırına `Hepsini kabul`, itirazları tek
+   tek yaz. Kullanıcının söylemediği hiçbir karar yazılmaz. Tabloyu bidr ortamının Python'u ve
+   openpyxl ile yaz (yalnız KARARINIZ/Doğru madde/Not/kanıt adı hücreleri; sütun/sayfa yapısını bozma).
+   Önerin olabilir ama karar kullanıcının.
    **Yetki devri.** Kullanıcı açıkça "inceleme tablosunda karar vermeyeceğim, sen devam et" (ya
    da aynı anlamda bir söz) derse — sessizlik, "devam et" ya da "hızlı bitir" yetki devri değildir —
    kararları kullanıcı yetkisiyle sen verirsin:
    - Önce kullanıcıya ne yapacağını bir kez söyle (kural aşağıda; rapor TASLAK kalacak).
-   - Tabloyu bidr ortamının Python'u ve openpyxl ile doldur (yalnız KARAR ve NOT hücreleri;
-     sütun/sayfa yapısını bozma). Her satırın KARAR'ını yaz ve aynı satırın NOT'una `ajan (kullanıcı yetkisiyle)` yaz
+   - Tabloyu bidr ortamının Python'u ve openpyxl ile doldur (İnceleme sayfasında yalnız KARARINIZ ve
+     Not hücreleri; sütun/sayfa yapısını bozma; `Hepsini kabul` kullanma, her satırı tek tek yaz). Her
+     satırın KARARINIZ'ını (`Kabul`/`Ret`) yaz ve aynı satırın Not'una `ajan (kullanıcı yetkisiyle)` yaz
      (gerekçe varsa ardına: `ajan (kullanıcı yetkisiyle): <kısa gerekçe>`).
    - Güveni düşük (`güven: dusuk`, sarı) eşleşmeler `ret`. Güveni orta/yüksek ve işaretsiz satır
      `kabul` (alıntıyı model seçti, kod belgede doğruladı; içerik beğenisiyle ret yok).

@@ -153,7 +153,9 @@ def test_audit_files_and_apply_roundtrip(ws, tmp_path, capsys):
     gaps = (out / "gaps.md").read_text(encoding="utf-8")
     assert "B.2.3" in gaps and "uygulama kanıtı eksik" in gaps and "Boş yuvalar" in gaps
     wb = load_workbook(out / "review.xlsx")
-    assert wb.sheetnames[:2] == ["Eşleşmeler", "Ölçüt özeti"] and wb["_meta"].sheet_state == "hidden"
+    # sade sayfalar önde; teknik sayfalar (Eşleşmeler, Ölçüt özeti) gizli kalır
+    assert wb.sheetnames[:3] == ["İnceleme", "Maddeler", "Nasıl doldurulur"] and wb["_meta"].sheet_state == "hidden"
+    assert wb["Eşleşmeler"].sheet_state == "hidden" and wb["Ölçüt özeti"].sheet_state == "hidden"
     st = review_state(out, ws)
     assert st["tablo"] and st["guncel"] and st["satir"] == 8 and st["kararli"] == 0
 

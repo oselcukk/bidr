@@ -362,3 +362,30 @@ def test_name_uses_fine_decision_name_for_reverted_doc(ws):
     assert Resolver.load(root).resolve(x)[:2] == ("Bölüm Kurulu Kararı", "model")
     a, _ = audit(root)
     assert a.by_key[f"{x}|B.2.3/2"]["kanit_adi"] == "Bölüm Kurulu Kararı"
+
+
+def test_plain_unit_sheet_answers(ws):
+    """Sade "Bölümünüze ait mi" sayfası: düz Türkçe cevap → birim ilişkisi (teknik sayfayla aynı kayıt)."""
+    from bidr.audit import sade as S
+    root, ids = ws
+    x = ids["ekle"]
+    _other_unit(root)
+    _, paths = audit(root)
+    wb = load_workbook(paths["xlsx"])
+    sh = wb[S.SH_BIRIM]
+    head = [c.value for c in sh[1]]
+    row = next(r for r in sh.iter_rows(min_row=2) if r[head.index("belge kimliği")].value == x)
+    assert "başka bir birimin belgesi" in row[head.index("Neden soruyoruz")].value
+    assert row[head.index("Hangi maddeler için önerildi")].value.startswith("B.2.3 — ")
+    row[head.index("CEVABINIZ")].value = "Hayır — başka birimin belgesi"
+    row[head.index("Not")].value = "Kimya bölümünün tutanağı"
+    wb.save(paths["xlsx"])
+    st = audit_apply(root)
+    assert st["birim"] == {"baska_birim_onay": [x]}
+    pins = {r["doc_id"]: r for r in read_jsonl(root / FILES["birim"])}
+    assert pins[x]["birim_iliskisi"] == "baska_birim" and pins[x]["not"] == "Kimya bölümünün tutanağı"
+    _, paths = audit(root)                      # yeniden üretim: cevap kayıtlı, apply aynı kalır
+    row = next(r for r in load_workbook(paths["xlsx"])[S.SH_BIRIM].iter_rows(min_row=2, values_only=True)
+               if r[head.index("belge kimliği")] == x)
+    assert row[head.index("CEVABINIZ")] == "Hayır — başka birimin belgesi"
+    assert review_state(root)["uygulanmamis_duzeltme"] == 0

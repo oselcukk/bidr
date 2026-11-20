@@ -1,5 +1,9 @@
 """review.xlsx yazımı ve okunması (openpyxl). Sütunlar başlık adıyla okunur; kullanıcı
-sütun sırasını değiştirse ya da sütun eklese de karar sütunları bulunur."""
+sütun sırasını değiştirse ya da sütun eklese de karar sütunları bulunur.
+
+Bu modül teknik sayfaları yazar ("Eşleşmeler", "Ölçüt özeti", birim sayfası, "Açıklama"); son
+kullanıcının gördüğü sade sayfalar (İnceleme, Bölümünüze ait mi?, Maddeler, Nasıl doldurulur)
+`sade.py`'dedir. Teknik sayfalar gizlenir; okuma iki katmanı birleştirir (sade değişiklik önce gelir)."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -271,6 +275,8 @@ def write_review(a, path: Path) -> None:
                  ("faaliyet_sha", getattr(a, "faaliyet_sha", "") or "")):
         m.append([k, v])
     m.sheet_state = "hidden"
+    from . import sade
+    sade.write_sade(wb, a, a.cs)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
     wb.save(tmp)
@@ -329,7 +335,8 @@ def read_unit_sheet(path: Path) -> list[dict] | None:
                 rows.append(r)
         if keys is None:
             raise ValueError(f"'{SHEET_UNIT}' sayfasında 'belge kimliği' başlığı yok")
-        return rows
+        from . import sade
+        return sade.merge_units(rows, wb)
     finally:
         wb.close()
 
@@ -355,7 +362,8 @@ def read_od_sheet(path: Path) -> list[dict] | None:
                         "od": "" if vals[i_od] is None else str(vals[i_od]).strip(),
                         "not": "" if i_n is None or vals[i_n] is None else str(vals[i_n]).strip(),
                         "kod_onerisi": vals[i_k]})
-        return out
+        from . import sade
+        return sade.merge_od(out, wb)
     finally:
         wb.close()
 
@@ -383,6 +391,7 @@ def read_review(path: Path) -> tuple[dict, list[dict]]:
                 continue
             r = {k: ("" if v is None else v) for k, v in r.items()}
             rows.append(r)
-        return meta, rows
+        from . import sade
+        return meta, sade.merge_rows(rows, sade.read_inceleme(wb))
     finally:
         wb.close()
