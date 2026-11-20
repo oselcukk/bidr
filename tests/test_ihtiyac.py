@@ -441,3 +441,95 @@ def test_cli_sade(tgt_ws, tmp_path, capsys):
     assert main(["ihtiyac", "-w", str(tgt_ws), "--out", str(out), "--istenecekler", str(md)]) == 0
     assert (out / S.FILE).exists()
     assert "elle istek 1" in capsys.readouterr().out
+
+
+# -- kılavuz eki: "Örnek Uygulama ve Kanıtlar Listesi" ------------------------------------------
+
+def test_ornek_uygulama_data_and_mapping():
+    """Şablondan çıkarılan 142 satırın hepsi 1–3 geçerli kılavuz yuvasına eşlenmiş (özgün yuva yok)."""
+    from bidr.criteria import load_ornek_uygulamalar
+    from bidr.criteria.loader import load_criteria
+    from bidr.criteria.slots import load_tags
+    raw = load_ornek_uygulamalar()
+    assert raw["meta"]["counts"] == {"A": 25, "B": 80, "C": 21, "D": 16}
+    assert set(raw["alanlar"]) == {"A", "B", "C", "D"}
+    ids = [r["id"] for r in raw["satirlar"]]
+    assert len(ids) == len(set(ids)) == 142
+    assert all(r["uygulama"] and r["kanit"] for r in raw["satirlar"])
+    assert not re.search(r"\bGTÜ\b|\bGTU\b|Gebze", json.dumps(raw, ensure_ascii=False))
+    cs = load_criteria()
+    tags = load_tags(cs)
+    slots = {s.id for s in cs.slots(include_footnotes=False)}
+    es = __import__("yaml").safe_load(S.ORNEK_ESLEME_FILE.read_text(encoding="utf-8"))["eslesme"]
+    assert set(es) == set(ids)                                            # eşlemesiz ya da fazla satır yok
+    for o in S.ornekler_yukle():
+        assert 1 <= len(o["yuvalar"]) <= 3 and set(o["yuvalar"]) <= slots, o["id"]
+        assert not any("ozgun" in tags[y].stages for y in o["yuvalar"] if tags.get(y) is not None), o["id"]
+        assert o["olcutler"] == list(dict.fromkeys(y.split("/")[0] for y in o["yuvalar"]))
+
+
+def test_ornek_metni_and_casing():
+    o = {"kanit": "Toplantı gündemleri", "uygulama": "Bölüm kurullarında araştırma konusunun görüşülmesi"}
+    assert S.ornek_metni(o) == "Toplantı gündemleri — bölüm kurullarında araştırma konusunun görüşülmesi"
+    assert S._kucuk_bas("İç işleyişin izlenmesi") == "iç işleyişin izlenmesi"
+    assert S._kucuk_bas("Isı yalıtımı") == "ısı yalıtımı"
+    for keep in ("TÜBİTAK destekli projeler", "Ana Bilim Dalı durum tespiti", "Ölçme ve Değerlendirme komisyonu",
+                 "Birim/Program web sayfaları", "Proliz sayfaları"):
+        assert S._kucuk_bas(keep) == keep
+
+
+def _orn(i, uyg, kanit, yuvalar, sade=True):
+    return {"id": f"B/{i}", "alan": "B", "uygulama": uyg, "kanit": kanit, "yuvalar": yuvalar,
+            "olcutler": list(dict.fromkeys(y.split("/")[0] for y in yuvalar)), "belirsiz": False, "sade": sade}
+
+
+def test_sade_ornek_uygulama_suggestions(tmp_path):
+    """Örnek uygulama yalnız karşılanmamış yuvada, önceki maddeyle örtüşmeden, sınırla ve okunur biçimde gelir;
+    kalanlar "Kılavuzdaki örnek kanıtlar" sütununda; kurum düzeyi satır sade listeye girmez."""
+    ws = _ws(tmp_path / "w", 2025, {
+        "a": ("bolum_kurulu_karari", True, "2025-02-01", "Bolum Kurulu Karari 2025", PLAN,
+              [_m("B.1.1", "B.1.1/1", "planla", 2)], "kabul"),
+    })
+    somut = tmp_path / "somut.yaml"
+    somut.write_text("surum: 1\nozgun: [Ozgun belge]\nyuva:\n  B.1.1/5: [Sentetik paydas toplantisi tutanagi]\n",
+                     encoding="utf-8")
+    orn = [_orn(1, "Karşılanmış yuvaya ait zorvak uygulaması", "Kanıt K1", ["B.1.1/1"]),
+           _orn(2, "Vimel brenta görüşmelerinin yapılması", "Kanıt K2", ["B.1.1/3"]),
+           _orn(3, "Sentetik paydas toplantisi tutanagi hazırlanması", "Kanıt K3", ["B.1.1/5"]),   # somutla örtüşür
+           _orn(4, "Kampüs ölçekli lodrak düzenlemesi", "Kanıt K4", ["B.1.1/6"], sade=False),
+           _orn(5, "Derom kurulunun palvu kararları", "Kanıt K5", ["B.1.1/2"]),
+           _orn(6, "Hiskel izleme çalışması", "Kanıt K6", ["B.1.1/6"]),
+           _orn(7, "Sikor iyileştirme önerileri", "Kanıt K7", ["B.1.1/6", "C.1.1/1"])]
+    res = R.run(ws, out=tmp_path / "o", somut=S.Somut(somut), oneriler=[], ornekler=orn)
+    r = {x["olcut"]: x for x in res["sade"]}["B.1.1"]
+    b = r["belgeler"].split("\n")
+    ornek = [m for m in r["maddeler"] if m["tur"] == "ornek"]
+    assert len(ornek) == S.ORNEK_EN_COK
+    assert "• Kanıt K2 — vimel brenta görüşmelerinin yapılması" in b
+    assert not any(x in r["belgeler"] for x in ("Kanıt K1", "Kanıt K3", "Kanıt K4"))
+    # örnekler somut karşılıklardan sonra, kurum belgelerinden önce
+    tur = [m["tur"] for m in r["maddeler"]]
+    assert tur.index("ornek") > max(i for i, t in enumerate(tur) if t == "kilavuz")
+    assert r["ornek_idler"] == sorted(r["ornek_idler"], key=lambda i: int(i.split("/")[1]))
+    # yazılmayan karşılanmamış örnek kılavuz sütununda (kısaltılmış), karşılanmış ya da kurum düzeyi olan değil
+    klv = r["kilavuz"]
+    assert "Kılavuz ekindeki örnek uygulamalar" in klv
+    assert "Sentetik paydas toplantisi" in klv and "zorvak" not in klv and "lodrak" not in klv
+    assert not any(f"• {m['metin']}" in klv for m in ornek)
+    # teknik ihtiyac.xlsx: satırların durumu
+    wb = load_workbook(res["paths"]["xlsx"])
+    sh = wb[R.SHEETS[4]]
+    durum = {row[0]: row[-1] for row in sh.iter_rows(min_row=2, values_only=True)}
+    assert durum["B/2"].startswith("listede (B.1.1") and durum["B/4"].startswith("kurum düzeyi")
+    assert durum["B/1"].startswith("yuvası karşılanmış") and durum["B/3"].startswith("sınır ya da örtüşme")
+    assert wb.sheetnames[-1] == "Açıklama"
+
+
+def test_sade_ornek_default_data_used(tgt_ws, tmp_path):
+    """Varsayılan veriyle (şablonun ek tabloları) satırlar sade listeye girer ve kimlik/kod içermez."""
+    res = R.run(tgt_ws, out=tmp_path / "o")
+    orn = [m for x in res["sade"] for m in x["maddeler"] if m["tur"] == "ornek"]
+    assert orn and all(" — " in m["metin"] for m in orn)
+    for x in res["sade"]:
+        assert sum(1 for m in x["maddeler"] if m["tur"] == "ornek") <= S.ORNEK_EN_COK
+        assert not re.search(r"\b[A-E]/\d+\b", x["belgeler"] + x["kilavuz"])

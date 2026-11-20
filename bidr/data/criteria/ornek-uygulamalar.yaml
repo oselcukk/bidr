@@ -1,0 +1,591 @@
+# Üretildi: python -m bidr.criteria.extract_docx <şablon.docx>
+# Elle düzenlemeyin; şablon değişince yeniden üretin.
+meta:
+  schema_version: 1
+  source_form: FR-0833 Birim İç Değerlendirme Raporu (BİDR) şablonu, R0
+  source_section: Örnek Uygulama ve Kanıtlar Listesi
+  source_sha256: bfafe690bbe78d1e437f7fd23a298c268e09ef2b3bb2a33860daf92f2287f04b
+  extracted_by: bidr.criteria.extract_docx
+  text_policy: Hücre metinleri birebir; hücre içi satır sonları boşlukla birleşti, kurum adı yer tutucuyla değiştirildi (bkz. redactions).
+  counts:
+    A: 25
+    B: 80
+    C: 21
+    D: 16
+  notes:
+  - 'Satırlar alan düzeyindedir (şablonda alt ölçüt verilmez); alt ölçüt eşlemesi elle yapılmıştır: bidr/data/ihtiyac_ornek_uygulama.yaml.'
+  redactions: []
+alanlar:
+  A: LİDERLİK, YÖNETİŞİM VE KALİTE
+  B: EĞİTİM ÖĞRETİM
+  C: ARAŞTIRMA-GELİŞTİRME
+  D: TOPLUMSAL KATKI
+satirlar:
+- id: A/1
+  alan: A
+  uygulama: Birime ilişkin organizasyon şemasının hazırlanması ve güncellenmesi
+  kanit: Birim organizasyon şemalarını içeren birim web sayfası linki
+- id: A/2
+  alan: A
+  uygulama: Çok düzeyli ve geniş ölçekli katılım modelini yansıtan kurulların/komisyonların oluşturulması
+  kanit: Kurul ve komisyon kurulmasıyla ilgili kararlar, sorumlu personel listesi, web sayfası linki vb.
+- id: A/3
+  alan: A
+  uygulama: Belirlenen periyotlarda anket uygulamalarının yapılması
+  kanit: İlgili kararlar, belgeler vb.
+- id: A/4
+  alan: A
+  uygulama: Yapılan anketlerin değerlendirilmesi ve gerekli iyileştirme önlemlerin alınması
+  kanit: Anket analizleri, toplantı gündemleri, toplantı kararları vb.
+- id: A/5
+  alan: A
+  uygulama: Birim amaç ve hedeflerinin üniversite stratejik planındaki amaç ve hedeflerle ilişkilendirilmesi
+  kanit: Birim strateji planları
+- id: A/6
+  alan: A
+  uygulama: Birim amaç ve hedeflerinin yıllık değerlendirilmesi sonucunda, gelecek senaryolarının oluşturularak planın revize edilmesi
+  kanit: Birim strateji planları
+- id: A/7
+  alan: A
+  uygulama: İç Kontrol Eylem Planının kullanılması
+  kanit: İlgili belge, dokümanlar
+- id: A/8
+  alan: A
+  uygulama: Faaliyet Planında tüm süreçlere yer verilmesi
+  kanit: İdare Faaliyet planları
+- id: A/9
+  alan: A
+  uygulama: Kalite Faaliyet planında faaliyetlere ilişkin sorumluların belirlenmesi
+  kanit: Kalite Faaliyet planları
+- id: A/10
+  alan: A
+  uygulama: Birim yıllık faaliyet raporlarının hazırlanarak web sayfalarında görünür şekilde paylaşılması
+  kanit: İlgili birim web sayfası linki
+- id: A/11
+  alan: A
+  uygulama: Bölüm – Birim İç Değerlendirme Raporlarının web sayfalarında paylaşılması
+  kanit: İlgili birim web sayfası linki
+- id: A/12
+  alan: A
+  uygulama: Birim kalite komisyonlarının kurulması ve sorumluların belirlenmesi
+  kanit: İlgili karar, yazı, belge vb.
+- id: A/13
+  alan: A
+  uygulama: Birim web sayfasında misyon, vizyon ve temel değerler ifadelerinin bulunması
+  kanit: İlgili birim web sayfası linki
+- id: A/14
+  alan: A
+  uygulama: Mevcut Stratejik Planın amaç ve hedefler doğrultusunda ölçülebilir olması
+  kanit: İlgili birim web sayfası linki
+- id: A/15
+  alan: A
+  uygulama: Stratejik plan hazırlık/revize aşamalarında paydaş görüşü alınması
+  kanit: İlgili görüşme, yazışma vb.
+- id: A/16
+  alan: A
+  uygulama: Performans göstergelerinin ve takip sorumlularının belirlenerek ilan edilmesi
+  kanit: İlgili karar, yazışma, belge vb.
+- id: A/17
+  alan: A
+  uygulama: Performans gerçekleşme oranlarının hesaplanarak performans raporunun hazırlanıp paylaşılması
+  kanit: Performans raporları
+- id: A/18
+  alan: A
+  uygulama: Birim web sayfasının sürekli güncellenmesi
+  kanit: Web sayfası sorumlu listeleri vb.
+- id: A/19
+  alan: A
+  uygulama: Personel memnuniyet anketlerinin periyodik olarak uygulanması
+  kanit: Anketler
+- id: A/20
+  alan: A
+  uygulama: Birim tarafından süreç kartlarının hazırlanması, izlenmesi ve iyileştirilmesi
+  kanit: İlgili karar, belge, yazı vb.
+- id: A/21
+  alan: A
+  uygulama: Süreç kartları oluşturulurken/revize edilirken paydaş görüşleri alınması
+  kanit: İlgili yazışma, görüşme vb.
+- id: A/22
+  alan: A
+  uygulama: Paydaş analizi kapsamında paydaşlar ile sistematik olarak toplantı/anket/görüşme düzenlenmesi
+  kanit: İlgili yazışma, görüşme, toplantı, fotoğraf vb.
+- id: A/23
+  alan: A
+  uygulama: Birim web sayfasında şikayet/öneri vb. geri bildirim mekanizmalarının bulundurulması
+  kanit: Birim web sayfası
+- id: A/24
+  alan: A
+  uygulama: Yüksekokul/fakülteye/enstitüye ait kayıtlı mezun sayısı, günümüze kadar toplam mezun sayısı gibi bilgilerin kayıtlı şekilde tutulması
+  kanit: Stratejik plan, Mezun veri tabanı, İdare faaliyet raporları vb.
+- id: A/25
+  alan: A
+  uygulama: Sosyal medya hesapları aracılığı ile de mezunlarla iletişim sağlanması
+  kanit: İlgili web sayfası linkleri
+- id: B/1
+  alan: B
+  uygulama: Misyon ve vizyon doğrultusunda programın ihtiyaçlarının belirlenmesi
+  kanit: Toplantı tutanakları, katılım listesi
+- id: B/2
+  alan: B
+  uygulama: Eğitim planlarının gözden geçirilerek revizyon ihtiyacının belirlenmesi
+  kanit: Toplantı tutanakları, katılım Listesi
+- id: B/3
+  alan: B
+  uygulama: İç ve dış paydaşlarla görüşmeler yapılarak öğrenci ve sektörün beklentilerinin belirlenmesi
+  kanit: Anket ve görüşme tutanakları
+- id: B/4
+  alan: B
+  uygulama: Güncel, beklenti ve gereksinimlere uygun yeni eğitim- öğretim programlarının geliştirilmesi ve yeni derslerin eklenmesi
+  kanit: Eğitim planı revizyonu, Senato kararları
+- id: B/5
+  alan: B
+  uygulama: Ders planı tasarımında seçmeli, zorunlu ve mesleki ders dağılım dengesinin sağlanması
+  kanit: Eğitim planı revizyonu, Senato kararları
+- id: B/6
+  alan: B
+  uygulama: Proliz de program ve ders bilgi paketi sayfalarının tamamlanması
+  kanit: Proliz ekran görüntüleri
+- id: B/7
+  alan: B
+  uygulama: Program çıktılarının Türkiye Yükseköğretim Yeterlilikler Çerçevesi’ne (TYYÇ) göre güncellenmesi
+  kanit: Proliz ekran görüntüleri, Birim web sayfası
+- id: B/8
+  alan: B
+  uygulama: Yeni program açılmasına yönelik ihtiyaç analizlerinin gerçekleştirilmesi
+  kanit: Toplantı tutanakları, katılım listesi
+- id: B/9
+  alan: B
+  uygulama: Yan dal ve çift ana dal programlarına yönelik öğrenci beklenti analizlerinin gerçekleştirilmesi
+  kanit: Toplantı tutanakları, katılım listesi
+- id: B/10
+  alan: B
+  uygulama: Programların yan dal ve çift ana dal programları için uygunluğunun tespit edilmesi
+  kanit: Toplantı tutanakları, katılım listesi
+- id: B/11
+  alan: B
+  uygulama: Programlar arası yatay geçiş kontenjanlarının ve şartlarının belirlenmesi ve ilan edilmesi
+  kanit: Fakülte Yönetim Kurulu kararları, Senato kararları, ilgili web sayfası linki
+- id: B/12
+  alan: B
+  uygulama: Çift anadal/yandal programları uygulama esaslarının belirlenmesi
+  kanit: Fakülte Yönetim Kurulu kararları, Senato kararları
+- id: B/13
+  alan: B
+  uygulama: Ders eşdeğerlik ve intibaklarının gerçekleştirilmesi
+  kanit: Fakülte Yönetim Kurulu kararları
+- id: B/14
+  alan: B
+  uygulama: Staj yapılacak programların tespit edilmesi
+  kanit: Toplantı tutanakları, katılım listesi
+- id: B/15
+  alan: B
+  uygulama: Programın staj alt yapısına uygunluğunun belirlenmesi
+  kanit: Toplantı tutanakları
+- id: B/16
+  alan: B
+  uygulama: İlgili program müfredatında staj dersine yönelik revizyonun sağlanması
+  kanit: İlgili belge, doküman, Eğitim planı revizyonu Senato kararı
+- id: B/17
+  alan: B
+  uygulama: Staj yönergesinin hazırlanması ve/veya çağın gereklerine göre revize edilmesi
+  kanit: İlgi belge, doküman, toplantı tutanağı, staj yönergesi revizyonu Senato kararı
+- id: B/18
+  alan: B
+  uygulama: İş akışlarının hazırlanması
+  kanit: Fakülte Yönetim Kurulu kararları
+- id: B/19
+  alan: B
+  uygulama: Bölgede faaliyet gösteren ilgili kurum ve işletmelerle öğrencilerin buluşturulması ve staj olanaklarının artırılması/protokollerin imzalanması
+  kanit: Toplantı tutanakları, katılım listesi, protokoller
+- id: B/20
+  alan: B
+  uygulama: Staj yapan öğrencilerin staj yerinde denetlenmesi
+  kanit: İlgili belge, doküman, fotoğraf vb.
+- id: B/21
+  alan: B
+  uygulama: Her yıl fakülteyi tercih eden öğrencilerin üniversiteyi/fakülteyi/bölümü tercih etme sebeplerinin tespit edilmesi
+  kanit: Öğrenci anketleri, yükseköğretim girdi göstergeleri (YÖK ATLAS) vb.
+- id: B/22
+  alan: B
+  uygulama: Öğrencilerin program ve üniversiteye yönelik memnuniyetinin tespit edilmesi
+  kanit: Öğrenci anketleri analiz sonuç raporları
+- id: B/23
+  alan: B
+  uygulama: Fakülte ve programların mevcut durumunun, sorunlarının ve sorunlara yönelik önerilerin raporlanması
+  kanit: Toplantı tutanakları, katılım listesi
+- id: B/24
+  alan: B
+  uygulama: Program tanıtımlarının yapılması
+  kanit: Tanıtım broşürleri, tanıtım video kayıtları, fotoğraf, ilgili web sayfası linki
+- id: B/25
+  alan: B
+  uygulama: Öğrenci topluluklarının kurulması/çeşitlendirilmesi ve aktivasyonunun sağlanması
+  kanit: Topluluk faaliyet raporları, Topluluk etkinlik anket analizleri, ilgili web sayfası linki
+- id: B/26
+  alan: B
+  uygulama: Öğrenci toplulukları ve sosyal sorumluluk projelerine yönelik web sayfasının/sosyal medya hesaplarının etkinliğinin sağlanması
+  kanit: Web sayfası linki
+- id: B/27
+  alan: B
+  uygulama: Üniversite içi burs ve konaklama desteklerinin artırılması
+  kanit: Öğrenci başvuruları komisyon raporları, duyurular, ilgili belge ve dokümanlar
+- id: B/28
+  alan: B
+  uygulama: Mezun bilgi sistemi kurularak başarıların görünür kılınması
+  kanit: Mezun Bilgi Sistemi web sayfası linki
+- id: B/29
+  alan: B
+  uygulama: Fakülte/Yüksekokul/Program olanaklarının (eğitim-öğretim alt yapısı, öğretim elemanı sayısı) değerlendirilmesi
+  kanit: Toplantı tutanakları, katılım listesi
+- id: B/30
+  alan: B
+  uygulama: Akreditasyon için koşulların gözden geçirilmesi; eğitim-öğretim alt yapısının, öğretim elemanı niceliğinin ve niteliğinin artırılması için yapılacakların tespit edilmesi
+  kanit: Toplantı tutanakları, katılım listesi
+- id: B/31
+  alan: B
+  uygulama: İlgili alanda YÖKAK tarafından yetkilendirilmiş kuruluşların akreditasyon ilke ve ölçütlerinin araştırılarak programın akreditasyon standartları ve sektörel kriterlere uygunluğunun tespit edilmesi
+  kanit: Komisyon raporu, toplantı tutanakları, katılım listesi
+- id: B/32
+  alan: B
+  uygulama: Ana Bilim Dalı mevcut durum tespitinin yapılması
+  kanit: Toplantı tutanakları, katılım listesi
+- id: B/33
+  alan: B
+  uygulama: Yükseköğretim Kurulu YKS Yerleştirme Verileri temelinde öğrenci eğilimlerinin tespit edilmesi
+  kanit: YÖK YKS yerleştirme verileri
+- id: B/34
+  alan: B
+  uygulama: Misyon ve vizyon doğrultusunda akademik birimlerin ve sektörün ihtiyaçlarının belirlenmesi
+  kanit: Toplantı tutanakları, katılım listesi
+- id: B/35
+  alan: B
+  uygulama: Güncel, beklenti ve gereksinimlere uygun yeni eğitim- öğretim programlarının geliştirilmesi ve ilke ve ölçütlere uygunluk hâlinde gerekli başvuruların yapılması
+  kanit: Program başvuru formları
+- id: B/36
+  alan: B
+  uygulama: Ders planlarının revize edilerek çağın gerekliliklerine uygun hâle getirilmesi
+  kanit: Eğitim planı revizyonu Senato kararı
+- id: B/37
+  alan: B
+  uygulama: Etkin danışmanlık sisteminin işletilmesi ve öğrencilere danışman değerlendirme anketi uygulanması
+  kanit: Öğrenci görüşme takvimi, anketler, formlar
+- id: B/38
+  alan: B
+  uygulama: Disiplinler arası/üstü, tezsiz, ikinci öğretim gibi lisansüstü programlara olan ihtiyaç ve talebin değerlendirilerek uygun olması durumunda açılması için gerekli başvurunun yapılması
+  kanit: İlgili belge, doküman, toplantı tutanakları, program başvuruları
+- id: B/39
+  alan: B
+  uygulama: Lisansüstü programlarda alanında uzman akademik personel ve ders çeşitliliğinin artırılması
+  kanit: Eğitim planı revizyonu Senato kararı
+- id: B/40
+  alan: B
+  uygulama: TÜBİTAK destekli doktora programlarının akademik bir öncelik hâlini alması
+  kanit: Enstitü Yönetim Kurulu kararları, Senato kararı
+- id: B/41
+  alan: B
+  uygulama: YÖK Yürütme Kurulunca belirlenen öncelikli alt alanlarda eğitim öğretim ve araştırma altyapısının geliştirilmesi
+  kanit: Toplantı tutanakları, katılım listesi
+- id: B/42
+  alan: B
+  uygulama: YÖK Yürütme Kurulunca belirlenen öncelikli alt alanlarda doktora program sayısının artırılması
+  kanit: Enstitü Yönetim Kurulu kararları, Senato kararı
+- id: B/43
+  alan: B
+  uygulama: Derslik, uygulama alanları, fiziki ve teknolojik donanımlara ilişkin ihtiyaç tespitinin yapılması
+  kanit: Fakülte Kurul kararı
+- id: B/44
+  alan: B
+  uygulama: İhtiyaca dayalı derslik, laboratuvar, kütüphane, toplantı salonu ve diğer sosyal alanlara ilaveler yapılması
+  kanit: Fakülte Kurul kararı, işlem raporu
+- id: B/45
+  alan: B
+  uygulama: Öğrencilere sunulan hizmetlere yönelik öğrenci anketlerinin tasarlanması, uygulanması ve analiz edilmesi
+  kanit: Öğrenci memnuniyet anketleri analiz sonuç raporları
+- id: B/46
+  alan: B
+  uygulama: Eş zamanlı eğitime ek olarak eş zamansız öğrenme ortamlarının (Uzaktan eğitim) geliştirilmesi
+  kanit: Online dersliklerin sayısı
+- id: B/47
+  alan: B
+  uygulama: Eğitim-öğretim faaliyetlerini sürdürmek için alt yapı imkânlarının kontrol edilerek uygun alt yapının tesis edilmesi
+  kanit: Fakülte Kurul kararı, işlem raporu
+- id: B/48
+  alan: B
+  uygulama: Derslik başına düşen öğrenci sayısı temelinde gerekli iyileştirmelerin yapılması
+  kanit: Fakülte Kurul kararı, işlem raporu
+- id: B/49
+  alan: B
+  uygulama: Açık ve yeşil alanların envanterinin hazırlanması
+  kanit: Açık ve yeşil alanların envanteri
+- id: B/50
+  alan: B
+  uygulama: Kampüslerdeki toprak yapısının ve yeraltı su kalitesinin incelenmesi
+  kanit: İşlem raporu
+- id: B/51
+  alan: B
+  uygulama: GreenMetric değerlendirme kriterleri bağlamında iyileştirmeler yapılması
+  kanit: İşlem raporu
+- id: B/52
+  alan: B
+  uygulama: Saha düzenleme ve ağaçlandırma çalışmalarının gerçekleştirilmesi
+  kanit: Dikilen ağaç sayısı, Öğrenci başına düşen yeşil alan/m2
+- id: B/53
+  alan: B
+  uygulama: Program amaçlarının TYYÇ ve programın akreditasyon kuruluşu ölçütleri dikkate alınarak, paydaş katılımlı olarak belirlenmesi ve ilan edilmesi
+  kanit: İlgili toplantı, görüşme, fotoğraf vb.
+- id: B/54
+  alan: B
+  uygulama: Eğitim Komisyonlarının oluşturulması ve sistematik olarak görüşmeler yapılması
+  kanit: İlgili karar, tutanak, fotoğraf vb.
+- id: B/55
+  alan: B
+  uygulama: Öğretim programı yapısında ders dağılım kurallarına yönetmelikler çerçevesinde uyulması
+  kanit: Karar, yazı, belge, ders dağılımına ilişkin birim web sayfası linki
+- id: B/56
+  alan: B
+  uygulama: Ders izlencelerinin ilgili öğretim elemanı tarafından program başkanlığına teslim edilmesi
+  kanit: İlgili belgeler
+- id: B/57
+  alan: B
+  uygulama: Ders öğrenim çıktılarının ve program çıktılarının güncelliğinin izlenmesi
+  kanit: İlgili karar, yazı, belge vb.
+- id: B/58
+  alan: B
+  uygulama: Öğrencilere program yeterlilikleri ile ilgili anket uygulamaları yapılması
+  kanit: Öğrenci anketleri
+- id: B/59
+  alan: B
+  uygulama: Ölçme ve Değerlendirme komisyonu oluşturulması/revize edilmesi ve sistematik olarak toplantılar yapılması
+  kanit: Kararlar, toplantılar, belgeler
+- id: B/60
+  alan: B
+  uygulama: Mezunlar ile iletişime geçilerek program amaçları ile ilgili dönütler alınması
+  kanit: Yazışmalar, görüşmeler, anketler vb.
+- id: B/61
+  alan: B
+  uygulama: Öğrenci merkezli ve yeterlilik temelli ölçme ve değerlendirme yapılması
+  kanit: Ölçme araçları örnekleri vb.
+- id: B/62
+  alan: B
+  uygulama: Program içeriklerinin hazırlanmasında (varsa) baz alınan ilkeler
+  kanit: Web sayfası linki
+- id: B/63
+  alan: B
+  uygulama: Program tasarımı süreçlerinde paydaş katılımı
+  kanit: Anketler, toplantılar, tutanaklar, ilgili web sayfası linki
+- id: B/64
+  alan: B
+  uygulama: Ders kataloglarının güncellenmesi (zorunlu/seçmeli ders)
+  kanit: Gerekçeli karar örnekleri
+- id: B/65
+  alan: B
+  uygulama: Ortak seçmeli ders havuzunun oluşturulması
+  kanit: Buna ilişkin belgeler, Ders Bilgi Paketi sayfası ekran görüntüsü
+- id: B/66
+  alan: B
+  uygulama: Ders kazanımlarının program çıktılarıyla uyumunu gösteren ders izlencelerinin hazırlanması
+  kanit: Ders izlenceleri, paylaşıldığı web sayfası linki
+- id: B/67
+  alan: B
+  uygulama: Programlarda öğrenci iş yükü kredisinin belirlenmesi süreçleri
+  kanit: Mesleki uygulamalar, değişim programları, staj ve projeler için tanımlandığını gösteren belgeler
+- id: B/68
+  alan: B
+  uygulama: Programlarda öğrenci iş yükünün belirlenmesinde öğrenci katılımının sağlanması
+  kanit: Anketler, belgeler ve mekanizmalar vb.
+- id: B/69
+  alan: B
+  uygulama: Programların izlenmesi ve güncellenmesine ilişkin ilke, kural, gösterge, plan ve uygulamalar
+  kanit: Her akademik birim tarafından açılan dersler, öğrenci sayıları, açılan programlar, ilişik kesme sayıları vb. istatistiklerin takibinin yapıldığının kanıtı ve bu takip sonucu açılan, kapatılan veya güncellenen bölüm program kararları
+- id: B/70
+  alan: B
+  uygulama: Programların yıllık öz değerlendirme raporları
+  kanit: Program çıktıları açısından değerlendirme, öğrenci memnuniyet anketleri
+- id: B/71
+  alan: B
+  uygulama: Öğrenci merkezli öğretim yöntemlerinin kullanılması
+  kanit: Yöntemlerin kullanıldığına ilişkin belge, fotoğraf, web sayfası linki vb.
+- id: B/72
+  alan: B
+  uygulama: Programda yer verilen ölçme araçlarının belirlenmesi
+  kanit: Örgün/uzaktan/karma derslerde kullanılan sınav örnekleri
+- id: B/73
+  alan: B
+  uygulama: Özel ölçme türlerine ilişkin mekanizmalar
+  kanit: Dezavantajlı gruplar ve çevrimiçi sınav örnekleri vb.
+- id: B/74
+  alan: B
+  uygulama: Sınav güvenliği mekanizmalarının geliştirilmesi
+  kanit: İlgili karar, örnek, fotoğraf vb.
+- id: B/75
+  alan: B
+  uygulama: Değişim programları prosedürleri
+  kanit: Evraklar, belgeler, ders muafiyet evrakları vb.
+- id: B/76
+  alan: B
+  uygulama: Öğrenme kaynakları yeterlilik/memnuniyet uygulamaları
+  kanit: Öğrenci memnuniyet anketleri
+- id: B/77
+  alan: B
+  uygulama: Eğitim-öğretim sürecini destekleyici dijital kanalların kullanılması
+  kanit: Sosyal medya hesapları, Youtube kanalları vb.
+- id: B/78
+  alan: B
+  uygulama: Öğrencilere yönelik sportif, kültürel, sosyal faaliyetlerin gerçekleştirilmesi
+  kanit: Seminer, toplantı, turnuva, gösteri, konser, davetli konuşmacılara ilişkin web sayfası linki
+- id: B/79
+  alan: B
+  uygulama: Öğretim Elemanlarının yetkinliklerini arttırmaya yönelik uygulamalar
+  kanit: Eğitimler, seminerler, çalıştaylar, toplantılar vb. haberlerin web sayfası linki, listelenmesi vb.
+- id: B/80
+  alan: B
+  uygulama: Eğitim ve öğretim performansına dair ödüllendirme
+  kanit: Takdir, başarı ödüllerine ilişkin fotoğraf, web sayfası linki
+- id: C/1
+  alan: C
+  uygulama: Araştırma geliştirme süreçlerine ilişkin sorumluların belirlenmesi ve ilan edilmesi
+  kanit: Kararlar, sorumluları gösteren web sayfası linki vb.
+- id: C/2
+  alan: C
+  uygulama: Akademik/Bölüm Kurullarında araştırma ve geliştirmeye ilişkin gündem maddesinin bulunması
+  kanit: Toplantı gündemleri
+- id: C/3
+  alan: C
+  uygulama: Stratejik planda araştırma ve geliştirmeye yönelik amaç ve hedeflerin bulundurulması, takip sorumlularının da stratejik planda belirtilmesi
+  kanit: Stratejik plan
+- id: C/4
+  alan: C
+  uygulama: Birim/Program web sayfalarında araştırma ve gelişmeye ilişkin faaliyetlerin paylaşılması
+  kanit: Birim web sayfası
+- id: C/5
+  alan: C
+  uygulama: BAP araştırma kaynaklarından birim/program yararlanma miktarlarının düzenli olarak kaydedilmesi
+  kanit: İlgili belge, doküman vb.
+- id: C/6
+  alan: C
+  uygulama: BAP’tan yararlanan sayısının veya miktarının izlenmesi
+  kanit: İlgili belge, doküman vb.
+- id: C/7
+  alan: C
+  uygulama: TÜBİTAK, AB, Kalkınma Ajansı, Ulusal Ajans vb. proje yazma eğitimlerinin düzenlenmesi
+  kanit: İlgili belge, doküman, web sayfası linki
+- id: C/8
+  alan: C
+  uygulama: Akademik teşvikten yararlanan personel / Toplam personel oranının izlenmesi
+  kanit: İlgili liste, belge vb.
+- id: C/9
+  alan: C
+  uygulama: Öğretim elemanı araştırma geliştirme performansının ilgili web sayfalarında paylaşılması
+  kanit: Web sayfası linki
+- id: C/10
+  alan: C
+  uygulama: Araştırma çerçevesinde stratejik ortaklıklar
+  kanit: Kamu veya özel sektör ile gerçekleştirilen ortaklıklara ilişkin haber, belge, web sayfası linki vb.
+- id: C/11
+  alan: C
+  uygulama: Ulusal düzeyde ortak araştırma faaliyetleri, iş birlikleri, stratejik ortaklıklar
+  kanit: Gerçekleştirilen ortaklıklara ilişkin haber web sayfası linki, belge vb.
+- id: C/12
+  alan: C
+  uygulama: TÜBİTAK ve diğer kurumlar tarafından fonlanan projeler
+  kanit: Başvuru/kabul duyurularına ilişkin web sayfası linki
+- id: C/13
+  alan: C
+  uygulama: Öğretim elemanlarının araştırma yetkinliğinin geliştirilmesine yönelik planlama ve uygulamalar
+  kanit: Destekleyici eğitimler, uluslararası fırsatlar, proje iş birliği çalışmaları vb.
+- id: C/14
+  alan: C
+  uygulama: Öğretim elemanlarının araştırma yetkinliğinin izlenmesi ve iyileştirilmesine ilişkin uygulamalar
+  kanit: Akademik personel anketleri, değerlendirme raporları, akademik faaliyet raporları
+- id: C/15
+  alan: C
+  uygulama: Birimin akademik dergileri
+  kanit: Web sayfası linki
+- id: C/16
+  alan: C
+  uygulama: Doktora ve doktora sonrası araştırma burslarından faydalanılması ve teşvik edilmesi
+  kanit: TÜBİTAK, Fulbright ve yabancı hükümet bursları, burs evrakları vb.
+- id: C/17
+  alan: C
+  uygulama: Ulusal ve uluslararası düzeyde ortak araştırma faaliyetlerinin gerçekleştirilmesi ve teşvik edilmesi
+  kanit: İş birlikleri, stratejik ortaklıklar ile ilgi belge, web sayfası linki, duyuru vb.
+- id: C/18
+  alan: C
+  uygulama: Avrupa Birliği Çerçeve programları kapsamında desteklenen projelere katılımın sağlanması ve teşvik edilmesi
+  kanit: İlgi belge, web sayfası linki, duyuru vb.
+- id: C/19
+  alan: C
+  uygulama: Birim akademik teşvik başvuru ve inceleme ile ilgili süreç uygulamaları
+  kanit: Teşvik başvuru ve inceleme komisyonu karar tutanağı örnekleri
+- id: C/20
+  alan: C
+  uygulama: Patent başvurularına ilişkin süreçler
+  kanit: Belge, ilan vb.
+- id: C/21
+  alan: C
+  uygulama: Bilimsel başarıların birim tarafından ödüllendirilmesi
+  kanit: Birim tarafından sunulan takdir/ödüllendirmelere ilişkin belge, web sayfası duyuruları vb.
+- id: D/1
+  alan: D
+  uygulama: Toplumsal katkı faaliyetlerinin birim/program web sayfasında ilan edilerek paydaşlar ve kamuoyu ile paylaşılması
+  kanit: Birimin web sayfası linki
+- id: D/2
+  alan: D
+  uygulama: Akademik/Bölüm kurullarında toplumsal katkı faaliyetlerine gündem maddesi olarak yer verilmesi
+  kanit: Toplantı gündemleri
+- id: D/3
+  alan: D
+  uygulama: Toplumsal Katkı Faaliyetlerinin amaç ve hedef gerçekleşme oranının izlenmesi
+  kanit: Raporlar, belgeler vb.
+- id: D/4
+  alan: D
+  uygulama: Topluma açık eğitim, sempozyum, ders, sertifika vb. uygulamalar
+  kanit: Sempozyum, eğitim, kurs vb. ile ilgili duyurulara ilişkin web sitesi linki
+- id: D/5
+  alan: D
+  uygulama: Topluma açık kütüphane hizmetleri
+  kanit: İlgili duyurulara ilişkin web sitesi linki
+- id: D/6
+  alan: D
+  uygulama: Dış katılımcılarla düzenlenen seminerler, kongreler, çalıştaylar, yarışmalar, paneller vb. faaliyetler
+  kanit: İlgili duyurulara ilişkin web sitesi linki
+- id: D/7
+  alan: D
+  uygulama: Toplumsal katkıya ilişkin imzalanan protokoller
+  kanit: Fotoğraflar, ilgili duyurulara ilişkin web sitesi linki
+- id: D/8
+  alan: D
+  uygulama: Kültürel ve sanatsal faaliyetler
+  kanit: İlgili faaliyetlere ilişkin fotoğraf, duyuru, web sitesi linki vb.
+- id: D/9
+  alan: D
+  uygulama: Sosyal Sorumluluk Projeleri
+  kanit: İlgili faaliyetlere ilişkin fotoğraf, duyuru, web sitesi linki vb.
+- id: D/10
+  alan: D
+  uygulama: Çeşitli kamu kurum, kuruluş, sivil toplum örgütleri ile yapılan görevlendirmeler
+  kanit: İlgili görevlendirmeye ilişkin fotoğraf, duyuru, web sitesi linki vb.
+- id: D/11
+  alan: D
+  uygulama: Çeşitli kamu kurum, kuruluş, sivil toplum örgütlerine verilen danışmanlıklar
+  kanit: İlgili danışmanlığa ilişkin fotoğraf, duyuru, web sitesi linki vb.
+- id: D/12
+  alan: D
+  uygulama: Öğrenci etkinlikleri
+  kanit: Etkinliğe ilişkin fotoğraf, duyuru, web sitesi linki vb.
+- id: D/13
+  alan: D
+  uygulama: Projeler
+  kanit: İlgili duyuru, web sitesi linkleri vb.
+- id: D/14
+  alan: D
+  uygulama: Dış paydaşlarla ortaklaşa yürütülen topluma hizmet odaklı çalışmalar
+  kanit: Kamu kurum, kuruluş ve sivil toplum örgütleriyle yapılan çalışmalara ilişkin fotoğraf, duyuru vb.
+- id: D/15
+  alan: D
+  uygulama: Ders programında toplumsal katkıyı destekleyecek derslerin yer alması
+  kanit: Topluma hizmet odaklı derslerin verildiğine dair kanıtlar
+- id: D/16
+  alan: D
+  uygulama: Dış paydaşların kullanımına açık olan laboratuvar, araştırma merkezi vb.
+  kanit: Buna ilişkin alınan karar, duyuru vs.

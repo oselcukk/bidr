@@ -7,9 +7,11 @@ somut belge listesi. Model yok; metinler kodla şablonlanır:
 - İstenen belgeler (sıra): komisyonun elle eklediği istekler (`--istenecekler`) → geçen yılki raporda
   olup bu yıl karşılığı bulunamayan belgeler (tekrarlayan belgede yıl ilerletilir) → komisyonun
   "istenebilecek kanıtlar" önerileri (`ihtiyac_oneriler.yaml`; eşlendiği kılavuz maddesi karşılanmamışsa)
-  → karşılanmamış kılavuz maddelerinin somut karşılıkları (`ihtiyac_somut.yaml`) → kurumun bu
-  maddeyle eşlenmiş belgeleri (`kurum-katalog-esleme.json`; ad, kod, bağlantı). Kılavuz kaynaklı
-  satırlar en çok `KILAVUZ_EN_COK` (tam liste ihtiyac.xlsx'te), kurum belgeleri en çok `KURUM_EN_COK` madde.
+  → karşılanmamış kılavuz maddelerinin somut karşılıkları (`ihtiyac_somut.yaml`) → kılavuz ekinin
+  örnek uygulamaları ("Örnek Uygulama ve Kanıtlar Listesi"; `ihtiyac_ornek_uygulama.yaml` eşlemesiyle,
+  önceki maddelerle örtüşmeyenler) → kurumun bu maddeyle eşlenmiş belgeleri (`kurum-katalog-esleme.json`;
+  ad, kod, bağlantı). Kılavuz kaynaklı satırlar en çok `KILAVUZ_EN_COK` (tam liste ihtiyac.xlsx'te),
+  örnek uygulamalar en çok `ORNEK_EN_COK`, kurum belgeleri en çok `KURUM_EN_COK` madde.
 - Neden gerekli: ölçütün durumuna göre hazır cümleler (olgunluk düzeyi, eksik aşama sade adıyla).
 - Öncelik: Yüksek (kanıtsız ya da tek belgeyle olgunluk düzeyi artan) / Orta (geçen yılın karşılığı
   yok ya da bir üst düzeyin eksik belgesi; elle istek varsayılanı) / Düşük (yalnız tamamlayıcı).
@@ -29,9 +31,18 @@ from .eslestir import ESKI, YOK
 DATA = Path(__file__).resolve().parents[1] / "data"
 SOMUT_FILE = DATA / "ihtiyac_somut.yaml"
 ONERILER_FILE = DATA / "ihtiyac_oneriler.yaml"
+ORNEK_ESLEME_FILE = DATA / "ihtiyac_ornek_uygulama.yaml"
 FILE = "istenen-kanitlar.xlsx"
 KILAVUZ_EN_COK = 6          # kılavuz/öneri kaynaklı madde sayısı (satır başına)
 ELDE_EN_COK = 4
+ORNEK_EN_COK = 3            # kılavuz eki örnek uygulamalarından madde sayısı (satır başına)
+ORNEK_KLV_EN_COK = 4        # "Kılavuzdaki örnek kanıtlar" sütununda listelenen ek örnek uygulama
+# Örnek uygulama, önceki bir maddeyle uygulama metninin sözcük kökü (ilk 4 harf) örtüşmesi bu orana ulaşırsa
+# yazılmaz (tekrar); eşlendiği yuvaların hepsi listede zaten bir maddeyle istenmişse daha düşük eşik.
+ORNEK_ORTUSME = 0.5
+ORNEK_ORTUSME_YAZILAN = 0.34
+_ORNEK_DOLGU = frozenset("ilgili iliskin vb vs ile olan olarak olmasi yapilmasi edilmesi gosteren belge belgeler "
+                         "birim birimin birime bolum bolumun bolume ya da".split())
 KURUM_EN_COK = 10           # kurum belge kataloğundan madde sayısı (satır başına)
 # Sade listeye giren kurum belgesi türleri: düzenlemeler ve iş akışları (form girmez; kullanıcı kararı)
 KURUM_TURLER = {"yonetmelik", "yonerge", "usul_esas", "mevzuat", "is_akisi", "anket"}
@@ -73,6 +84,10 @@ NASIL = [
     "formlardır (adlarından bu maddeyle ilgili oldukları düşünülmüştür; uygun olanı seçilir).",
     "“Kılavuzdaki örnek kanıtlar” YÖKAK kılavuzunun bu madde için örnek verdiği ve henüz karşılanmamış "
     "belgelerdir (kılavuz metni). Liste bir hatırlatmadır, kesin kontrol listesi değildir.",
+    "“Kanıt — uygulama” biçimindeki maddeler BİDR şablonunun sonundaki “Örnek Uygulama ve Kanıtlar Listesi”nden "
+    "gelir: önce istenen kanıt, sonra hangi uygulamayı gösterdiği. Kanıt hazırlanırken şablonun uyarısı geçerlidir: "
+    "Excel/Word ekran görüntüsü ve maddeyle ilgisiz dosya yığını kanıt sayılmaz, web sayfaları PDF olarak da "
+    "eklenir, kişisel veriler maskelenir.",
 ]
 
 
@@ -93,6 +108,61 @@ class Somut:
                     self.kimden[str(k)] = str(v["kimden"])
             else:
                 self.yuva[str(k)] = [str(x) for x in v or []]
+
+
+def ornekler_yukle(esleme: Path | str | None = None, satirlar: Path | str | None = None) -> list[dict]:
+    """Kılavuz eki örnek uygulamaları + alt ölçüt eşlemesi. Öğe: id, alan, uygulama, kanit, yuvalar,
+    olcutler, belirsiz, sade. Eşlemesi olmayan satır `yuvalar` boş döner (sade listeye girmez)."""
+    from bidr.criteria.loader import load_ornek_uygulamalar
+    raw = load_ornek_uygulamalar(satirlar)
+    es = (yaml.safe_load(Path(esleme or ORNEK_ESLEME_FILE).read_text(encoding="utf-8")) or {}).get("eslesme") or {}
+    out = []
+    for r in raw.get("satirlar") or []:
+        e = es.get(r["id"]) or {}
+        ys = [str(y) for y in e.get("yuvalar") or []]
+        out.append({"id": r["id"], "alan": r["alan"], "uygulama": str(r["uygulama"]), "kanit": str(r["kanit"]),
+                    "yuvalar": ys, "olcutler": list(dict.fromkeys(y.split("/")[0] for y in ys)),
+                    "belirsiz": bool(e.get("belirsiz")), "sade": e.get("sade", True) is not False})
+    return out
+
+
+_KORU = frozenset({"Proliz", "Avrupa", "Yükseköğretim", "Bologna"})
+
+
+def _kucuk_bas(s: str) -> str:
+    """Cümle başını küçültür (Türkçe I/İ). Kısaltma, özel ad ya da ad öbeğiyle ("Ana Bilim Dalı",
+    "Ölçme ve Değerlendirme komisyonu", "Birim/Program") başlıyorsa olduğu gibi bırakır."""
+    s = s.strip()
+    ws = [w for w in re.split(r"[\s/’'–-]+", s) if w][:3]
+    if not ws or ws[0] in _KORU or (len(ws[0]) > 1 and ws[0].upper() == ws[0]):
+        return s
+    if any(w[:1].isupper() and w[1:] != w[1:].upper() for w in ws[1:]):
+        return s
+    return {"I": "ı", "İ": "i"}.get(s[0], s[0].lower()) + s[1:]
+
+
+def ornek_metni(o: dict) -> str:
+    """Sade liste maddesi: "{kanıt} — {uygulama}" (şablon metni birebir; yalnız uygulamanın başı küçük harf)."""
+    return f"{o['kanit'].strip()} — {_kucuk_bas(o['uygulama'])}"
+
+
+def _kisalt(s: str, n: int = 90) -> str:
+    s = " ".join(s.split())
+    return s if len(s) <= n else s[: n - 1].rsplit(" ", 1)[0] + "…"
+
+
+def _kokler4(s: str) -> set[str]:
+    from .tablolar import norm
+    return {w[:4] for w in re.findall(r"[a-z0-9]+", norm(s))
+            if len(w) > 2 and w not in _DOLGU and w not in _ORNEK_DOLGU}
+
+
+def _ortusur(metin: str, onceki: list[str], esik: float = ORNEK_ORTUSME) -> bool:
+    """`metin`in sözcük köklerinin en az `esik` kadarı önceki maddelerden birinde geçiyor mu."""
+    a = _kokler4(metin)
+    if len(a) < 2:
+        return False
+    return any(len(a & b) / len(a) >= esik for b in (_kokler4(x) for x in onceki) if b)
 
 
 def oneriler_yukle(path: Path | str | None = None) -> list[dict]:
@@ -253,14 +323,17 @@ def _neden(sat: dict | None, tal: list[dict], ref_n: int, elle: bool) -> str:
 
 def satirlar_kur(cs, tags, sor, talepler: list[dict], satirlar: list[dict], gecen: list[dict], *,
                  yil=None, ref_yil=None, istekler: list[dict] | None = None, somut: Somut | None = None,
-                 oneriler: list[dict] | None = None, kurum: dict | None = None) -> list[dict]:
+                 oneriler: list[dict] | None = None, kurum: dict | None = None,
+                 ornekler: list[dict] | None = None) -> list[dict]:
     """Ölçüt başına bir sade satır (öncelik sırasıyla). Her satırda `maddeler`: [{metin, kimden}].
-    `kurum`: kurum belge kataloğu eşlemesi (`katalog_esle.esleme_oku`); ilgili belgeler madde olur."""
+    `kurum`: kurum belge kataloğu eşlemesi (`katalog_esle.esleme_oku`); ilgili belgeler madde olur.
+    `ornekler`: kılavuz eki örnek uygulamaları (`ornekler_yukle`; vars. paket verisi)."""
     from .katalog_esle import madde_metni, olcut_belgeleri
     k_by = olcut_belgeleri(kurum)
     k_hepsi = list((kurum or {}).get("ogeler") or [])
     somut = somut or Somut()
     oneriler = oneriler if oneriler is not None else oneriler_yukle()
+    ornekler = ornekler if ornekler is not None else ornekler_yukle()
     istekler = istekler or []
     fark = (int(yil) - int(ref_yil)) if yil and ref_yil else 0
     sat_by = {s["olcut"]: s for s in satirlar}
@@ -330,7 +403,7 @@ def satirlar_kur(cs, tags, sor, talepler: list[dict], satirlar: list[dict], gece
         puan = {y: max((t["puan"] for t in tal if y in _yuva_ids(t["yuvalar"])), default=0) for y in acik}
         sira = sorted((y for y in acik if y not in ref_yuva),
                       key=lambda y: (-puan[y], int(y.rsplit("/", 1)[1])))
-        n_klv, kapsanan = 0, set()
+        n_klv, kapsanan, yazilan = 0, set(), set()
         for o in sorted((o for o in oneriler if set(o["yuvalar"]) & set(sira)),
                         key=lambda o: min(sira.index(y) for y in o["yuvalar"] if y in sira)):
             if n_klv >= KILAVUZ_EN_COK:
@@ -341,6 +414,7 @@ def satirlar_kur(cs, tags, sor, talepler: list[dict], satirlar: list[dict], gece
             if len(maddeler) > n0:
                 n_klv += 1
                 kapsanan |= set(o["yuvalar"])
+                yazilan |= set(o["yuvalar"])
         for y in sira:
             if n_klv >= KILAVUZ_EN_COK:
                 break
@@ -358,6 +432,27 @@ def satirlar_kur(cs, tags, sor, talepler: list[dict], satirlar: list[dict], gece
                 n0 = len(maddeler)
                 ekle(x, _kim(sor, tags, somut, y, cid), "kilavuz")
                 n_klv += len(maddeler) > n0
+                if len(maddeler) > n0:
+                    yazilan.add(y)
+        # 4b. kılavuz ekinin örnek uygulamaları: karşılanmamış yuvaya eşlenmiş, önceki maddelerle örtüşmeyen;
+        # önce listede henüz karşılığı olmayan yuvalarınkiler, sonra yuvanın önceliği, sonra şablon sırası
+        aday = [o for o in ornekler if o["sade"] and set(o["yuvalar"]) & set(sira)]
+        aday.sort(key=lambda o: (all(y in yazilan for y in o["yuvalar"] if y in sira),
+                                 min(sira.index(y) for y in o["yuvalar"] if y in sira)))
+        n_orn, orn_yazilan = 0, set()
+        for o in aday:
+            if n_orn >= ORNEK_EN_COK:
+                break
+            hep_yazili = all(y in yazilan for y in o["yuvalar"] if y in sira)
+            if _ortusur(o["uygulama"], [m["metin"] for m in maddeler],
+                        ORNEK_ORTUSME_YAZILAN if hep_yazili else ORNEK_ORTUSME):
+                continue
+            y0 = next(y for y in sira if y in o["yuvalar"])
+            n0 = len(maddeler)
+            ekle(ornek_metni(o), _kim(sor, tags, somut, y0, cid), "ornek")
+            if len(maddeler) > n0:
+                n_orn += 1
+                orn_yazilan.add(o["id"])
         # 5. kurumun bu maddeyle ilgili belgeleri (katalog eşlemesi; geçen yıl kullanılanlar önce)
         kb = [o for o in {o["id"]: o for o in k_ref + k_by.get(cid, [])}.values()
               if (o.get("tur") or "") in KURUM_TURLER]
@@ -383,14 +478,23 @@ def satirlar_kur(cs, tags, sor, talepler: list[dict], satirlar: list[dict], gece
         if ornek:
             notlar.append("Geçen yıl bu amaçla kullanılan: " + "; ".join(ornek[:3]))
         klv_metin = [_yuva_metni(cs, y) for y in sorted(acik, key=lambda y: int(y.rsplit("/", 1)[1]))]
+        # kılavuz ekinin bu maddenin karşılanmamış yuvalarına eşlenmiş, listeye alınmamış örnek uygulamaları
+        ek = [o for o in ornekler if o["sade"] and o["id"] not in orn_yazilan and set(o["yuvalar"]) & set(acik)]
+        klv_ek = [f"{_kisalt(o['uygulama'])} ({_kisalt(o['kanit'], 50)})" for o in ek[:ORNEK_KLV_EN_COK]]
+        if len(ek) > ORNEK_KLV_EN_COK:
+            klv_ek.append(f"… ve {len(ek) - ORNEK_KLV_EN_COK} örnek daha")
         out.append({
             "olcut": cid, "madde": _madde_ad(cs, cid), "oncelik": onc, "maddeler": maddeler,
             "belgeler": "\n".join(f"• {m['metin']}" for m in maddeler),
             "neden": _neden(sat, tal, len(refs), bool(ist)),
             "kimden": "\n".join(list(dict.fromkeys(m["kimden"] for m in maddeler if m["kimden"]))[:3]),
-            "kilavuz": ("Kılavuzun bu madde için örnek verdiği, henüz karşılanmamış belgeler:\n"
-                        + "\n".join(f"• {x}" for x in klv_metin)) if klv_metin else "",
+            "kilavuz": "\n\n".join(x for x in (
+                ("Kılavuzun bu madde için örnek verdiği, henüz karşılanmamış belgeler:\n"
+                 + "\n".join(f"• {x}" for x in klv_metin)) if klv_metin else "",
+                ("Kılavuz ekindeki örnek uygulamalar (uygulama ve olası kanıt):\n"
+                 + "\n".join(f"• {x}" for x in klv_ek)) if klv_ek else "") if x),
             "not": "\n".join(notlar),
+            "ornek_idler": sorted(orn_yazilan, key=lambda i: (i[0], int(i.split("/")[1]))),
             "_anahtar": (SIRA[onc], not kanitsiz, -(tal[0]["puan"] if tal else 0), _guvenli_key(cid)),
         })
     out.sort(key=lambda r: r["_anahtar"])

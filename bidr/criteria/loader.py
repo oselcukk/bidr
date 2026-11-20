@@ -12,6 +12,7 @@ from .model import Area, CriteriaSet, Criterion, SubCriterion, id_key
 # Paket verisi: bidr/data/criteria. BIDR_CRITERIA_DIR ile değiştirilebilir.
 DEFAULT_DIR = Path(__file__).resolve().parents[1] / "data" / "criteria"
 DEFAULT_FILE = "yokak-2025.yaml"
+ORNEK_FILE = "ornek-uygulamalar.yaml"     # kılavuz eki "Örnek Uygulama ve Kanıtlar Listesi" (extract_docx)
 SCHEMA_FILE = "schema.json"
 
 
@@ -109,3 +110,11 @@ def load_guide(path: Path | str | None = None) -> dict:
     p = Path(path) if path else criteria_dir() / "guide.yaml"
     with open(p, encoding="utf-8") as f:
         return yaml.safe_load(f)
+
+
+def load_ornek_uygulamalar(path: Path | str | None = None) -> dict:
+    """Kılavuz eki örnek uygulama satırları: {"meta", "alanlar", "satirlar": [{id, alan, uygulama, kanit}]}.
+    Satırlar alan düzeyindedir; alt ölçüt eşlemesi `bidr/data/ihtiyac_ornek_uygulama.yaml`'dadır."""
+    p = Path(path) if path else criteria_dir() / ORNEK_FILE
+    with open(p, encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}

@@ -119,3 +119,31 @@ def test_cli(capsys):
     assert bidr_main(["criteria", "list"]) == 0
     assert "D.2.1." in capsys.readouterr().out
     assert bidr_main(["criteria", "show", "Z.9.9"]) == 1
+
+
+def test_extract_annex_tables(tmp_path):
+    """Kılavuz eki tabloları: alan başlığından sonra "Uygulama | Kanıt" satırları (sentetik şablon)."""
+    import docx
+
+    from bidr.criteria.extract_docx import extract_annex
+    d = docx.Document()
+    d.add_paragraph("Örnek Uygulama ve Kanıtlar Listesi")
+    d.add_paragraph("LİDERLİK, YÖNETİŞİM VE KALİTE ÖRNEK UYGULAMALAR VE OLASI KANITLAR")
+    t = d.add_table(rows=3, cols=2)
+    for i, (a, b) in enumerate([("Uygulama", "Kanıt"), ("Sentetik şema\nhazırlanması", "Web sayfası linki"),
+                                ("GTÜ komisyonu", "Karar")]):
+        t.cell(i, 0).text, t.cell(i, 1).text = a, b
+    d.add_paragraph("TOPLUMSAL KATKI ÖRNEK UYGULAMALAR VE OLASI KANITLAR")
+    t = d.add_table(rows=2, cols=2)
+    t.cell(0, 0).text, t.cell(0, 1).text = "Uygulama", "Kanıt"
+    t.cell(1, 0).text, t.cell(1, 1).text = "Sentetik etkinlik", "Duyuru"
+    p = tmp_path / "s.docx"
+    d.save(p)
+    data, warn = extract_annex(p)
+    assert not warn
+    assert data["alanlar"] == {"A": "LİDERLİK, YÖNETİŞİM VE KALİTE", "D": "TOPLUMSAL KATKI"}
+    assert data["meta"]["counts"] == {"A": 2, "D": 1}
+    s = data["satirlar"]
+    assert [x["id"] for x in s] == ["A/1", "A/2", "D/1"]
+    assert s[0]["uygulama"] == "Sentetik şema hazırlanması"
+    assert s[1]["uygulama"] == "[KURUM] komisyonu" and data["meta"]["redactions"]

@@ -1,0 +1,163 @@
+# Kılavuz eki "Örnek Uygulama ve Kanıtlar Listesi" (boş FR-0833 şablonunun sonu; satırlar
+# `bidr/data/criteria/ornek-uygulamalar.yaml`, şablondan üretilir) → alt ölçüt eşlemesi.
+#
+# Şablonda satırlar yalnız alan düzeyindedir (A–D); hangi alt ölçüte ait oldukları yazmaz. Bu eşleme
+# elle yapılmıştır: her satırın uygulama ve kanıt metni, alt ölçütün başlığı ve "Örnek Kanıtlar"
+# maddeleriyle (yuva, `B.1.2/3` = B.1.2'nin 3. örnek kanıtı) karşılaştırıldı. Gerekçe satır sonundaki
+# yorumdur ("≈" = yuva metnine yakın ifade). Kullanım: sade istenen-kanitlar.xlsx'te satır, eşlendiği
+# yuvalardan biri karşılanmamışsa öneri olur (bkz. docs/IHTIYAC.md 5).
+#
+# Alanlar:
+#   yuvalar   1–3 kılavuz yuvası (alt ölçüt bunlardan çıkar). "Standart uygulamalar… (özgün)" yuvalarına
+#             eşleme yapılmaz.
+#   belirsiz  true: eşleme yoruma açık (rapor ve testte listelenir); gerekçe yorumda.
+#   sade      false: kurum geneli (kampüs, enstitü, merkezi sistem) bir iş; bölüm düzeyindeki sade
+#             listeye öneri olarak girmez (teknik ihtiyac.xlsx'te görünür).
+surum: 1
+eslesme:
+  # A. LİDERLİK, YÖNETİŞİM VE KALİTE
+  A/1:  {yuvalar: [A.1.1/1]}                      # organizasyon şeması ≈ "Yönetişim modeli ve organizasyon şeması"
+  A/2:  {yuvalar: [A.1.1/1, A.1.4/2]}             # kurul/komisyon kurulması, sorumlu listesi: yapı + görev ve sorumluluklar
+  A/3:  {yuvalar: [A.1.4/5, A.4.1/2]}             # periyodik anket = geri bildirim yöntemi / veri toplama aracı
+  A/4:  {yuvalar: [A.4.1/4, A.1.4/7]}             # anket analizi ve iyileştirme önlemi = izleme ve iyileştirme kanıtı
+  A/5:  {yuvalar: [A.2.2/1]}                      # birim hedeflerinin kurum stratejik planıyla ilişkisi = strateji belgesi
+  A/6:  {yuvalar: [A.1.3/4, A.2.2/4], belirsiz: true}  # "gelecek senaryoları" A.1.3/4; plan revizyonu A.2.2 izlemesi
+  A/7:  {yuvalar: [A.1.4/4, A.3.4/1], belirsiz: true}  # iç kontrol eylem planı: kılavuzda karşılığı yok; risk planı ve süreç yönetimine en yakın
+  A/8:  {yuvalar: [A.3.4/3, A.1.4/2], belirsiz: true}  # faaliyet planında süreçler: süreç yönetimi uygulaması + iş takvimi
+  A/9:  {yuvalar: [A.1.4/2]}                      # kalite faaliyet planı, sorumlular ≈ "takvim, görev ve sorumluluklar"
+  A/10: {yuvalar: [A.1.5/3, A.1.5/2]}             # faaliyet raporunun web'de paylaşılması = hesap verebilirlik + güncel web
+  A/11: {yuvalar: [A.1.5/3, A.1.4/7]}             # BİDR'in web'de paylaşılması = hesap verebilirlik; BİDR yıllık izleme raporudur
+  A/12: {yuvalar: [A.1.4/1]}                      # birim kalite komisyonu ≈ "Kalite Komisyonu çalışma usul ve esasları"
+  A/13: {yuvalar: [A.2.1/1]}                      # web'de misyon/vizyon ≈ "Misyon ve vizyon"
+  A/14: {yuvalar: [A.2.2/1, A.2.3/2]}             # ölçülebilir stratejik plan: plan + performans göstergeleri
+  A/15: {yuvalar: [A.2.2/2]}                      # stratejik planda paydaş görüşü ≈ A.2.2/2
+  A/16: {yuvalar: [A.2.3/2, A.2.3/1]}             # performans göstergeleri ve takip sorumluları ≈ A.2.3/2
+  A/17: {yuvalar: [A.2.2/4, A.2.3/4]}             # gerçekleşme oranları, performans raporu ≈ A.2.2/4, A.2.3/4
+  A/18: {yuvalar: [A.1.5/2]}                      # web sayfasının güncel tutulması ≈ A.1.5/2
+  A/19: {yuvalar: [A.3.2/2]}                      # personel memnuniyet anketi ≈ "Çalışan memnuniyeti anketleri"
+  A/20: {yuvalar: [A.3.4/3, A.3.4/5]}             # süreç kartları: uygulama + izleme/iyileştirme
+  A/21: {yuvalar: [A.3.4/4]}                      # süreç kartlarında paydaş görüşü ≈ "Paydaş katılımına ilişkin kanıtlar" (A.3.4)
+  A/22: {yuvalar: [A.4.1/1, A.4.1/2]}             # paydaş analizi + sistematik toplantı/anket ≈ paydaş listesi, veri toplama araçları
+  A/23: {yuvalar: [A.1.4/5, A.1.5/4]}             # web'de şikâyet/öneri mekanizması = geri bildirim yöntemi; kamuoyu geri bildirimi
+  A/24: {yuvalar: [A.4.3/1]}                      # mezun sayısı kaydı, mezun veri tabanı = mezun izleme sistemi
+  A/25: {yuvalar: [A.4.3/1, A.4.3/4]}             # sosyal medyayla mezun iletişimi: izleme sistemi + mezun geri bildirimi
+  # B. EĞİTİM ÖĞRETİM
+  B/1:  {yuvalar: [B.1.5/2]}                      # misyon/vizyon doğrultusunda program ihtiyaçları ≈ B.1.5/2
+  B/2:  {yuvalar: [B.1.5/1, B.1.5/5]}             # eğitim planının gözden geçirilip revizyon ihtiyacının belirlenmesi = program izleme
+  B/3:  {yuvalar: [B.1.1/5, A.4.1/2]}             # paydaş görüşmeleriyle öğrenci/sektör beklentisi = program tasarımında paydaş katılımı
+  B/4:  {yuvalar: [B.1.5/5, B.1.2/3]}             # yeni ders/program, eğitim planı revizyonu ve Senato kararı
+  B/5:  {yuvalar: [B.1.2/1, B.1.2/3]}             # seçmeli/zorunlu ders dağılım dengesi = B.1.2 başlığı
+  B/6:  {yuvalar: [B.1.4/1, B.1.2/2]}             # program ve ders bilgi paketi sayfaları ≈ "AKTS ders bilgi paketleri"
+  B/7:  {yuvalar: [B.1.1/3]}                      # program çıktılarının TYYÇ'ye göre güncellenmesi ≈ B.1.1/3
+  B/8:  {yuvalar: [B.1.1/1, A.1.3/3]}             # yeni program için ihtiyaç analizi: program tasarım süreci; değişim analizi
+  B/9:  {yuvalar: [B.2.4/2], belirsiz: true}      # yan dal/ÇAP öğrenci beklentisi: B.2.4/2 ÇAP/yandal kabulünü anar; beklenti analizi A.4.2'ye de yakın
+  B/10: {yuvalar: [B.2.4/2]}                      # programın yan dal/ÇAP'a uygunluğu: ÇAP/yandal uygulamaları (B.2.4/2)
+  B/11: {yuvalar: [B.2.4/2, B.2.3/1]}             # yatay geçiş kontenjan ve şartları ≈ B.2.4/2 "yatay geçiş… kabullerinde"
+  B/12: {yuvalar: [B.2.4/2, B.2.3/1]}             # ÇAP/yandal uygulama esasları: kabul kuralları
+  B/13: {yuvalar: [B.2.3/2, B.2.3/3, B.1.4/3]}    # ders eşdeğerlik ve intibak = önceki öğrenmenin tanınması
+  B/14: {yuvalar: [B.1.4/2]}                      # staj yapılacak programlar ≈ "iş yükü kredisinin… staj… için tanımlandığı"
+  B/15: {yuvalar: [B.1.4/2], belirsiz: true}      # programın staj altyapısına uygunluğu: staj tanımı; altyapı (B.3.3) de olabilir
+  B/16: {yuvalar: [B.1.4/2, B.1.5/5]}             # müfredatta staj dersi revizyonu: staj kredisi + program güncellemesi
+  B/17: {yuvalar: [B.1.4/2, B.1.6/2]}             # staj yönergesi: staj tanımı + eğitim süreçlerinin kuralları
+  B/18: {yuvalar: [B.1.6/1]}                      # iş akışlarının hazırlanması ≈ "organizasyonel yapılanma ve iş akış şemaları" (B tablosunda)
+  B/19: {yuvalar: [B.1.4/2, B.3.2/6], belirsiz: true}  # işletmelerle staj olanakları/protokoller: staj + kariyer uygulamaları; dış paydaş iş birliği de olabilir
+  B/20: {yuvalar: [B.1.4/2, B.1.6/4], belirsiz: true}  # stajyerin staj yerinde denetimi: kılavuzda doğrudan yok; staj uygulamasının izlenmesi
+  B/21: {yuvalar: [A.4.2/2, B.1.5/7], belirsiz: true}  # tercih sebepleri anketi, YÖK Atlas: öğrenci geri bildirimi; kıyaslama (A.1.3/5) da olabilir
+  B/22: {yuvalar: [A.4.2/2, B.1.5/7]}             # öğrenci memnuniyeti anketi = öğrenci geri bildirim mekanizması
+  B/23: {yuvalar: [B.1.5/3, B.1.6/5]}             # mevcut durum, sorunlar, öneriler raporu ≈ öz değerlendirme / değerlendirme raporu
+  B/24: {yuvalar: [B.2.3/4], belirsiz: true}      # program tanıtımı (broşür, video): aday öğrenci bilgilendirmesi; A.1.5 de olabilir
+  B/25: {yuvalar: [B.3.5/1, B.3.5/5]}             # öğrenci toplulukları: sosyal faaliyetlerin yürütülmesi ve çeşitlendirilmesi
+  B/26: {yuvalar: [B.3.5/1, B.3.5/3]}             # topluluk web/sosyal medya hesapları: faaliyetlerin duyurulması, erişilebilirliği
+  B/27: {yuvalar: [B.3.2/1, B.3.4/1], belirsiz: true}  # burs ve konaklama desteği: kılavuzda doğrudan yok; öğrenci destek hizmeti / dezavantajlı öğrenci
+  B/28: {yuvalar: [A.4.3/1], sade: false}         # mezun bilgi sistemi kurulması: kurum geneli sistem ≈ "Mezun izleme sisteminin özellikleri"
+  B/29: {yuvalar: [B.3.3/5, B.3.1/1]}             # altyapı ve öğretim elemanı olanaklarının değerlendirilmesi = tesis/kaynak izleme
+  B/30: {yuvalar: [B.1.5/2, A.1.3/2], belirsiz: true}  # akreditasyon için yapılacakların tespiti: program güncelleme mekanizması / yol haritası
+  B/31: {yuvalar: [A.1.3/5, B.1.5/2]}             # akreditasyon ölçütlerine göre uygunluk tespiti = kıyaslama raporu
+  B/32: {yuvalar: [B.1.6/4, A.1.1/3], belirsiz: true}  # anabilim dalı mevcut durum tespiti: genel bir öz değerlendirme; ölçütü belirsiz
+  B/33: {yuvalar: [A.1.3/3], belirsiz: true}      # YKS yerleştirme verileriyle öğrenci eğilimi = ekosistem değişim analizi; B.2.3 de olabilir
+  B/34: {yuvalar: [B.1.5/2, B.1.1/5]}             # akademik birim ve sektör ihtiyaçları: program güncelleme + paydaş katılımı
+  B/35: {yuvalar: [B.1.1/1, B.1.1/2]}             # yeni program başvurusu = program tasarım ve onay süreci
+  B/36: {yuvalar: [B.1.5/5]}                      # ders planlarının revizyonu, Senato kararı = izlemeye dayalı iyileştirme
+  B/37: {yuvalar: [B.3.2/3, B.3.2/8]}             # danışmanlık sistemi ve danışman değerlendirme anketi ≈ B.3.2/3, B.3.2/8
+  B/38: {yuvalar: [B.1.1/1, C.1.3/1]}             # lisansüstü program açılması: program tasarımı; doktora için C.1.3
+  B/39: {yuvalar: [C.1.3/1, B.4.1/2]}             # lisansüstünde uzman kadro ve ders çeşitliliği: lisansüstü imkân + uzmanlık-ders uyumu
+  B/40: {yuvalar: [C.1.3/1, C.1.3/2], sade: false}  # TÜBİTAK destekli doktora: enstitü/kurum düzeyi
+  B/41: {yuvalar: [C.1.2/3, B.3.3/3], belirsiz: true, sade: false}  # öncelikli alanlarda altyapı: Ar-Ge kaynağı mı tesis mi belirsiz; kurum düzeyi
+  B/42: {yuvalar: [C.1.3/1, C.1.3/3], sade: false}  # öncelikli alanlarda doktora programı sayısı: enstitü/kurum düzeyi
+  B/43: {yuvalar: [B.3.3/5, B.3.1/1]}             # derslik ve donanım ihtiyaç tespiti = tesis/kaynak izleme ve planlama
+  B/44: {yuvalar: [B.3.3/3, B.3.3/5]}             # derslik/laboratuvar ilaveleri ≈ "Tesis ve altyapının… gelişim durumu"
+  B/45: {yuvalar: [B.3.2/8, B.3.1/6]}             # öğrenci hizmetleri anketleri ≈ "öğrenci geri bildirim araçlarının sonuçları"
+  B/46: {yuvalar: [B.3.3/4, B.3.1/4]}             # eş zamansız (uzaktan) öğrenme ortamları ≈ B.3.3/4
+  B/47: {yuvalar: [B.3.3/5]}                      # altyapının kontrol edilip tesis edilmesi = tesis izleme ve iyileştirme
+  B/48: {yuvalar: [B.3.3/3, B.3.3/5]}             # derslik başına öğrenci sayısına göre iyileştirme ≈ B.3.3/3 örneği
+  B/49: {yuvalar: [B.3.3/3], belirsiz: true, sade: false}  # açık/yeşil alan envanteri: kampüs düzeyi; kılavuzda doğrudan yok
+  B/50: {yuvalar: [B.3.3/5], belirsiz: true, sade: false}  # kampüs toprak/yeraltı suyu incelemesi: kampüs düzeyi; kılavuzda doğrudan yok
+  B/51: {yuvalar: [A.2.2/3, B.3.3/5], belirsiz: true, sade: false}  # GreenMetric iyileştirmeleri: sürdürülebilirlik (SKA) + tesis; kurum düzeyi
+  B/52: {yuvalar: [A.2.2/3, B.3.3/3], belirsiz: true, sade: false}  # ağaçlandırma, yeşil alan: kampüs düzeyi
+  B/53: {yuvalar: [B.1.1/3, B.1.1/5]}             # program amaçları TYYÇ ve akreditasyonla, paydaş katılımıyla ≈ B.1.1/3, B.1.1/5
+  B/54: {yuvalar: [B.1.1/2, B.1.6/1, B.1.2/3]}    # eğitim komisyonu ve görüşmeleri: komisyonlar (B.1.1/2), "Eğitim komisyonu kararı" (B.1.2/3)
+  B/55: {yuvalar: [B.1.2/1, B.1.2/2]}             # ders dağılım kurallarına uyulması = ders dağılımı ilkeleri
+  B/56: {yuvalar: [B.1.6/2, B.1.1/3]}             # ders izlencelerinin teslimi: eğitim süreçlerinin kuralı; izlence örnekleri (B.1.1/3)
+  B/57: {yuvalar: [B.1.3/4]}                      # ders/program çıktılarının güncelliğinin izlenmesi ≈ B.1.3/4
+  B/58: {yuvalar: [B.1.5/7, B.1.3/4]}             # program yeterlilikleri anketi = programın amacına ulaşıp ulaşmadığına geri bildirim
+  B/59: {yuvalar: [B.2.2/1, B.2.2/7]}             # ölçme ve değerlendirme komisyonu ≈ "organizasyon yapıları ve görev tanımları"
+  B/60: {yuvalar: [A.4.3/2, A.4.3/4, B.1.5/7]}    # mezunlardan program amaçlarına dönüt ≈ A.4.3/2
+  B/61: {yuvalar: [B.2.2/2, B.2.2/4]}             # öğrenci merkezli, yeterlilik temelli ölçme = B.2.2 örnekleri
+  B/62: {yuvalar: [B.1.1/1]}                      # program içeriklerinde baz alınan ilkeler ≈ "tanımlı süreçler (eğitim politikasıyla uyumu…)"
+  B/63: {yuvalar: [B.1.1/5]}                      # program tasarımında paydaş katılımı ≈ B.1.1/5
+  B/64: {yuvalar: [B.1.2/3, B.1.2/4]}             # ders kataloğu güncellemesi, gerekçeli karar = kurul kararı + iyileştirme
+  B/65: {yuvalar: [B.1.2/1, B.1.2/2]}             # ortak seçmeli ders havuzu = ders dağılımı
+  B/66: {yuvalar: [B.1.3/2, B.1.1/3]}             # ders kazanımı–program çıktısı uyumlu izlenceler ≈ B.1.3/2
+  B/67: {yuvalar: [B.1.4/2]}                      # iş yükü kredisinin belirlenmesi; kanıt metni ≈ B.1.4/2 birebir
+  B/68: {yuvalar: [B.1.4/4, B.1.4/7]}             # iş yükünde öğrenci katılımı ≈ B.1.4/4 birebir
+  B/69: {yuvalar: [B.1.5/1, B.1.5/5]}             # programların izlenmesi; uygulama metni ≈ B.1.5/1 birebir
+  B/70: {yuvalar: [B.1.5/3]}                      # programların yıllık öz değerlendirme raporları ≈ B.1.5/3 birebir
+  B/71: {yuvalar: [B.2.1/3, B.2.1/1]}             # öğrenci merkezli öğretim yöntemleri = B.2.1
+  B/72: {yuvalar: [B.2.2/3]}                      # ölçme araçları, sınav örnekleri ≈ B.2.2/3 birebir
+  B/73: {yuvalar: [B.2.2/5]}                      # özel ölçme türleri ≈ B.2.2/5 birebir
+  B/74: {yuvalar: [B.2.2/6]}                      # sınav güvenliği ≈ B.2.2/6 birebir
+  B/75: {yuvalar: [B.2.4/3, B.2.3/2, A.5.1/2]}    # değişim programı prosedürleri, muafiyet evrakı: kredinin tanınması; uluslararasılaşma uygulaması
+  B/76: {yuvalar: [B.3.1/6]}                      # öğrenme kaynakları memnuniyeti ≈ B.3.1/6
+  B/77: {yuvalar: [B.3.1/4, B.3.1/5], belirsiz: true}  # dijital kanallar (sosyal medya, video): öğrenme kaynağına erişim; tanıtım (A.1.5) da olabilir
+  B/78: {yuvalar: [B.3.5/2]}                      # sportif, kültürel, sosyal faaliyetler ≈ B.3.5/2
+  B/79: {yuvalar: [B.4.2/4, B.4.2/3]}             # öğretim elemanı yetkinliği uygulamaları ≈ B.4.2/4
+  B/80: {yuvalar: [B.4.3/3, B.4.3/2]}             # eğitim-öğretim performansı ödülleri ≈ B.4.3/3
+  # C. ARAŞTIRMA-GELİŞTİRME
+  C/1:  {yuvalar: [C.1.1/1]}                      # Ar-Ge sorumluları = araştırma süreçlerinin organizasyon yapısı
+  C/2:  {yuvalar: [C.1.1/2, C.1.1/3]}             # kurullarda Ar-Ge gündem maddesi = araştırma yönetişimi uygulaması
+  C/3:  {yuvalar: [C.3.1/2, C.1.1/2]}             # stratejik planda Ar-Ge hedefleri ve takip sorumluları = hedef izleme mekanizması
+  C/4:  {yuvalar: [C.1.1/2, A.1.5/3], belirsiz: true}  # Ar-Ge faaliyetlerinin web'de paylaşılması: kılavuzda doğrudan yok; araştırma uygulaması / kamuoyu bilgilendirme
+  C/5:  {yuvalar: [C.1.2/6, C.1.2/1]}             # BAP'tan yararlanma miktarının kaydı = iç kaynakların dağılımı
+  C/6:  {yuvalar: [C.1.2/4, C.1.2/6]}             # BAP yararlanmasının izlenmesi = kaynak izleme
+  C/7:  {yuvalar: [C.2.1/1, C.1.2/7]}             # proje yazma eğitimleri ≈ "destekleyici eğitimler"; dış kaynak desteği
+  C/8:  {yuvalar: [C.3.2/2, C.3.2/4]}             # akademik teşvik oranı izleme = araştırmacı performans analizi
+  C/9:  {yuvalar: [C.3.2/2]}                      # öğretim elemanı Ar-Ge performansının paylaşılması = performans analizi
+  C/10: {yuvalar: [C.1.2/2]}                      # stratejik ortaklıklar (kamu/özel) ≈ C.1.2/2 birebir
+  C/11: {yuvalar: [C.2.2/2, C.2.2/3, C.1.2/2]}    # ulusal ortak araştırma, iş birlikleri ≈ C.2.2
+  C/12: {yuvalar: [C.1.2/8, C.1.2/9]}             # TÜBİTAK vb. fonlu projeler = dış kaynakların dağılımı
+  C/13: {yuvalar: [C.2.1/1]}                      # araştırma yetkinliği planlama ve uygulamaları ≈ C.2.1/1 birebir
+  C/14: {yuvalar: [C.2.1/3, C.2.1/2]}             # araştırma yetkinliğinin izlenmesi; personel anketi ≈ C.2.1/3, C.2.1/2
+  C/15: {yuvalar: [C.1.1/2], belirsiz: true}      # birimin akademik dergileri: kılavuzda doğrudan yok; araştırma yönetişimi uygulaması (D.1.1/3 de olabilir)
+  C/16: {yuvalar: [C.1.3/1, C.1.3/2]}             # doktora/doktora sonrası bursları ≈ C.1.3
+  C/17: {yuvalar: [C.2.2/1, C.2.2/3]}             # ortak araştırmaların teşviki = ortak araştırma mekanizmaları
+  C/18: {yuvalar: [C.1.2/7, C.2.2/3, A.5.3/2]}    # AB çerçeve programı projeleri: dış kaynak desteği, ortak projeler, uluslararasılaşma
+  C/19: {yuvalar: [C.3.2/1, C.3.2/4]}             # akademik teşvik başvuru/inceleme komisyonu = performans değerlendirme süreci
+  C/20: {yuvalar: [C.1.2/7, C.3.1/2], belirsiz: true}  # patent başvuru süreçleri: kılavuzda doğrudan yok; dış kaynak desteği / araştırma çıktısı izleme
+  C/21: {yuvalar: [C.3.2/4]}                      # bilimsel başarıların ödüllendirilmesi = araştırma performansına dayalı iyileştirme
+  # D. TOPLUMSAL KATKI
+  D/1:  {yuvalar: [D.2.1/1, D.1.1/3]}             # toplumsal katkı faaliyetlerinin web'de ilanı = faaliyetler ve uygulama örnekleri
+  D/2:  {yuvalar: [D.1.1/2, D.1.1/4]}             # kurullarda toplumsal katkı gündem maddesi = yönetişim + işlerlik izleme
+  D/3:  {yuvalar: [D.2.1/3, D.2.1/4]}             # hedef gerçekleşme oranı izleme ≈ D.2.1/3
+  D/4:  {yuvalar: [D.2.1/1, D.1.1/3]}             # topluma açık eğitim, sempozyum, sertifika = faaliyet örnekleri
+  D/5:  {yuvalar: [D.2.1/1], sade: false}         # topluma açık kütüphane hizmetleri: kurum geneli
+  D/6:  {yuvalar: [D.2.1/1, D.1.1/3]}             # dış katılımcılı seminer, kongre, panel = toplumsal katkı faaliyeti
+  D/7:  {yuvalar: [D.2.1/6]}                      # toplumsal katkı protokolleri ≈ D.2.1/6 birebir
+  D/8:  {yuvalar: [D.2.1/1]}                      # kültürel ve sanatsal faaliyetler = toplumsal katkı faaliyeti
+  D/9:  {yuvalar: [D.2.1/1, D.1.1/3]}             # sosyal sorumluluk projeleri = faaliyet ve uygulama örnekleri
+  D/10: {yuvalar: [D.2.1/1]}                      # kamu kurumu/STK görevlendirmeleri = toplumsal katkı faaliyeti
+  D/11: {yuvalar: [D.2.1/1]}                      # kamu kurumu/STK danışmanlıkları = toplumsal katkı faaliyeti
+  D/12: {yuvalar: [D.1.1/3, B.3.5/2]}             # öğrenci etkinlikleri (toplumsal katkı tablosunda): uygulama örneği; öğrenci faaliyet listesi
+  D/13: {yuvalar: [D.2.1/1, D.1.2/2], belirsiz: true}  # "Projeler" (toplumsal katkı): faaliyet; bütçe kaynağı da olabilir
+  D/14: {yuvalar: [D.2.1/6, D.2.1/1]}             # dış paydaşlarla topluma hizmet çalışmaları: iş birliği + faaliyet
+  D/15: {yuvalar: [D.1.1/3, A.2.1/4]}             # toplumsal katkı dersleri: uygulama örneği; A.2.1/4 "eğitimde topluma hizmet vurgusu"
+  D/16: {yuvalar: [D.1.2/1]}                      # dış paydaşa açık laboratuvar/merkez ≈ D.1.2/1
