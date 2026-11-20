@@ -255,6 +255,15 @@ render` → `bidr denetle` yeniden; report.docx'i elle düzeltme. Rapor yeniden 
 elle değişince denetim eskir. Uyarılar engel değildir; kullanıcıya özetle (ör. paragraf sonrası
 aralık kurumdan sorulacak).
 
+## Teslim paketi (teslim, isteğe bağlı)
+
+Denetim geçince `bidr teslim -w WS`: `WS/teslim/` + `teslim.zip` (report.docx, ölçüt klasörlü
+kanıtlar, web kanıtlarının tarihli PDF kopyaları, kanıt dizini). Varsayılan mod `rapor.teslim:
+dekanlik` (bağlantı verilmez, dosyalar teslim edilir). Çıkış 1: `EKSIK.txt`'teki eşleşmeyen satırları
+kullanıcıya göster. Maskeleme başarısız ya da yapılmamışsa kanıt paketten çıkmaz; özgün dosya girer,
+dizinde "elle bakılmalı" yazar: bu listeyi kullanıcıya ayrıca söyle. Web kanıtının adresi bilinmiyorsa
+uydurma; kullanıcıdan review.xlsx "bağlantı" sütununa yazmasını iste.
+
 ## Bitirirken
 
 Çalışma günlüğü tutuyorsan (ör. kullanıcıya ya da bir dosyaya zaman damgalı adımlar) saati her
