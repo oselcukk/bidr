@@ -864,9 +864,9 @@ def _kanit_klasoru(ev: Path, listeler: dict[str, dict[int, int]], s: Sonuc) -> N
     s.bilgi["kanit_dosyasi"] = sayi
     for olcut, nums in dosyalar.items():
         for n, lst in nums.items():
-            if len(lst) > 1:
-                s.ekle(UYARI, "kanit_dosyasi_yineleniyor", olcut,
-                       f"{n} numaralı birden çok dosya: {', '.join(r for _, r in lst)}")
+            if len(lst) > 1:  # kural: aynı numara yalnız gerçek kopya/sürüm (dosyalama `ayni_kaynak_tek_numara`)
+                s.bilgi.setdefault("ayni_numarali_kopyalar", []).append(
+                    {"olcut": olcut, "no": n, "dosyalar": [r for _, r in lst]})
         if sorted(nums) != list(range(1, len(nums) + 1)):
             s.ekle(UYARI, "kanit_dosya_sirasi", olcut, f"dosya sıra numaraları 1..{len(nums)} değil: {sorted(nums)}")
     for olcut, liste in listeler.items():

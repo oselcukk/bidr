@@ -93,7 +93,7 @@ seçimde ayrı tutulsa da (farklı dönem verisi) tek numara ve tek OD alır (`n
 aynı `kanit_no`, aynı `ad` (grubun ilk üyesinin) ve aynı `baglanti`yı (öncelik insan > belge metni >
 klasör) taşır — write'ın kanıt listesi ve render'ın (ölçüt, kanit_no) bağlantı haritası tek değer
 görür — ama her üye ayrı dosyadır (`[Ölçüt-n-ODk] Ad (tarih).uzantı`, işaret
-`ayni_kaynak_tek_numara`; biçim denetçisi `kanit_dosyasi_yineleniyor` uyarısı verir). Dosya adı
+`ayni_kaynak_tek_numara`; biçim denetçisi bunu uyarı değil bilgi olarak `ayni_numarali_kopyalar` altında listeler). Dosya adı
 klasörde büyük/küçük harf duyarsız tekildir: çakışmada kısa kimlik eklenir, hiçbir belge ötekinin
 üstüne yazılmaz. Arşiv/e-posta üyesi kanıtlanırken üyenin kendisi kopyalanır. `kopyalar`:
 bu satırın temsil ettiği öteki belgeler (mükerrer metin ve tek kanıt sayılan sürümler).

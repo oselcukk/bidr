@@ -177,13 +177,17 @@ class Sources:
         aşama → bu ölçütün kanıt numaraları (kanıtı bu ölçütte olmayan aşama belgesi `None`)."""
         if not self.faaliyetler:
             return []
-        no_of = {r.get("doc_id"): r["kanit_no"] for r in self.index.get(olcut, []) if r.get("doc_id")}
+        no_of: dict = {}  # bölünmüş birleşik belgenin parçaları ayrı numara alır: belge → numaraların hepsi
+        for r in self.index.get(olcut, []):
+            if r.get("doc_id") and r["kanit_no"] not in no_of.setdefault(r["doc_id"], []):
+                no_of[r["doc_id"]].append(r["kanit_no"])
         out = []
         for f in self.faaliyetler:
             ids = {b.get("doc_id") for b in f.get("belgeler") or []}
             if not ids & set(no_of):
                 continue
-            asm = {a: [no_of.get(d) for d in ds] for a, ds in (f.get("asamalar") or {}).items()}
+            asm = {a: [n for d in ds for n in (no_of.get(d) or [None])]
+                   for a, ds in (f.get("asamalar") or {}).items()}
             out.append({"id": f.get("id"), "ad": f.get("ad") or "", "tarih": f.get("tarih"),
                         "durum": f.get("durum"), "yalniz_duyuru": bool(f.get("yalniz_duyuru")),
                         "asamalar": asm, "eksik": list(f.get("eksik") or [])})
