@@ -69,6 +69,17 @@ Düşük kaliteli (taranmış/görsel) belge yoksa aşama kendiliğinden "atland
 yaz (okunamayan yeri uydurma, README'nin işaretleme kuralına uy) → `bidr transcribe apply -w WS
 --model <ajan adı>`. `work/transcribe/GECERSIZ.md`'deki paketleri yeniden yap; `bidr next`.
 
+## Birimi belirsiz OCR'lı belgeler (belirsiz_okuma)
+
+İnce karardan sonra `birim_iliskisi: belirsiz` kalan ve metni OCR'dan gelen belgeler bir kez
+görsel okumayla yeniden okunur; aday yoksa aşama kendiliğinden biter. Varsa: `bidr transcribe
+prepare -w WS --belirsiz` → yukarıdaki "Görsel okuma" kurallarıyla cevapsız her paketi oku (önce
+hepsini bitir, sonra tek `apply`) → `bidr transcribe apply -w WS --model <ajan adı>` → `bidr next`
+(metni değişen belgeler için identify → candidates → kaba → ince karar yeniden; metni aynı
+kalanın kararı korunur). Birimi kadro adından, grup/klasör bağlamından ya da "klasör bölüm
+arşividir" varsayımından çıkarma: metin söylemiyorsa yine `belirsiz` de. Yeniden okumadan sonra
+da belirsiz kalanlar ikinci tura girmez; komisyona gider (gaps.md "Birim aitliği doğrulanmalı").
+
 ## Görsel betimleme (describe)
 
 Metni az ya da hiç olmayan görüntüler (laboratuvar, derslik, etkinlik, toplantı, tabela, ödül

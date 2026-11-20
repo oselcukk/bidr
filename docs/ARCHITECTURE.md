@@ -35,10 +35,11 @@ hepsini gösterir; önkoşulu bitmemiş aşamanın komutu çıkış kodu 3 ile d
 | 5 | identify | D | ingest, transcribe, describe | `documents.jsonl` (tür, içerik tarihi, dönem, sürüm, çalışma adı) |
 | 6 | candidates | D | identify | `candidates.jsonl` |
 | 7 | karar_kaba / karar_ince | M | candidates | `decisions.jsonl` (ölçüt, yuva, aşama, birebir alıntı, kanıt adı) |
-| 8 | hakem | I | karar_ince, etiketler | `consensus-labels.jsonl` |
-| 9 | name (isteğe bağlı) | M | karar_ince | `kanit-adlari.jsonl` (kaynak: model) |
-| 9b | faaliyet | D | karar_ince | `faaliyetler.json` (aynı toplantı/etkinliğin belgeleri; güncelliği içerikle denetlenir) |
-| 10 | audit | D + I | karar_ince, hakem, name, faaliyet | `review.xlsx`, `gaps.md`, `audit-olcutler.json`; apply: `review-decisions.jsonl`, insan adları/bağlantıları |
+| 7b | belirsiz_okuma (koşullu) | M | karar_ince | birimi `belirsiz` kalan OCR'lı/düşük kaliteli belgelerin bir kez görsel yeniden okuması (`transcribe prepare --belirsiz`, `tur: belirsiz`); metni değişenin kararı geçersiz kılınır ve yeniden verilir, aynı kalanın korunur; aday yoksa kendiliğinden biter; sonra da belirsiz kalan → gaps.md |
+| 8 | hakem | I | karar_ince, belirsiz_okuma, etiketler | `consensus-labels.jsonl` |
+| 9 | name (isteğe bağlı) | M | karar_ince, belirsiz_okuma | `kanit-adlari.jsonl` (kaynak: model) |
+| 9b | faaliyet | D | karar_ince, belirsiz_okuma | `faaliyetler.json` (aynı toplantı/etkinliğin belgeleri; güncelliği içerikle denetlenir) |
+| 10 | audit | D + I | karar_ince, belirsiz_okuma, hakem, name, faaliyet | `review.xlsx`, `gaps.md`, `audit-olcutler.json`; apply: `review-decisions.jsonl`, insan adları/bağlantıları |
 | 10b | ikinci_arama (isteğe bağlı) | M | audit | `work/ikinci_arama/`, `decisions.jsonl`'e işaretli eşleşmeler (kabul varsa audit yeniden; `rapor.ikinci_arama: false` → atlandi) |
 | 11 | file | D | audit, ikinci_arama | `evidence/A/A.1/A.1.2/…`, `evidence-index.csv` (ad, bağlantı) |
 | 12 | write | M | file | `texts/<ölçüt>.json` |

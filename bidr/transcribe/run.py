@@ -15,6 +15,16 @@ ajana yazıya geçirtir. Sağlayıcı/API çağrılmaz (ajan modu).
 Uydurma denetimi: OCR metninden güvenilir "çapa" belirteçleri (sağlıklı uzun sözcükler,
 2+ haneli sayılar) çıkarılır; ajan metninde bulunma oranı düşükse çıktı `supheli`
 işaretlenir ve `--kabul-supheli` verilmedikçe uygulanmaz.
+
+Belirsiz tur (`prepare --belirsiz`, aşama `belirsiz_okuma`): ince kararda `birim_iliskisi:
+belirsiz` kalan ve metni OCR'dan gelen (ya da low_quality=1) belgeler bir kez görsel okumayla
+yeniden okunur (`select_belirsiz`). Kayıt `tur: belirsiz` taşır; transcribe.jsonl'de kaydı olan
+belge bir daha seçilmez (belge başına bir tur, döngü yok). Metni değişen belgenin türetilmiş
+kayıtları her apply'daki gibi geçersiz kılınır: identify → candidates → kaba → ince yalnız o
+belgeler için yeniden çalışır. Yeni metin eskisiyle (boşluk farkı dışında) aynıysa metin
+yazılmaz, hiçbir şey geçersiz kılınmaz (`metin_ayni`): ince karar tekrarlanmaz. Yeniden
+okumadan sonra da belirsiz kalan belge komisyonun listesine gider (audit/gaps.md "Birim
+aitliği doğrulanmalı").
 """
 from __future__ import annotations
 
@@ -44,6 +54,10 @@ MIN_ANCHORS = 6        # bundan az çapa: karşılaştırılamaz
 SUSPECT_BELOW = 0.25   # çapa bulunma oranı bunun altı: şüpheli (uydurma görünüyor)
 WEAK_BELOW = 0.5       # bunun altı: zayıf
 LOWQ_UNREADABLE = 0.5  # [okunamadı] payı bunu aşarsa low_quality=1 kalır
+RENDERABLE = PDF_EXTS | DIRECT_IMG | CONVERT_IMG
+# Belirsiz turu (aşama belirsiz_okuma)
+BELIRSIZ = "belirsiz"
+BELIRSIZ_FILE = "belirsiz.json"   # work/transcribe/ altında: paketlenemeyen adaylar (neden)
 
 
 def work_dir(ws: Workspace) -> Path:
@@ -289,6 +303,82 @@ def select(ws: Workspace, *, only: list[str] | None, all_low_quality: bool) -> l
     return []
 
 
+def _norm(text: str) -> str:
+    """Metin karşılaştırması için: boşluk/satır/sayfa kırımı farkı yok sayılır."""
+    return " ".join(text.split())
+
+
+def ocr_derived(row: dict) -> bool:
+    """Metni OCR'dan gelmiş (ingest `method`'unda ocr) ya da okuma kalitesi düşük; ajan okuması
+    (agent_vision/agent_describe) değil."""
+    m = (row.get("method") or "").lower()
+    if m.startswith("agent_"):
+        return False
+    return "ocr" in m or str(row.get("low_quality", "")).strip() == "1"
+
+
+def belirsiz_state(ws: Workspace) -> dict:
+    p = work_dir(ws) / BELIRSIZ_FILE
+    try:
+        return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_belirsiz_state(ws: Workspace, skipped: dict[str, str]) -> None:
+    p = work_dir(ws) / BELIRSIZ_FILE
+    prev = belirsiz_state(ws).get("atlandi") or {}
+    allp = {**prev, **skipped}
+    if allp:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps({"tur": BELIRSIZ, "atlandi": dict(sorted(allp.items()))},
+                                ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def select_belirsiz(ws: Workspace, *, max_pages: int = MAX_PAGES) -> tuple[list[str], dict]:
+    """Belirsiz turunun adayları ve elenme sayaçları. Aday: ince kararı sonuçlanmış,
+    `birim_iliskisi: belirsiz`, insan birim kararı yok, metni OCR'dan (ya da low_quality=1),
+    sayfa görüntüsüne çevrilebilir (PDF/görsel, en çok `max_pages` sayfa), transcribe.jsonl'de
+    kaydı yok (görsel okumadan hiç geçmemiş) ve önceki bir prepare'de paketlenemedi diye
+    ayrılmamış. Salt okunur."""
+    from bidr.decide.run import BIRIM_BELIRSIZ, load_decisions, load_unit_pins, record_unit_relation, stage_done
+    recs = load_decisions(ws) if (ws.root / "decisions.jsonl").exists() else {}
+    bel = sorted(d for d, r in recs.items() if stage_done(r, "fine")
+                 and record_unit_relation(r) == BIRIM_BELIRSIZ)
+    info = {"belirsiz": len(bel), "insan_karari": 0, "ocr_degil": 0, "bicim": 0, "cok_sayfa": 0,
+            "okundu": 0, "paketlenemedi": 0, "envanterde_yok": 0}
+    if not bel:
+        return [], info
+    pins = load_unit_pins(ws.root)
+    prim = _primary(read_inventory(ws)[1]) if ws.inventory.exists() else {}
+    log = load_log(ws)
+    skipped = belirsiz_state(ws).get("atlandi") or {}
+    out = []
+    for did in bel:
+        row = prim.get(did)
+        try:
+            pages = int(float((row or {}).get("pages") or 0))
+        except ValueError:
+            pages = 0
+        if did in pins:
+            info["insan_karari"] += 1
+        elif did in log:
+            info["okundu"] += 1
+        elif row is None:
+            info["envanterde_yok"] += 1
+        elif not ocr_derived(row):
+            info["ocr_degil"] += 1
+        elif (row.get("ext") or "").lower() not in RENDERABLE:
+            info["bicim"] += 1
+        elif pages > max_pages:
+            info["cok_sayfa"] += 1
+        elif did in skipped:
+            info["paketlenemedi"] += 1
+        else:
+            out.append(did)
+    return out, info
+
+
 def _pending(d: Path) -> int:
     return sum(1 for p in d.glob("*/*.json") if not p.name.endswith(".out.json")
                and p.stem == p.parent.name and not (p.parent / f"{p.stem}.out.json").exists())
@@ -296,7 +386,10 @@ def _pending(d: Path) -> int:
 
 def prepare(ws_root: Path, *, only: list[str] | None = None, all_low_quality: bool = False,
             source: Path | str | None = None, dpi: int = DPI, max_pages: int = MAX_PAGES,
-            limit: int | None = None, redo: bool = False) -> dict:
+            limit: int | None = None, redo: bool = False, belirsiz: bool = False) -> dict:
+    """`belirsiz`: seçim `select_belirsiz` (belirsiz turu); paket `tur: belirsiz` taşır,
+    paketlenemeyen aday (kaynak yok, çevrilemedi …) `work/transcribe/belirsiz.json`'a yazılır ve
+    bir daha seçilmez (aşama onu beklemez; komisyon listesinde kalır)."""
     from bidr.llm import render_task
 
     ws = Workspace(ws_root)
@@ -311,7 +404,11 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, all_low_quality: bo
     d = work_dir(ws)
     d.mkdir(parents=True, exist_ok=True)
     st = {"paket": 0, "yeni": 0, "zaten_tamam": 0, "atlandi": {}}
-    ids = select(ws, only=only, all_low_quality=all_low_quality)
+    if belirsiz:
+        ids, st["secim"] = select_belirsiz(ws, max_pages=max_pages)
+        st["secim"]["aday"] = len(ids)
+    else:
+        ids = select(ws, only=only, all_low_quality=all_low_quality)
     for did in ids[:limit] if limit else ids:
         row = prim.get(did)
         try:
@@ -338,16 +435,21 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, all_low_quality: bo
         isha = _sha(r["prompt"] + img_sha)[:16]
         pkg = {"gorev": r["task"], "surum": str(r["version"]), "doc_id": did, "istem_sha": isha,
                "cikti_dosyasi": f"{did}.out.json", "sayfalar": names, "istem": r["prompt"],
-               "sema": r["schema"], "dpi": dpi}
+               "sema": r["schema"], "dpi": dpi, **({"tur": BELIRSIZ} if belirsiz else {})}
         st["paket"] += 1
         old = json.loads(pkgp.read_text(encoding="utf-8")) if pkgp.exists() else None
         if old and old.get("istem_sha") == isha:
+            if belirsiz and old.get("tur") != BELIRSIZ:   # aynı paket: yalnız tur işareti (cevap korunur)
+                pkgp.write_text(json.dumps({**old, "tur": BELIRSIZ}, ensure_ascii=False, indent=1),
+                                encoding="utf-8")
             continue
         outp = pdir / f"{did}.out.json"
         if outp.exists():
             outp.replace(pdir / f"{did}.out.json.eski")
         pkgp.write_text(json.dumps(pkg, ensure_ascii=False, indent=1), encoding="utf-8")
         st["yeni"] += 1
+    if belirsiz:
+        _save_belirsiz_state(ws, st["atlandi"])
     n = _pending(d)
     (d / "README.md").write_text(README.format(task=TASK, version=_task_version(), n=n), encoding="utf-8")
     st["bekleyen"] = n
@@ -435,8 +537,9 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", accept_suspicious
     log = load_log(ws)
     ver = _task_version()
     st = {"islenen": 0, "degismedi": 0, "bekleyen": [], "gecersiz": {}, "supheli": {},
-          "eski_surum": [], "tutarlilik": {}, "gecersiz_kilinan": {}}
+          "eski_surum": [], "tutarlilik": {}, "gecersiz_kilinan": {}, "metin_ayni": []}
     changed: set[str] = set()
+    log_dirty = False
     pkgs = sorted(p for p in d.glob("*/*.json")
                   if p.stem == p.parent.name and not p.name.endswith(".out.json")) if d.exists() else []
     for p in pkgs:
@@ -477,6 +580,20 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", accept_suspicious
         if cons["durum"] == "supheli" and not accept_suspicious:
             st["supheli"][did] = cons
             continue
+        tur = {"tur": pkg["tur"]} if pkg.get("tur") else {}
+        cur_text = cur.read_text(encoding="utf-8", errors="replace") if cur.exists() else None
+        if cur_text is not None and _norm(cur_text) == _norm(text):
+            # okuma var olan metni doğruladı: metin yazılmaz, türetilmiş kayıtlar (karar) geçerli kalır
+            log[did] = {"doc_id": did, "durum": "uygulandi", "gorev": {TASK: ver}, "model": model,
+                        "kip": "ajan", "istem_sha": pkg["istem_sha"], "cikti_sha": out_sha,
+                        "metin_sha": _sha(cur_text), "metin_ayni": True, **tur,
+                        "sayfa": len(pkg["sayfalar"]), "tutarlilik": cons,
+                        "supheli_kabul": cons["durum"] == "supheli",
+                        "zaman": time.strftime("%Y-%m-%dT%H:%M:%S")}
+            log_dirty = True
+            st["metin_ayni"].append(did)
+            st["islenen"] += 1
+            continue
         # eski OCR metnini sakla (yalnız ilk sefer: sonrakiler zaten ajan metni)
         if not ocr_p.exists():
             ocr_p.parent.mkdir(parents=True, exist_ok=True)
@@ -499,12 +616,14 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", accept_suspicious
                     "okunabilirlik": [x["okunabilirlik"] for x in sorted(out["sayfalar"], key=lambda x: x["sayfa"])],
                     "notlar": out.get("notlar", ""), "tutarlilik": cons,
                     "supheli_kabul": cons["durum"] == "supheli",
-                    "onceki_envanter": before, "zaman": time.strftime("%Y-%m-%dT%H:%M:%S")}
+                    "onceki_envanter": before, **tur, "zaman": time.strftime("%Y-%m-%dT%H:%M:%S")}
         changed.add(did)
         st["islenen"] += 1
     if changed:
         write_inventory(ws, fields, rows)
+    if changed or log_dirty:
         save_log(ws, log)
+    if changed:
         st["gecersiz_kilinan"] = invalidate_downstream(ws, changed)
     st["degisen"] = sorted(changed)
     _write_report(d, st)
