@@ -377,18 +377,17 @@ def merge_versions(items: list, docs: dict, text_of, cited: set[str]) -> tuple[l
 CONTAIN_MIN = 0.9           # kapsananın şablon dışı parçacıklarının kapsayanda bulunma oranı
 CONTAIN_UNDATED = 0.95      # iki belge de tarihsizse
 QUOTE_MIN = 0.6             # alıntının (OCR'ı farklı) kapsayan belgede bulunma oranı
-_COPY_INDEX: dict = {}      # derlem özeti önbelleği: id(docs) → CopyIndex
+_COPY_INDEX: list = []      # derlem özeti önbelleği: [(docs nesnesi, CopyIndex)] (tek giriş)
 
 
 def copy_index(docs: dict, text_of):
     """Çalışma alanındaki bütün belgelerin kopya özeti (şablon parçacıkları derlem sıklığından).
-    Bir `file` koşusunda bir kez kurulur."""
+    Bir `file` koşusunda (aynı `docs` nesnesi) bir kez kurulur; önbellek nesnenin kendisini
+    tutar (id yeniden kullanımı başka koşunun özetini döndürmesin)."""
     from bidr.identify.versions import CopyIndex
-    key = (id(docs), len(docs))
-    if key not in _COPY_INDEX:
-        _COPY_INDEX.clear()
-        _COPY_INDEX[key] = CopyIndex({d: text_of(d) for d in docs})
-    return _COPY_INDEX[key]
+    if not _COPY_INDEX or _COPY_INDEX[0][0] is not docs:
+        _COPY_INDEX[:] = [(docs, CopyIndex({d: text_of(d) for d in docs}))]
+    return _COPY_INDEX[0][1]
 
 
 def _quotes_in(quotes: list[str], fp: frozenset) -> bool:
