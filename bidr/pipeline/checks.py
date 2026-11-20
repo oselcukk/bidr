@@ -761,7 +761,7 @@ def yonler_tamam(c: Ctx) -> Check:
     over = sorted(a for a in rej if a not in under)
     if over:
         uy.append(f"{len(over)} alanın maddeleri {lim} yeniden yazım turundan sonra hâlâ reddedildi ({', '.join(over)}): "
-                  "hücreler şablon yönergesiyle kalır, rapor TASLAK damgalı olur; gerekçeyi (verify-yonler.jsonl) "
+                  "render yalnız doğrulanan maddeleri basar (desteklenmeyenler çıkarılır), rapor TASLAK damgalı olur; gerekçeyi (verify-yonler.jsonl) "
                   "kullanıcıya göster")
     if under:
         return Check(kim=KOMUT, ilerleme=prog, uyarilar=uy,

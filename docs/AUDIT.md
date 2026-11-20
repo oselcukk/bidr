@@ -236,9 +236,9 @@ dönem sonrası olan düzenlemeler, sürümü doğrulanacak düzenlemeler, tarih
 belgeleri (nedeniyle), güncelliği doğrulanacak belgeler.
 
 **Eksik kanıt notu** (`audit-olcutler.json` ölçüt alanı `eksik_kanit_notu`; render şeridi
-okur): `null` ya da `{"durum", "nedenler", "metin"}`.
-- `kanitsiz`: ölçütte hiç eşleşme yok (ya da hepsi insanca reddedildi). `metin` render'ın
-  bugünkü notuyla aynıdır: "Eksik kanıt notu: <eksik halkaların gereken metinleri>."
+okur): `null` ya da `{"durum", "nedenler", "metin"}`. Not komisyon içindir: rapora (açıklama
+hücrelerine) yazılmaz, gaps.md'de kalır (k3, 2026-11-20).
+- `kanitsiz`: ölçütte hiç eşleşme yok (ya da hepsi insanca reddedildi). `metin`: "Eksik kanıt notu: <eksik halkaların gereken metinleri>." (gaps.md)
 - `neredeyse_kanitsiz`: eşleşme var ama bölümün bu döneme ait, düşük güvenli olmayan ve
   kurum geneli olmayan **sayılan** kanıtı yok. `nedenler` (birden çok olabilir):
   `yalniz_kurum_geneli`, `yalniz_dusuk_guven`, `yalniz_donem_disi` (geçmiş, dönem sonrası ya da
