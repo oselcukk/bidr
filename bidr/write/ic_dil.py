@@ -13,6 +13,8 @@ Sade karşılıklar (yazım istemleri ve bulgular bunları kullanır):
   "OD'ye sayılmadı (tarihi doğrulanmalı)" → "tarihi belgede görülmüyor"
   "yalnız kurum geneli düzenlemeyle eşleşti" → "dayanak yalnız kurum geneli düzenleme"
   "uygulama halkası kanıtı eksik" → "birimin bu dönemdeki uygulamasını gösteren belge yok"
+  "… dönem sonrasına ait olduğundan bu dönemin kanıtı olarak gösterilememektedir" → (yazılmaz;
+      eksik olgu) "bölümün bu dönemdeki uygulamasını gösteren belge yok"
 """
 from __future__ import annotations
 
@@ -37,6 +39,16 @@ DESENLER: list[tuple[str, str]] = [
     (r"\bdogrulanmali\b", "'doğrulanmalı' işareti"),
     (r"kurum/fakulte geneli", "kurum/fakülte geneli notu"),
     (r"\bneredeyse kanitsiz", "neredeyse kanıtsız notu"),
+    # Kanıt yönetimi kararı (kör test 2026-11-20, Kimya A.1.5, B.1.6): aracın bir belgeyi bu dönemin
+    # kanıtı saymama gerekçesi komisyon notudur; gelişmeye açık yön bölümün eksiğini söyler.
+    (r"\b(?:bu )?donem\w* kaniti (?:olarak )?(?:gosterile|sayila|kabul edile|kullanila)\w*",
+     "dönem kanıtı sayma kararı"),
+    (r"\bkanit\w* olarak (?:gosterilem|gosterilme|sayilma|sayilam|kabul edilem|kullanilam)\w*",
+     "kanıt sayma kararı"),
+    (r"\bkanit\w* (?:olarak )?sayilma(?:mis|di)\w*", "kanıt sayma kararı"),
+    (r"\b(?:donem sonrasina|donem disina|donem oncesine|onceki yila|gecmis yila|gecmis doneme)"
+     r" ait oldugu(?:ndan|ndan dolayi| icin)\b", "dönem dışı gerekçesi"),
+    (r"\btarih\w* (?:belgede )?(?:gorulmedig|gorulmemesi|dogrulanamadig)\w*", "tarih görülmüyor gerekçesi"),
 ]
 _RX = [(re.compile(p), ad) for p, ad in DESENLER]
 

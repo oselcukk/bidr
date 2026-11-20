@@ -1,4 +1,4 @@
-version: 3
+version: 4
 description: >-
   Ölçüt açıklama metni. Ölçüt tanımı/rubrik, audit'in önerilen OD'si ve PUKÖ zinciri,
   eksikler, ölçütün kanıtları (no, ad, alıntı, belge bağlamı), varsa geçen yılın aynı
@@ -11,6 +11,11 @@ description: >-
   cümleler (önce bunlar); kurallar: dönem içi kaydı ve sayıyı atlama/küçültme, kanıttaki
   bilgi varken "kanıt yok" deme, fakülte değerini bölümün değeri gibi verme; aracın iç dili
   yok (kod `ic_dil`). v2 metinleri geçerli kalır (girdileri değişmedikçe).
+  v4 (kör test 2026-11-20 güncelleme ölçümü): paketin başında dönem içi kaydı olan kanıtların
+  listesi ve gösterge belgesinde "bölümün kendi verisi" satırı; kurallar: dönem içi kayıt zorunlu
+  ve ilk sırada, bölümün değeri fakülte değerinden önce (ham veriden hesabıyla). Kod denetimi:
+  `donem_ici_atlandi`, `fakulte_degeri` (bidr/write/text.py `content_issues`); doğrulanmış eski
+  metinlere de `bidr verify prepare`'de uygulanır, takılan metin yeniden yazıma gider.
 inputs:
   hitap: "kurumsal özne (ör. Bölümümüzde)"
   olcut: "ölçüt kimliği, başlığı, tanımı, rubrik 1-5"

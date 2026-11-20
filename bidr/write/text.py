@@ -316,3 +316,93 @@ def check_text(paragraphs: list[str], onceki: str, *, index_nos: set[str], od: i
         for x in check_sentence(r["metin"], index_nos=index_nos, od=od, komisyon=komisyon):
             out.append({"yer": r["yer"], "metin": r["metin"], **x})
     return out
+
+
+# -- içerik denetimleri (kanıt paketine göre; kör test 2026-11-20 güncelleme ölçümü) ---------------
+# 1) Dönem içi kaydı atlama (Kimya C.2.2): belgede dönem içi tarihli kayıt (2025'te başlayan RSC
+#    projesi) varken metin o belgeyle yalnız dönem dışı kayıtları (2018–2022 projeleri) anlatıyor.
+# 2) Fakülte değeri (Kimya A.2.2/C.3.1): fakülte/kurum geneli gerçekleşme değeri (0,36) bölümün
+#    kendi değeri (8/28 = 0,29) olmadan veriliyor; okur fakülte değerini bölümünkü sanır.
+
+def _fold(s: str) -> str:
+    from bidr.identify.text import fold
+    return " ".join(fold(s or "").split())
+
+
+def dated_in_period(snippets: list[str], donem: int | None) -> bool:
+    """Parçalardan biri dönem yılında tam tarih ("27.03.2025", "12-09-2025") ya da "2025 yılı" taşıyor mu."""
+    if not donem:
+        return False
+    rx = re.compile(rf"(?<!\d)\d{{1,2}}[./-]\d{{1,2}}[./-]{donem}(?!\d)|(?<!\d){donem} yil")
+    return any(rx.search(_fold(x)) for x in snippets or [])
+
+
+_YIL = re.compile(r"(?<!\d)(?:19|20)\d\d(?!\d)")
+
+
+def period_state(sentence: str, donem: int) -> str | None:
+    """Cümlenin anlattığı dönem: "ic" (dönem yılı ya da dönemi kapsayan aralık: 2023–2026), "dis"
+    (yalnız dönem dışı yıllar) ya da None (yıl yok)."""
+    years = [int(y) for y in _YIL.findall(ATIF.sub(" ", sentence))]
+    if not years:
+        return None
+    if donem in years or any(a < donem < b for a, b in zip(years, years[1:])):
+        return "ic"
+    return "dis"
+
+
+def donem_issues(paragraphs: list[str], onceki: str, *, donem: int | None, donem_ici: set[str]) -> list[dict]:
+    """Dönem içi kaydı olan kanıta atıf yapan cümlelerin hiçbiri dönem içini anlatmıyor, en az biri
+    yalnız dönem dışı kayıt anlatıyorsa → `donem_ici_atlandi`."""
+    if not donem or not donem_ici:
+        return []
+    rows = sentence_rows(paragraphs, onceki)
+    out = []
+    for no in sorted(donem_ici, key=lambda x: int(x.split("_")[0])):
+        states = [(r, period_state(r["metin"], donem)) for r in rows if no in citations(r["metin"])]
+        if states and not any(st == "ic" for _, st in states) and any(st == "dis" for _, st in states):
+            r = next(r for r, st in states if st == "dis")
+            out.append({"yer": r["yer"], "metin": r["metin"], "kod": "donem_ici_atlandi",
+                        "ayrinti": f"[{no}] belgesinde {donem} dönemine ait kayıt var (paketteki \"dönem içi bilgi\"); "
+                                   "metin bu kanıtla yalnız dönem dışı kayıtları anlatıyor: önce dönem içi kayıt "
+                                   "anlatılır, eski kayıt yalnız bağlam olarak anılır"})
+    return out
+
+
+UST_BIRIM = re.compile(r"\bfakulte(?!\w* (?:yonetim )?kurul)\w*|\btbf\b|universite genel\w*|kurum genel\w*")
+GERCEK_DEGER = re.compile(r"(?:gerceklesme|gerceklesen|gerceklest)\w*[^.;]{0,50}?(?<![\d.,])\d+[.,]\d+"
+                          r"|\b(?:orani|ortalamasi)\b[^.;]{0,30}?(?<![\d.,])\d+[.,]\d+")
+BOLUM_DEGER = re.compile(r"\bbolum\w*[^.;]{0,100}?(?:(?<![\d.,])\d+[.,]\d+|\d+\s*/\s*\d+)"
+                         r"|(?:(?<![\d.,])\d+[.,]\d+|\d+\s*/\s*\d+)[^.;]{0,60}?\bbolum\w*")
+
+
+# bölümün ham verisi ("kimya bölümü için 8 yayın ve 28 öğretim üyesi"): gerçekleşme değeri başka düzeye aittir
+BOLUM_HAM = re.compile(r"\bbolum\w*[^.;]{0,60}?(?<![\d.,])\d+\s+(?:adet\s+)?(?:yayin|ogretim|ogrenci|proje|makale|atif"
+                       r"|kisi|personel|arastirmaci)"
+                       r"|(?<![\d.,])\d+\s+(?:yayin|ogretim|ogrenci|proje|makale)\w*[^.;]{0,60}?\bbolum")
+
+
+def faculty_value_issues(paragraphs: list[str]) -> list[dict]:
+    """Paragrafta gerçekleşme değeri var, fakülte/kurum geneli anılıyor ya da bölümün yalnız ham verisi
+    veriliyor, ama bölümün kendi değeri yok → `fakulte_degeri` (okur değeri bölümünkü sanar)."""
+    out = []
+    for i, p in enumerate(paragraphs, 1):
+        low = _fold(ATIF.sub(" ", p))
+        if not GERCEK_DEGER.search(low) or not (UST_BIRIM.search(low) or BOLUM_HAM.search(low)) \
+                or BOLUM_DEGER.search(low):
+            continue
+        sents = split_sentences(p)
+        j = next((j for j, s in enumerate(sents, 1) if GERCEK_DEGER.search(_fold(ATIF.sub(" ", s)))), 1)
+        out.append({"yer": f"p{i}.{j}", "metin": sents[j - 1] if sents else p, "kod": "fakulte_degeri",
+                    "ayrinti": "fakülte/kurum geneli gerçekleşme değeri bölümün kendi değeri olmadan verilmiş: önce "
+                               "bölümün değeri yazılır (tabloda bölümün yalnız ham verisi varsa hesabıyla: \"8 yayın / "
+                               "28 öğretim üyesi = 0,29\"), fakülte değeri ancak ardından ve fakülte geneli diye "
+                               "nitelenerek verilir; hedefle karşılaştırma bölümün değeriyle yapılır"})
+    return out
+
+
+def content_issues(paragraphs: list[str], onceki: str = "", *, donem: int | None = None,
+                   donem_ici: set[str] | None = None) -> list[dict]:
+    """Kanıt paketine göre içerik denetimleri (dönem içi kayıt, fakülte değeri)."""
+    return (donem_issues(paragraphs, onceki, donem=donem, donem_ici=donem_ici or set())
+            + faculty_value_issues(paragraphs))

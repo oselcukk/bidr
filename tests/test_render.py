@@ -597,8 +597,15 @@ def test_rejected_area_prints_supported_items(ws, tmp_path):
     res, d, _ = _run(ws, tmp_path, yonler_dir=yd, hazirlayanlar=PEOPLE)
     cells = _yon_cells(d)
     assert cells["C g"] == ["• " + g[0]] and cells["C a"] == ["• " + a[0]]
+    # çıkarılan maddenin ölçütü (C.1.2) gelişmeye açık yönde kalıyor: kapsam kaybı yok, TASLAK değil
     assert res.yon_cikarilan == {"C": ["g2"]} and not res.taslak, res.taslak_nedenleri
+    assert not res.yon_kapsam_kaybi
     assert any("rapora alınmadı" in u for u in res.uyarilar)
+    # kör test 2026-11-20 (Kimya C): reddedilen madde çıkınca ölçüt hiçbir yön hücresinde kalmıyorsa TASLAK
+    log({"g2": "kismen", "a1": "desteklenmiyor"})
+    res, d, _ = _run(ws, tmp_path, yonler_dir=yd, hazirlayanlar=PEOPLE)
+    assert res.yon_cikarilan == {"C": ["g2", "a1"]} and res.yon_kapsam_kaybi == {"C": ["C.1.2"]}
+    assert res.taslak and any("C: C.1.2" in n for n in res.taslak_nedenleri), res.taslak_nedenleri
     # bütün güçlü maddeler desteklenmiyor → açık ifade; eski kayıt (metin değişti) ya da kod reddi → madde basılmaz
     log({"g1": "desteklenmiyor", "g2": "desteklenmiyor"})
     _, d, _ = _run(ws, tmp_path, yonler_dir=yd, hazirlayanlar=PEOPLE)

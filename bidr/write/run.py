@@ -105,6 +105,7 @@ class Sources:
         self._texts: dict[str, str | None] = {}
         self.faaliyetler = load_activities(self.ws.root)
         self.donem = period_of(self.ws.root)
+        self.birim = S.unit_name(self.ws.root)[0]
 
     def doc_text(self, did: str) -> str | None:
         if did not in self._texts:
@@ -139,6 +140,7 @@ class Sources:
                         "belge_turu": doc.get("doc_type_etiket") or doc.get("doc_type") or "",
                         "tarih": (part or {}).get("tarih") or doc.get("tarih") or "",
                         "donem_ici": S.period_snippets(txt, self.donem, cov) if ext else [],
+                        "bolum_verisi": S.unit_value_snippets(txt, self.birim),
                         "konu": S.topic_snippets(txt, self._description(olcut), cov) if ext else [],
                         "alintilar": S.evidence_context(txt, r["alintilar"], self.verify)})
         return out
@@ -217,15 +219,25 @@ def render_od(a: dict, gaps: list[str]) -> str:
     return "\n".join(lines)
 
 
-def render_evidence(ev: list[dict], cs) -> str:
+def render_evidence(ev: list[dict], cs, donem: int | None = None) -> str:
+    """Kanıt blokları. `donem` verilirse (yazım paketi) başa dönem içi kaydı olan kanıtların listesi
+    konur: bu kayıtlar metinde önce anlatılır (kod denetimi `donem_ici_atlandi`)."""
     blocks = []
+    if donem:
+        nos = [e["no"] for e in ev if T.dated_in_period(e.get("donem_ici") or [], donem)]
+        if nos:
+            blocks.append(f"DÖNEM İÇİ KAYDI OLAN KANITLAR ({donem}): " + ", ".join(f"[{n}]" for n in nos)
+                          + " — bu kanıtların \"dönem içi bilgi\" satırlarındaki kayıtlar metinde ÖNCE anlatılır; "
+                            "bu kanıtla yalnız dönem dışı kayıt anlatan metni kod reddeder.")
     for e in ev:
         lines = [f"[{e['no']}] {e['ad']}"]
         info = ", ".join(x for x in (f"tür: {e['belge_turu']}" if e["belge_turu"] else "",
                                      f"tarih: {e['tarih']}" if e["tarih"] else "") if x)
         if info:
             lines.append(f"  {info}")
-        # önce belgedeki dönem içi kayıtlar ve ölçütün sorduğu bilgi (alıntı bağlamı dışında)
+        # önce bölümün kendi gösterge verisi, belgedeki dönem içi kayıtlar ve ölçütün sorduğu bilgi
+        for i, x in enumerate(e.get("bolum_verisi") or [], 1):
+            lines.append(f"  bölümün kendi verisi {i}: «{x}»")
         for i, x in enumerate(e.get("donem_ici") or [], 1):
             lines.append(f"  dönem içi bilgi {i}: «{x}»")
         for i, x in enumerate(e.get("konu") or [], 1):
@@ -315,14 +327,20 @@ def write_inputs(src: Sources, olcut: str, hitap: str) -> tuple[dict, dict]:
     ev = src.evidence(olcut)
     acts = src.activities(olcut)
     inputs = {"hitap": hitap, "olcut": render_criterion(src.cs, olcut),
-              "od_bilgisi": render_od(a, gaps), "kanitlar": render_evidence(ev, src.cs),
+              "od_bilgisi": render_od(a, gaps), "kanitlar": render_evidence(ev, src.cs, src.donem),
               "onceki_metin": src.previous_text(olcut), "komisyon_bilgisi": src.notes_text(olcut),
               "yazim_sorulari": writing_questions(), "faaliyetler": render_activities(acts)}
     meta = {"olcut": olcut, "od_onerisi": src.od(olcut), "eksikler": gaps,
             "kanitlar": [{"no": e["no"], "ad": e["ad"], "dosya": e["dosya"], "doc_id": e["doc_id"]} for e in ev],
             "komisyon": bool(src.notes.get(olcut)), "onceki": src.previous_name if olcut in src.previous else None,
-            "faaliyetler": [{"id": f["id"], "ad": f["ad"], "yalniz_duyuru": f["yalniz_duyuru"]} for f in acts]}
+            "faaliyetler": [{"id": f["id"], "ad": f["ad"], "yalniz_duyuru": f["yalniz_duyuru"]} for f in acts],
+            "donem": src.donem, "donem_ici": in_period_nos(ev, src.donem)}
     return inputs, meta
+
+
+def in_period_nos(ev: list[dict], donem: int | None) -> list[str]:
+    """Belgesinde dönem içi tarihli kayıt bulunan kanıt numaraları (kod denetimi `donem_ici_atlandi`)."""
+    return [e["no"] for e in ev if donem and T.dated_in_period(e.get("donem_ici") or [], donem)]
 
 
 # -- kaynak yolları ----------------------------------------------------------------------------
@@ -623,6 +641,7 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", index: Path | Non
         onceki = (out.get("onceki_yila_gore") or "").strip()
         issues = T.check_text(paras, onceki, index_nos=src.index_nos(c), od=meta["od_onerisi"],
                               komisyon=meta.get("komisyon", False))
+        issues += T.content_issues(paras, onceki, donem=meta.get("donem"), donem_ici=set(meta.get("donem_ici") or []))
         if issues:
             st["gecersiz"][c] = [f"{i['yer']} {i['kod']}: {i['ayrinti']}" for i in issues]
             continue

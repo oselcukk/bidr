@@ -149,7 +149,9 @@ def code_check(src: W.Sources, t: dict) -> list[dict]:
         issues.append({"yer": "-", "metin": "", "kod": "od_asimi",
                        "ayrinti": f"metin OD{t['od_onerisi']} için yazıldı; güncel önerilen OD{od_now}"})
     cited = set(W._cited(paras, onceki))
-    for e in src.evidence(c, only=cited):
+    ev = src.evidence(c, only=cited)
+    issues += T.content_issues(paras, onceki, donem=src.donem, donem_ici=set(W.in_period_nos(ev, src.donem)))
+    for e in ev:
         if src.doc_text(e["doc_id"]) is None:
             issues.append({"yer": "-", "metin": "", "kod": "belge_metni_yok",
                            "ayrinti": f"[{e['no']}] belge metni yok ({e['doc_id'] or 'doc_id boş'}); alıntı denetlenemedi"})
@@ -161,6 +163,17 @@ def code_check(src: W.Sources, t: dict) -> list[dict]:
                 issues.append({"yer": "-", "metin": "", "kod": "alinti_belgede_yok",
                                "ayrinti": f"[{e['no']}] «{q['alinti'][:80]}…» belge metninde bulunamadı"})
     return issues
+
+
+def content_check(src: W.Sources, t: dict) -> list[dict]:
+    """Kanıt paketine göre içerik denetimi (dönem içi kayıt, fakülte değeri; bkz. text.content_issues):
+    doğrulanmış eski metinlere de uygulanır — kural metin yazıldıktan sonra eklendiyse metin yeni
+    kuralla yeniden yazıma gider (kör test 2026-11-20: v3 kuralı eski metinlere uygulanmamıştı)."""
+    c = t["olcut"]
+    paras, onceki = _paras(t)
+    cited = set(W._cited(paras, onceki))
+    ev = src.evidence(c, only=cited)
+    return T.content_issues(paras, onceki, donem=src.donem, donem_ici=set(W.in_period_nos(ev, src.donem)))
 
 
 def render_sentences(rows: list[dict]) -> str:
@@ -212,17 +225,25 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
     log = load_log(ws)
     d = W.work_dir(ws, STAGE)
     d.mkdir(parents=True, exist_ok=True)
-    st = {"paket": 0, "yeni": 0, "zaten_tamam": 0, "kod_reddi": {}, "metin": 0}
+    st = {"paket": 0, "yeni": 0, "zaten_tamam": 0, "kod_reddi": {}, "metin": 0, "yeni_kural": []}
     for t in _texts(ws, only):
         st["metin"] += 1
         c = t["olcut"]
         sha = W.text_sha(t)
         prev = log.get(c)
+        renew = False
         if (not redo and not only and prev and prev.get("metin_sha") == sha and prev.get("durum") in FINAL
                 and t.get("durum") == prev["durum"]):
-            st["zaten_tamam"] += 1
-            continue
+            # doğrulanmış metin sonradan eklenen içerik kuralına takılıyorsa yeniden yazıma gider;
+            # yeni kural reddi tur sayacını sıfırlar (eski turlar bu kurala göre yapılmadı)
+            if t.get("durum") != "dogrulandi" or not content_check(src, t):
+                st["zaten_tamam"] += 1
+                continue
+            renew = True
         issues = code_check(src, t)
+        if renew and issues:
+            t = {**t, "tur": 0}
+            st["yeni_kural"].append(c)
         if issues:
             why = [f"{i['yer']} {i['kod']}: {i['ayrinti']}" for i in issues]
             log[c] = {"olcut": c, "durum": "reddedildi", "metin_sha": sha, "asama": "kod",

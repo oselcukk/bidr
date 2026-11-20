@@ -26,7 +26,10 @@ bulunamamıştır." yazar. `--eksik-notu-yok` eski seçenektir, etkisizdir. Metn
 (`kurum_geneli`), araç dosya adları. Üç denetim aynı listeyi kullanır: ölçüt metni (`write apply`,
 `verify` kod denetimi: `ic_dil`), alan maddeleri (`yonler apply`, `verify`: `ic_dil`) ve son çıktı
 (`bidr denetle`: KRİTİK `ic_dil`). Yazım istemleri iç terim yerine sade karşılık verir (yonler
-bulguları: "birimin bu dönemdeki uygulamasını gösteren belge yok", "tarihi belgede görülmüyor").
+bulguları: "birimin bu dönemdeki uygulamasını gösteren belge yok"). Kanıt yönetimi kararı da iç dildir
+(kör test 2026-11-20, Kimya A.1.5/B.1.6): "… dönem sonrasına ait olduğundan", "tarihi belgede
+görülmediğinden", "bu dönemin kanıtı olarak gösterilememektedir", "kanıt olarak sayılmamıştır" —
+gelişmeye açık yön bölümün eksiğini söyler, aracın bir belgeyi neden saymadığını değil.
 
 
 ## Kanıt adı (`ad`, `ad_kaynagi`) — öncelik insan > model parça adı > model > kural
@@ -195,6 +198,20 @@ eklenmiş ilgisiz yönergenin Senato kararı ve başka tarihli tutanak kanıta m
 sayıyı küçültme ("4 proje", "birinin" değil), kanıtta bilgi varken "kanıt yok" deme, fakülte
 değerini bölümün değeri gibi verme ve hedefle karşılaştırmayı açık yaz; kural 13: aracın iç dili yok
 (kod `ic_dil`). v2 metinleri girdileri değişmedikçe geçerli kalır.
+**v4 (kör test 2026-11-20 güncelleme ölçümü):** paketin başında dönem içi tarihli kaydı olan
+kanıtların listesi ("DÖNEM İÇİ KAYDI OLAN KANITLAR (2025): [4_OD3]"); gösterge/izleme belgesinde
+birimin adıyla geçen sayılı satır "bölümün kendi verisi" olarak ilk sırada (`sources.unit_value_snippets`,
+birim `config.yaml bidr.birim`). Kural 8: dönem içi kayıt zorunlu ve ilk sırada; kural 11: önce
+bölümün değeri (tabloda yalnız ham veri varsa hesabıyla: "8 yayın / 28 öğretim üyesi = 0,29"),
+fakülte değeri ancak ardından ve "fakülte genelinde" diye. Kod denetimi (`text.content_issues`;
+`write apply` paketteki `meta.donem`/`meta.donem_ici` ile, `verify` kod denetimi kanıt listesiyle):
+`donem_ici_atlandi` — belgesinde dönem içi tarihli kayıt bulunan kanıta atıf yapan cümlelerin hiçbiri
+dönem içini (dönem yılı ya da dönemi kapsayan aralık) anlatmıyor, en az biri yalnız dönem dışı yıl
+anıyor; `fakulte_degeri` — paragrafta gerçekleşme değeri (ondalık) var, fakülte/kurum geneli ya da
+bölümün yalnız ham verisi anılıyor, bölümün kendi değeri (ondalık ya da "a / b") yok. Bu iki denetim
+doğrulanmış eski metinlere de uygulanır: `verify prepare` sonuçlanmış `dogrulandi` metni bunlardan
+geçirir, takılan metin `reddedildi` (kod) olur ve tur sayacı sıfırlanır (`yeni_kural`), yani
+`--eski-kurallar` beklemeden yeni kuralla yeniden yazıma gider; temiz eski metin dokunulmaz.
 **Eski yazım kuralıyla yazılmış metinler (isteğe bağlı yenileme).** `write_tamam` bunları sayar
 (`ilerleme.eski_kural`; uyarı: "N metin eski yazım kuralıyla yazıldı … `bidr write prepare -w WS
 --eski-kurallar`"); aşama bitmiş sayılır, yenileme zorunlu değildir. `--eski-kurallar` yalnız görev
@@ -246,8 +263,15 @@ dayanağı olan ölçütlerden (güçlü: doğrulanmış metni olan; gelişme: b
 kuralları; ayrıca "önerilir/gerekmektedir" öğüt dili yok. Kanıtla çapraz denetim (`cross_check`):
 gelişmeye açık yönün "yok" hükmü ölçütün KANIT DURUMU'yla çelişmez (`kanitla_celiski`: izleme/
 iyileştirme/uygulama halkası kanıtlıyken ya da listede birime ait kanıt varken "bölüm düzeyinde
-kanıt yok/yalnız kurum geneli"; nedenli hüküm — "tarihi belgede görülmüyor", "dönem sonrasına ait" —
-çelişki değildir); aynı ölçütte güçlü yönün söylediği uygulamayı yok saymaz (`ic_celiski`); hedefe
+kanıt yok/yalnız kurum geneli"). Audit zinciri halkayı eksik saysa da ölçütün doğrulanmış metni
+izleme/değerlendirme/iyileştirmeyi anlatıyorsa (`yonler.text_rings`: düzenleme/plan cümleleri hariç;
+kör test 2026-11-20: Mat C.3.1 izleme tablosu, Kimya D.2.1 raporlama, Kimya B.1.1 değerlendirme
+toplantısı) "izlendiğini/değerlendirildiğini/iyileştirildiğini gösteren belge yok" çelişkidir; metin
+yalnız izleme verisini anlatıyorsa hüküm "izleme sonuçlarının bölümce değerlendirildiğini gösteren
+belge yok"a daraltılır (`yonler.IZLEME_DAR` bulgusu), var olanı kabul eden hüküm ("geri bildirimler
+dışında …", "izlenmekle birlikte …") geçer. KANIT DURUMU bunu gösterir ("izleme metinde var",
+"metinde izleme verisi var"); metnin anlattığı halkanın bulgusu yazılmaz. Aynı ölçütte güçlü yönün
+söylediği uygulamayı ya da sonuçların değerlendirilmesini/buna dayanan değişikliği yok saymaz (`ic_celiski`); hedefe
 ulaşıldığı doğrulanmış metinde görünmeyen gösterge/performans değeri güçlü yön olmaz; metindeki
 gösterge hedefin altındaysa (söz ya da sayı: "hedeflenen değeri 1.08 … gerçekleşme değeri 0.36")
 o ölçütün izleme verisi de güçlü yön olmaz (`hedef_alti_guclu`) ve bu olgu BULGULAR satırına
@@ -258,8 +282,9 @@ bulunmamaktadır" BULGULAR'daki uygulama eksikliğinin kendisidir: listede birim
 kanıt olsa da `kanitla_celiski` sayılmaz; genel "bölüm düzeyinde kanıt yok" ve "yalnız kurum geneli"
 hükmü sayılır. Fakülte/kurum geneli gösterge
 değeri bölümün değeri yanında olmadan verilmez (`fakulte_degeri`); aracın iç dili yok (`ic_dil`).
-Bulgular sade dildedir (düzey/halka/"OD'ye sayılmadı" yok): birime ait ama dönem kanıtı sayılmayan
-belge nedeniyle anılır. `girdi_sha`:
+Bulgular sade dildedir (düzey/halka/"OD'ye sayılmadı" yok); birime ait ama dönem kanıtı sayılmayan
+belgenin nedeni bulguya ve maddeye girmez (kanıt yönetimi notu, gaps.md), birime ait belge varken
+"yalnız kurum geneli" yerine "dayanak çoğunlukla kurum geneli" denir. `girdi_sha`:
 alanın ölçütleri, doğrulanmış metin özetleri, OD, bulgular ve kanıt durumu; değişirse maddeler eskir.
 Bağımsız doğrulama `bidr verify prepare|apply` akışına katılır: `work/verify/yonler/<alan>.json`
 (görev `verify_yonler`; doğrulayıcıya yalnız maddeler ve atıf yapılan ölçütlerin metni/bulgusu
@@ -270,7 +295,9 @@ yeniden yazım turu) ayrı listeler, bir alanın düzeltmesi ötekilerin doğrul
 `bidr yonler prepare --reddedilenler` (gerekçeli; `rapor.yeniden_yazim_siniri`). Render reddedilmiş
 alanda bütün hücreyi boşaltmaz: doğrulayıcının (model aşaması, kaydı güncel) "destekleniyor" dediği
 maddeleri basar, ötekileri çıkarır (`.bidr-render.json` `yon_cikarilan`, uyarı); kod aşamasında
-reddedilen alanın maddesi doğrulanmamıştır, basılmaz. İşlenmiş alanda basılacak madde kalmazsa
+reddedilen alanın maddesi doğrulanmamıştır, basılmaz. Çıkarılan maddeyle bir ölçüt alanın hiçbir yön
+hücresinde kalmıyorsa (kör test 2026-11-20, Kimya C: C.3.1 maddesi çıktı, ölçüt hiçbir hücrede yok)
+rapor TASLAK olur (`yon_kapsam_kaybi`; madde düzeltilip yeniden doğrulanır). İşlenmiş alanda basılacak madde kalmazsa
 hücreye açık ifade yazılır ("Bu alanda bu dönem için kanıtla doğrulanmış bir güçlü yön
 belirlenmemiştir."; `yon_ifadeli`), şablon yönergesi kalmaz. Alan maddesi hiç yazılmamışsa hücre
 yönergeyle kalır, rapor TASLAK olur. `verify-yonler.jsonl` render girdi özetine girer.
