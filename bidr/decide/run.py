@@ -76,7 +76,22 @@ DECISIONS = "decisions.jsonl"
 SCHEMA = 1
 KURUM_OD = 2             # kurum geneli düzenleme tek başına en çok OD2 (komisyon ilkesi)
 KURUM_FILE = Path(__file__).resolve().parents[1] / "data" / "profiles" / "kurum_geneli.yaml"
-RESTALE = "YENIDEN.json"  # work/<aşama>/: onay bekleyen eski kayıtların özeti
+# Yardımcı (paket olmayan) dosyalar paket klasörünün DIŞINDA durur: work/_durum/<aşama>-yeniden.json
+# (onay bekleyen eski kayıtların özeti + son tam prepare'in girdi parmak izi). Eski sürümler bunu
+# work/<aşama>/YENIDEN.json'a yazıyordu; apply onu paket sanıp çöküyordu: `_pkg_paths` atlar,
+# prepare kaldırır.
+STATE_DIR = "_durum"
+RESTALE = "yeniden.json"
+LEGACY_RESTALE = "YENIDEN.json"
+# Kod denetiminin (check_matches/apply_fine kuralları) sürümü: değişince aynı cevap yeniden
+# uygulanır (`apply` yalnız istemi, cevabı ya da bu sürümü değişen belgeyi yeniden işler).
+# 1: sürüm alanı yok (K4 öncesi), 2: tablo başlığı alıntısı reddi + ikinci arama koruması.
+DENETIM_SURUMU = 2
+# Belgeye özgü görev girdileri: bunlar değişirse karar gerçekten eskir ("girdi_degisti", belge
+# yeniden paketlenir). Öteki girdiler ve istem şablonu bütün belgelerde ortak kural metnidir;
+# yalnız onlar değiştiyse kayıt geçerli kalır ("kural_degisti", toptan yeniden işleme `--yes` ile).
+DOC_KEYS = {"coarse": ("belge_bilgisi", "belge_metni"),
+            "fine": ("adaylar", "belge_bilgisi", "belge_metni", "birim")}
 
 
 class Backend:
@@ -553,6 +568,8 @@ def no_candidate(rec: dict, meta: dict) -> dict:
 
 def apply_fine(ctx: Context, did: str, rec: dict, out: dict, meta: dict, model_id: str,
                verify: Callable, extra: dict | None = None) -> dict:
+    """İnce cevabı kayda işler. Kayıttaki ikinci arama eşleşmeleri korunur (`carry_second_search`)."""
+    prev_second = [m for m in rec.get("eslesmeler") or [] if m.get("ikinci_arama")]
     rec = _clear_pending(rec)
     model_rel = unit_relation(out)[0]
     pin = ctx.pin(did)
@@ -576,8 +593,9 @@ def apply_fine(ctx: Context, did: str, rec: dict, out: dict, meta: dict, model_i
                    **({"birim_iliskisi_model": model_rel} if pin else {}),
                    "kanit_adi": evidence_name_of(out), **activity_of(out), "model": model_id,
                    "metin": meta["metin"], "istem_token_tahmini": meta["istem_token_tahmini"],
-                   **(extra or {})}
-    rec["eslesmeler"] = matches
+                   "denetim_surumu": DENETIM_SURUMU, **(extra or {})}
+    rec["eslesmeler"] = matches + carry_second_search(ctx, did, prev_second, matches, kg["karar"], rel, verify)
+    matches = rec["eslesmeler"]
     rec["olcutler"] = summarize(matches)
     if rec["olcutler"]:
         rec["karar"] = "olcut_var"
@@ -586,7 +604,34 @@ def apply_fine(ctx: Context, did: str, rec: dict, out: dict, meta: dict, model_i
     else:
         rec["karar"] = "olcut_yok"
     rec["reddedilen_eslesme"] = sum(not m["kabul"] for m in matches)
+    if rec.get("ikinci_arama"):
+        from bidr.candidates.arama import first_pass_print
+        rec["ikinci_arama"] = {**rec["ikinci_arama"], "ince_parmak": first_pass_print(rec),
+                               "eslesme": sum(bool(m.get("ikinci_arama")) for m in matches)}
     return rec
+
+
+def carry_second_search(ctx: Context, did: str, prev: list[dict], first: list[dict], kurum: bool,
+                        rel: str, verify: Callable) -> list[dict]:
+    """İlk geçiş yeniden karara bağlanırken kaydın ikinci arama eşleşmeleri (`bidr arama`) silinmez:
+    aynı kod denetiminden (alıntı, yuva, OD, yeni birim ilişkisi) yeniden geçer ve kayda eklenir.
+    İlk geçişin aynı ölçüt/yuvada kabul ettiği eşleşme varsa ikinci aramanınki düşer (çift sayım)."""
+    if not prev:
+        return []
+    raw = {"eslesmeler": [{k: m[k] for k in MATCH_KEYS if k in m} for m in prev]}
+    cands = list(dict.fromkeys(m.get("olcut") for m in prev if m.get("olcut")))
+    checked = check_matches(raw, cands, ctx.cs, ctx.tags, ctx.text(did), verify, kurum, rel)
+    taken = {(m.get("olcut"), m.get("yuva")) for m in first if m.get("kabul")}
+    out = []
+    for old, m in zip(prev, checked):
+        if (m.get("olcut"), m.get("yuva")) in taken:
+            continue
+        m["ikinci_arama"] = True
+        m["denetim"]["isaret"] = [*m["denetim"]["isaret"], "ikinci_arama"]
+        if "ikinci_arama_paket" in old:
+            m["ikinci_arama_paket"] = old["ikinci_arama_paket"]
+        out.append(m)
+    return out
 
 
 def activity_of(out: dict) -> dict:
@@ -676,9 +721,47 @@ def version_stale(rec: dict | None, stage: str) -> bool:
     return v is not None and str(v) != task_version(task)
 
 
+def girdi_sha(inputs: dict) -> dict[str, str]:
+    """Görev girdilerinin ayrı ayrı parmak izi (paket ve kayıt `girdi_sha`)."""
+    return {k: _sha(v if isinstance(v, str) else json.dumps(v, ensure_ascii=False, sort_keys=True))
+            for k, v in inputs.items()}
+
+
+def doc_inputs_same(ctx: Context, did: str, stage: str, sec: dict, inputs: dict,
+                    meta: dict) -> bool | None:
+    """Belgeye özgü girdiler (`DOC_KEYS`: aday listesi ve ölçüt blokları, belge bilgisi, metin
+    payı, birim) kararın verildiği andakiyle aynı mı. Kayıtta `girdi_sha` varsa onunla; yoksa
+    (eski kayıt) kayıttaki istemle üretilmiş paketin isteminde her girdi birebir geçiyor ve
+    paketin aday/metin özeti aynı mı. Karşılaştırılamıyorsa None."""
+    keys = DOC_KEYS[stage]
+    now = girdi_sha({k: inputs[k] for k in keys})
+    old = sec.get("girdi_sha")
+    if isinstance(old, dict) and all(k in old for k in keys):
+        return all(old[k] == now[k] for k in keys)
+    p = work_dir(ctx.ws, stage) / f"{did}.json"
+    try:
+        pkg = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(pkg, dict) or pkg.get("istem_sha") != sec.get("istem_sha"):
+        return None
+    pm = pkg.get("meta") or {}
+    for k in ("adaylar", "metin"):
+        if k in meta and pm.get(k) != meta[k]:
+            return False
+    istem = pkg.get("istem") or ""
+    return all(inputs[k] in istem for k in keys)
+
+
 def staleness(ctx: Context, did: str, rec: dict, stage: str, backend: Backend) -> str | None:
-    """İşlenmiş kayıt eskidi mi: "eski_surum" (görev sürümü değişti) | "istem_degisti"
-    (doldurulmuş istem farklı: metin, belge bilgisi, aday, ilke, istem şablonu) | None.
+    """İşlenmiş kayıt eskidi mi:
+      - "eski_surum": görev sürümü değişti (çıktı sözleşmesi; toptan, onayla),
+      - "girdi_degisti": belgeye özgü paket içeriği değişti (aday listesi, ölçüt blokları, metin
+        payı, belge bilgisi, birim): karar gerçekten eskidi, belge yeniden paketlenir,
+      - "kural_degisti": yalnız ortak kural metni (istem şablonu, kanıt ilkeleri) değişti: kayıt
+        geçerli, "istem sürümü eski" bilgisi; toptan yeniden işleme yalnız `--yes` ile,
+      - "istem_degisti": istem farklı ama ayrım yapılamadı (eski kayıt, paketi yok): onayla,
+      - None: güncel.
     İstem karşılaştırması yalnız ajan kipinde kaydedilen `istem_sha` ile yapılır."""
     if version_stale(rec, stage):
         return "eski_surum"
@@ -686,30 +769,80 @@ def staleness(ctx: Context, did: str, rec: dict, stage: str, backend: Backend) -
     if sec.get("devralindi") or not sec.get("istem_sha"):
         return None
     if stage == "coarse":
-        inputs, _ = coarse_inputs(ctx, did)
+        inputs, meta = coarse_inputs(ctx, did)
     else:
         # İnsan birim kararı audit'te uygulanır; yalnız kayıt onunla yeniden karara bağlandıysa
         # istem karşılaştırmasına girer (karar değişmedikçe belge "istem değişti" sayılmaz).
-        inputs, _ = fine_inputs(ctx, did, rec, pin=_section(rec, "fine").get("birim_iliskisi_kaynagi") == "insan")
+        inputs, meta = fine_inputs(ctx, did, rec, pin=_section(rec, "fine").get("birim_iliskisi_kaynagi") == "insan")
         if inputs is None:
             return None
     sha = _sha(backend.render_task(STAGES[stage], inputs)["prompt"])
-    return "istem_degisti" if sha != sec["istem_sha"] else None
+    same = doc_inputs_same(ctx, did, stage, sec, inputs, meta)
+    if same and not isinstance(sec.get("girdi_sha"), dict):
+        sec["girdi_sha"] = girdi_sha({k: inputs[k] for k in DOC_KEYS[stage]})   # sonraki kez doğrudan
+    if sha == sec["istem_sha"]:
+        return None
+    if same is None:
+        return "istem_degisti"
+    return "kural_degisti" if same else "girdi_degisti"
+
+
+def restale_path(ws: Workspace, stage: str) -> Path:
+    return ws.root / "work" / STATE_DIR / f"{stage}-{RESTALE}"
+
+
+def load_restale(ws: Workspace, stage: str) -> dict | None:
+    f = restale_path(ws, stage)
+    try:
+        d = json.loads(f.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return d if isinstance(d, dict) else None
+
+
+# Paket istemini belirleyen kod ve veri (`input_fingerprint`). Biri değişince son prepare'in eskime
+# hesabı geçersizdir: `bidr status` prepare'i (onaysız, model işi yok) yeniden ister.
+_PKG = Path(__file__).resolve().parents[1]
+FINGERPRINT_CODE = (_PKG / "decide" / "run.py", _PKG / "decide" / "prompt.py",
+                    _PKG / "candidates" / "komisyon.py", _PKG / "candidates" / "text.py")
+FINGERPRINT_DATA = (_PKG / "data" / "criteria", _PKG / "data" / "profiles")
+
+
+def input_fingerprint(ws: Workspace, stage: str) -> str:
+    """Aşamanın paket girdilerinin parmak izi: görev dosyaları, istemi kuran kod, ölçüt/profil
+    verisi ve çalışma alanının girdileri (text/, documents.jsonl, candidates.jsonl, insan birim
+    kararları, birim bilgisi). Salt okunur, model çağırmaz."""
+    h = hashlib.sha256()
+
+    def add(p: Path) -> None:
+        if p.is_file():
+            h.update(p.name.encode("utf-8") + b"\0" + p.read_bytes() + b"\0")
+
+    for p in sorted((TASKS_DIR / STAGES[stage]).rglob("*")):
+        add(p)
+    for p in FINGERPRINT_CODE:
+        add(p)
+    for d in FINGERPRINT_DATA:
+        for p in sorted(d.rglob("*")):
+            add(p)
+    for name in ("documents.jsonl", "candidates.jsonl", BIRIM_KARARLARI):
+        add(ws.root / name)
+    h.update(json.dumps(P.unit_info(ws.root), ensure_ascii=False, sort_keys=True).encode("utf-8"))
+    if ws.text_dir.exists():
+        for p in sorted(ws.text_dir.glob("*.txt")):
+            add(p)
+    return h.hexdigest()[:16]
 
 
 def stale_summary(ws: Workspace, stage: str, recs: dict | None = None) -> dict[str, str]:
-    """Salt okunur: {doc_id: neden} — onay bekleyen yeniden işleme (bidr status için).
-    Sürüm farkı kayıttan hesaplanır; istem farkı son `prepare`'in yazdığı YENIDEN.json'dan."""
+    """Salt okunur: {doc_id: neden} — yeniden işlenmemiş eski kayıtlar (bidr status için).
+    Sürüm farkı kayıttan hesaplanır; istem farkı son `prepare`'in yazdığı özetten
+    (work/_durum/<aşama>-yeniden.json)."""
     recs = load_decisions(ws) if recs is None else recs
     out = {d: "eski_surum" for d, r in recs.items() if stage_done(r, stage) and version_stale(r, stage)}
-    f = work_dir(ws, stage) / RESTALE
-    if f.exists():
-        try:
-            for d, why in (json.loads(f.read_text(encoding="utf-8")).get("belgeler") or {}).items():
-                if stage_done(recs.get(d), stage):
-                    out.setdefault(d, why)
-        except (OSError, ValueError):
-            pass
+    for d, why in ((load_restale(ws, stage) or {}).get("belgeler") or {}).items():
+        if stage_done(recs.get(d), stage):
+            out.setdefault(d, why)
     return out
 
 
@@ -789,7 +922,7 @@ def inherit(ctx: Context, recs: dict, stage: str, verify: Callable) -> dict:
                     "adaylar_kesilen": rep.get("adaylar_kesilen", []), "metin": rep["ince"].get("metin"),
                     "adaylar_komisyon": rep.get("adaylar_komisyon", []),
                     "istem_token_tahmini": rep["ince"].get("istem_token_tahmini")}
-            extra = {k: rep["ince"][k] for k in ("kip", "istem_sha") if k in rep["ince"]}
+            extra = {k: rep["ince"][k] for k in ("kip", "istem_sha", "girdi_sha") if k in rep["ince"]}
             extra["devralindi"] = rid
             new = apply_fine(ctx, did, rec, rep_output(rep), meta, rep["ince"].get("model"), verify, extra)
             new["gorev"] = {**new.get("gorev", {}), FINE: rep.get("gorev", {}).get(FINE)}
@@ -861,7 +994,20 @@ def work_dir(ws: Workspace, stage: str) -> Path:
 
 
 def _pkg_paths(d: Path) -> list[Path]:
-    return sorted(p for p in d.glob("*.json") if not p.name.endswith(".out.json"))
+    """İş paketleri: `<doc_id>.json`. Cevaplar (`.out.json`), `_` ile başlayan ve eski sürümün
+    yardımcı dosyası (`YENIDEN.json`) paket değildir."""
+    return sorted(p for p in d.glob("*.json")
+                  if not p.name.endswith(".out.json") and not p.name.startswith("_")
+                  and p.name != LEGACY_RESTALE)
+
+
+def _load_pkg(p: Path) -> dict | None:
+    """Paket dosyası; okunamıyorsa ya da paket değilse (doc_id yok) None."""
+    try:
+        pkg = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return pkg if isinstance(pkg, dict) and pkg.get("doc_id") and pkg.get("cikti_dosyasi") else None
 
 
 def _write_pkg(d: Path, did: str, task: str, inputs: dict, meta: dict, backend: Backend,
@@ -871,6 +1017,7 @@ def _write_pkg(d: Path, did: str, task: str, inputs: dict, meta: dict, backend: 
     r = backend.render_task(task, inputs)
     sha = _sha(r["prompt"])
     pkg = {"gorev": r["task"], "surum": str(r["version"]), "doc_id": did, "istem_sha": sha,
+           "girdi_sha": girdi_sha(inputs),
            "cikti_dosyasi": f"{did}.out.json", "istem": r["prompt"], "sema": r["schema"],
            "ozet": {"istem_karakter": len(r["prompt"]), "istem_token_tahmini": P.approx_tokens(r["prompt"]),
                     **{k: v for k, v in meta.items() if k in ("adaylar", "belge_bilgisi")},
@@ -880,6 +1027,9 @@ def _write_pkg(d: Path, did: str, task: str, inputs: dict, meta: dict, backend: 
     old = json.loads(p.read_text(encoding="utf-8")) if p.exists() else None
     if (old and not force and old.get("istem_sha") == sha
             and str(old.get("surum")) == str(r["version"])):
+        if "girdi_sha" not in old:          # eski paket: cevaba dokunmadan girdi izini ekle
+            p.write_text(json.dumps({**old, "girdi_sha": pkg["girdi_sha"]}, ensure_ascii=False, indent=1),
+                         encoding="utf-8")
         return False
     out = d / f"{did}.out.json"
     if out.exists():
@@ -941,6 +1091,7 @@ def prepare(ws_root: Path, stage: str, *, profile: str | None = "akademik_bolum"
     members = plan_members(ctx, [x for x in eligible if x not in force], recs, stage)
     stale: dict[str, str] = {}
     fresh: set[str] = set()
+    handled: set[str] = set()
 
     def package(did: str, rec: dict | None, forced: bool) -> None:
         inputs, meta = _stage_inputs(ctx, did, rec, stage)
@@ -964,8 +1115,10 @@ def prepare(ws_root: Path, stage: str, *, profile: str | None = "akademik_bolum"
                     continue
             else:
                 stale[did] = why
-                if not yes:
+                # belgeye özgü girdisi değişen belge onaysız yeniden paketlenir; ötekiler onayla
+                if not yes and why != "girdi_degisti":
                     continue
+                handled.add(did)
                 rec = recs[did] = {**rec, "yeniden": {"asama": stage, "neden": why,
                                                       "onceki_surum": (rec.get("gorev") or {}).get(task)}}
                 forced = True
@@ -985,27 +1138,33 @@ def prepare(ws_root: Path, stage: str, *, profile: str | None = "akademik_bolum"
     for did in inh["ayrildi"]:              # temsilcinin alıntısı tutmadı: kendisi işlenir
         package(did, recs[did], False)
     save_decisions(ctx.ws, recs)
-    # onay bekleyen eski kayıtlar
-    f = d / RESTALE
-    prev = {}
-    if f.exists():
-        try:
-            prev = json.loads(f.read_text(encoding="utf-8")).get("belgeler") or {}
-        except (OSError, ValueError):
-            prev = {}
-    pend = {x: w for x, w in {**prev, **({} if yes else stale)}.items()
-            if x not in fresh and stage_done(recs.get(x), stage) and not (yes and x in stale)}
+    # yeniden işlenmemiş eski kayıtlar (work/_durum/<aşama>-yeniden.json; paket klasörünün dışında)
+    legacy = d / LEGACY_RESTALE
+    if legacy.exists():
+        legacy.unlink()
+    prev_doc = load_restale(ctx.ws, stage) or {}
+    prev = prev_doc.get("belgeler") or {}
+    pend = {x: w for x, w in {**prev, **stale}.items()
+            if x not in fresh and x not in handled and stage_done(recs.get(x), stage)}
+    onay = {x: w for x, w in pend.items() if w != "kural_degisti"}
     st["eski"] = pend
+    st["kural_eski"] = sum(w == "kural_degisti" for w in pend.values())
+    st["girdi_degisti"] = sum(w == "girdi_degisti" for x, w in stale.items() if x in handled)
     st["eski_cagri"] = sum(1 for x in pend if (recs[x].get("mukerrer") or {}).get("durum") != "devralindi")
     st["eski_token"] = sum(int(_section(recs[x], stage).get("istem_token_tahmini") or 0) for x in pend
                            if (recs[x].get("mukerrer") or {}).get("durum") != "devralindi")
-    st["onay_gerekli"] = bool(pend)
-    if pend:
-        f.write_text(json.dumps({"gorev": task, "surum": task_version(task), "belgeler": pend,
-                                 "model_cevabi": st["eski_cagri"], "istem_token_tahmini": st["eski_token"]},
-                                ensure_ascii=False, indent=1), encoding="utf-8")
-    elif f.exists():
-        f.unlink()
+    st["onay_gerekli"] = bool(onay)
+    # parmak izi: eskime yalnız bütün belgelere bakan prepare'de hesaplanmış sayılır (ya da bakılmamış
+    # işlenmiş ajan kaydı kalmadıysa: ör. sağlayıcı kipi kayıtları + `--only` ile paketlenenler)
+    full = (only is None and not limit and not only_labeled) or not any(
+        stage_done(r, stage) and _section(r, stage).get("istem_sha") for r in recs.values())
+    f = restale_path(ctx.ws, stage)
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps({"gorev": task, "surum": task_version(task),
+                             "parmak": input_fingerprint(ctx.ws, stage) if full else prev_doc.get("parmak"),
+                             "belgeler": pend, "model_cevabi": st["eski_cagri"],
+                             "istem_token_tahmini": st["eski_token"]}, ensure_ascii=False, indent=1),
+                 encoding="utf-8")
     pending = sum(1 for p in _pkg_paths(d) if not (d / f"{p.stem}.out.json").exists())
     (d / "README.md").write_text(README.format(task=task, version=task_version(task), stage=stage,
                                                n=pending), encoding="utf-8")
@@ -1031,6 +1190,17 @@ def _coarse_unchanged(rec: dict | None, pkg: dict, cevap_sha: str, out: dict) ->
             == (out.get("karar"), out.get("olcutler") or [], out.get("gerekce", "")))
 
 
+def _fine_unchanged(rec: dict | None, pkg: dict, cevap_sha: str) -> bool:
+    """Bu ince cevap aynı paketle ve aynı kod denetimiyle zaten işlenmiş mi. Yeniden işlemek
+    gereksizdir (ve ikinci arama izini bozar): `apply` yalnız değişen belgeleri işler."""
+    if not stage_done(rec, "fine"):
+        return False
+    ince = rec.get("ince") or {}
+    return (not ince.get("devralindi") and ince.get("istem_sha") == pkg["istem_sha"]
+            and ince.get("cevap_sha") == cevap_sha and ince.get("denetim_surumu") == DENETIM_SURUMU
+            and str((rec.get("gorev") or {}).get(FINE)) == str(pkg["surum"]))
+
+
 def apply(ws_root: Path, stage: str, *, model: str = "ajan:belirtilmemis",
           backend: Backend | None = None, ctx: Context | None = None) -> dict:
     """`.out.json` cevaplarını doğrular ve decisions.jsonl'e işler. Şemaya uymayan ya da
@@ -1046,9 +1216,12 @@ def apply(ws_root: Path, stage: str, *, model: str = "ajan:belirtilmemis",
     recs = load_decisions(ctx.ws)
     d = work_dir(ctx.ws, stage)
     st = {"islenen": 0, "degismedi": 0, "bekleyen": [], "gecersiz": {}, "alinti_tutmayan": {},
-          "eski_surum": [], "kanit_adi_red": {}, "baska_birim": [], "birim_belirsiz": []}
-    for p in _pkg_paths(d):
-        pkg = json.loads(p.read_text(encoding="utf-8"))
+          "eski_surum": [], "kanit_adi_red": {}, "baska_birim": [], "birim_belirsiz": [], "paket_degil": []}
+    for p in _pkg_paths(d) if d.exists() else []:
+        pkg = _load_pkg(p)
+        if pkg is None:                     # yardımcı/bozuk dosya: paket değil, atlanır
+            st["paket_degil"].append(p.name)
+            continue
         did = pkg["doc_id"]
         outp = d / pkg["cikti_dosyasi"]
         if not outp.exists():
@@ -1063,6 +1236,8 @@ def apply(ws_root: Path, stage: str, *, model: str = "ajan:belirtilmemis",
             st["gecersiz"][did] = errs[:5]
             continue
         extra = {"kip": "ajan", "istem_sha": pkg["istem_sha"], "cevap_sha": _sha(raw)}
+        if isinstance(pkg.get("girdi_sha"), dict):
+            extra["girdi_sha"] = pkg["girdi_sha"]
         rec = recs.get(did)
         if stage == "coarse":
             if _coarse_unchanged(rec, pkg, extra["cevap_sha"], out):
@@ -1077,6 +1252,11 @@ def apply(ws_root: Path, stage: str, *, model: str = "ajan:belirtilmemis",
         else:
             if not rec or "kaba" not in rec:
                 st["gecersiz"][did] = ["decisions.jsonl'de kaba kayıt yok"]
+                continue
+            if _fine_unchanged(rec, pkg, extra["cevap_sha"]):
+                if "girdi_sha" in extra and not isinstance(rec["ince"].get("girdi_sha"), dict):
+                    recs[did] = {**rec, "ince": {**rec["ince"], "girdi_sha": extra["girdi_sha"]}}
+                st["degismedi"] += 1
                 continue
             rec = apply_fine(ctx, did, rec, out, pkg["meta"], model, backend.verify_quote, extra)
             recs[did] = rec

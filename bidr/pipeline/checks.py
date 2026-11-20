@@ -129,14 +129,34 @@ def etiket_tamam(c: Ctx) -> Check:
 # -- identify / candidates ---------------------------------------------------------------
 
 def identify_tamam(c: Ctx) -> Check:
+    """Her metnin kaydı var, kayıt bugünkü identify koduyla (`arac_surumu`) ve config'in
+    dönemiyle (`--period`) üretilmiş. Eski sürüm ya da boş/farklı dönem: identify yeniden."""
+    from bidr.identify.pipeline import ARAC_SURUMU
     t = text_ids(c.ws)
-    d = _ids(c.ws.documents)
+    recs = {r["doc_id"]: r for r in read_jsonl(c.ws.documents) if r.get("doc_id")} \
+        if c.ws.documents.exists() else {}
+    d = set(recs)
     eksik = t - d
     prog = {"metin": len(t), "kayit": len(t & d)}
     if not t:
         return Check(kim=KOMUT, neden="text/ boş: işlenecek belge yok", ilerleme=prog)
     if eksik:
         return Check(kim=KOMUT, neden=f"{len(eksik)}/{len(t)} belgenin documents.jsonl kaydı yok", ilerleme=prog)
+    old = sorted(x for x in t if recs[x].get("arac_surumu") != ARAC_SURUMU)
+    if old:
+        vs = sorted({str(recs[x].get("arac_surumu") or 1) for x in old})
+        prog["eski"] = len(old)
+        return Check(kim=KOMUT, ilerleme=prog,
+                     neden=f"{len(old)}/{len(t)} kayıt eski (araç sürümü değişti: identify v{','.join(vs)} → "
+                           f"v{ARAC_SURUMU}): identify yeniden (model işi yok)")
+    donem = (c.sec or {}).get("donem")
+    if donem:
+        bos = sorted(x for x in t if recs[x].get("donem") != int(donem))
+        if bos:
+            prog["donem_eksik"] = len(bos)
+            return Check(kim=KOMUT, ilerleme=prog,
+                         neden=f"{len(bos)}/{len(t)} kaydın dönem alanı boş ya da {donem} değil (identify "
+                               f"--period olmadan çalışmış): tam komutla identify yeniden")
     return Check(bitti=True, neden=f"{len(t)} belge", ilerleme=prog)
 
 
@@ -163,8 +183,8 @@ def _gecersiz_ids(gfile: Path) -> set[str]:
 
 
 def karar_tamam(c: Ctx) -> Check:
-    from bidr.decide.run import (COARSE, FINE, load_decisions, load_unit_pins, pending_redecide, stage_done,
-                                 stale_summary, task_version)
+    from bidr.decide.run import (COARSE, FINE, _section, input_fingerprint, load_decisions, load_restale,
+                                 load_unit_pins, pending_redecide, stage_done, stale_summary, task_version)
     stage = c.stage["sart"]["asama"]
     task = COARSE if stage == "coarse" else FINE
     ws = c.ws
@@ -187,11 +207,18 @@ def karar_tamam(c: Ctx) -> Check:
             uy.append(f"{len(red)} belgede alıntısı tutmayan/kurala uymayan eşleşme kodca reddedildi "
                       f"(kullanılmaz). work/fine/GECERSIZ.md'deki paketleri bir kez yeniden yazıp apply "
                       f"çalıştırmak isteğe bağlıdır.")
-    eski = stale_summary(ws, stage, recs)
+    allstale = stale_summary(ws, stage, recs)
+    kural = sorted(x for x, w in allstale.items() if w == "kural_degisti")
+    eski = {x: w for x, w in allstale.items() if w != "kural_degisti"}
     if eski:
         prog["yeniden_islenecek"] = len(eski)
         uy.append(f"yeniden işlenecek {len(eski)} belge (görev sürümü ya da istem değişti; eski kararlar "
                   f"kullanılıyor). Pahalı: önce `{prep}` maliyet özetini verir, kullanıcı onaylarsa "
+                  f"`{prep} --yes`.")
+    if kural:
+        prog["istem_surumu_eski"] = len(kural)
+        uy.append(f"istem sürümü eski: {len(kural)} belgenin kararı ortak kural metni değişmeden önce verildi "
+                  f"(belgeye özgü girdi aynı; kayıt geçerli). Toptan yeniden işleme isteğe bağlı ve pahalı: "
                   f"`{prep} --yes`.")
     redo = pending_redecide(recs, load_unit_pins(ws.root)) if stage == "fine" else []
     if redo:
@@ -202,6 +229,16 @@ def karar_tamam(c: Ctx) -> Check:
                          neden=f"{len(redo)} belgenin birim ilişkisini komisyon değiştirdi (review.xlsx), "
                                f"eşleşme kaydı yok: yeniden ince karar gerekli (ilişki pakete sabit yazılır)")
         uy.append(f"{len(redo)} belge birim ilişkisi kararıyla yeniden ince karar bekliyor: `{cmd}`")
+    if not missing and any(_section(recs[x], stage).get("istem_sha") for x in done):
+        # ajan kipi kayıtları: araç ya da girdiler son tam prepare'den sonra değiştiyse eskime hesaplanmadı
+        h = load_restale(ws, stage)
+        if h is None or h.get("parmak") != input_fingerprint(ws, stage):
+            return Check(kim=KOMUT, ilerleme=prog, uyarilar=uy, komutlar=[prep],
+                         neden="eski olabilir (araç sürümü ya da girdiler değişti; son tam prepare'den sonra "
+                               "görev/istem kodu, ölçüt verisi, text/, documents.jsonl ya da candidates.jsonl "
+                               "değişti): prepare (onaysız; model çağrısı yok) etkiyi hesaplar, belgeye özgü "
+                               "girdisi değişen belgeleri yeniden paketler, yalnız ortak kural metni değişenleri "
+                               "geçerli sayar")
     if not missing:
         return Check(bitti=True, ilerleme=prog, uyarilar=uy,
                      neden=f"{len(done)} belge {stage} tamam"
@@ -385,7 +422,7 @@ def faaliyet_tamam(c: Ctx) -> Check:
 
 def ikinci_arama_tamam(c: Ctx) -> Check:
     from bidr.candidates import arama as A
-    from bidr.decide.run import FINE, _pkg_paths, load_decisions, task_version
+    from bidr.decide.run import FINE, _load_pkg, _pkg_paths, load_decisions, task_version
     from bidr.write.sources import rapor_section
     ws = c.ws
     if rapor_section(ws.root).get("ikinci_arama") is False:
@@ -399,12 +436,7 @@ def ikinci_arama_tamam(c: Ctx) -> Check:
                            "Atlamak kullanıcının kararıdır: config.yaml `rapor: {ikinci_arama: false}`")
     recs = load_decisions(ws)
     ver = task_version(FINE)
-    pkgs = []
-    for p in _pkg_paths(d):
-        try:
-            pkgs.append(json.loads(p.read_text(encoding="utf-8")))
-        except (OSError, ValueError):
-            continue
+    pkgs = [pkg for p in _pkg_paths(d) if (pkg := _load_pkg(p)) is not None]
     bad = _invalid_keys(d / "GECERSIZ.md", r"^- `([^`]+)\.json`")
     n_ia = _ikinci_arama_kabul(ws)
     prog = {"paket": len(pkgs), "kabul_eslesme": n_ia}
@@ -412,11 +444,14 @@ def ikinci_arama_tamam(c: Ctx) -> Check:
     for pkg in pkgs:
         did = pkg.get("doc_id")
         rec = recs.get(did)
+        outp = d / pkg["cikti_dosyasi"]
+        if (str(pkg.get("surum")) == ver and rec and rec.get("asama") == "ince" and outp.exists()
+                and A.merged(rec, pkg, A._sha(outp.read_text(encoding="utf-8")))):
+            continue                         # cevap kayıtta (ilk geçiş sonradan yeniden uygulanmış olsa da)
         if (str(pkg.get("surum")) != ver or not rec or rec.get("asama") != "ince"
                 or A.first_pass_print(rec) != ((pkg.get("meta") or {}).get("ikinci_arama") or {}).get("ince_parmak")):
             eski.append(did)
             continue
-        outp = d / pkg["cikti_dosyasi"]
         if not outp.exists():
             no_out.append(did)
             continue

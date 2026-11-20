@@ -25,6 +25,10 @@ from .text import collapse, fold
 
 INVENTORY_COLUMNS = ("doc_id", "dup_of", "status", "method", "pages", "parca_grubu", "parca_sira")
 SCHEMA_VERSION = 1
+# Üreten kodun sürümü (her kayda `arac_surumu`). Çıktıyı değiştiren her identify değişikliğinde
+# artırılır: `bidr status` eski sürümle üretilmiş kaydı "eski (araç sürümü değişti)" sayar ve
+# identify'ı yeniden ister. 1: alan yok (birleşik belgede `parcalar` öncesi), 2: `parcalar`.
+ARAC_SURUMU = 2
 
 
 def read_inventory(ws: Workspace) -> list[dict]:
@@ -126,7 +130,7 @@ def run(workspace: Path, *, period: int | None = None, catalog: Catalog | None =
         r = identify_text(raw, catalog, finder, period)
         if not p.exists():
             r["neden"] = "metin_dosyasi_yok"
-        rec = {"doc_id": did, "sema": SCHEMA_VERSION, "katman": "kural",
+        rec = {"doc_id": did, "sema": SCHEMA_VERSION, "arac_surumu": ARAC_SURUMU, "katman": "kural",
                "katalog_surumu": catalog.version}
         rec.update(r)
         rec["metin"].update(durum=row.get("status") or None, bicim=_format(row.get("method", "")),
@@ -179,7 +183,7 @@ def report(records: list[dict], catalog: Catalog, period: int | None) -> str:
         "# identify raporu", "",
         f"- belge: {n}",
         f"- bilinmiyor: {unk} (%{100 * unk / n:.1f})" if n else "- bilinmiyor: 0",
-        f"- katalog sürümü: {catalog.version}, eşik: {catalog.threshold}",
+        f"- araç sürümü: {ARAC_SURUMU}; katalog sürümü: {catalog.version}, eşik: {catalog.threshold}",
         f"- kurum profilleri: {', '.join(i.key for i in catalog.institutions) or '-'}",
     ]
     if period is not None:
