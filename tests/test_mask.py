@@ -222,7 +222,7 @@ def ws(tmp_path):
     make_pdf(ev / "A/A.1/A.1.1/[A.1.1-1-OD3] Karar.pdf", PDF_OK)
     make_docx(ev / "A/A.1/A.1.2/[A.1.2-1-OD2] Başvuru.docx")
     make_xlsx(ev / "B/B.1/B.1.1/[B.1.1-1-OD3] Liste.xlsx")
-    (ev / "B/B.1/B.1.1/foto.jpg").write_bytes(b"\xff\xd8\xff sentetik")
+    (ev / "B/B.1/B.1.1/sunum.pptx").write_bytes(b"PK sentetik")
     (ev / "B/B.1/B.1.1/not.txt").write_text(f"İletişim: {EMAIL}\n", encoding="utf-8")
     (ev / ".bidr-evidence.json").write_text("{}", encoding="utf-8")
     with open(ws / "evidence-index.csv", "w", encoding="utf-8", newline="") as f:
@@ -243,7 +243,7 @@ def test_maskele_end_to_end(ws, capsys):
     before = _originals(ws)
     rc = main(["maskele", "-w", str(ws), "--motor", "pypdf"])
     out = capsys.readouterr().out
-    assert rc == 1                                   # jpg taranamaz → yayımlanamaz
+    assert rc == 1                                   # sunum taranamaz → yayımlanamaz
     assert before == _originals(ws)                  # asıl dosyalar değişmedi
     m = ws / "evidence-maskeli"
     rep = json.loads((ws / R.REPORT).read_text(encoding="utf-8"))
@@ -281,9 +281,9 @@ def test_maskele_end_to_end(ws, capsys):
         assert "yorumlar" in dx["temizlenen"] and dx["bulunan"]["tc_no"] == 3
     xl = by["B/B.1/B.1.1/[B.1.1-1-OD3] Liste.xlsx"]
     assert xl["maskelenen"]["tc_no"] == 2 and "yorumlar" in xl["temizlenen"]
-    assert by["B/B.1/B.1.1/foto.jpg"]["durum"] == "desteklenmiyor"
-    assert not (m / "B/B.1/B.1.1/foto.jpg").exists()
-    assert [y["dosya"] for y in rep["yayimlanamaz"]] == ["B/B.1/B.1.1/foto.jpg"]
+    assert by["B/B.1/B.1.1/sunum.pptx"]["durum"] == "desteklenmiyor"
+    assert not (m / "B/B.1/B.1.1/sunum.pptx").exists()
+    assert [y["dosya"] for y in rep["yayimlanamaz"]] == ["B/B.1/B.1.1/sunum.pptx"]
     assert not (m / ".bidr-evidence.json").exists()
 
     # rapor değerin kendisini içermez
