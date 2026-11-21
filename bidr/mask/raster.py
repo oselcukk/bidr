@@ -35,6 +35,7 @@ class ImageScan:
     imza: IM.Result | None = None
     taranamadi: str | None = None                        # neden (None: okundu)
     words: list = field(default_factory=list)
+    alanlar: list = field(default_factory=list)          # kapatılan etiket alanlarının etiket türleri (alan.py)
 
 
 def _quality_reason(img, words: list[Word]) -> str | None:
@@ -61,6 +62,8 @@ def _analyze_once(img, ppi, rules, ocr, extra_words, flag_unlabeled, need_text, 
             ow = []
         if ran:
             r.bulgular, r.kutular, r.turler = find_pii_typed(ow, rules)
+            if rules.label_fields:
+                add_label_fields(r, img, ow)
             if need_text:
                 r.taranamadi = _quality_reason(img, ow)
         words += ow
@@ -69,6 +72,22 @@ def _analyze_once(img, ppi, rules, ocr, extra_words, flag_unlabeled, need_text, 
     if ran:
         verify_covers(r.imza, lambda b: crop_for_ocr(img, ppi, b))
     return r, ran
+
+
+def add_label_fields(r: "ImageScan", img, ow: list[Word]) -> None:
+    """Kişisel veri etiketlerinin (el yazısıyla doldurulmuş) alanları: kutu, `etiket_alani` türü ve
+    sayısı (alan/satır başına). Yalnız OCR kelimeleri (metin katmanı değil): bkz. `alan`."""
+    from . import alan as AL
+    try:
+        fields = AL.find_fields(img, ow, more=lambda: ocr_words(img, psm="11"))
+    except Exception:            # alan çözümlemesi tespiti düşürmesin
+        return
+    for f in fields:
+        r.kutular.append(f.box)
+        r.turler.append(AL.KIND)
+        r.alanlar.append(f.kind)
+    if fields:
+        r.bulgular[AL.KIND] += len(fields)
 
 
 VERIFY_PPI = 300                  # kapatma adayı yeniden OCR çözünürlüğü
@@ -346,6 +365,7 @@ def mask_image(src: Path, dst: Path, rules: MaskRules) -> dict:
     img = _open_image(src)
     r = scan_image_obj(img, rules)
     found = r.bulgular
+    kapsam = page_coverage(r.bulgular, r.alanlar)
     bolge = len(r.imza.kapat) if r.imza else 0
     ortusen = r.imza.ortusen_kelime if r.imza else 0
     out = img
@@ -361,12 +381,20 @@ def mask_image(src: Path, dst: Path, rules: MaskRules) -> dict:
         r = scan_image_obj(out, rules)
         bolge += len(r.imza.kapat) if r.imza else 0
         ortusen += r.imza.ortusen_kelime if r.imza else 0
+        kapsam.update(page_coverage(r.bulgular, r.alanlar))
     out = draw_labels(out, labels)
     save_like(out, dst, src.suffix)
     first = scan_image_obj(img, rules)       # önbellekli OCR: yalnız ilk tarama uyarısı
     uyarilar = [f"taranamadı: {first.taranamadi}"] if first.taranamadi else []
     return {"maskelenen": found, "temizlenen": ["ust_veri"], "uyarilar": uyarilar,
-            "imza_bolgesi": bolge, "ortusen_kelime": ortusen}
+            "imza_bolgesi": bolge, "ortusen_kelime": ortusen, "sayfa_sayisi": 1, "sayfa_kapsam": {1: dict(kapsam)}}
+
+
+def page_coverage(bulgular, alanlar) -> Counter:
+    """Sayfada kapatılan kişisel veri: desen türleri + etiket alanlarının etiket türü (sayı)."""
+    c = Counter({k: n for k, n in (bulgular or {}).items() if k != "etiket_alani" and n})
+    c.update(alanlar or [])
+    return c
 
 
 def scan_image(path: Path, rules: MaskRules) -> dict:
@@ -389,7 +417,7 @@ def scan_image(path: Path, rules: MaskRules) -> dict:
 
 # ---------------------------------------------------------------- PDF sayfaları (PyMuPDF)
 
-_PLACEHOLDER_RE = re.compile(r"\[(?:İMZA|IMZA|MASKELI|[A-Z_]{2,12})\]")
+_PLACEHOLDER_RE = re.compile(r"\[(?:İMZA|IMZA|MASKELI|KİŞİSEL VERİ|KISISEL VERI|[A-Z_]{2,12})\]")
 
 
 def page_needs_ocr(page) -> tuple[bool, bool]:
@@ -481,7 +509,7 @@ def scan_pdf_page(page, rules: MaskRules) -> dict:
     varsa imza çözümlemesi. → {"bulgular","kutular_pt","imza","taranamadi","ortusen"}."""
     need_ocr, has_text = page_needs_ocr(page)
     out = {"bulgular": Counter(), "kutular": [], "turler": [], "imza": None, "taranamadi": None,
-           "imza_kutular": []}
+           "imza_kutular": [], "alanlar": []}
     if need_ocr:
         dpi = 300
         img = render(page, dpi)
@@ -490,6 +518,7 @@ def scan_pdf_page(page, rules: MaskRules) -> dict:
         out["bulgular"] = r.bulgular
         out["kutular"] = to_page_rects(page, r.kutular, dpi / 72.0)
         out["turler"] = list(r.turler)
+        out["alanlar"] = list(r.alanlar)
         out["taranamadi"] = r.taranamadi if not has_text else None
         out["imza"] = r.imza
         out["imza_kutular"] = to_page_rects(page, r.imza.kapat, dpi / 72.0) if r.imza else []

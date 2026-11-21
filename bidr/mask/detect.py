@@ -23,14 +23,18 @@ from typing import Callable, Iterable
 
 KINDS = ("tc_no", "iban", "eposta", "telefon", "ogrenci_no", "ad")
 PLACEHOLDERS = {"tc_no": "[TC_NO]", "iban": "[IBAN]", "eposta": "[EPOSTA]", "telefon": "[TELEFON]",
-                "ogrenci_no": "[OGRENCI_NO]", "ad": "[AD]"}
+                "ogrenci_no": "[OGRENCI_NO]", "ad": "[AD]",
+                # görüntü katmanı: kişisel veri etiketinin (el yazısıyla doldurulmuş) alanı (bkz. alan.py)
+                "etiket_alani": "[KİŞİSEL VERİ]"}
 
-# Varsayılan öğrenci numarası desenleri: yıl önekli 9-10 hane ve "öğrenci no: …" bağlamı
-# (grup 1 varsa yalnız grup maskelenir). Yıl önekli desen bir kimlik/kod parçasını almaz: önünde harf,
+# Varsayılan öğrenci numarası desenleri: yıl önekli (19xx/20xx) 9, 10 ya da 12 hane ve "öğrenci no: …"
+# bağlamı (grup 1 varsa yalnız grup maskelenir). 11 hane alınmaz (T.C. kimlik no / 0'lı telefon
+# uzunluğu; algoritmayı tutmayan 11 haneli sayılar çoğu zaman başka kimliktir). Kuruma özgü biçimler
+# (ör. iki haneli yıl önekli 12 hane) kurum profilinden eklenir (`privacy.maskeleme.ogrenci_no_desenleri`). Yıl önekli desen bir kimlik/kod parçasını almaz: önünde harf,
 # `-`, `/`, `.`, `=`, `%` (EBYS "E-2019…", DOI "e2300…", URL "MevzuatNo=…", "%20…") ya da arkasında
 # `-`/`/`/`.` + rakam varsa eşleşmez.
 DEFAULT_STUDENT_PATTERNS = (
-    r"(?<![\w\-/.=%])(?:19|20)\d{7,8}(?!\d)(?![\-/.]\d)",
+    r"(?<![\w\-/.=%])(?:19|20)(?:\d{7,8}|\d{10})(?!\d)(?![\-/.]\d)",
     r"(?i)(?:öğrenci|ogrenci|ÖĞRENCİ|OGRENCI)\s*(?:no|numarası|numarasi|numara)\s*[:.]?\s*(\d{5,12})(?!\d)",
 )
 
@@ -157,6 +161,7 @@ class MaskRules:
     student_patterns: tuple[str, ...] = DEFAULT_STUDENT_PATTERNS
     names: tuple[str, ...] = ()
     local_model: str | None = None          # genişletme noktası; bu sürümde uygulanmaz
+    label_fields: bool = True               # taranmış sayfada kişisel veri etiketinin alanı (alan.py)
     _compiled: list = field(default_factory=list, repr=False, compare=False)
 
     def __post_init__(self):
@@ -194,13 +199,41 @@ class MaskRules:
         pats = m.get("ogrenci_no_desenleri")
         if pats is not None:
             kw["student_patterns"] = tuple([pats] if isinstance(pats, str) else (str(p) for p in pats))
+        kurum = institution_patterns(data) if isinstance(data, dict) else ()
+        if kurum:
+            kw["student_patterns"] = tuple(kw.get("student_patterns", DEFAULT_STUDENT_PATTERNS)) + \
+                tuple(p for p in kurum if p not in kw.get("student_patterns", DEFAULT_STUDENT_PATTERNS))
         kw["names"] = tuple(load_name_list(m.get("ad_listesi"), base))
         kw["local_model"] = m.get("yerel_model") or None
+        if m.get("etiket_alani") is not None:
+            kw["label_fields"] = bool(m.get("etiket_alani"))
         return cls(**kw)
 
     @classmethod
     def load(cls, ws_root: Path) -> "MaskRules":
         return cls.from_config(read_ws_config(ws_root), Path(ws_root))
+
+
+def institution_patterns(data: dict) -> tuple[str, ...]:
+    """Çalışma alanının kurum profilindeki (`bidr.kurum` → `bidr/data/institutions/<kurum>.yaml`)
+    `privacy.maskeleme.ogrenci_no_desenleri`: çalışma alanı desenlerine EKLENİR (yerine geçmez)."""
+    b = data.get("bidr") if isinstance(data.get("bidr"), dict) else {}
+    kurum = b.get("kurum")
+    if not kurum or not re.fullmatch(r"[\w\-]+", str(kurum)):
+        return ()
+    import os
+
+    import yaml
+
+    from bidr.init.config import data_dir
+    d = Path(os.environ.get("BIDR_INSTITUTIONS_DIR", data_dir() / "institutions")).expanduser()
+    p = d / f"{kurum}.yaml"
+    if not p.is_file():
+        return ()
+    prof = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+    m = ((prof.get("privacy") or {}).get("maskeleme") or {}) if isinstance(prof, dict) else {}
+    pats = m.get("ogrenci_no_desenleri") or ()
+    return tuple([pats] if isinstance(pats, str) else (str(x) for x in pats))
 
 
 def read_ws_config(ws_root: Path) -> dict:
