@@ -276,39 +276,37 @@ MAX_METIN_PAYI = 0.5               # ≥ 2 kelimede, mürekkebin bu payı kelime
 TOP_IGNORE = 0.15                  # sayfa başlığı (logo): etiketsiz aday burada "elle bakılmalı" yapmaz
 
 
-def analyze(img, words: list[Word], ppi: float, *, flag_unlabeled: bool = True, all_zone: bool = False,
-            ink_regions: list | None = None, max_ortusen: int | None = None,
-            max_pay: float | None = None) -> Result:
-    """`img`: PIL görüntüsü; `words`: aynı görüntünün piksel koordinatında; `ppi`: inç başına piksel.
-    `flag_unlabeled`: etiketsiz adaylar "elle bakılmalı" sayılsın mı (taranmış sayfa/görsel: evet).
-    `all_zone`: görüntünün tamamı etiket yakını sayılır. `ink_regions`: verilirse mürekkep yalnız bu
-    kutularda aranır (metin katmanlı PDF: yalnız küçük gömülü görseller; vektör çizim/akış şeması
-    ve filigran dışarıda kalır). `max_ortusen`: örtüşen okunabilir kelime üst sınırı (varsayılan
-    `MAX_ORTUSEN`); üstündeki ya da (≥ 2 kelimede) mürekkebinin `max_pay`'ı kelime kutularında olan
-    aday kapatılmaz, `elle_bolge` olur."""
-    from PIL import Image, ImageDraw
-    if max_ortusen is None:
-        max_ortusen = MAX_ORTUSEN
-    if max_pay is None:
-        max_pay = MAX_METIN_PAYI
+@dataclass
+class Hazirlik:
+    """Çözümleme çözünürlüğünde (A_PPI) ortak ara sonuç: ölçek, kelimeler, mürekkep görüntüleri, etiketler."""
+    k: float
+    W: int
+    H: int
+    wa: list
+    ink: object                 # basılı metin, çizgi ve dolu bloklar çıkarılmış mürekkep
+    colored: object             # renkli (doygun) mürekkep
+    raw_ink: object             # kelime/çizgi çıkarılmadan önceki mürekkep (basılı metin dahil)
+    thick: object               # aşındırılmış mürekkep (kalın/dolu şekil sınaması)
+    strict: list                # imza etiketi kelime sıraları
+    role: list                  # imza bloğu (unvan/rol) kelime sıraları
+
+
+def hazirla(img, words: list[Word], ppi: float, *, ink_regions: list | None = None) -> Hazirlik:
+    """`analyze` ile `yapi` ortak ön işlemi: görüntüyü A_PPI'ye indirir, mürekkebi çıkarır, etiketleri bulur."""
+    from PIL import Image, ImageChops, ImageDraw, ImageFilter
     k = A_PPI / float(ppi)                  # girdi → çözümleme ölçeği
     W, H = max(1, int(img.width * k)), max(1, int(img.height * k))
     wa = [Word(w.text, w.conf, w.x0 * k, w.y0 * k, w.x1 * k, w.y1 * k, w.line) for w in words]
     raw: list = []
     ink, colored = _binary(img, wa, W, H, raw)
-    raw_ink = raw[0]
     if ink_regions is not None:
         keep = Image.new("L", (W, H), 0)
         dk = ImageDraw.Draw(keep)
         for a, b, c, d in ink_regions:
             dk.rectangle([a * k, b * k, c * k, d * k], fill=255)
-        from PIL import ImageChops
         ink = ImageChops.multiply(ink, keep)
         colored = ImageChops.multiply(colored, keep)
-    from PIL import ImageFilter
     thick = ink.filter(ImageFilter.MinFilter(3))         # ince vuruş aşınınca kaybolur
-    res = Result()
-
     lines: dict = {}
     for i, w in enumerate(wa):
         lines.setdefault(w.line, []).append(i)
@@ -322,6 +320,27 @@ def analyze(img, words: list[Word], ppi: float, *, flag_unlabeled: bool = True, 
                 strict.append(i)
             elif is_role_label(wa[i], len(li)):
                 role.append(i)
+    return Hazirlik(k, W, H, wa, ink, colored, raw[0], thick, strict, role)
+
+
+def analyze(img, words: list[Word], ppi: float, *, flag_unlabeled: bool = True, all_zone: bool = False,
+            ink_regions: list | None = None, max_ortusen: int | None = None,
+            max_pay: float | None = None) -> Result:
+    """`img`: PIL görüntüsü; `words`: aynı görüntünün piksel koordinatında; `ppi`: inç başına piksel.
+    `flag_unlabeled`: etiketsiz adaylar "elle bakılmalı" sayılsın mı (taranmış sayfa/görsel: evet).
+    `all_zone`: görüntünün tamamı etiket yakını sayılır. `ink_regions`: verilirse mürekkep yalnız bu
+    kutularda aranır (metin katmanlı PDF: yalnız küçük gömülü görseller; vektör çizim/akış şeması
+    ve filigran dışarıda kalır). `max_ortusen`: örtüşen okunabilir kelime üst sınırı (varsayılan
+    `MAX_ORTUSEN`); üstündeki ya da (≥ 2 kelimede) mürekkebinin `max_pay`'ı kelime kutularında olan
+    aday kapatılmaz, `elle_bolge` olur."""
+    if max_ortusen is None:
+        max_ortusen = MAX_ORTUSEN
+    if max_pay is None:
+        max_pay = MAX_METIN_PAYI
+    h = hazirla(img, words, ppi, ink_regions=ink_regions)
+    k, W, H, wa, ink, colored, raw_ink, thick = h.k, h.W, h.H, h.wa, h.ink, h.colored, h.raw_ink, h.thick
+    strict, role = h.strict, h.role
+    res = Result()
     res.etiket = len(strict)
     I = A_PPI
     zones = []

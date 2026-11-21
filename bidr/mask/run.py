@@ -129,6 +129,11 @@ def mask_and_check(src: Path, dst: Path, rules: MaskRules, eng: str, model_text:
         if note:
             model_uyari.append(note)
     taranamadi = list(after.get("taranamadi") or [])
+    # imza bölgeleri (m1 en az bağlantı; ortak toplayıcı m2'nin): onay bekleyen bölge → elle bakılmalı
+    bolgeler = res.get("bolgeler") or []
+    bekleyen = sum(1 for b in bolgeler if b.get("karar") == "onay_bekliyor")
+    if bekleyen:
+        sorunlar.append(f"imza: elle bakılmalı — onay bekleyen bölge ×{bekleyen}")
     if after.get("imza_aday"):
         sorunlar.append(f"imza: kapatılamayan aday ×{after['imza_aday']}")
     rec.update(bulunan=_c(before["bulgular"]), maskelenen=_c(res["maskelenen"]), kalan=_c(kalan),
@@ -136,6 +141,8 @@ def mask_and_check(src: Path, dst: Path, rules: MaskRules, eng: str, model_text:
                uyarilar=list(res["uyarilar"]) + list(after.get("uyarilar") or []) + model_uyari)
     if before["imza"]:
         rec["imza_uyarisi"] = before["imza"]
+    if bolgeler:
+        rec["bolgeler"] = bolgeler
     if res.get("imza_bolgesi"):
         rec["imza_bolgesi"] = res["imza_bolgesi"]
         rec["imza_ortusen_kelime"] = res.get("ortusen_kelime", 0)

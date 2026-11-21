@@ -363,6 +363,7 @@ def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules) -> dict:   # pragma
     temiz = set()
     uyarilar = []
     imza_bolge = ortusen = 0
+    bolgeler: list = []                           # imza bölgeleri (sözleşme kayıtları; raster/yapi)
     kapsam: dict[int, dict] = {}                  # sayfa → kapatılan tür sayıları (el yazısı denetimi)
     flags = _redact_flags(fitz)
     for page in doc:
@@ -394,9 +395,9 @@ def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules) -> dict:   # pragma
         for r, k in zip(ps["kutular"], ps.get("turler") or [None] * len(ps["kutular"])):
             page.add_redact_annot(r, fill=(0, 0, 0))
             labels.append((r, PLACEHOLDERS.get(k, "[MASKELI]")))
-        for r in ps["imza_kutular"]:
-            page.add_redact_annot(r, fill=(0, 0, 0))
-            labels.append((r, IMZA_LABEL))
+        imza_labels, imza_sonra = raster.imza_redact(page, ps)
+        labels += imza_labels
+        bolgeler += ps.get("bolgeler") or []
         imza_bolge += len(ps["imza_kutular"])
         if ps["imza"] is not None:
             ortusen += ps["imza"].ortusen_kelime
@@ -418,23 +419,25 @@ def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules) -> dict:   # pragma
         counts.update(page_counts)
         page_kapsam = Counter(page_counts)
         page.apply_redactions(**flags)
+        imza_sonra()
         # kapatma çevreyi değiştirir (küme ayrışır, yeni vuruş belirginleşir): imza/OCR bulgusu
         # kalmayana kadar en çok iki tur daha
         for _ in range(2):
-            if not (ps["imza_kutular"] or ps["kutular"]):
+            if not (ps["imza_kutular"] or ps["kutular"] or ps.get("imza_yamalar")):
                 break
             try:
                 ps = raster.scan_pdf_page(page, rules)
             except Exception:
                 break
-            more = list(ps["kutular"]) + list(ps["imza_kutular"])
-            if not more:
+            if not (ps["kutular"] or ps["imza_kutular"] or ps.get("imza_yamalar")):
                 break
-            for r in more:
+            for r in ps["kutular"]:
                 page.add_redact_annot(r, fill=(0, 0, 0))
             labels += [(r, PLACEHOLDERS.get(k, "[MASKELI]"))
                        for r, k in zip(ps["kutular"], ps.get("turler") or [None] * len(ps["kutular"]))]
-            labels += [(r, IMZA_LABEL) for r in ps["imza_kutular"]]
+            imza_labels, imza_sonra = raster.imza_redact(page, ps)
+            labels += imza_labels
+            bolgeler += [b for b in ps.get("bolgeler") or [] if b.get("karar") != "birakildi"]
             imza_bolge += len(ps["imza_kutular"])
             if ps["imza"] is not None:
                 ortusen += ps["imza"].ortusen_kelime
@@ -444,6 +447,7 @@ def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules) -> dict:   # pragma
             alanlar += list(ps.get("alanlar") or [])
             counts["etiket_alani"] += ps["bulgular"].get("etiket_alani", 0)
             page.apply_redactions(**flags)
+            imza_sonra()
         _write_labels(fitz, page, labels)
         from .raster import page_coverage
         kapsam[page.number + 1] = dict(page_coverage(page_kapsam, alanlar))
@@ -475,7 +479,7 @@ def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules) -> dict:   # pragma
     dst.write_bytes(buf.getvalue())
     return {"maskelenen": counts, "temizlenen": sorted(temiz), "uyarilar": uyarilar,
             "imza_bolgesi": imza_bolge, "ortusen_kelime": ortusen, "sayfa_sayisi": len(kapsam),
-            "sayfa_kapsam": kapsam}
+            "sayfa_kapsam": kapsam, "bolgeler": bolgeler}
 
 
 def _iter_indirect(reader):

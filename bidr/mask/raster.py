@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import imza as IM
+from . import yapi as Y
 from .detect import MaskRules
 from .ocr import OcrFailed, Word, find_pii_typed, ink_ratio, ocr_available, ocr_words, text_quality
 
@@ -36,6 +37,7 @@ class ImageScan:
     taranamadi: str | None = None                        # neden (None: okundu)
     words: list = field(default_factory=list)
     alanlar: list = field(default_factory=list)          # kapatılan etiket alanlarının etiket türleri (alan.py)
+    bolgeler: list = field(default_factory=list)         # imza bölgeleri (`yapi.Bolge`, görüntü pikseli)
 
 
 def _quality_reason(img, words: list[Word]) -> str | None:
@@ -49,13 +51,17 @@ def _quality_reason(img, words: list[Word]) -> str | None:
     return None
 
 
-def _analyze_once(img, ppi, rules, ocr, extra_words, flag_unlabeled, need_text, all_zone) -> tuple[ImageScan, bool]:
+def _analyze_once(img, ppi, rules, ocr, extra_words, flag_unlabeled, need_text, all_zone,
+                  yapi: dict | None = None) -> tuple[ImageScan, bool]:
     r = ImageScan()
     words: list[Word] = list(extra_words or [])
     ran = False
+    clean = None
     if ocr:
         try:
-            ow = ocr_words(img)
+            # imza çözümlemesinde: tablo ızgarası varsa OCR çizgileri silinmiş kopyada (yapi.cizgisiz)
+            clean = Y.cizgisiz(img, ppi) if yapi is not None else None
+            ow = ocr_words(clean or img)
             ran = True
         except (OcrFailed, Exception) as e:   # araç yok / çöktü
             r.taranamadi = f"OCR çalışmadı: {str(e)[:120]}" if ocr_available() else "OCR yok (tesseract + tur dil verisi)"
@@ -68,10 +74,27 @@ def _analyze_once(img, ppi, rules, ocr, extra_words, flag_unlabeled, need_text, 
                 r.taranamadi = _quality_reason(img, ow)
         words += ow
     r.words = words
+    if yapi is not None:                 # yapısal imza bölgeleri (yapi.py)
+        dogrula = (lambda b: box_text_words(crop_for_ocr(img, ppi, b))) if ran and ocr_available() else None
+        kelime = (lambda b: _crop_words(clean if clean is not None else img, b)) if ran and ocr_available() else None
+        r.bolgeler = Y.goruntu_bolgeleri(img, words, ppi, kesin=list(extra_words or []), bag=yapi.get("bag"),
+                                         sayfa=yapi.get("sayfa", 1), ocr_dogrula=dogrula, ocr_kelime=kelime)
+        r.imza = Y.sonuc(r.bolgeler)
+        return r, ran
     r.imza = IM.analyze(img, words, ppi, flag_unlabeled=flag_unlabeled, all_zone=all_zone)
     if ran:
         verify_covers(r.imza, lambda b: crop_for_ocr(img, ppi, b))
     return r, ran
+
+
+def _crop_words(img, box) -> list[Word]:
+    """Kutunun OCR'ı (tek blok, psm 6) → görüntü koordinatında kelimeler."""
+    x0, y0 = int(max(0, box[0])), int(max(0, box[1]))
+    x1, y1 = int(min(img.width, box[2])), int(min(img.height, box[3]))
+    if x1 - x0 < 8 or y1 - y0 < 8:
+        return []
+    ws = ocr_words(img.crop((x0, y0, x1, y1)), psm="6")
+    return [Word(w.text, w.conf, w.x0 + x0, w.y0 + y0, w.x1 + x0, w.y1 + y0, w.line) for w in ws]
 
 
 def add_label_fields(r: "ImageScan", img, ow: list[Word]) -> None:
@@ -152,20 +175,27 @@ def _unrotate(box, how: str, W: int, H: int):
 
 
 def analyze_image(img, ppi: float, rules: MaskRules, *, ocr: bool = True, extra_words: list[Word] | None = None,
-                  flag_unlabeled: bool = True, need_text: bool = True, all_zone: bool = False) -> ImageScan:
+                  flag_unlabeled: bool = True, need_text: bool = True, all_zone: bool = False,
+                  yapi: dict | None = None) -> ImageScan:
     """`ocr=False`: yalnız `extra_words` (PDF metin katmanı) ile imza çözümlemesi.
     `need_text`: OCR kalitesi düşükse `taranamadi` doldurulsun mu (metin katmanı yoksa evet).
     OCR kalitesi düşükse görüntü 180/90/270 derece döndürülüp yeniden denenir (ters taranmış sayfa);
-    okunan yöndeki kutular özgün görüntüye geri çevrilir."""
+    okunan yöndeki kutular özgün görüntüye geri çevrilir. `yapi`: verilirse ({"bag", "sayfa"}) imza
+    bölgeleri yapısal kurallarla (`yapi.goruntu_bolgeleri`) çıkarılır, `r.bolgeler`'e yazılır."""
     from PIL import Image
-    r, ran = _analyze_once(img, ppi, rules, ocr, extra_words, flag_unlabeled, need_text, all_zone)
+    r, ran = _analyze_once(img, ppi, rules, ocr, extra_words, flag_unlabeled, need_text, all_zone, yapi)
     if not (ran and need_text and r.taranamadi and not extra_words):
         return r
     for how, t in (("180", Image.Transpose.ROTATE_180), ("90", Image.Transpose.ROTATE_90),
                    ("270", Image.Transpose.ROTATE_270)):
-        r2, _ = _analyze_once(img.transpose(t), ppi, rules, ocr, None, flag_unlabeled, need_text, all_zone)
+        r2, _ = _analyze_once(img.transpose(t), ppi, rules, ocr, None, flag_unlabeled, need_text, all_zone, yapi)
         if r2.taranamadi is None:
             r2.kutular = [_unrotate(b, how, img.width, img.height) for b in r2.kutular]
+            for b in r2.bolgeler:            # döndürülmüş yama yerine siyah kutu
+                b.kutu = _unrotate(b.kutu, how, img.width, img.height)
+                b.yama = None
+            if r2.bolgeler:
+                r2.imza = Y.sonuc(r2.bolgeler)
             if r2.imza:
                 r2.imza.kapat = [_unrotate(b, how, img.width, img.height) for b in r2.imza.kapat]
             r2.words = []
@@ -177,7 +207,10 @@ def label_items(r: "ImageScan") -> list:
     """Bir taramanın kapatılacak kutuları için (kutu, yer tutucu) çiftleri."""
     from .detect import PLACEHOLDERS
     out = [(b, PLACEHOLDERS.get(k, f"[{k.upper()}]")) for b, k in zip(r.kutular, r.turler)]
-    out += [(b, IM.IMZA_LABEL) for b in (r.imza.kapat if r.imza else [])]
+    if r.bolgeler:
+        out += [(b.kutu, Y.etiket_yazisi(b)) for b in r.bolgeler if b.kapat]
+    else:
+        out += [(b, IM.IMZA_LABEL) for b in (r.imza.kapat if r.imza else [])]
     return out
 
 
@@ -284,16 +317,26 @@ def _ocr_view(img):
     return img, 1
 
 
-def scan_image_obj(img, rules: MaskRules, *, flag_unlabeled: bool = True, all_zone: bool = False) -> ImageScan:
+def scan_image_obj(img, rules: MaskRules, *, flag_unlabeled: bool = True, all_zone: bool = False,
+                   bag: "Y.Baglam | None" = None) -> ImageScan:
     """`all_zone`: görselin tamamı imza etiketinin yakını sayılır (belgede imza etiketi olan docx'in
-    gömülü görseli: taranmış imza resmi)."""
+    gömülü görseli: taranmış imza resmi). Görsel dosyada (`flag_unlabeled`, `all_zone` değil) imza
+    bölgeleri yapısal kurallarla çıkarılır (`r.bolgeler`); `bag`: dosyalar arası tekrar belleği vb."""
     big, f = _ocr_view(img)
+    yeni = flag_unlabeled and not all_zone
     r = analyze_image(big, _ppi(big), rules, flag_unlabeled=flag_unlabeled, all_zone=False,
-                      need_text=not all_zone and flag_unlabeled)
+                      need_text=not all_zone and flag_unlabeled,
+                      yapi={"bag": bag or Y.Baglam(), "sayfa": 1} if yeni else None)
     if f != 1:
         r.kutular = [(a / f, b / f, c / f, d / f) for a, b, c, d in r.kutular]
         if r.imza:
             r.imza.kapat = [(a / f, b / f, c / f, d / f) for a, b, c, d in r.imza.kapat]
+        for b in r.bolgeler:
+            b.kutu = tuple(v / f for v in b.kutu)
+            if b.yama is not None:
+                from PIL import Image
+                b.yama = b.yama.resize((max(1, int(b.kutu[2]) - int(b.kutu[0])), max(1, int(b.kutu[3]) - int(b.kutu[1]))),
+                                       Image.LANCZOS)
     if all_zone:
         box = signature_image_box(img, [Word(w.text, w.conf, w.x0 / f, w.y0 / f, w.x1 / f, w.y1 / f, w.line)
                                         for w in r.words])
@@ -361,33 +404,57 @@ def save_like(img, dst, fmt_hint: str) -> None:
         img.save(dst, format="PNG")
 
 
+def paste_patches(img, bolgeler):
+    """Renk ayrılan imza bölgeleri: kutuya mürekkebi beyazlatılmış kırpıntı yapıştırılır."""
+    yamali = [b for b in bolgeler if b.yama is not None and b.karar != Y.BIRAKILDI]
+    if not yamali:
+        return img
+    out = img.convert("RGB") if img.mode not in ("RGB", "L") else img.copy()
+    for b in yamali:
+        out.paste(b.yama.convert(out.mode), (int(b.kutu[0]), int(b.kutu[1])))
+    return out
+
+
+def bolge_kayitlari(bolgeler, bag: "Y.Baglam", sayfa: int, to_pt) -> list[dict]:
+    """`Bolge` listesi → sözleşmedeki `bolgeler` kayıtları (kararlı kimlikle). `to_pt`: kutu → PDF puanı."""
+    ids = bag.kimlikler(sayfa, len(bolgeler))
+    return [b.kayit(i, sayfa, to_pt(b.kutu)) for i, b in zip(ids, bolgeler)]
+
+
 def mask_image(src: Path, dst: Path, rules: MaskRules) -> dict:
+    import hashlib
     img = _open_image(src)
-    r = scan_image_obj(img, rules)
+    bag = Y.Baglam(sha8=hashlib.sha256(Path(src).read_bytes()).hexdigest()[:8])
+    r = scan_image_obj(img, rules, bag=bag)
     found = r.bulgular
     kapsam = page_coverage(r.bulgular, r.alanlar)
     bolge = len(r.imza.kapat) if r.imza else 0
     ortusen = r.imza.ortusen_kelime if r.imza else 0
+    kayit = bolge_kayitlari(r.bolgeler, bag, 1, lambda b: b)
     out = img
     labels = []
     for turn in range(3):                    # kapatma sonrası belirginleşen bulgu/vuruş için en çok iki tur daha
         boxes = list(r.kutular) + list(r.imza.kapat if r.imza else [])
-        if not boxes:
+        yamali = any(b.yama is not None and b.karar != Y.BIRAKILDI for b in r.bolgeler)
+        if not boxes and not yamali:
             break
         labels += label_items(r)
+        out = paste_patches(out, r.bolgeler)
         out = black_out(out, boxes)
         if turn == 2:
             break
-        r = scan_image_obj(out, rules)
+        r = scan_image_obj(out, rules, bag=bag)
         bolge += len(r.imza.kapat) if r.imza else 0
         ortusen += r.imza.ortusen_kelime if r.imza else 0
         kapsam.update(page_coverage(r.bulgular, r.alanlar))
+        kayit += [k for k in bolge_kayitlari(r.bolgeler, bag, 1, lambda b: b) if k["karar"] != Y.BIRAKILDI]
     out = draw_labels(out, labels)
     save_like(out, dst, src.suffix)
     first = scan_image_obj(img, rules)       # önbellekli OCR: yalnız ilk tarama uyarısı
     uyarilar = [f"taranamadı: {first.taranamadi}"] if first.taranamadi else []
     return {"maskelenen": found, "temizlenen": ["ust_veri"], "uyarilar": uyarilar,
-            "imza_bolgesi": bolge, "ortusen_kelime": ortusen, "sayfa_sayisi": 1, "sayfa_kapsam": {1: dict(kapsam)}}
+            "imza_bolgesi": bolge, "ortusen_kelime": ortusen, "sayfa_sayisi": 1, "sayfa_kapsam": {1: dict(kapsam)},
+            "bolgeler": kayit}
 
 
 def page_coverage(bulgular, alanlar) -> Counter:
@@ -504,32 +571,88 @@ def to_page_rects(page, boxes, scale: float):
     return [(pymupdf.Rect(a / scale, b / scale, c / scale, d / scale) * der) for a, b, c, d in boxes]
 
 
+def _imza_gibi(img, box) -> bool:
+    """Gömülü görüntü imza resmi olabilir mi: tek renkli (logo/fotoğraf değil), seyrek mürekkep."""
+    x0, y0, x1, y1 = (int(max(0, box[0])), int(max(0, box[1])), int(min(img.width, box[2])), int(min(img.height, box[3])))
+    if x1 - x0 < 4 or y1 - y0 < 4:
+        return False
+    c = img.crop((x0, y0, x1, y1))
+    if multicolor(c):
+        return False
+    hist = c.convert("L").histogram()
+    frac = sum(hist[:160]) / float(c.width * c.height)
+    return 0.002 <= frac <= 0.35
+
+
 def scan_pdf_page(page, rules: MaskRules) -> dict:
-    """Tek sayfa: OCR gerekiyorsa OCR + PII + imza; metin katmanlı sayfada imza etiketi ve grafik
-    varsa imza çözümlemesi. → {"bulgular","kutular_pt","imza","taranamadi","ortusen"}."""
+    """Tek sayfa: OCR gerekiyorsa OCR + PII + imza; metin katmanlı sayfada imza etiketi, imza sütunu
+    (ya da önceki sayfadan sürüp giden sütun) ya da gömülü görüntü varsa imza çözümlemesi.
+    İmza bölgeleri yapısal kurallarla (`yapi`) çıkarılır → `bolgeler` (sözleşme kayıtları),
+    `imza_kutular` (siyah kutu), `imza_yazilar` (kutuya yazılacak işaret / geri basılan ad),
+    `imza_yamalar` ((dikdörtgen, PNG): renkli mürekkebi beyazlatılmış kırpıntı)."""
     need_ocr, has_text = page_needs_ocr(page)
+    bag = Y.baglam(page.parent)
+    sayfa = page.number + 1
     out = {"bulgular": Counter(), "kutular": [], "turler": [], "imza": None, "taranamadi": None,
-           "imza_kutular": [], "alanlar": []}
+           "imza_kutular": [], "alanlar": [], "bolgeler": [], "imza_yazilar": [], "imza_yamalar": []}
     if need_ocr:
         dpi = 300
         img = render(page, dpi)
         tw = text_words(page, dpi / 72.0) if has_text else []
-        r = analyze_image(img, dpi, rules, extra_words=tw, need_text=not has_text)
+        r = analyze_image(img, dpi, rules, extra_words=tw, need_text=not has_text,
+                          yapi={"bag": bag, "sayfa": sayfa})
         out["bulgular"] = r.bulgular
         out["kutular"] = to_page_rects(page, r.kutular, dpi / 72.0)
         out["turler"] = list(r.turler)
         out["alanlar"] = list(r.alanlar)
         out["taranamadi"] = r.taranamadi if not has_text else None
-        out["imza"] = r.imza
-        out["imza_kutular"] = to_page_rects(page, r.imza.kapat, dpi / 72.0) if r.imza else []
+        _imza_out(out, page, r.bolgeler, bag, sayfa, dpi / 72.0)
         return out
-    regions = signature_image_regions(page, SIG_DPI / 72.0)
-    if regions:
-        tw = text_words(page, SIG_DPI / 72.0)
-        if has_label_words(tw):
-            img = render(page, SIG_DPI)
-            res = IM.analyze(img, tw, SIG_DPI, flag_unlabeled=False, ink_regions=regions)
-            verify_covers(res, lambda b: _render_clip(page, b, SIG_DPI / 72.0))
-            out["imza"] = res
-            out["imza_kutular"] = to_page_rects(page, res.kapat, SIG_DPI / 72.0)
+    scale = SIG_DPI / 72.0
+    regions = signature_image_regions(page, scale)
+    tw = text_words(page, scale)
+    if regions or has_label_words(tw) or bag.sutun or any(Y._imza_basligi(w) for w in tw):
+        img = render(page, SIG_DPI)
+        gomulu = [(b, _imza_gibi(img, b)) for b in regions]
+        bol = Y.goruntu_bolgeleri(img, tw, SIG_DPI, kesin=tw, bag=bag, sayfa=sayfa, metin_sayfasi=True,
+                                  gomulu=gomulu, vektor=Y.vektor_cizgileri(page, scale))
+        _imza_out(out, page, bol, bag, sayfa, scale, img)
     return out
+
+
+def _imza_out(out: dict, page, bol, bag, sayfa: int, scale: float, img=None) -> None:
+    out["imza"] = Y.sonuc(bol)
+    out["bolgeler"] = bolge_kayitlari(bol, bag, sayfa, lambda b: tuple(to_page_rects(page, [b], scale)[0]))
+    for b in bol:
+        if b.karar == Y.BIRAKILDI:
+            continue
+        rect = to_page_rects(page, [b.kutu], scale)[0]
+        if b.yama is not None:
+            buf = io.BytesIO()
+            b.yama.save(buf, format="PNG")
+            out["imza_yamalar"].append((rect, buf.getvalue()))
+        else:
+            out["imza_kutular"].append(rect)
+            out["imza_yazilar"].append(Y.etiket_yazisi(b))
+
+
+def imza_redact(page, ps: dict):
+    """Maskeleme: sayfa taramasının imza kutularına karartma açıklaması ekler (renk ayrılan yamalar
+    için beyaz) → ((dikdörtgen, yazı) etiketleri, karartma uygulandıktan sonra çağrılacak işlev:
+    yamaları basar)."""
+    labels = []
+    yazilar = ps.get("imza_yazilar") or [IM.IMZA_LABEL] * len(ps.get("imza_kutular") or [])
+    for r, t in zip(ps.get("imza_kutular") or [], yazilar):
+        page.add_redact_annot(r, fill=(0, 0, 0))
+        labels.append((r, t))
+    yamalar = list(ps.get("imza_yamalar") or [])
+    for r, _ in yamalar:
+        page.add_redact_annot(r, fill=(1, 1, 1))
+
+    def sonra():
+        for r, png in yamalar:
+            try:
+                page.insert_image(r, stream=png)
+            except Exception:
+                pass
+    return labels, sonra
