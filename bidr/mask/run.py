@@ -14,6 +14,7 @@ import csv
 import json
 import shutil
 from collections import Counter
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
@@ -60,7 +61,43 @@ def _c(c) -> dict:
     return dict(sorted((k, v) for k, v in (c or {}).items() if v))
 
 
-def mask_and_check(src: Path, dst: Path, rules: MaskRules, eng: str) -> dict:
+# Modelin görsel okuma metninde (çalışma alanı `text/<doc_id>.txt`; sayfalar form feed ile ayrılır)
+# aranan ve maskelemenin o sayfada kapatmış olması gereken türler.
+MODEL_KINDS = {"tc_no": "kimlik no", "telefon": "telefon", "eposta": "e-posta", "ogrenci_no": "öğrenci no",
+               "iban": "IBAN"}
+EL_YAZISI_SORUN = "elle bakılmalı: el yazısı kişisel veri kapatılamadı"
+
+
+def model_text_gaps(model_text: str, res: dict, rules: MaskRules) -> tuple[list[str], str | None]:
+    """Modelin okuduğu metinde bir sayfada kimlik no/telefon/e-posta/öğrenci no varken maskeleme o
+    sayfada o türden daha azını kapattıysa (OCR el yazısını okuyamadı, etiketi de bulunamadı) →
+    (["s.N: tür, tür", …], uyarı). Değerler yazılmaz; yalnız tür ve sayfa. Maskeleyici sayfa kapsamı
+    vermediyse (sayfasız biçim, pypdf motoru) belge bütünü karşılaştırılır ("belge: tür"). Sayfa
+    sayısı uyuşmuyorsa denetim yapılmaz (uyarı döner)."""
+    from .detect import detect
+    kapsam = res.get("sayfa_kapsam")
+    if kapsam is None:                    # sayfasız biçim (metin, docx …) ya da pypdf: belge bütünü
+        want = Counter(f.kind for f in detect(model_text, rules) if f.kind in MODEL_KINDS)
+        have = res.get("maskelenen") or {}
+        eksik = [MODEL_KINDS[k] for k in MODEL_KINDS if want[k] > have.get(k, 0)]
+        return ([f"belge: {', '.join(eksik)}"] if eksik else []), None
+    pages = model_text.split("\f")
+    n = res.get("sayfa_sayisi") or len(kapsam)
+    if len(pages) == n + 1 and not pages[-1].strip():       # sondaki form feed
+        pages = pages[:-1]
+    if len(pages) != n:
+        return [], f"model metni denetimi yapılamadı (sayfa sayısı uyuşmuyor: metin {len(pages)}, dosya {n})"
+    out = []
+    for i, t in enumerate(pages, 1):
+        want = Counter(f.kind for f in detect(t, rules) if f.kind in MODEL_KINDS)
+        have = kapsam.get(i) or kapsam.get(str(i)) or {}
+        eksik = [MODEL_KINDS[k] for k in MODEL_KINDS if want[k] > have.get(k, 0)]
+        if eksik:
+            out.append(f"s.{i}: " + ", ".join(eksik))
+    return out, None
+
+
+def mask_and_check(src: Path, dst: Path, rules: MaskRules, eng: str, model_text: str | None = None) -> dict:
     """Tek dosya: tara → maskele (`dst`) → maskeli kopyayı bağımsız yeniden tara.
 
     → kayıt alanları: `durum` (tamam | basarisiz | taranamadi | hata), `elle_bakilmali`, `neden`,
@@ -83,12 +120,20 @@ def mask_and_check(src: Path, dst: Path, rules: MaskRules, eng: str) -> dict:
         return rec
     kalan = after["bulgular"]
     sorunlar = list(after["sorunlar"])
+    model_uyari = []
+    if model_text is not None:
+        gaps, note = model_text_gaps(model_text, res, rules)
+        if gaps:
+            rec["el_yazisi_elle"] = gaps
+            sorunlar.append(f"{EL_YAZISI_SORUN} ({'; '.join(gaps)})")
+        if note:
+            model_uyari.append(note)
     taranamadi = list(after.get("taranamadi") or [])
     if after.get("imza_aday"):
         sorunlar.append(f"imza: kapatılamayan aday ×{after['imza_aday']}")
     rec.update(bulunan=_c(before["bulgular"]), maskelenen=_c(res["maskelenen"]), kalan=_c(kalan),
                temizlenen=res["temizlenen"], kalan_sorunlar=sorunlar,
-               uyarilar=list(res["uyarilar"]) + list(after.get("uyarilar") or []))
+               uyarilar=list(res["uyarilar"]) + list(after.get("uyarilar") or []) + model_uyari)
     if before["imza"]:
         rec["imza_uyarisi"] = before["imza"]
     if res.get("imza_bolgesi"):
@@ -116,6 +161,42 @@ def mask_and_check(src: Path, dst: Path, rules: MaskRules, eng: str) -> dict:
     return rec
 
 
+def read_model_text(p: Path | None) -> str | None:
+    if p is None or not p.is_file():
+        return None
+    try:
+        return p.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+
+def _doc_texts(ws: Path, csv_name: str, path_col: str) -> dict[str, Path]:
+    """`<ws>/<csv>`'deki yol → `<ws>/text/<doc_id>.txt` (yalnız var olanlar)."""
+    f = ws / csv_name
+    out: dict[str, Path] = {}
+    if not f.is_file():
+        return out
+    try:
+        with open(f, encoding="utf-8", newline="") as fh:
+            for row in csv.DictReader(fh):
+                rel, did = (row.get(path_col) or "").strip(), (row.get("doc_id") or "").strip()
+                if rel and did and rel not in out and (ws / "text" / f"{did}.txt").is_file():
+                    out[rel] = ws / "text" / f"{did}.txt"
+    except (OSError, csv.Error):
+        return {}
+    return out
+
+
+def evidence_model_texts(ws: Path) -> dict[str, Path]:
+    """Kanıt dosyası (evidence/ göreli yolu) → modelin okuma metni (`evidence-index.csv` doc_id)."""
+    return _doc_texts(ws, INDEX, "dosya")
+
+
+def source_model_texts(ws: Path) -> dict[str, Path]:
+    """Kaynak dosyası (kaynak klasöre göreli yol) → modelin okuma metni (`inventory.csv` doc_id)."""
+    return _doc_texts(ws, "inventory.csv", "rel_path")
+
+
 def run(ws_root: Path, *, evidence: Path | None = None, out: Path | None = None, engine: str = "auto",
         names: list[str] | None = None, rules: MaskRules | None = None) -> dict:
     ws = Path(ws_root).expanduser().resolve()
@@ -130,8 +211,8 @@ def run(ws_root: Path, *, evidence: Path | None = None, out: Path | None = None,
     if rules is None:
         rules = MaskRules.from_config(read_ws_config(ws), ws)
     if names:
-        rules = MaskRules(kinds=rules.kinds, student_patterns=rules.student_patterns,
-                          names=tuple(rules.names) + tuple(names), local_model=rules.local_model)
+        rules = replace(rules, names=tuple(rules.names) + tuple(names))
+    model_texts = evidence_model_texts(ws)
     eng = pdf_engine(engine)
     _prepare_dir(dst_root)
     _prepare_dir(fail_root)
@@ -159,7 +240,10 @@ def run(ws_root: Path, *, evidence: Path | None = None, out: Path | None = None,
         if kind == "pdf":
             rec["motor"] = eng
         dst = dst_root / rel
-        rec.update(mask_and_check(src, dst, rules, eng))
+        mt = read_model_text(model_texts.get(rel.as_posix()))
+        if mt is not None:
+            rec["model_metni"] = True
+        rec.update(mask_and_check(src, dst, rules, eng, model_text=mt))
         toplam["bulunan"].update(rec.get("bulunan") or {})
         toplam["maskelenen"].update(rec.get("maskelenen") or {})
         toplam["kalan"].update(rec.get("kalan") or {})
@@ -186,12 +270,14 @@ def run(ws_root: Path, *, evidence: Path | None = None, out: Path | None = None,
         "surum": SURUM, "zaman": datetime.now().astimezone().isoformat(timespec="seconds"),
         "kanit_klasoru": str(ev), "maskeli_klasor": str(dst_root), "pdf_motoru": eng,
         "kurallar": {"turler": list(rules.kinds), "ogrenci_no_desen_sayisi": len(rules.student_patterns),
-                     "ad_listesi_sayisi": len(rules.names)},
+                     "ad_listesi_sayisi": len(rules.names), "etiket_alani": rules.label_fields},
         "ozet": {"dosya": len(kayitlar), **dict(sorted(durumlar.items())),
                  **{k: _c(v) for k, v in toplam.items()},
                  "imza_bolgesi": toplam_imza["bolge"], "imza_ortusen_kelime": toplam_imza["ortusen_kelime"],
                  "imza_elle_dosya": sum(1 for r in kayitlar if r.get("imza_elle")),
-                 "imza_metinle_ortusen_elle": sum(r.get("imza_metin_elle", 0) for r in kayitlar)},
+                 "imza_metinle_ortusen_elle": sum(r.get("imza_metin_elle", 0) for r in kayitlar),
+                 "model_metni_denetlenen": sum(1 for r in kayitlar if r.get("model_metni")),
+                 "el_yazisi_elle_dosya": sum(1 for r in kayitlar if r.get("el_yazisi_elle"))},
         "ocr": raster_ocr_available(),
         "yayimlanamaz": yayimlanamaz, "uyarilar": uyarilar, "dosyalar": kayitlar,
         "maskeli_dizin": str(index_out) if index_out else None,

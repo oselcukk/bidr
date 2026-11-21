@@ -51,9 +51,10 @@ Ayrıca iş paketlerine giren metin için `privacy.mask_before_model` vardır (b
 |---|---|
 | T.C. kimlik no `[TC_NO]` (algoritma denetimli) | **adlar ve soyadlar** — yalnız `ad_listesi`'ndekiler `[AD]` olur; liste yoksa hiçbir ad maskelenmez |
 | IBAN `[IBAN]` | **yüzler ve fotoğraflar** (yüz tanıma yok; fotoğraf olduğu gibi kalır) |
-| e-posta `[EPOSTA]` (kurumsal adresler dahil) | **el yazısı** (OCR okuyamaz: el yazısıyla yazılmış numara/ad kalır; sayfa çoğu zaman `taranamadi` olur) |
+| e-posta `[EPOSTA]` (kurumsal adresler dahil) | **el yazısı değerin kendisi** (OCR okuyamaz); yalnız BASILI kişisel veri etiketinin alanı kapatılır (aşağıda, `[KİŞİSEL VERİ]`). Etiketi de el yazısıyla yazılmış alan kalır; modelin okuma metni varsa dosya "elle bakılmalı" olur |
 | Türkiye telefon numarası `[TELEFON]` (kurum santrali dahil) | adres, doğum tarihi, not/puan, unvan, imza sirküsü dışındaki kişisel bilgiler |
-| öğrenci no `[OGRENCI_NO]` (yıl önekli 9-10 hane ya da "öğrenci no: …" bağlamı) | düz metinde biçimi beklenmedik numaralar (kural tabanlı tespitin kaçırdıkları) |
+| öğrenci no `[OGRENCI_NO]` (yıl önekli 9, 10 ya da 12 hane, kurum profilindeki desenler ya da "öğrenci no: …" bağlamı) | düz metinde biçimi beklenmedik numaralar (kural tabanlı tespitin kaçırdıkları) |
+| taranmış sayfada kişisel veri etiketinin alanı `[KİŞİSEL VERİ]` (kimlik/pasaport no, öğrenci no, doğum tarihi/yeri, adres, telefon/GSM, e-posta etiketinin sağı ya da alttaki hücre; el yazısıyla doldurulmuş değer okunmasa da) | — |
 | imza `[İMZA]` (imza etiketi/unvan bloğu yakınındaki mürekkep) | etiketsiz imza (elle bakılmalı listesine girer), paraf |
 | belge üst verisi, yorumlar, izlenen değişiklikler, gömülü ekler | desteklenmeyen biçimlerin içi (`.ppt`/`.pptx`, `.gif`/`.heic` …; araç yoksa eski `.doc`/`.msg`: olduğu gibi kopyalanır, elle bakılmalı) |
 
@@ -127,7 +128,8 @@ Sonra hat maskeli kopyayla çalıştırılır (`bidr ingest MASKELİ_KOPYA -w WS
 rapor metni maskeli metinden gelir (yer tutucular görünür); teslimde özgün belgeler gerekiyorsa
 kanıt dosyaları özgün klasörden eşlenir (`hedef` ↔ `dosya`).
 
-Sınırlar: kural tabanlıdır; adlar yalnız listeden bulunur; el yazısı, yüz, fotoğraf maskelenmez;
+Sınırlar: kural tabanlıdır; adlar yalnız listeden bulunur; el yazısı (basılı etiketinin alanı
+dışında), yüz, fotoğraf maskelenmez;
 desteklenmeyen biçimler maskelenmez; e-posta gövdesindeki satır içi görseller maskelenir ama
 ingest onları okumaz. Bu yüzden A **riski azaltır, kaldırmaz**; yukarıdaki kurum notu geçerlidir.
 
@@ -167,7 +169,8 @@ Rapora bulunan değerlerin kendisi yazılmaz; yalnız tür ve sayı. Komut, yay�
 | `iban` | `[IBAN]` | `TR` + 24 hane (boşluklu yazım dahil) |
 | `eposta` | `[EPOSTA]` | ad@alan.uzantı |
 | `telefon` | `[TELEFON]` | `+90`/`0090`/`0` önekli ya da alan kodu parantezli Türkiye numarası |
-| `ogrenci_no` | `[OGRENCI_NO]` | yapılandırılabilir desenler; varsayılan: yıl önekli 9-10 hane ve "öğrenci no: …" bağlamı (belge kimliği bağlamı hariç, yukarıda) |
+| `ogrenci_no` | `[OGRENCI_NO]` | yapılandırılabilir desenler; varsayılan: dört haneli yıl (19xx/20xx) önekli 9, 10 ya da 12 hane ve "öğrenci no: …" bağlamı (belge kimliği bağlamı hariç, yukarıda). 11 hane alınmaz (T.C. kimlik / 0'lı telefon uzunluğu); `90` önekli (telefon), IBAN parçası, `E-…`/`…-1` gibi kod parçaları alınmaz. Kurum profili (`bidr/data/institutions/<kurum>.yaml` `privacy.maskeleme.ogrenci_no_desenleri`; çalışma alanında `bidr.kurum`) kuruma özgü biçimi EKLER: ör. GTÜ'de iki haneli yıl önekli 12 hane |
+| `etiket_alani` | `[KİŞİSEL VERİ]` | yalnız görüntü katmanı (taranmış sayfa, görsel): kişisel veri etiketinin alanı (aşağıda) |
 | `ad` | `[AD]` | yalnız yapılandırmadaki ad listesi (büyük/küçük harf ve ş/s, ı/i … duyarsız) |
 
 ### Görüntüdeki yazı: yerel OCR
@@ -181,6 +184,48 @@ geçişler yapılır (T.C. algoritması yanlış pozitifi süzer). Eşleşen kut
 kapatılır: PDF'te PyMuPDF redaction görüntü piksellerini de değiştirir (yalnız üstüne kutu
 çizilmez); görselde Pillow ile, üst verisiz (EXIF/konum yok) yeni dosya yazılır. Maskeli kopya
 yeniden OCR'lanır; bulgu kalırsa `basarisiz`.
+
+### El yazısıyla doldurulmuş form alanları: `etiket_alani`
+
+Taranmış başvuru formu/dilekçede kimlik no, telefon, e-posta, adres, doğum tarihi, öğrenci no çoğu
+zaman EL YAZISIYLA doldurulur; OCR rakamları okuyamadığı için desen eşleşmez. Etiketler ise basılıdır
+ve okunur. Kural (`bidr/mask/alan.py`): OCR'lanan sayfada kişisel veri etiketi bulunursa etiketin
+alanı karartılır, içine `[KİŞİSEL VERİ]` yazılır; raporda `etiket_alani` (alan satırı başına) sayılır.
+
+- **Etiketler**: *güçlü* (yalnız kişiye ait olabilir): T.C. kimlik no / pasaport no, öğrenci no /
+  numarası, doğum tarihi / yeri, ev / ikamet / yazışma / tebligat adresi, GSM / cep telefonu;
+  *zayıf* (kurum iletişim bilgisinde de geçer): telefon / tel, e-posta, adres. **Ad/soyad etiketi
+  yoktur**: kişi adları maskelenmez.
+- **Yalnız görüntü katmanında** (taranmış / tam sayfa görüntülü PDF sayfası, görsel): metin katmanlı
+  sayfadaki basılı etiket ve değeri zaten desenlerle yakalanır; web sayfası altlığı, bölüm telefonu
+  gibi kurumsal satırlar bu kurala girmez.
+- **Yanlış pozitif sınırları**: etiket `:` ile (aynı ya da sonraki belirteçte) ya da satır/tablo
+  hücresi başında olmalı (akan metindeki "öğrenci numarası …" alınmaz); zayıf etiket sayfanın üst
+  (%7, antet) ve alt (%8, altlık) bandında alınmaz ve ancak sayfada güçlü bir etiket varsa (form
+  bağlamı) ya da alandaki mürekkebin çoğu güvenle okunan basılı metin değilse (el yazısı) alınır;
+  boş alan (mürekkep yok) ve zaten kapatılmış alan alınmaz.
+- **Alan**: etiket satır bandı (el yazısı satırdan taştığı için yukarı/aşağı genişletilir; dikey
+  sınır mürekkep koşusuyla, tablo satır çizgisinde / noktalı kılavuzda durur), etiket bitiminden
+  sağa bir sonraki etikete (`:` ile biten basılı belirteç ya da iki basılı form sözcüğü, ör.
+  "Okuduğu Dönem …"), dikey tablo çizgisine ya da sayfa kenarına kadar. Etiketten hemen sonra
+  dikey çizgi varsa değer sonraki hücrededir; `:`'sız tablo etiketinin sağı boşsa alttaki hücre.
+  Adres alanı bir-iki satır aşağı uzar (satır başında yeni etiket ya da başlık yoksa).
+- **İkinci OCR geçişi**: tesseract'ın varsayılan sayfa bölmesi el yazısıyla karışık form satırlarını
+  ya da transkript sütununu bütünüyle atlayabilir; sayfada etiket ya da kişisel belge ipucu
+  (öğrenci, kimlik, başvuru, form, transkript …) varsa seyrek metin kipiyle (psm 11) ikinci geçiş
+  yapılır, yeni etiketler eklenir (sayfa başına ~2-3 sn).
+- Kapatma `privacy.maskeleme.etiket_alani: false` ile kapatılabilir (varsayılan açık).
+
+**Modelin okuma metniyle el yazısı denetimi**: çalışma alanı biliniyorsa (`-w`; kaynak modunda
+`--kaynak … -w WS` ile, kaynak daha önce okunmuşsa) dosyanın modelce okunmuş metni
+(`text/<doc_id>.txt`; kanıt modunda `evidence-index.csv`, kaynak modunda `inventory.csv` ile
+eşlenir; sayfalar form feed ile ayrılır) aynı desenlerle taranır. Bir sayfada kimlik no, telefon,
+e-posta, öğrenci no ya da IBAN varken maskeleme o sayfada o türden daha azını kapattıysa (değer de
+etiket de el yazısı; OCR ikisini de okuyamadı) dosya `basarisiz` olur ve kayıtta
+`el_yazisi_elle: ["s.2: kimlik no, e-posta"]`, nedeninde "elle bakılmalı: el yazısı kişisel veri
+kapatılamadı (…)" yazar. Değer rapora yazılmaz; yalnız tür ve sayfa. Etiket alanı kapsamı türüne
+göre sayılır (telefon etiketinin alanı telefonu kapatmış sayılır). Sayfa sayısı uyuşmuyorsa denetim
+yapılmaz (uyarı); sayfasız biçimlerde (metin, docx …) ve pypdf motorunda belge bütünü karşılaştırılır.
 
 **Taranamadı**: metin katmanı olmayan bir sayfa/görsel OCR'dan geçemezse — tesseract ya da dil
 verisi yok, araç hatası, ya da mürekkepli sayfada güvenilir kelime çok az / ortalama güven < 50
@@ -280,8 +325,9 @@ veri ve sıkıştırılmamış bütün akışlarda ham arama; DOCX/XLSX: pakette
 "maskeleme başarısız" işaretlenir, `evidence-maskeli/`'den çıkarılıp `maskeleme-basarisiz/`'e
 alınır ve yayımlanamaz listesine yazılır.
 
-Sınırlar: OCR el yazısını okuyamaz (el yazısı sayfa `taranamadi` ya da imza şüphesiyle elle
-bakılmalı olur); imza tespiti sezgiseldir (etiketsiz imza ve imzaya benzeyen çizimler elle
+Sınırlar: OCR el yazısını okuyamaz (değer yalnız basılı etiketinin alanı olarak kapatılır;
+etiketi de el yazısı olan alan kalır, modelin okuma metni varsa dosya elle bakılmalı olur; el
+yazısı sayfa `taranamadi` ya da imza şüphesiyle elle bakılmalı olabilir); imza tespiti sezgiseldir (etiketsiz imza ve imzaya benzeyen çizimler elle
 bakılmalı); PyMuPDF yoksa taranmış sayfadaki bulgu ve imza kapatılamaz (yeniden tarama
 yakalar, dosya `basarisiz`); ad tespiti yalnız listedeki adları bulur; kural tabanlı tespit her
 biçimi yakalamaz. Yayından önce `maskeleme-raporu.json`, `imza_elle` sayfaları ve imza uyarıları
@@ -316,6 +362,8 @@ privacy:
   maskeleme:                  # hepsi isteğe bağlı
     turler: [tc_no, iban, eposta, telefon, ogrenci_no, ad]
     ogrenci_no_desenleri: ['(?<!\d)(?:19|20)\d{7,8}(?!\d)']   # Python düzenli ifadesi; grup 1 varsa yalnız o
+                              # (varsayılanların yerine geçer; kurum profilinin desenleri her durumda eklenir)
+    etiket_alani: true        # taranmış sayfada kişisel veri etiketinin alanı [KİŞİSEL VERİ] (varsayılan açık)
     ad_listesi: personel.txt  # ya da liste; .txt satır başına bir ad, .csv ilk sütun; göreli yol ws'e göre
     yerel_model: null         # genişletme noktası (bu sürümde uygulanmaz)
 ```

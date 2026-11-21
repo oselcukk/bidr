@@ -363,6 +363,7 @@ def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules) -> dict:   # pragma
     temiz = set()
     uyarilar = []
     imza_bolge = ortusen = 0
+    kapsam: dict[int, dict] = {}                  # sayfa → kapatılan tür sayıları (el yazısı denetimi)
     flags = _redact_flags(fitz)
     for page in doc:
         cover = []
@@ -388,6 +389,7 @@ def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules) -> dict:   # pragma
         except Exception as e:   # yeniden tarama karar verir
             ps = {"bulgular": Counter(), "kutular": [], "imza": None, "imza_kutular": []}
             uyarilar.append(f"s.{page.number + 1}: görüntü katmanı işlenemedi ({type(e).__name__})")
+        alanlar = list(ps.get("alanlar") or [])
         labels: list = []                 # (dikdörtgen, yer tutucu): kapatmadan sonra metin katmanına yazılır
         for r, k in zip(ps["kutular"], ps.get("turler") or [None] * len(ps["kutular"])):
             page.add_redact_annot(r, fill=(0, 0, 0))
@@ -414,6 +416,7 @@ def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules) -> dict:   # pragma
         for k, n in ps["bulgular"].items():          # metin katmanı + OCR aynı bulguyu iki kez saymasın
             page_counts[k] = max(page_counts[k], n)
         counts.update(page_counts)
+        page_kapsam = Counter(page_counts)
         page.apply_redactions(**flags)
         # kapatma çevreyi değiştirir (küme ayrışır, yeni vuruş belirginleşir): imza/OCR bulgusu
         # kalmayana kadar en çok iki tur daha
@@ -435,8 +438,15 @@ def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules) -> dict:   # pragma
             imza_bolge += len(ps["imza_kutular"])
             if ps["imza"] is not None:
                 ortusen += ps["imza"].ortusen_kelime
+            for k, n in ps["bulgular"].items():
+                if k != "etiket_alani":
+                    page_kapsam[k] += n
+            alanlar += list(ps.get("alanlar") or [])
+            counts["etiket_alani"] += ps["bulgular"].get("etiket_alani", 0)
             page.apply_redactions(**flags)
         _write_labels(fitz, page, labels)
+        from .raster import page_coverage
+        kapsam[page.number + 1] = dict(page_coverage(page_kapsam, alanlar))
     if doc.metadata and any(doc.metadata.values()):
         temiz.add("ust_veri")
     doc.set_metadata({})
@@ -464,7 +474,8 @@ def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules) -> dict:   # pragma
     w.write(buf)
     dst.write_bytes(buf.getvalue())
     return {"maskelenen": counts, "temizlenen": sorted(temiz), "uyarilar": uyarilar,
-            "imza_bolgesi": imza_bolge, "ortusen_kelime": ortusen}
+            "imza_bolgesi": imza_bolge, "ortusen_kelime": ortusen, "sayfa_sayisi": len(kapsam),
+            "sayfa_kapsam": kapsam}
 
 
 def _iter_indirect(reader):

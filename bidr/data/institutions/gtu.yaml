@@ -80,3 +80,12 @@ katalog:
     tur: talimat
     etkin: false
     not: laboratuvar cihaz talimatları (~450); BİDR ölçütleriyle ilgisiz, çekilmez
+# Kişisel veri maskeleme (`bidr maskele`): kurumun öğrenci numarası biçimi. Çalışma alanının
+# `privacy.maskeleme.ogrenci_no_desenleri`ne (ya da varsayılanlara) EKLENİR. Öğrenci numaraları
+# 12 hane: iki haneli giriş yılı + birim/program kodu + sıra (ör. 24 05 ……). Etiketsiz (tablo
+# hücresinde) de yakalanır; önünde harf/`-`/`/`/`.` ya da arkasında `-`/`/`/`.`+rakam varsa
+# (belge/evrak kodu parçası) ve "Sayı:", "Proje No:" gibi belge kimliği bağlamında alınmaz.
+privacy:
+  maskeleme:
+    ogrenci_no_desenleri:
+      - '(?<![\w\-/.=%])[1-3]\d{11}(?!\d)(?![\-/.]\d)'

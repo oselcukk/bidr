@@ -63,9 +63,10 @@ ADDR_PLACEHOLDER = "eposta@maskeli.invalid"
 
 
 class _Ctx:
-    def __init__(self, rules: MaskRules, eng: str, ayir: Path | None = None):
+    def __init__(self, rules: MaskRules, eng: str, ayir: Path | None = None, model_text: str | None = None):
         self.rules = rules
         self.eng = eng
+        self.model_text = model_text        # en üst düzey dosyanın modelin okuma metni (yolu), varsa
         self.ayir = ayir                    # --ayir: elle bakılmalı dosyaların ayrı klasörü
         self.records: list[dict] = []
         self.last: dict | None = None       # son `_handle` çağrısının ana kaydı
@@ -195,7 +196,13 @@ def _mask_one(src: Path, rel: str, hedef: str, dst: Path, ctx: _Ctx, kind: str) 
     if kind == "pdf":
         rec["motor"] = ctx.eng
     dst.parent.mkdir(parents=True, exist_ok=True)
-    rec.update(mask_and_check(src, dst, ctx.rules, ctx.eng))
+    mt = None
+    if ctx.model_text and C.SEP not in rel:          # kap üyesi değil: en üst düzey dosya
+        from .run import read_model_text
+        mt = read_model_text(Path(ctx.model_text))
+        if mt is not None:
+            rec["model_metni"] = True
+    rec.update(mask_and_check(src, dst, ctx.rules, ctx.eng, model_text=mt))
     if rec["durum"] == "hata":
         _copy_as_is(src, dst)
         rec["neden"] = rec["neden"] + " — özgün dosya olduğu gibi kopyalandı (kişisel veri içerebilir)"
@@ -599,8 +606,8 @@ def _files(src: Path) -> tuple[list[Path], list[str]]:
 
 
 def _work(args) -> list[dict]:
-    src, rel, hedef, dst, rules, eng, ayir = args
-    ctx = _Ctx(rules, eng, Path(ayir) if ayir else None)
+    src, rel, hedef, dst, rules, eng, ayir, mtext = args
+    ctx = _Ctx(rules, eng, Path(ayir) if ayir else None, mtext)
     try:
         written = _handle(Path(src), rel, hedef, Path(dst), ctx)
     except Exception as e:      # beklenmeyen: kanıt düşmesin
@@ -634,7 +641,10 @@ def ayir_path(out: Path) -> Path:
 
 
 def run_source(source: Path, out: Path, *, rules: MaskRules | None = None, engine: str = "auto",
-               workers: int = 1, report: Path | None = None, progress=None, ayir: bool = False) -> dict:
+               workers: int = 1, report: Path | None = None, progress=None, ayir: bool = False,
+               ws: Path | None = None) -> dict:
+    """`ws`: çalışma alanı verilirse ve kaynak daha önce okunmuşsa (`inventory.csv` + `text/<doc_id>.txt`)
+    modelin okuma metniyle el yazısı denetimi yapılır (bkz. `run.model_text_gaps`)."""
     src = Path(source).expanduser().resolve()
     if not src.is_dir():
         raise FileNotFoundError(f"kaynak klasör yok: {src}")
@@ -661,11 +671,15 @@ def run_source(source: Path, out: Path, *, rules: MaskRules | None = None, engin
                         "sayfalardaki veri ve imzalar kapatılamaz (`pip install 'bidr[maske]'`)")
     files, skipped = _files(src)
     namer = _Namer(rules)
+    from .run import source_model_texts
+    mtexts = source_model_texts(Path(ws).expanduser().resolve()) if ws else {}
     jobs = []
     for p in files:
         rel = p.relative_to(src).as_posix()
         hedef = "/".join(namer.path(rel.split("/")))
-        jobs.append((str(p), rel, hedef, str(out / hedef), rules, eng, str(ayir_d) if ayir_d else None))
+        mt = mtexts.get(rel)
+        jobs.append((str(p), rel, hedef, str(out / hedef), rules, eng, str(ayir_d) if ayir_d else None,
+                     str(mt) if mt else None))
     records: list[dict] = []
     if workers > 1 and len(jobs) > 1:
         with ProcessPoolExecutor(max_workers=workers) as ex:
@@ -695,7 +709,7 @@ def run_source(source: Path, out: Path, *, rules: MaskRules | None = None, engin
         "surum": SURUM, "mod": "kaynak", "zaman": datetime.now().astimezone().isoformat(timespec="seconds"),
         "kaynak_klasor": str(src), "maskeli_klasor": str(out), "pdf_motoru": eng, "ocr": ocr_available(),
         "kurallar": {"turler": list(rules.kinds), "ogrenci_no_desen_sayisi": len(rules.student_patterns),
-                     "ad_listesi_sayisi": len(rules.names)},
+                     "ad_listesi_sayisi": len(rules.names), "etiket_alani": rules.label_fields},
         "ozet": {"dosya": len(files), "kayit": len(records), **dict(sorted(durumlar.items())),
                  "atlanan_gizli_sistem": len(skipped), "elle_bakilmali": len(elle),
                  **{k: _c(v) for k, v in toplam.items()},
@@ -703,6 +717,8 @@ def run_source(source: Path, out: Path, *, rules: MaskRules | None = None, engin
                  "imza_ortusen_kelime": sum(r.get("imza_ortusen_kelime", 0) for r in records),
                  "imza_metinle_ortusen_elle": sum(r.get("imza_metin_elle", 0) for r in records),
                  "eski_bicim_cevrilen": sum(1 for r in records if r.get("donusum")),
+                 "model_metni_denetlenen": sum(1 for r in records if r.get("model_metni")),
+                 "el_yazisi_elle_dosya": sum(1 for r in records if r.get("el_yazisi_elle")),
                  **({"ayrilan": len(ayrilan)} if ayir else {}),
                  "ad_degisen": sum(1 for r in records if r.get("hedef") and
                                    _base(r["hedef"], r.get("donusum")) != _base(r["dosya"], r.get("donusum")))},

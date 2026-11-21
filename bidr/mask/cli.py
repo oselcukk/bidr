@@ -15,9 +15,8 @@ def _rules(args, base: Path | None):
     from .detect import MaskRules, load_name_list, read_ws_config
     rules = MaskRules.from_config(read_ws_config(base), base) if base else MaskRules()
     if args.ad_listesi:
-        rules = MaskRules(kinds=rules.kinds, student_patterns=rules.student_patterns,
-                          names=tuple(rules.names) + tuple(load_name_list(args.ad_listesi, base or Path.cwd())),
-                          local_model=rules.local_model)
+        from dataclasses import replace
+        rules = replace(rules, names=tuple(rules.names) + tuple(load_name_list(args.ad_listesi, base or Path.cwd())))
     return rules
 
 
@@ -36,7 +35,7 @@ def _run_source(args) -> int:
     try:
         r = run_source(Path(args.kaynak), Path(args.out), rules=_rules(args, ws), engine=args.motor,
                        workers=max(1, args.is_), report=Path(args.rapor) if args.rapor else None,
-                       progress=progress, ayir=args.ayir)
+                       progress=progress, ayir=args.ayir, ws=ws)
     except (FileNotFoundError, MaskRunError, MaskError, ValueError) as e:
         print(f"HATA {e}", file=sys.stderr)
         return 2
