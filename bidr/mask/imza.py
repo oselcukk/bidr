@@ -122,6 +122,8 @@ class Result:
     elle_bolge: int = 0                             # metinle çok örtüştüğü için kapatılmayan imza bölgesi
     olcum: list = field(default_factory=list)       # aday başına (örtüşen kelime, kapatıldı mı)
     dogrulama: list = field(default_factory=list)   # kapatılan kutu başına yeniden OCR'da okunan kelime
+    etiketsiz_kutu: list = field(default_factory=list)  # etiketsiz adayların kutuları (bölge listesi, m2)
+    elle_kutu: list = field(default_factory=list)       # kapatılmayan (metinle örtüşen) bölgelerin kutuları (m2)
 
     @property
     def kesin(self) -> bool:
@@ -388,6 +390,7 @@ def analyze(img, words: list[Word], ppi: float, *, flag_unlabeled: bool = True, 
             res.etiketli += 1
         elif flag_unlabeled and (box[1] + box[3]) / 2 > TOP_IGNORE * H:
             res.etiketsiz += 1
+            res.etiketsiz_kutu.append(box)
 
     labels = set(strict + role)
     hs = sorted(w.h for w in wa if _confident(w))
@@ -405,9 +408,14 @@ def analyze(img, words: list[Word], ppi: float, *, flag_unlabeled: bool = True, 
         else:
             res.elle_bolge += 1
             res.etiketli -= 1
+            res.elle_kutu.append(cb)
     res.ortusen_kelime = len(hit)
     res.kapat = [(max(0, a / k), max(0, b / k), min(img.width, c / k), min(img.height, d / k))
                  for a, b, c, d in kept]
+    res.etiketsiz_kutu = [(max(0, a / k), max(0, b / k), min(img.width, c / k), min(img.height, d / k))
+                          for a, b, c, d in res.etiketsiz_kutu]
+    res.elle_kutu = [(max(0, a / k), max(0, b / k), min(img.width, c / k), min(img.height, d / k))
+                     for a, b, c, d in res.elle_kutu]
     return res
 
 

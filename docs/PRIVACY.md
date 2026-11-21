@@ -89,12 +89,15 @@ bidr maskele --kaynak BÖLÜM_KLASÖRÜ --out MASKELİ_KOPYA [-w WS] [--ad-liste
   Bozuk/şifreli kap olduğu gibi kopyalanır (`hata`); şifreli üye yeni kaba alınamaz (`hata`).
 - **Eski biçimler** geçici klasörde yeni biçime çevrilip maskelenir; maskeli kopyada yeni
   uzantısıyla durur (rapor: `dosya` özgün ad, `hedef` yeni ad, `ozgun_bicim`, `donusum`):
-  `.doc` → `.docx` (macOS `textutil`; textutil'in Word belgesi olarak tanımadığı dosya çevrilmez),
+  `.doc` → `.docx` (macOS `textutil`; textutil'in Word belgesi olarak tanımadığı dosya çevrilmez;
+  textutil yoksa — Linux/Windows — LibreOffice ile `.pdf`), `.ppt`/`.pptx` → `.pdf` (LibreOffice:
+  `soffice --headless --convert-to pdf`, her çağrıda ayrı geçici kullanıcı profili
+  `-env:UserInstallation=…`, tek süreç, zaman aşımı),
   `.xls` → `.xlsx` (xlrd ile okunur, openpyxl ile yazılır: hücre değerleri, tarihler, sayfa adları,
   birleşik hücreler; formül hesaplanmış değer olarak, biçim/grafik/görsel taşınmaz), `.msg` → `.eml`
   (`extract-msg` kuruluysa: başlıklar, gövde, ekler; sonra `.eml` gibi). Uzantısı `.doc`/`.xls` olup
-  içi docx/xlsx ya da HTML olan dosyalar doğru biçime yönlendirilir. Çevrilemeyen (Windows/Linux'ta
-  textutil yok, `extract-msg` yok, `.ppt`/`.pptx` — LibreOffice gerekir —, bozuk dosya) olduğu gibi
+  içi docx/xlsx ya da HTML olan dosyalar doğru biçime yönlendirilir. Çevrilemeyen (textutil de
+  LibreOffice da yok — açık kurulum mesajıyla —, `extract-msg` yok, bozuk dosya) olduğu gibi
   kopyalanır, `desteklenmiyor` + anlaşılır neden, elle bakılmalı. Çevrilen biçimde yazı biçimi ve
   gömülü görseller kaybolabilir (uyarı); özgün dosya kaynakta durur.
 - **Desteklenmeyen biçimler** olduğu gibi kopyalanır (`desteklenmiyor`, elle bakılmalı) — içleri
@@ -138,6 +141,10 @@ ingest onları okumaz. Bu yüzden A **riski azaltır, kaldırmaz**; yukarıdaki 
 
 ```
 bidr maskele -w WS [--evidence DIR] [--out DIR] [--motor auto|pymupdf|pypdf] [--ad-listesi DOSYA]
+                   [--is N] [--ilerleme] [--onbellek-yok]
+bidr maskele bolgeler -w WS [--json]                         # onay bekleyen bölgeler
+bidr maskele karar -w WS <bolge_id> kapat|birak [--kim AD]   # bölge kararı
+bidr maskele yukle -w WS <kanit_dosyasi> <maskeli_dosya> [--kim AD] [--zorla]
 ```
 
 `bidr file`'ın ürettiği `evidence/` klasörünün **maskeli sunum kopyasını** üretir. Asıl dosyalara
@@ -150,13 +157,97 @@ dokunulmaz.
 | `evidence-maskeli/` | yayımlanabilir kopyalar (yalnız yeniden taramadan temiz geçenler) |
 | `maskeleme-basarisiz/` | yeniden taramada sızıntı/şüphe kalan ya da taranamayan dosyaların kopyaları (elle inceleme için; **yayımlanmaz**) |
 | `maskeleme-raporu.json` | dosya başına `durum`, `elle_bakilmali`, `bulunan` / `maskelenen` / `kalan` (tür → sayı), `imza_bolgesi`, `imza_elle`, `taranamadi`, temizlenen üst veri, uyarılar, `yayimlanamaz` listesi |
-| `evidence-index-maskeli.csv` | `evidence-index.csv` varsa: `ad`, `alintilar`, `kaynak` maskeli; `maskeleme` sütunu (tamam/basarisiz/taranamadi/desteklenmiyor/hata) |
+| `evidence-index-maskeli.csv` | `evidence-index.csv` varsa: `ad`, `alintilar`, `kaynak` maskeli; `maskeleme` sütunu (tamam/basarisiz/taranamadi/desteklenmiyor/hata/elle_maskelendi) |
+| `maskeleme-kararlari.jsonl` | insan bölge kararları (`bidr maskele karar`; çalıştırmalar arasında kalır) |
+| `maskeleme-elle/` + `maskeleme-elle.json` | elle maskelenmiş sürümler (`bidr maskele yukle`; kanıtın sha256'sıyla) |
+| `.cache/maske.sqlite` | içerik adresli önbellek (aşağıda; silinebilir, sonuç değişmez) |
 
-Dosya durumları: `tamam` (yayın kopyası `evidence-maskeli/`'de), `basarisiz` (kişisel veri ya da
-imza şüphesi kaldı), `taranamadi` (metin katmanı yok ve OCR'dan geçemedi), `desteklenmiyor`,
-`hata`. `tamam` dışındaki her durumda `elle_bakilmali: true`: özgün kanıt rapor ve paketten
-**çıkarılmaz**, yalnız yayın kopyası yoktur ("maskeleme eksik, elle bakılmalı"). Maskeleme kanıt
-seçimini etkilemez.
+Dosya durumları: `tamam` (yayın kopyası `evidence-maskeli/`'de), `elle_maskelendi` (insanın
+yüklediği maskeli sürüm `evidence-maskeli/`'de), `basarisiz` (kişisel veri ya da imza şüphesi kaldı,
+onay bekleyen bölge var ya da redaksiyon doğrulaması geçmedi), `taranamadi` (metin katmanı yok ve
+OCR'dan geçemedi: okunamayan sayfa bölgesi onay bekler), `desteklenmiyor` (eski biçim çevrilemediyse
+`onay_bekliyor: true`), `hata`. `tamam`/`elle_maskelendi` dışındaki her durumda `elle_bakilmali:
+true`. Maskeleme kanıt seçimini etkilemez: kanıt rapordan çıkarılmaz, atıfı ve numarası değişmez;
+yalnız **teslim kapısı** (aşağıda) dosyayı insan kontrolüne kadar pakete almaz.
+
+Eski biçimler (`.doc`, `.xls`, `.ppt`, `.pptx`, `.msg`) kanıt modunda da çevrilip maskelenir (yukarıdaki
+A bölümüyle aynı çeviriciler; Linux'ta LibreOffice); maskeli kopya yeni uzantısıyla durur (kayıtta
+`maskeli`, `donusum`), teslim paketi o kopyayı alır. Çeviri sonucu önbelleğe yazılır. Çevrilemeyen
+dosya kontrol bekler ve pakete girmez; LibreOffice yoksa neden açıkça söylenir.
+
+### Bölgeler, insan kontrolü ve teslim kapısı
+
+Her dosya kaydında (`maskeleme-raporu.json`, PDF/PyMuPDF ve görseller) `bolgeler` listesi vardır;
+eski alanlar korunur:
+
+```
+{"id": "<dosya-sha8>-s<sayfa>-<sıra>", "sayfa": 1, "kutu": [x0, y0, x1, y1],   # PDF puanı (görselde
+ "tur": "imza" | "el_yazisi_alan" | "kisisel_veri" | "okunamayan_sayfa",       #  piksel → puan)
+ "karar": "kapatildi" | "onay_bekliyor" | "birakildi", "neden": "…", "kaynak": "kural adı",
+ "guven": 0.0-1.0, "geri_basilan": null, "insan": {"karar", "kim", "zaman"}?}
+```
+
+Kimlik kararlıdır (aynı girdi + aynı kurallar → aynı kimlik). Kaynaklar: `metin_deseni`,
+`ocr_deseni`, `etiket_alani`, `kapatan_isaretleme`, `imza_aday` (kapatıldı), `imza_etiketsiz`,
+`imza_metin` (metinle örtüşen imza), `imza_kalan` (maskeli kopyada kapatılmamış aday), `ocr`
+(okunamayan sayfa), `model_metni` (modelin okuma metninde olup kapatılmayan tür; yalnız sayfa
+bilinir). Yeniden taramanın adayı bilinen bölgeyle (aynı sayfa, aynı tür, örtüşen kutu) eşleşirse
+açıklanmış sayılır; eşleşmeyen yeni bölge olarak onay bekler. `onay_bekliyor` bölgesi olan dosya
+`elle_bakilmali: true`'dur.
+
+- `bidr maskele bolgeler -w WS [--json]` onay bekleyen bölgeleri (dosya, kimlik, sayfa, tür, kutu,
+  neden), kararı verilip henüz uygulanmamışları ve bölgesi olmayan kontrol bekleyen dosyaları
+  (yalnız elle maskeleme) listeler; bekleyen varsa çıkış kodu 1.
+- `bidr maskele karar -w WS <bolge_id> kapat|birak [--kim AD]` `maskeleme-kararlari.jsonl`'a satır
+  ekler (`{"id", "karar", "kim", "zaman", "kutu", "tur", "kaynak"}`; aynı kimliğin son satırı
+  geçerli). Sonraki `bidr maskele` bölgeyi kimliğiyle bulur: `kapat` → kapatılır (okunamayan sayfada
+  bütün sayfa), `birak` → açık bırakılır; karar verilmiş bölge yeniden sorulmaz. Kararın kutusu/türü
+  bölgeyle eşleşmezse (kurallar değişip sıra kaydıysa) karar uygulanmaz, uyarı verilir. Otomatik
+  kapatılan desen ve etiket alanı bulguları `birak` ile açılamaz (yalnız imza); `model_metni`
+  bölgesi yalnız `birak` alır (yeri bilinmediği için kapatmak elle maskelemeyle olur).
+- `bidr maskele yukle -w WS <kanit_dosyasi> <maskeli_dosya>` elle maskelenmiş sürümü kabul eder:
+  `maskeleme-elle/`'ye kopyalanır, kayıt hemen `elle_maskelendi` olur ve kopya `evidence-maskeli/`'ye
+  konur; sonraki çalıştırmalar kanıt dosyası değişmedikçe (sha256) aynı sürümü kullanır. Yüklenen
+  dosyada metin desenine uyan kişisel veri kalmışsa reddedilir (`--zorla` ile kabul, uyarıyla).
+
+**Teslim kapısı** (`bidr teslim`, politika 2026-11-22): maskelenecek yeri çözülmemiş dosya — onay
+bekleyen bölgesi olan, `basarisiz`, `taranamadi`, `hata`, `desteklenmiyor`, maskeli kopyası eski ya
+da raporda olmayan — kanıt paketine (ve `evidence-maskeli/`'ye) otomatik **girmez**. Rapordaki kanıt
+atıfı ve numarası değişmez; kanıt dizininde satır kalır (dosya boş, Maskeleme `kontrol bekliyor`),
+teslim çıktısında ve özetinde (`kontrol_bekliyor`, `kontrol_uyarisi`) açık uyarı: "maskelenecek yeri
+var, kontrol bekliyor: N dosya"; `EKSIK.txt` listeler; hat aşaması insan bekler. Karar ya da maskeli
+yükleme ve yeniden `bidr maskele` sonrası yeniden `bidr teslim`'de dosya girer. Eski "kısmen maskeli
+kopya pakete girer" davranışı kalktı. Maskeleme hiç çalıştırılmadıysa özgün dosyalar girer
+(Maskeleme `yapılmadı`; hat uyarır).
+
+### Redaksiyon doğrulaması
+
+Son adım (PDF/PyMuPDF ve görseller): maskeli çıktıda her kapatılan bölgenin kutusunun altında
+çıkarılabilir metin ya da görüntü verisi kalmadığı denetlenir. PDF'te kutunun içinde merkezi kalan
+kelimeler çıkarılır (yer tutucular ve `geri_basilan` yazısı dışında harf/rakam kalmamalı); kutuyla
+kesişen her gömülü görüntünün pikselleri açılır, kutunun görüntüdeki karşılığı tek renkli olmalı
+(redaksiyon pikselleri boyar; yalnız üstüne çizilmiş kutu bunu geçemez). Görselde kutu karanlık
+olmalı. Başarısızsa dosya `tamam` sayılmaz (`basarisiz`, kayıtta `redaksiyon_dogrulama`).
+
+### Önbellek ve hız
+
+Çalışma alanında içerik adresli SQLite önbellek (`.cache/maske.sqlite`; `--onbellek-yok` ile
+kapatılır). Anahtar içeriğin sha256'sı + işi etkileyen her şeydir; dosya adı/zaman girmez:
+
+- `ocr`: sayfa görüntüsü (PNG) sha256 + tesseract sürümü + dil + psm + görüntü boyutu → kelimeler;
+- `donusum`: eski biçimli dosya sha256 + çevirici ve sürümü → çevrilmiş dosya;
+- `aday`: kaynak sha256 + kural sürümü (`KURAL_SURUM`) + maskeleme kodu parmak izi + kurallar (ad
+  listesi yalnız özetiyle) + PDF motoru + o dosyanın insan kararları + model metni → kayıt + maskeli kopya.
+
+Değişmeyen dosya yeniden işlenmez (`aday` isabeti; raporda `onbellek: true`, özette `onbellekten`).
+Kural ya da karar değişince yalnız `aday` katmanı yeniden hesaplanır; sayfa görüntüleri aynı
+kaldığından OCR yeniden çalışmaz. Kanıt modunda dosyalar varsayılan iki işçi süreçte işlenir
+(`--is N`); tesseract tek iş parçacığıyla (`OMP_THREAD_LIMIT=1`) çalışır. Metin katmanının *varlığı*
+değil *yeterliliği* ölçülür: tam sayfa görüntülü sayfada görüntünün üstünde yeterli metin katmanı
+varsa (≥ 25 kelime, çoğu harf/rakam ağırlıklı, görüntü yüksekliğinin yarısına yayılmış: aranabilir
+PDF) OCR yapılmaz; imza ve etiket alanı metin katmanı kelimeleriyle çözümlenir. Görsel dosyada
+(fotoğraf) OCR hiç metin bulamazsa görüntü döndürülüp yeniden denenmez: görsel `okunamayan_sayfa`
+bölgesi olur (onay bekler; "kişisel veri yok" sayılmaz).
 
 Rapora bulunan değerlerin kendisi yazılmaz; yalnız tür ve sayı. Komut, yayımlanamaz dosya varsa
 1, hata varsa 2 ile çıkar.
@@ -212,8 +303,10 @@ alanı karartılır, içine `[KİŞİSEL VERİ]` yazılır; raporda `etiket_alan
   Adres alanı bir-iki satır aşağı uzar (satır başında yeni etiket ya da başlık yoksa).
 - **İkinci OCR geçişi**: tesseract'ın varsayılan sayfa bölmesi el yazısıyla karışık form satırlarını
   ya da transkript sütununu bütünüyle atlayabilir; sayfada etiket ya da kişisel belge ipucu
-  (öğrenci, kimlik, başvuru, form, transkript …) varsa seyrek metin kipiyle (psm 11) ikinci geçiş
-  yapılır, yeni etiketler eklenir (sayfa başına ~2-3 sn).
+  (öğrenci, kimlik, başvuru, form, transkript …) varsa ve ilk geçiş (psm 3) zayıfsa — 60'tan az
+  güvenilir kelime ya da harf ağırlıklı ortalama güven 80'in altında — seyrek metin kipiyle (psm 11)
+  ikinci geçiş yapılır, yeni etiketler eklenir (sayfa başına ~2-3 sn). İlk geçiş güçlüyse ikinci geçiş
+  yapılmaz.
 - Kapatma `privacy.maskeleme.etiket_alani: false` ile kapatılabilir (varsayılan açık).
 
 **Modelin okuma metniyle el yazısı denetimi**: çalışma alanı biliniyorsa (`-w`; kaynak modunda
@@ -329,9 +422,10 @@ Sınırlar: OCR el yazısını okuyamaz (değer yalnız basılı etiketinin alan
 etiketi de el yazısı olan alan kalır, modelin okuma metni varsa dosya elle bakılmalı olur; el
 yazısı sayfa `taranamadi` ya da imza şüphesiyle elle bakılmalı olabilir); imza tespiti sezgiseldir (etiketsiz imza ve imzaya benzeyen çizimler elle
 bakılmalı); PyMuPDF yoksa taranmış sayfadaki bulgu ve imza kapatılamaz (yeniden tarama
-yakalar, dosya `basarisiz`); ad tespiti yalnız listedeki adları bulur; kural tabanlı tespit her
-biçimi yakalamaz. Yayından önce `maskeleme-raporu.json`, `imza_elle` sayfaları ve imza uyarıları
-insan tarafından gözden geçirilmelidir.
+yakalar, dosya `basarisiz`) ve bölge listesi üretilmez (yalnız elle maskeleme); DOCX/XLSX/HTML/metin
+dosyalarında bölge yoktur (sorun kalırsa elle maskeleme); ad tespiti yalnız listedeki adları bulur;
+kural tabanlı tespit her biçimi yakalamaz. Yayından önce onay bekleyen bölgeler (`bidr maskele
+bolgeler`) insan tarafından karara bağlanmalıdır.
 
 ## 2. İş paketi metni maskeleme: `privacy.mask_before_model`
 

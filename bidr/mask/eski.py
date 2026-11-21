@@ -1,12 +1,17 @@
 """Eski biçimlerin maskelenebilir yeni biçime çevrilmesi (kaynak klasör modu).
 
-- `.doc` (Word 97-2003) → `.docx`: macOS `textutil` (Windows/Linux'ta yok: çevrilemez, elle bakılmalı).
-  Uzantısı .doc olup içi docx (zip), RTF ya da HTML olan dosyalar da doğru biçime yönlendirilir.
+- `.doc` (Word 97-2003) → `.docx`: macOS `textutil`; textutil yoksa (Linux/Windows) LibreOffice
+  (`soffice --headless --convert-to pdf`) → `.pdf`. Uzantısı .doc olup içi docx (zip), RTF ya da HTML
+  olan dosyalar da doğru biçime yönlendirilir.
 - `.xls` (Excel 97-2003, BIFF) → `.xlsx`: xlrd ile okunur, openpyxl ile yazılır (hücre değerleri ve
   sayfa adları; formüller hesaplanmış değer olarak, biçim/grafik/görsel taşınmaz). İçi xlsx ya da
   HTML olan ".xls" dosyaları da yönlendirilir.
 - `.msg` (Outlook) → `.eml`: `extract-msg` kitaplığı kuruluysa (başlıklar, gövde, ekler).
-- `.ppt`/`.pptx`: çevirici yok (LibreOffice gerekir): çevrilemez, elle bakılmalı.
+- `.ppt`/`.pptx` → `.pdf`: LibreOffice (`soffice`) varsa; yoksa çevrilemez, elle bakılmalı (açık mesaj).
+
+LibreOffice tek süreçte (süreç içi kilit), her çağrıda ayrı geçici kullanıcı profiliyle
+(`-env:UserInstallation=file://…`; kullanıcının açık LibreOffice'iyle çakışmaz) ve zaman aşımıyla
+çalışır.
 
 Çeviri yalnız geçici klasörde olur; kaynak dosyaya yazılmaz. Çevrilen dosya maskeli kopyada yeni
 uzantısıyla durur; rapor özgün adı tutar.
@@ -15,10 +20,17 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import tempfile
+import threading
 from pathlib import Path
 
 LEGACY_EXT = {".doc", ".xls", ".msg", ".ppt", ".pptx"}
 TEXTUTIL_TIMEOUT = 180
+SOFFICE_TIMEOUT = 240
+SOFFICE_YOK = ("LibreOffice (soffice) bulunamadı: {ext} çevrilemedi. Kurun (Debian/Ubuntu: "
+               "`sudo apt install libreoffice-core libreoffice-writer libreoffice-impress`; macOS: "
+               "`brew install --cask libreoffice`) ya da dosyayı PDF olarak kaydedip yeniden çalıştırın")
+_SOFFICE_LOCK = threading.Lock()
 
 
 class ConvertError(RuntimeError):
@@ -61,6 +73,66 @@ def _textutil_docx(src: Path, dst: Path) -> None:
     if r.returncode != 0 or not dst.exists() or dst.stat().st_size == 0:
         raise ConvertError(f"textutil çeviremedi (kod {r.returncode}): "
                            f"{r.stderr.decode('utf-8', 'replace').strip()[:160]}")
+
+
+def soffice_path() -> str | None:
+    for n in ("soffice", "libreoffice"):
+        p = shutil.which(n)
+        if p:
+            return p
+    mac = Path("/Applications/LibreOffice.app/Contents/MacOS/soffice")
+    return str(mac) if mac.is_file() else None
+
+
+@__import__("functools").lru_cache(maxsize=1)
+def soffice_version() -> str:
+    p = soffice_path()
+    if not p:
+        return ""
+    try:
+        r = subprocess.run([p, "--version"], capture_output=True, timeout=60)
+        return (r.stdout or b"").decode("utf-8", "replace").strip()[:80] or "?"
+    except (OSError, subprocess.SubprocessError):
+        return "?"
+
+
+def _soffice_pdf(src: Path, outdir: Path, ext: str) -> Path:
+    """LibreOffice ile PDF'e çevir: başsız, ayrı kullanıcı profili, tek süreç, zaman aşımı."""
+    exe = soffice_path()
+    if not exe:
+        raise ConvertError(("sunum biçimi çevrilemedi: " if ext in (".ppt", ".pptx") else "") + SOFFICE_YOK.format(ext=ext))
+    outdir.mkdir(parents=True, exist_ok=True)
+    with _SOFFICE_LOCK, tempfile.TemporaryDirectory(prefix="bidr-lo-") as prof:
+        cmd = [exe, f"-env:UserInstallation={Path(prof).resolve().as_uri()}", "--headless", "--norestore",
+               "--nolockcheck", "--convert-to", "pdf", "--outdir", str(outdir), str(src)]
+        try:
+            r = subprocess.run(cmd, capture_output=True, timeout=SOFFICE_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            raise ConvertError(f"LibreOffice zaman aşımı ({SOFFICE_TIMEOUT} sn)") from None
+        except OSError as e:
+            raise ConvertError(f"LibreOffice çalıştırılamadı: {e}") from None
+    out = outdir / f"{src.stem}.pdf"
+    if r.returncode != 0 or not out.is_file() or out.stat().st_size == 0:
+        raise ConvertError(f"LibreOffice çeviremedi (kod {r.returncode}): "
+                           f"{(r.stderr or b'').decode('utf-8', 'replace').strip()[:160]}")
+    return out
+
+
+def converter_id(src: Path) -> str:
+    """Bu dosyanın çevirisini etkileyen araç ve sürümü (önbellek anahtarı)."""
+    ext = src.suffix.lower()
+    if ext == ".doc" and textutil_available():
+        return "textutil"
+    if ext in (".doc", ".ppt", ".pptx"):
+        return f"soffice:{soffice_version()}"
+    if ext == ".xls":
+        try:
+            import xlrd
+            import openpyxl
+            return f"xlrd:{getattr(xlrd, '__version__', '?')}:openpyxl:{getattr(openpyxl, '__version__', '?')}"
+        except ImportError:
+            return "xlrd:yok"
+    return "?"
 
 
 def _xls_to_xlsx(src: Path, dst: Path) -> None:
@@ -158,8 +230,7 @@ def convert(src: Path, workdir: Path) -> tuple[Path, str]:
     kind = _sniff(src)
     workdir.mkdir(parents=True, exist_ok=True)
     if ext in (".ppt", ".pptx"):
-        raise ConvertError("sunum biçimi maskelenemiyor (çevirici yok: LibreOffice gerekir); "
-                           "PDF olarak kaydedip yeniden çalıştırın")
+        return _soffice_pdf(src, workdir, ext), "soffice"
     if ext == ".doc":
         if kind == "zip":
             out = workdir / f"{stem}.docx"
@@ -171,9 +242,13 @@ def convert(src: Path, workdir: Path) -> tuple[Path, str]:
             return out, "uzantı düzeltme (içi HTML)"
         if kind not in ("ole", "rtf"):
             raise ConvertError("tanınmayan .doc içeriği (Word 97-2003/RTF değil)")
-        out = workdir / f"{stem}.docx"
-        _textutil_docx(src, out)
-        return out, "textutil"
+        if textutil_available():                    # macOS: mevcut yol
+            out = workdir / f"{stem}.docx"
+            _textutil_docx(src, out)
+            return out, "textutil"
+        if soffice_path():                          # Linux/Windows: LibreOffice → PDF
+            return _soffice_pdf(src, workdir, ext), "soffice"
+        raise ConvertError("textutil yok (yalnız macOS) ve " + SOFFICE_YOK.format(ext=".doc"))
     if ext == ".xls":
         if kind == "zip":
             out = workdir / f"{stem}.xlsx"

@@ -353,19 +353,109 @@ def _write_labels(fitz, page, labels) -> None:
         pass
 
 
-def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules) -> dict:   # pragma: no cover - isteğe bağlı
+def _rect_list(r) -> list:
+    return [float(r[0]), float(r[1]), float(r[2]), float(r[3])]
+
+
+def ps_bolgeleri(sn: int, ps: dict, page_box) -> list[dict]:
+    """`raster.scan_pdf_page` çıktısı → bölgeler (sayfa koordinatı). İç alanlar: `_etiket` (yer tutucu)."""
+    from . import bolge as BG
+    out = []
+    turler = ps.get("turler") or [None] * len(ps["kutular"])
+    for r, k in zip(ps["kutular"], turler):
+        if k == "etiket_alani":
+            b = BG.yeni(sn, _rect_list(r), "el_yazisi_alan", BG.KAPATILDI, "kişisel veri etiketinin alanı",
+                        "etiket_alani", 0.7)
+        else:
+            b = BG.yeni(sn, _rect_list(r), "kisisel_veri", BG.KAPATILDI, f"desen: {k or 'kişisel veri'}",
+                        "ocr_deseni", 0.9)
+        b["_etiket"] = PLACEHOLDERS.get(k, "[MASKELI]")
+        out.append(b)
+    for rect, e in ps.get("el_yazisi") or []:      # m3 (alan.el_yazisi_bolgeleri)
+        b = BG.yeni(sn, _rect_list(rect), "el_yazisi_alan", e.get("karar") or BG.ONAY,
+                    e.get("neden") or "el yazısı alan", e.get("kaynak") or "etiket_alani", e.get("guven") or 0.5)
+        b["_etiket"] = "[KİŞİSEL VERİ]"
+        out.append(b)
+    imza_fn = BG.saglayici("imza")
+    if imza_fn is None:                    # m1 bağlantı noktası yoksa eski imza çözümlemesinin çıktısı
+        for r in ps["imza_kutular"]:
+            b = BG.yeni(sn, _rect_list(r), "imza", BG.KAPATILDI, "imza etiketi/unvan yakınında mürekkep",
+                        "imza_aday", 0.6)
+            b["_etiket"] = IMZA_LABEL
+            out.append(b)
+        for r, how in ps.get("imza_aday_kutular") or []:
+            if how == "metin":
+                b = BG.yeni(sn, _rect_list(r), "imza", BG.ONAY, "metinle örtüşen imza: kapatılmadı",
+                            "imza_metin", 0.5)
+            else:
+                b = BG.yeni(sn, _rect_list(r), "imza", BG.ONAY, "etiketsiz imza benzeri mürekkep",
+                            "imza_etiketsiz", 0.3)
+            b["_etiket"] = IMZA_LABEL
+            out.append(b)
+    if ps.get("taranamadi"):
+        b = BG.yeni(sn, _rect_list(page_box), "okunamayan_sayfa", BG.ONAY, f"okunamadı: {ps['taranamadi']}"[:160],
+                    "ocr", 0.0)
+        b["_etiket"] = "[MASKELI]"
+        out.append(b)
+    return out
+
+
+def _hook_bolgeleri(ad: str, sn: int, *args) -> list[dict]:
+    from . import bolge as BG
+    fn = BG.saglayici(ad)
+    if fn is None:
+        return []
+    try:
+        res = fn(*args) or []
+    except Exception:                       # sağlayıcı hatası tespiti düşürmesin: kalan sorunu yeniden tarama yakalar
+        return []
+    out = []
+    for b in res:
+        b = dict(b)
+        b.setdefault("sayfa", sn)
+        b.setdefault("karar", BG.KAPATILDI)
+        b.setdefault("guven", 0.5)
+        b.setdefault("_etiket", IMZA_LABEL if b.get("tur") == "imza" else "[MASKELI]")
+        out.append(b)
+    return out
+
+
+def _birakilabilir(b: dict) -> bool:
+    """Otomatik kapatılan bölgeyi insan "birak" diyebilir mi: yalnız imza (yanlış alarm). Desen ve etiket
+    alanı bulguları kural ayarıyla değişir (yeniden tarama yine bulur)."""
+    return b["tur"] == "imza" or b["karar"] != "kapatildi"
+
+
+def _kararla(bg, sn: int, regs: list[dict], ilk: bool = True) -> list[dict]:
+    """Kimlik + karar; desen bulgusuna verilen "birak" uygulanmaz (uyarı)."""
+    from . import bolge as BG
+    once = {id(b): b["karar"] for b in regs}
+    bg.sayfa(sn, regs, ilk=ilk)
+    for b in regs:
+        if once[id(b)] == BG.KAPATILDI and b["karar"] == BG.BIRAKILDI and b["tur"] != "imza":
+            b["karar"] = BG.KAPATILDI
+            b.pop("insan", None)
+            bg.uyarilar.append(f"{b['id']}: desen/etiket alanı bulgusu 'birak' ile açılamaz (kapatıldı)")
+    return regs
+
+
+def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules, bolge=None) -> dict:   # pragma: no cover - isteğe bağlı
+    from . import bolge as BG
     from . import raster
     fitz = _fitz()
     doc = fitz.open(str(src))
     if doc.needs_pass:
         raise MaskError("şifreli PDF")
+    bg = bolge if bolge is not None else BG.Baglam("00000000")
     counts: Counter = Counter()
     temiz = set()
     uyarilar = []
     imza_bolge = ortusen = 0
     kapsam: dict[int, dict] = {}                  # sayfa → kapatılan tür sayıları (el yazısı denetimi)
+    sayfa_kutu: dict[int, list] = {}
     flags = _redact_flags(fitz)
     for page in doc:
+        sn = page.number + 1
         cover = []
         for a in list(page.annots() or []):
             rects = _covering_annot_rects(fitz, a)
@@ -388,16 +478,11 @@ def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules) -> dict:   # pragma
             ps = raster.scan_pdf_page(page, rules)
         except Exception as e:   # yeniden tarama karar verir
             ps = {"bulgular": Counter(), "kutular": [], "imza": None, "imza_kutular": []}
-            uyarilar.append(f"s.{page.number + 1}: görüntü katmanı işlenemedi ({type(e).__name__})")
+            uyarilar.append(f"s.{sn}: görüntü katmanı işlenemedi ({type(e).__name__})")
         alanlar = list(ps.get("alanlar") or [])
-        labels: list = []                 # (dikdörtgen, yer tutucu): kapatmadan sonra metin katmanına yazılır
-        for r, k in zip(ps["kutular"], ps.get("turler") or [None] * len(ps["kutular"])):
-            page.add_redact_annot(r, fill=(0, 0, 0))
-            labels.append((r, PLACEHOLDERS.get(k, "[MASKELI]")))
-        for r in ps["imza_kutular"]:
-            page.add_redact_annot(r, fill=(0, 0, 0))
-            labels.append((r, IMZA_LABEL))
-        imza_bolge += len(ps["imza_kutular"])
+        regs = [dict(BG.yeni(sn, _rect_list(r), "kisisel_veri", BG.KAPATILDI, "içeriği örten işaretleme",
+                             "kapatan_isaretleme", 1.0), _uygulandi=True) for r in cover]
+        regs += ps_bolgeleri(sn, ps, page.rect)
         if ps["imza"] is not None:
             ortusen += ps["imza"].ortusen_kelime
         page_counts: Counter = Counter()
@@ -408,34 +493,52 @@ def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules) -> dict:   # pragma
             found = False
             for part in [p.strip() for p in re.split(r"[\r\n]+", frag) if p.strip()]:
                 for r in page.search_for(part):
-                    page.add_redact_annot(r, fill=(0, 0, 0))
-                    labels.append((r, PLACEHOLDERS.get(f.kind, f"[{f.kind.upper()}]")))
+                    b = BG.yeni(sn, _rect_list(r), "kisisel_veri", BG.KAPATILDI, f"desen: {f.kind}", "metin_deseni", 0.95)
+                    b["_etiket"] = PLACEHOLDERS.get(f.kind, f"[{f.kind.upper()}]")
+                    regs.append(b)
                     found = True
             if not found:
-                uyarilar.append(f"s.{page.number + 1}: bulgu konumu bulunamadı ({f.kind})")
+                uyarilar.append(f"s.{sn}: bulgu konumu bulunamadı ({f.kind})")
+        regs += _hook_bolgeleri("imza", sn, page, rules, ps)
+        _kararla(bg, sn, regs)
+        labels: list = []                 # (dikdörtgen, yer tutucu): kapatmadan sonra metin katmanına yazılır
+        for b in regs:
+            if b["karar"] == BG.KAPATILDI and not b.get("_uygulandi"):
+                r = fitz.Rect(*b["kutu"])
+                page.add_redact_annot(r, fill=(0, 0, 0))
+                labels.append((r, b.get("_etiket") or "[MASKELI]"))
+                if b["tur"] == "imza":
+                    imza_bolge += 1
         for k, n in ps["bulgular"].items():          # metin katmanı + OCR aynı bulguyu iki kez saymasın
             page_counts[k] = max(page_counts[k], n)
         counts.update(page_counts)
         page_kapsam = Counter(page_counts)
         page.apply_redactions(**flags)
         # kapatma çevreyi değiştirir (küme ayrışır, yeni vuruş belirginleşir): imza/OCR bulgusu
-        # kalmayana kadar en çok iki tur daha
+        # kalmayana kadar en çok iki tur daha (yalnız otomatik kapatılanlar; adaylar yeniden taramada)
+        again = any(b["karar"] == BG.KAPATILDI and b["kaynak"] not in ("metin_deseni", "kapatan_isaretleme")
+                    for b in regs)
         for _ in range(2):
-            if not (ps["imza_kutular"] or ps["kutular"]):
+            if not again:
                 break
             try:
                 ps = raster.scan_pdf_page(page, rules)
             except Exception:
                 break
-            more = list(ps["kutular"]) + list(ps["imza_kutular"])
+            more = [b for b in ps_bolgeleri(sn, ps, page.rect) if b["karar"] == BG.KAPATILDI]
+            more += [b for b in _hook_bolgeleri("imza", sn, page, rules, ps) if b["karar"] == BG.KAPATILDI]
+            more = [b for b in more if not any(o["karar"] == BG.BIRAKILDI and BG.ortusme(o["kutu"], b["kutu"]) >= 0.5
+                                               for o in bg.bolgeler if o["sayfa"] == sn)]
             if not more:
                 break
-            for r in more:
-                page.add_redact_annot(r, fill=(0, 0, 0))
-            labels += [(r, PLACEHOLDERS.get(k, "[MASKELI]"))
-                       for r, k in zip(ps["kutular"], ps.get("turler") or [None] * len(ps["kutular"]))]
-            labels += [(r, IMZA_LABEL) for r in ps["imza_kutular"]]
-            imza_bolge += len(ps["imza_kutular"])
+            _kararla(bg, sn, more, ilk=False)
+            for b in more:
+                if b["karar"] == BG.KAPATILDI:
+                    r = fitz.Rect(*b["kutu"])
+                    page.add_redact_annot(r, fill=(0, 0, 0))
+                    labels.append((r, b.get("_etiket") or "[MASKELI]"))
+                    if b["tur"] == "imza":
+                        imza_bolge += 1
             if ps["imza"] is not None:
                 ortusen += ps["imza"].ortusen_kelime
             for k, n in ps["bulgular"].items():
@@ -447,6 +550,7 @@ def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules) -> dict:   # pragma
         _write_labels(fitz, page, labels)
         from .raster import page_coverage
         kapsam[page.number + 1] = dict(page_coverage(page_kapsam, alanlar))
+        sayfa_kutu[sn] = _rect_list(page.rect)
     if doc.metadata and any(doc.metadata.values()):
         temiz.add("ust_veri")
     doc.set_metadata({})
@@ -475,7 +579,7 @@ def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules) -> dict:   # pragma
     dst.write_bytes(buf.getvalue())
     return {"maskelenen": counts, "temizlenen": sorted(temiz), "uyarilar": uyarilar,
             "imza_bolgesi": imza_bolge, "ortusen_kelime": ortusen, "sayfa_sayisi": len(kapsam),
-            "sayfa_kapsam": kapsam}
+            "sayfa_kapsam": kapsam, "bolgeler": bg.bolgeler, "sayfa_kutulari": sayfa_kutu}
 
 
 def _iter_indirect(reader):
@@ -556,9 +660,12 @@ def scan_pdf(path: Path, rules: MaskRules) -> dict:
     for s in ras["imza"]:
         if s not in imza:
             imza.append(s)
-    return {"bulgular": found, "sorunlar": sorted(set(sorunlar)), "imza": imza,
-            "taranamadi": ras["taranamadi"], "imza_aday": ras["imza_aday"], "imza_elle": ras["imza_elle"],
-            "imza_metin": ras["imza_metin"]}
+    out = {"bulgular": found, "sorunlar": sorted(set(sorunlar)), "imza": imza,
+           "taranamadi": ras["taranamadi"], "imza_aday": ras["imza_aday"], "imza_elle": ras["imza_elle"],
+           "imza_metin": ras["imza_metin"]}
+    if ras.get("bolge_adaylari") is not None:
+        out["bolge_adaylari"] = ras["bolge_adaylari"]
+    return out
 
 
 def _render_pdftoppm(path: Path, pageno: int, dpi: int):
@@ -606,11 +713,19 @@ def _scan_pdf_raster(path: Path, rules: MaskRules, reader, page_counts, page_tex
                 out["imza_metin"].append(f"s.{i + 1}")
 
     if fitz is not None:
+        from . import bolge as BG
+        out["bolge_adaylari"] = []
         doc = fitz.open(str(path))
         try:
             for i, page in enumerate(doc):
                 ps = raster.scan_pdf_page(page, rules)
                 take(i, ps["bulgular"], ps["imza"], ps["taranamadi"])
+                for b in ps_bolgeleri(i + 1, ps, page.rect):
+                    if b["tur"] == "imza" and b["karar"] == BG.KAPATILDI:   # kapatılmamış etiketli aday
+                        b.update(karar=BG.ONAY, neden="maskeli kopyada kapatılmamış imza adayı", kaynak="imza_kalan")
+                    if b["karar"] == BG.ONAY:
+                        b.pop("_etiket", None)
+                        out["bolge_adaylari"].append(b)
         finally:
             doc.close()
     else:
@@ -1166,9 +1281,9 @@ def scan_html(path: Path, rules: MaskRules) -> dict:
 
 # ---------------------------------------------------------------- görseller
 
-def mask_image(src: Path, dst: Path, rules: MaskRules) -> dict:
+def mask_image(src: Path, dst: Path, rules: MaskRules, bolge=None) -> dict:
     from . import raster
-    return raster.mask_image(src, dst, rules)
+    return raster.mask_image(src, dst, rules, bolge=bolge)
 
 
 def scan_image(path: Path, rules: MaskRules) -> dict:
@@ -1195,16 +1310,20 @@ def kind_of(path: Path) -> str | None:
     return None
 
 
-def mask_file(src: Path, dst: Path, rules: MaskRules, *, engine: str = "pypdf") -> dict:
+def mask_file(src: Path, dst: Path, rules: MaskRules, *, engine: str = "pypdf", bolge=None) -> dict:
+    """`bolge`: `bolge.Baglam` (kimlik + insan kararları); PDF (PyMuPDF) ve görsellerde bölge listesi
+    üretilir (`sonuç["bolgeler"]`), diğer biçimlerde bölge yoktur."""
     k = kind_of(src)
     if k == "pdf":
-        return (mask_pdf_pymupdf if engine == "pymupdf" else mask_pdf_pypdf)(src, dst, rules)
+        if engine == "pymupdf":
+            return mask_pdf_pymupdf(src, dst, rules, bolge=bolge)
+        return mask_pdf_pypdf(src, dst, rules)
     if k == "docx":
         return mask_docx(src, dst, rules)
     if k == "xlsx":
         return mask_xlsx(src, dst, rules)
     if k == "gorsel":
-        return mask_image(src, dst, rules)
+        return mask_image(src, dst, rules, bolge=bolge)
     if k == "html":
         return mask_html(src, dst, rules)
     if k == "metin":
