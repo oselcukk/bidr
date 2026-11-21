@@ -36,7 +36,8 @@ class ImageScan:
     taranamadi: str | None = None                        # neden (None: okundu)
     words: list = field(default_factory=list)
     alanlar: list = field(default_factory=list)          # kapatılan etiket alanlarının etiket türleri (alan.py)
-    el_yazisi: list = field(default_factory=list)        # m3 bölgeleri (alan.el_yazisi_bolgeleri; kutu piksel)
+    el_yazisi: list = field(default_factory=list)        # m3 onay bekleyen/bırakılan bölgeleri (kutu piksel)
+    meta: dict = field(default_factory=dict)             # kutular sırası → m3 bölge bilgisi (kaynak, neden, güven)
 
 
 def _quality_reason(img, words: list[Word]) -> str | None:
@@ -92,10 +93,18 @@ def add_label_fields(r: "ImageScan", img, ow: list[Word]) -> None:
                       more=(lambda: ocr_words(img, psm="11")) if weak_ocr(ow) else None, sablonlar=_sablonlar())
         except Exception:        # sağlayıcı hatası tespiti düşürmesin
             regs = []
+        adlar = sorted((getattr(AL, "_TUR_AD", None) or {}).items(), key=lambda kv: -len(kv[1]))
         for b in regs or []:
-            r.el_yazisi.append(dict(b, id=None))
-            if b.get("karar") == "kapatildi":
-                r.bulgular[AL.KIND] += 1
+            if b.get("karar") != "kapatildi":
+                r.el_yazisi.append(dict(b, id=None))
+                continue
+            r.kutular.append(tuple(b["kutu"]))
+            r.turler.append(AL.KIND)
+            r.meta[len(r.kutular) - 1] = {k: b.get(k) for k in ("kaynak", "neden", "guven")}
+            kind = next((k for k, ad in adlar if (b.get("neden") or "").startswith(ad)), None)
+            if kind:
+                r.alanlar.append(kind)
+            r.bulgular[AL.KIND] += 1
         return
     try:
         fields = AL.find_fields(img, ow, more=(lambda: ocr_words(img, psm="11")) if weak_ocr(ow) else None)
@@ -219,6 +228,7 @@ def analyze_image(img, ppi: float, rules: MaskRules, *, ocr: bool = True, extra_
                 r2.imza.kapat = [_unrotate(b, how, img.width, img.height) for b in r2.imza.kapat]
                 r2.imza.etiketsiz_kutu = [_unrotate(b, how, img.width, img.height) for b in r2.imza.etiketsiz_kutu]
                 r2.imza.elle_kutu = [_unrotate(b, how, img.width, img.height) for b in r2.imza.elle_kutu]
+            r2.el_yazisi = [dict(e, kutu=list(_unrotate(e["kutu"], how, img.width, img.height))) for e in r2.el_yazisi]
             r2.words = []
             return r2
     return r
@@ -504,10 +514,11 @@ def image_regions(r: "ImageScan", img, *, kalan: bool = False) -> list[dict]:
         b["_px"] = list(px)
         b["_etiket"] = etiket
         out.append(b)
-    for px, k in zip(r.kutular, r.turler):
+    for i, (px, k) in enumerate(zip(r.kutular, r.turler)):
         if k == "etiket_alani":
-            add(px, "el_yazisi_alan", BG.KAPATILDI, "kişisel veri etiketinin alanı", "etiket_alani", 0.7,
-                PLACEHOLDERS.get(k, "[MASKELI]"))
+            m = r.meta.get(i) or {}
+            add(px, "el_yazisi_alan", BG.KAPATILDI, m.get("neden") or "kişisel veri etiketinin alanı",
+                m.get("kaynak") or "etiket_alani", m.get("guven") or 0.7, PLACEHOLDERS.get(k, "[MASKELI]"))
         else:
             add(px, "kisisel_veri", BG.KAPATILDI, f"desen: {k}", "ocr_deseni", 0.9, PLACEHOLDERS.get(k, "[MASKELI]"))
     for e in r.el_yazisi:
@@ -675,6 +686,7 @@ def scan_pdf_page(page, rules: MaskRules) -> dict:
         out["imza_kutular"] = to_page_rects(page, r.imza.kapat, dpi / 72.0) if r.imza else []
         out["imza_aday_kutular"] = _aday_rects(page, r.imza, dpi / 72.0)
         out["el_yazisi"] = _el_rects(page, r, dpi / 72.0)
+        out["meta"] = dict(r.meta)
         out["metin_yeterli"] = True
         return out
     if need_ocr:
@@ -691,6 +703,7 @@ def scan_pdf_page(page, rules: MaskRules) -> dict:
         out["imza_kutular"] = to_page_rects(page, r.imza.kapat, dpi / 72.0) if r.imza else []
         out["imza_aday_kutular"] = _aday_rects(page, r.imza, dpi / 72.0)
         out["el_yazisi"] = _el_rects(page, r, dpi / 72.0)
+        out["meta"] = dict(r.meta)
         return out
     regions = signature_image_regions(page, SIG_DPI / 72.0)
     if regions:

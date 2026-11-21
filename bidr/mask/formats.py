@@ -362,10 +362,12 @@ def ps_bolgeleri(sn: int, ps: dict, page_box) -> list[dict]:
     from . import bolge as BG
     out = []
     turler = ps.get("turler") or [None] * len(ps["kutular"])
-    for r, k in zip(ps["kutular"], turler):
+    meta = ps.get("meta") or {}
+    for i, (r, k) in enumerate(zip(ps["kutular"], turler)):
         if k == "etiket_alani":
-            b = BG.yeni(sn, _rect_list(r), "el_yazisi_alan", BG.KAPATILDI, "kişisel veri etiketinin alanı",
-                        "etiket_alani", 0.7)
+            m = meta.get(i) or {}
+            b = BG.yeni(sn, _rect_list(r), "el_yazisi_alan", BG.KAPATILDI, m.get("neden") or "kişisel veri etiketinin alanı",
+                        m.get("kaynak") or "etiket_alani", m.get("guven") or 0.7)
         else:
             b = BG.yeni(sn, _rect_list(r), "kisisel_veri", BG.KAPATILDI, f"desen: {k or 'kişisel veri'}",
                         "ocr_deseni", 0.9)
