@@ -366,6 +366,11 @@ def _maskele(ws: Path, kayitlar: dict[str, str]) -> None:
     recs = []
     for rel, d in kayitlar.items():
         recs.append({"dosya": rel, "durum": d, "neden": "" if d == "tamam" else "kalan: eposta×1"})
+        if d == "basarisiz":                             # kısmen maskeli kopya (maskeleme-basarisiz/)
+            kp = ws / "maskeleme-basarisiz" / rel
+            kp.parent.mkdir(parents=True, exist_ok=True)
+            kp.write_bytes((ws / "evidence" / rel).read_bytes().replace(b"sentetik", b"KISMI"))
+            recs[-1]["kopya"] = f"maskeleme-basarisiz/{rel}"
         if d == "tamam":
             (mk / rel).parent.mkdir(parents=True, exist_ok=True)
             src = (ws / "evidence" / rel).read_bytes()
@@ -387,7 +392,8 @@ def test_paket_maskeleme(tmp_path):
     k = ws / "teslim" / "kanitlar" / "A" / "A.1"
     assert (k / "A.1.1" / "[1-OD3]. Sentetik kanıt bir.pdf").read_bytes() == b"%PDF-1.4 MASKELI"
     assert any(b"MASKELI duyuru" in h for h in arac.htmls)                 # web PDF maskeli HTML'den
-    assert (k / "A.1.2" / "[1-OD3]. Kurul kararı.pdf").read_bytes() == b"%PDF-1.4 sentetik"   # çıkarılmaz
+    # başarısız: çıkarılmaz; kısmen maskeli kopya girer (özgün değil)
+    assert (k / "A.1.2" / "[1-OD3]. Kurul kararı.pdf").read_bytes() == b"%PDF-1.4 KISMI"
     assert res.eksik == []
     rows = {(r["Ölçüt"], r["Kanıt no"]): r["Maskeleme"] for r in _rows(ws / "teslim" / "kanit-dizini.csv")}
     assert rows == {("A.1.1", "1_OD3"): "tamam", ("A.1.1", "2_OD2"): "tamam",

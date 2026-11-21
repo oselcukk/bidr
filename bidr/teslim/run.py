@@ -18,7 +18,7 @@ kanıtlar girer; listede olmayan dosya pakete alınmaz (uyarı). Eşleşmeyen sa
 Kişisel veri maskeleme (`bidr maskele` çıktısı; yalnız okunur): `maskeleme-raporu.json` ve
 `evidence-maskeli/` varsa kanıtın maskeli kopyası pakete girer (web kanıtının PDF'i de maskeli
 HTML'den basılır). Maskeli kopya yoksa, eskiyse (kanıt dosyası rapordan sonra yeniden yazıldı) ya da
-maskeleme başarısız / hata / desteklenmiyor ise özgün dosya girer: maskelenemedi diye hiçbir kanıt
+maskeleme başarısız ise kısmen maskeli kopya (`maskeleme-basarisiz/`), o da yoksa ya da hata / desteklenmiyor ise özgün dosya girer: maskelenemedi diye hiçbir kanıt
 paketten çıkarılmaz (kullanıcı kararı, 2026-11-20). Dizinin "Maskeleme" sütunu: `tamam` |
 `eksik: elle bakılmalı` | `yapılmadı` (maskeleme çalıştırılmamış); elle bakılacak dosyalar paket
 özetinde (`elle_bakilacak`) listelenir.
@@ -183,7 +183,13 @@ class Maske:
             return f, MASKE_ELLE, "maskeleme raporunda yok (maskelemeden sonra dosyalandı mı? bidr maskele yeniden)"
         d = r.get("durum")
         if d != "tamam":
-            return f, MASKE_ELLE, f"maskeleme {d or 'bilinmiyor'}: {r.get('neden') or ''}".strip()
+            neden = f"maskeleme {d or 'bilinmiyor'}: {r.get('neden') or ''}".strip()
+            # Kısmi maskeli kopya (maskeleme-basarisiz/): bulunan kişisel veri kapatılmış, kalan sorun
+            # elle bakılacak. Özgünden her zaman daha güvenli: o girer (kopya kanıttan eskiyse özgün).
+            kp = (self.rapor_yolu.parent / str(r["kopya"])) if r.get("kopya") else None
+            if kp is not None and kp.is_file() and f.stat().st_mtime <= self.zaman:
+                return kp, MASKE_ELLE, neden + " (kısmen maskeli kopya pakette)"
+            return f, MASKE_ELLE, neden
         m = self.klasor / rel
         if not m.is_file():
             return f, MASKE_ELLE, "maskeli kopya bulunamadı"
