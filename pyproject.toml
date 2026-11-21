@@ -22,7 +22,8 @@ dev = ["pytest>=8", "xlwt>=1.3"]
 msg = ["extract-msg>=0.48"]
 # kişisel veri maskeleme: PDF'te gerçek kaldırma (redaction, taranmış sayfada görüntü pikselleri dahil);
 # yoksa pypdf ile en iyi çaba. AGPL olduğu için isteğe bağlı. OCR için sistemde tesseract (tur+eng) gerekir.
-maske = ["pymupdf>=1.24.2"]
+# numpy: el yazısı form alanı yapısı (kılavuz/tarak/tablo), rakam dizisi ve şablon belleği.
+maske = ["pymupdf>=1.24.2", "numpy>=1.24"]
 
 [project.scripts]
 bidr = "bidr.cli:main"
