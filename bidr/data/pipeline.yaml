@@ -77,7 +77,7 @@ asamalar:
     istege_bagli: true
     katman: M
     onkosul: [ingest]
-    girdi: [inventory.csv, text/ (seyreklik), kaynak görseller/PDF/docx (salt okunur)]
+    girdi: [inventory.csv, text/ (seyreklik), kaynak görseller/PDF/docx (salt okunur), belge-notlari.yaml (isteğe bağlı; bölümün belge notu, ipucu)]
     cikti: [work/describe/<doc_id>/, text/<doc_id>.txt (betimleme; başında BETİMLEME işareti), describe.jsonl]
     komut:
       - "bidr describe prepare -w {ws} --auto"
@@ -142,7 +142,7 @@ asamalar:
     uygulandi: true
     katman: M
     onkosul: [candidates]
-    girdi: [text/, documents.jsonl, candidates.jsonl]
+    girdi: [text/, documents.jsonl, candidates.jsonl, belge-notlari.yaml (isteğe bağlı; bölümün belge notu, ipucu)]
     cikti: [work/coarse/<doc_id>.json, work/coarse/<doc_id>.out.json, decisions.jsonl]
     komut:
       - "bidr decide prepare -w {ws} --stage coarse --profile {profil}"
@@ -162,7 +162,7 @@ asamalar:
     uygulandi: true
     katman: M
     onkosul: [karar_kaba]
-    girdi: [decisions.jsonl (kaba), text/]
+    girdi: [decisions.jsonl (kaba), text/, belge-notlari.yaml (isteğe bağlı; bölümün belge notu, ipucu)]
     cikti: [work/fine/<doc_id>.json, work/fine/<doc_id>.out.json, decisions.jsonl]
     komut:
       - "bidr decide prepare -w {ws} --stage fine --profile {profil}"
@@ -231,7 +231,7 @@ asamalar:
     istege_bagli: true
     katman: M
     onkosul: [karar_ince, belirsiz_okuma]
-    girdi: [decisions.jsonl (kabul edilmiş eşleşmeler), documents.jsonl, text/]
+    girdi: [decisions.jsonl (kabul edilmiş eşleşmeler), documents.jsonl, text/, belge-notlari.yaml (isteğe bağlı; bölümün belge notu, ipucu)]
     cikti: [work/name/<doc_id>.json, kanit-adlari.jsonl (kaynak: model)]
     komut:
       - "bidr name prepare -w {ws}"

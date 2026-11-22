@@ -29,7 +29,9 @@ da istem değişen işlenmiş belgeler "eski" sayılır; `prepare` önce özet v
 kayıtları `yeniden` diye işaretleyip paketler. Metni aynı/çok yakın belgelerden yalnız
 temsilci paketlenir, ötekiler kararı devralır (`dedup.py`, `mukerrer` alanı).
 
-Modele yalnız belge metni ve `documents.jsonl` içerik alanları gider (bkz. prompt.py).
+Modele yalnız belge metni ve `documents.jsonl` içerik alanları gider (bkz. prompt.py); bölümün belge notu
+(`belge-notlari.yaml`, bidr/notlar.py) varsa belge bilgisinin sonuna ipucu olarak eklenir (kanıt değil, alıntı
+yalnız metinden). Not değişince belge `girdi_degisti` sayılır ve onaysız yeniden paketlenir.
 """
 from __future__ import annotations
 
@@ -44,6 +46,7 @@ import yaml
 
 from bidr.candidates.komisyon import committee_criteria
 from bidr.candidates.text import fold
+from bidr import notlar as N
 from bidr.common import Workspace, read_jsonl
 from bidr.criteria.loader import load_criteria
 from bidr.criteria.model import CriteriaSet
@@ -414,12 +417,18 @@ class Context:
     max_aday: int
     unit: dict = None          # {"birim", "kurum"}: config.yaml'dan, ince karar paketine girer
     pins: dict = None          # {doc_id: insan birim kararı} (birim-kararlari.jsonl): sabit bilgi
+    notes: dict = None         # {doc_id: [not]} (belge-notlari.yaml, bidr/notlar.py): ipucu, kanıt değil
 
     def __post_init__(self):
         if self.unit is None:
             self.unit = {"birim": None, "kurum": None}
         if self.pins is None:
             self.pins = {}
+        if self.notes is None:
+            self.notes = {}
+
+    def note(self, did: str) -> list[dict]:
+        return self.notes.get(did) or []
 
     def pin(self, did: str) -> str | None:
         return (self.pins.get(did) or {}).get("birim_iliskisi")
@@ -434,7 +443,7 @@ class Context:
         return cls(ws, cs, load_tags(cs), profile or None, allowed,
                    excluded_types() if exclude_types is None else exclude_types,
                    _documents(ws), _candidates(ws.root / candidates_name), k, max_aday,
-                   P.unit_info(ws.root), load_unit_pins(ws.root))
+                   P.unit_info(ws.root), load_unit_pins(ws.root), N.load(ws.root))
 
     def text(self, did: str) -> str:
         return self.ws.text_path(did).read_text(encoding="utf-8", errors="replace")
@@ -492,11 +501,16 @@ def coarse_inputs(ctx: Context, did: str) -> tuple[dict, dict]:
     """(görev girdileri, meta). Meta, `apply`'ın ihtiyaç duyduğu ve modele gitmeyen bilgi."""
     info = P.content_info(ctx.docs.get(did))
     det = ctx.det_top(did)
-    body, ex = P.excerpt(ctx.text(did), P.COARSE_CHARS, P.criteria_terms(ctx.cs, det) if det else None)
-    inputs = {"olcutler": P.coarse_list(ctx.cs, ctx.allowed), "belge_bilgisi": P.render_info(info),
-              "belge_metni": body}
+    # notlu belgede metin payı not bloğu kadar kısalır (istem bütçesi; notsuz belge değişmez)
+    body, ex = P.excerpt(ctx.text(did), P.COARSE_CHARS - len(N.block(ctx.note(did))),
+                         P.criteria_terms(ctx.cs, det) if det else None)
+    # Bölümün belge notu (varsa) belge bilgisinin sonuna: belgeye özgü girdi, değişince karar eskir
+    inputs = {"olcutler": P.coarse_list(ctx.cs, ctx.allowed),
+              "belge_bilgisi": N.with_note(P.render_info(info), ctx.note(did)), "belge_metni": body}
     meta = {"belge_bilgisi": info, "metin": ex, "profil": ctx.profile, "izinli": list(ctx.allowed),
             "istem_token_tahmini": P.approx_tokens("".join(inputs.values()))}
+    if ctx.note(did):
+        meta["belge_notu"] = N.note_sha(ctx.note(did))
     return inputs, meta
 
 
@@ -514,7 +528,16 @@ def apply_coarse(did: str, out: dict, meta: dict, model_id: str, extra: dict | N
                      "liste_disi": [o.get("olcut") for o in out.get("olcutler") or []
                                     if o.get("olcut") not in aset],
                      "model": model_id, "metin": meta["metin"],
-                     "istem_token_tahmini": meta["istem_token_tahmini"], **(extra or {})}}
+                     "istem_token_tahmini": meta["istem_token_tahmini"], **note_fields(meta, out),
+                     **(extra or {})}}
+
+
+def note_fields(meta: dict, out: dict) -> dict:
+    """Kayda: kararın hangi notla verildiği (`belge_notu`: notun parmak izi) ve modelin not ile belge
+    içeriğinin çeliştiğini söyleyip söylemediği (`not_uyusmuyor`; genel gerekçe `[not uyuşmuyor]` ile başlar)."""
+    if not meta.get("belge_notu"):
+        return {}
+    return {"belge_notu": meta["belge_notu"], "not_uyusmuyor": N.conflict(out.get("gerekce"))}
 
 
 def fine_inputs(ctx: Context, did: str, rec: dict, pin: bool = True,
@@ -537,12 +560,16 @@ def fine_inputs(ctx: Context, did: str, rec: dict, pin: bool = True,
     pay = P.FINE_CHARS
     if kom:                                 # uzayan aday listesi metin payından düşer (istem bütçesi)
         pay = min(pay, max(KOMISYON_MIN_METIN, pay - max(0, len(liste) - LISTE_BUTCE)))
+    pay -= len(N.block(ctx.note(did)))      # bölümün belge notu da metin payından düşer
     body, ex = P.excerpt(text, pay, P.criteria_terms(ctx.cs, cands))
     inputs = {"adaylar": liste,
-              "belge_bilgisi": P.render_info(rec.get("belge_bilgisi") or {}), "belge_metni": body,
+              "belge_bilgisi": N.with_note(P.render_info(rec.get("belge_bilgisi") or {}), ctx.note(did)),
+              "belge_metni": body,
               "kanit_ilkeleri": P.evidence_principles(),
               "birim": P.render_unit(ctx.unit, ctx.pin(did) if pin else None)}
     meta.update(metin=ex, istem_token_tahmini=P.approx_tokens("".join(inputs.values())))
+    if ctx.note(did):
+        meta["belge_notu"] = N.note_sha(ctx.note(did))
     if pin and ctx.pin(did):
         meta["birim_sabit"] = ctx.pin(did)
     return inputs, meta
@@ -593,7 +620,7 @@ def apply_fine(ctx: Context, did: str, rec: dict, out: dict, meta: dict, model_i
                    **({"birim_iliskisi_model": model_rel} if pin else {}),
                    "kanit_adi": evidence_name_of(out), **activity_of(out), "model": model_id,
                    "metin": meta["metin"], "istem_token_tahmini": meta["istem_token_tahmini"],
-                   "denetim_surumu": DENETIM_SURUMU, **(extra or {})}
+                   "denetim_surumu": DENETIM_SURUMU, **note_fields(meta, out), **(extra or {})}
     rec["eslesmeler"] = matches + carry_second_search(ctx, did, prev_second, matches, kg["karar"], rel, verify)
     matches = rec["eslesmeler"]
     rec["olcutler"] = summarize(matches)
@@ -766,6 +793,9 @@ def staleness(ctx: Context, did: str, rec: dict, stage: str, backend: Backend) -
     if version_stale(rec, stage):
         return "eski_surum"
     sec = _section(rec, stage)
+    if (sec.get("belge_notu") or "") != N.note_sha(ctx.note(did)):
+        # bölümün belge notu eklendi/değişti/kalktı: belgeye özgü girdi (devralınan ya da sağlayıcı kaydı da)
+        return "girdi_degisti"
     if sec.get("devralindi") or not sec.get("istem_sha"):
         return None
     if stage == "coarse":
@@ -811,7 +841,7 @@ FINGERPRINT_DATA = (_PKG / "data" / "criteria", _PKG / "data" / "profiles")
 def input_fingerprint(ws: Workspace, stage: str) -> str:
     """Aşamanın paket girdilerinin parmak izi: görev dosyaları, istemi kuran kod, ölçüt/profil
     verisi ve çalışma alanının girdileri (text/, documents.jsonl, candidates.jsonl, insan birim
-    kararları, birim bilgisi). Salt okunur, model çağırmaz."""
+    kararları, belge notları, birim bilgisi). Salt okunur, model çağırmaz."""
     h = hashlib.sha256()
 
     def add(p: Path) -> None:
@@ -825,7 +855,7 @@ def input_fingerprint(ws: Workspace, stage: str) -> str:
     for d in FINGERPRINT_DATA:
         for p in sorted(d.rglob("*")):
             add(p)
-    for name in ("documents.jsonl", "candidates.jsonl", BIRIM_KARARLARI):
+    for name in ("documents.jsonl", "candidates.jsonl", BIRIM_KARARLARI, N.NOTLAR):
         add(ws.root / name)
     h.update(json.dumps(P.unit_info(ws.root), ensure_ascii=False, sort_keys=True).encode("utf-8"))
     if ws.text_dir.exists():
@@ -850,7 +880,9 @@ def plan_members(ctx: Context, ids: list[str], recs: dict, stage: str) -> dict[s
     """Metni aynı/çok yakın belgeler → {üye: {temsilci, yontem, fark_sozcuk}}. Temsilci:
     bu aşamada işlenmiş olan, yoksa en uzun metin, sonra en küçük doc_id (kararlı seçim).
     Bu aşamada gruptan ayrılmış (`mukerrer.durum: ayrildi`) belge gruplanmaz."""
-    ok = [d for d in ids if not ((recs.get(d) or {}).get("mukerrer") or {}).get("durum") == "ayrildi"]
+    # notlu belge gruplanmaz (temsilci de üye de olmaz): kararı kendi notuyla verilir
+    ok = [d for d in ids if not ((recs.get(d) or {}).get("mukerrer") or {}).get("durum") == "ayrildi"
+          and not ctx.note(d)]
     if len(ok) < 2:
         return {}
     texts = {d: ctx.text(d) for d in ok}

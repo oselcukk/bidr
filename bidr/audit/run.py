@@ -62,6 +62,9 @@ def load_review_decisions(out: Path) -> dict[str, dict]:
 # Kararın kendisinden doğan işaretler (insan ret/düzelt, birim onayı) karşılaştırmaya girmez.
 KARAR_ISARETLERI = frozenset({"insan_reddetti", "insan_duzeltti", "birim_aitligi_onaylandi",
                               "birim_onay_bekliyor", "birim_aitligi_dogrulanmali"})
+# Yalnız bilgi veren işaretler: eklenmeleri verilmiş kararı "yeniden bak"a düşürmez. `belge_notu`: karar
+# yükleyenin notu görülerek verildi (not çelişkisi `not_uyusmuyor` ise yeniden baktırır).
+BILGI_ISARETLERI = frozenset({"belge_notu"})
 
 
 def load_seen(out: Path) -> dict[str, dict]:
@@ -89,7 +92,7 @@ def seen_state(r: dict) -> dict:
     fl = r.get("flags")
     if fl is None:
         fl = [x.strip() for x in str(r.get("isaretler") or "").split(",") if x.strip()]
-    return {"satir": r.get("satir"), "isaretler": sorted(set(fl) - KARAR_ISARETLERI),
+    return {"satir": r.get("satir"), "isaretler": sorted(set(fl) - KARAR_ISARETLERI - BILGI_ISARETLERI),
             "asama": str(r.get("etkin_asama") or ""), "od": _od_int(r.get("od"))}
 
 
@@ -298,6 +301,14 @@ def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | 
     if betimleme:
         flags.append("betimleme_alintisi")
         vurgu.append("alıntı görsel betimlemeden")
+    # Bölümün belge notu (bidr/notlar.py): karar notu görerek verildi; not ile belge çelişiyorsa karar belgeden
+    # verildi, satır bakılmak üzere işaretlenir. Alıntı her durumda belgeden (kod denetimi metne karşı).
+    if ince_.get("belge_notu"):
+        flags.append("belge_notu")
+        if ince_.get("not_uyusmuyor"):
+            flags.append("not_uyusmuyor")
+            vurgu.insert(0, "NOT İLE BELGE İÇERİĞİ UYUŞMUYOR: karar belgeye göre verildi")
+        vurgu.append("yükleyenin notu dikkate alındı")
     try:
         ymetin = cs.get_slot(yuva).text
     except KeyError:

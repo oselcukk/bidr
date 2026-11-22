@@ -5,7 +5,8 @@ Modele giden her şey burada üretilir. Kaynaklar YALNIZ şunlardır:
   - `text/<doc_id>.txt` (belge metni),
   - `documents.jsonl` içinden `CONTENT_FIELDS` (metinden çıkarılmış içerik alanları).
 Dosya yolu, dosya adı, `calisma_adi`, `labels.jsonl` (`iz` dahil) ve `inventory.csv`
-asla okunmaz ve modele gitmez.
+asla okunmaz ve modele gitmez. Tek ek: bölümün belge notu (`belge-notlari.yaml`; yalnız not metni,
+kim/tarih/yol değil) belge bilgisinin sonuna ipucu olarak eklenir (bidr/notlar.py, decide/run.py).
 """
 from __future__ import annotations
 

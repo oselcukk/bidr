@@ -39,6 +39,7 @@ import time
 import zipfile
 from pathlib import Path
 
+from bidr import notlar as N
 from bidr.common import Workspace, read_jsonl, sha256_file, write_jsonl
 from bidr.transcribe import run as T
 
@@ -93,10 +94,20 @@ def is_done(ws: Workspace, did: str, log: dict[str, dict]) -> bool:
                 and _sha(p.read_text(encoding="utf-8")) == r.get("metin_sha"))
 
 
-def settled(ws: Workspace, did: str, log: dict[str, dict]) -> bool:
-    """Bu belge için describe'ın yapacağı iş kalmadı: uygulandı ve güncel; ya da ajan
-    'metin sayfası' dedi / paketlenemedi (uyarı olarak gösterilir)."""
+def note_stale(did: str, log: dict[str, dict], notes: dict[str, list] | None) -> bool:
+    """Betimleme (ya da 'metin sayfası' cevabı) bölümün şimdiki belge notuyla mı verildi (bidr/notlar.py)."""
     r = log.get(did) or {}
+    return r.get("durum") in ("uygulandi", "metin_belgesi") and \
+        (r.get("belge_notu") or "") != N.note_sha((notes or {}).get(did))
+
+
+def settled(ws: Workspace, did: str, log: dict[str, dict], notes: dict[str, list] | None = None) -> bool:
+    """Bu belge için describe'ın yapacağı iş kalmadı: uygulandı ve güncel; ya da ajan
+    'metin sayfası' dedi / paketlenemedi (uyarı olarak gösterilir). Belge notu değiştiyse (`notes` verilince)
+    yeniden betimlenir."""
+    r = log.get(did) or {}
+    if notes is not None and note_stale(did, log, notes):
+        return False
     return is_done(ws, did, log) or r.get("durum") in ("metin_belgesi", "atlandi")
 
 
@@ -321,6 +332,7 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, auto: bool = False,
     _, rows = T.read_inventory(ws)
     prim = T._primary(rows)
     log = load_log(ws)
+    notes = N.load(ws.root)
     d = work_dir(ws)
     d.mkdir(parents=True, exist_ok=True)
     st = {"paket": 0, "yeni": 0, "zaten_tamam": 0, "atlandi": {}, "secilen": 0}
@@ -338,7 +350,7 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, auto: bool = False,
         try:
             if row is None:
                 raise T.Skip("envanterde_yok")
-            if not redo and settled(ws, did, log):
+            if not redo and settled(ws, did, log, notes):
                 st["zaten_tamam"] += 1
                 continue
             path = _src(src_root, row, ws)
@@ -361,10 +373,13 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, auto: bool = False,
             continue
         listing = "\n".join(f"{i}. `{n}` ({_label(p['tur'], pg)})"
                             for i, (n, pg) in enumerate(zip(names, p["sayfalar"]), 1))
+        # bölümün belge notu (varsa) görüntü listesinin altına: ipucu; notsuz belgenin istemi değişmez
+        listing = N.with_note(listing, notes.get(did), "betimleme")
         r = render_task(TASK, {"gorsel_sayisi": str(len(names)), "gorsel_dosyalari": listing})
         isha = _sha(r["prompt"] + img_sha)[:16]
         pkgp = pdir / f"{did}.json"
         pkg = {"gorev": r["task"], "surum": str(r["version"]), "doc_id": did, "istem_sha": isha,
+               **({"belge_notu": N.note_sha(notes[did])} if notes.get(did) else {}),
                "cikti_dosyasi": f"{did}.out.json", "tur": p["tur"], "sayfalar": p["sayfalar"],
                "gorseller": names, "istem": r["prompt"], "sema": r["schema"], "dpi": dpi}
         st["paket"] += 1
@@ -517,6 +532,20 @@ def check_item(it: dict) -> list[str]:
     return errs
 
 
+def note_leaks(out: dict, notes: list[dict] | None) -> list[str]:
+    """Betimleme bölümün belge notundan cümle aktarmış mı (not ipucudur, betimleme yalnız görüneni yazar).
+    Görünen yazılarda da geçen sözcük dizisi sızıntı sayılmaz (görüntüde yazıyor)."""
+    if not notes:
+        return []
+    items = out.get("gorseller") or []
+    own = " \n ".join(" ".join([x.get("sahne", ""), x.get("etkinlik", ""), x.get("betimleme", "")]
+                               + [o.get("ad", "") for o in x.get("nesneler") or []]) for x in items)
+    seen = " \n ".join(y.get("metin", "") for x in items for y in x.get("gorunen_yazilar") or [])
+    visible = set(N.leaks(notes, seen))
+    hits = [h for h in N.leaks(notes, own) if h not in visible]
+    return [f"betimleme yükleyenin notundan aktarıyor (\"{h}\"): yalnız görüntüde görüneni yaz" for h in hits[:3]]
+
+
 def check_output(out: dict, n: int) -> list[str]:
     items = out.get("gorseller") or []
     nums = [x["gorsel"] for x in items]
@@ -621,6 +650,7 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", accept_suspicious
     fields, rows = T.read_inventory(ws)
     prim = T._primary(rows)
     log = load_log(ws)
+    notes = N.load(ws.root)
     ver = _task_version()
     st = {"islenen": 0, "degismedi": 0, "metin_belgesi": [], "bekleyen": [], "gecersiz": {},
           "supheli": {}, "eski_surum": [], "tutarlilik": {}, "gecersiz_kilinan": {}}
@@ -647,7 +677,7 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", accept_suspicious
         if out is None:
             st["gecersiz"][did] = errs[:5]
             continue
-        errs = check_output(out, len(pkg["gorseller"]))
+        errs = check_output(out, len(pkg["gorseller"])) + note_leaks(out, notes.get(did))
         if errs:
             st["gecersiz"][did] = errs
             continue
@@ -661,7 +691,8 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", accept_suspicious
         now = time.strftime("%Y-%m-%dT%H:%M:%S")
         common = {"doc_id": did, "gorev": {TASK: ver}, "model": model, "kip": "ajan",
                   "istem_sha": pkg["istem_sha"], "cikti_sha": out_sha, "tur": pkg["tur"],
-                  "sayfalar": pkg["sayfalar"], **meta, "notlar": out.get("notlar", ""), "zaman": now}
+                  "sayfalar": pkg["sayfalar"], **meta, "notlar": out.get("notlar", ""), "zaman": now,
+                  **({"belge_notu": pkg["belge_notu"]} if pkg.get("belge_notu") else {})}
         if text is None:   # ajan: hepsi metin sayfası → betimlenmez, yazıya geçirilmeli
             log[did] = {**common, "durum": "metin_belgesi"}
             st["metin_belgesi"].append(did)
