@@ -159,11 +159,24 @@ def test_teslim_kapisi_karar_ve_yukleme(tmp_path):
     res = build(ws, arac=Sahte(), zip_yap=False)
     pk = ws / "teslim" / "kanitlar" / "A" / "A.1"
     assert (pk / "A.1.1" / "[1-OD3]. Sentetik kanıt bir.pdf").is_file()
-    assert not (pk / "A.1.2" / "[1-OD3]. Kurul kararı.pdf").exists()              # girmez
-    assert [x["kanit"] for x in res.kontrol_bekliyor] == [rel]
-    assert res.ozet()["kontrol_uyarisi"] == "maskelenecek yeri var, kontrol bekliyor: 1 dosya"
+    # karar bekleyen: dışlanmaz; o anki maskeli hâli (çerçevesiz teslim kopyası) girer ve listelenir
+    giren = pk / "A.1.2" / "[1-OD3]. Kurul kararı.pdf"
+    assert rec.get("teslim_kopya") and giren.read_bytes() == (ws / rec["teslim_kopya"]).read_bytes()
+    assert giren.read_bytes() != (ws / "evidence" / rel).read_bytes()
+    doc = fitz.open(str(giren))
+    try:
+        assert "ONAY BEKLIYOR" not in doc[0].get_text()              # inceleme çerçevesi teslim kopyasında yok
+    finally:
+        doc.close()
+    doc = fitz.open(str(ws / rec["kopya"]))
+    try:
+        assert "ONAY BEKLIYOR" in doc[0].get_text()                  # inceleme kopyasında var
+    finally:
+        doc.close()
+    assert [x["kanit"] for x in res.karar_bekleyen] == [rel] and res.kontrol_bekliyor == []
+    assert res.karar_bekleyen[0]["maskeleme"] == "karar bekliyor"
     rows = {(r["Ölçüt"], r["Kanıt no"]): r for r in _rows(ws / "teslim" / "kanit-dizini.csv")}
-    assert ("A.1.2", "1_OD3") in rows and rows[("A.1.2", "1_OD3")]["Maskeleme"] == "kontrol bekliyor"
+    assert ("A.1.2", "1_OD3") in rows and rows[("A.1.2", "1_OD3")]["Maskeleme"] == "karar bekliyor"
     # elle maskelenmiş sürüm: kabul edilir, kayıt "elle maskelendi", pakete girer
     elle = tmp_path / "elle.pdf"
     _pdf_metin(elle, "Elle maskelenmis surum [IMZA]")
@@ -171,7 +184,7 @@ def test_teslim_kapisi_karar_ve_yukleme(tmp_path):
     assert r["dosya"] == rel
     res = build(ws, arac=Sahte(), zip_yap=False)
     assert (pk / "A.1.2" / "[1-OD3]. Kurul kararı.pdf").read_bytes() == elle.read_bytes()
-    assert res.kontrol_bekliyor == []
+    assert res.karar_bekleyen == []
     rows = {(r["Ölçüt"], r["Kanıt no"]): r for r in _rows(ws / "teslim" / "kanit-dizini.csv")}
     assert rows[("A.1.2", "1_OD3")]["Maskeleme"] == "elle maskelendi"
     # yeniden maskeleme yüklenen sürümü korur (kanıt değişmedikçe)
@@ -191,7 +204,7 @@ def test_teslim_kapisi_karar_ve_yukleme(tmp_path):
     rec = _rec(R.run(ws, engine="pymupdf"), rel)
     assert rec["durum"] == "tamam", rec
     res = build(ws, arac=Sahte(), zip_yap=False)
-    assert (pk / "A.1.2" / "[1-OD3]. Kurul kararı.pdf").is_file() and res.kontrol_bekliyor == []
+    assert (pk / "A.1.2" / "[1-OD3]. Kurul kararı.pdf").is_file() and res.karar_bekleyen == []
 
 
 # ---------------------------------------------------------------- önbellek
@@ -391,6 +404,6 @@ def test_libreoffice_donusumu_ve_onbellek(tmp_path, monkeypatch):
     # teslim: maskeli kopya yeni uzantısıyla girer
     from bidr.teslim.run import Maske
     m = Maske(ws, ws / "evidence")
-    yol, deger, _ = m.sec(p)
+    yol, deger, _, _ = m.sec(p)
     assert yol is not None and yol.suffix == ".pdf" and deger == "tamam"
     E.soffice_version.cache_clear()

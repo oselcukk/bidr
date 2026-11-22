@@ -4,7 +4,10 @@ Asıl dosyalara dokunulmaz. Her kopya maskelemeden sonra bağımsız olarak yeni
 kişisel veri, imza şüphesi ya da temizlenmemiş üst veri/yorum/ek kalırsa (`basarisiz`) ya da
 metin katmanı olmayan sayfa/görsel OCR'dan geçemezse (`taranamadi`) kopya `evidence-maskeli/`'ye
 girmez, `maskeleme-basarisiz/` altına alınır ve `maskeleme-raporu.json`'da `yayimlanamaz`
-listesine yazılır (`elle_bakilmali: true`). Desteklenmeyen biçimler kopyalanmaz, aynı listeye girer;
+listesine yazılır (`elle_bakilmali: true`). Kararı verilmemiş öneri bölgesi (`onay_bekliyor`) olan
+dosyanın kopyası da (durumu `tamam` olsa bile) `maskeleme-basarisiz/`'e alınır: oradaki inceleme
+kopyasında açık öneriler turuncu kesik çerçevelidir; çerçevesiz hâli (kesin kapatmalar uygulanmış,
+öneriler açık) teslim paketi için `maskeleme-bekleyen/`'e yazılır (kayıtta `teslim_kopya`). Desteklenmeyen biçimler kopyalanmaz, aynı listeye girer;
 eski biçimler (.doc/.xls/.ppt/.pptx/.msg) çevrilip maskelenir (`eski`). Rapora bulunan değerlerin
 kendisi yazılmaz; yalnız tür, sayı ve bölge kutusu.
 
@@ -12,8 +15,9 @@ Bölgeler (`bolge`): her tespit kimlikli bir bölgedir; insan kararları (`maske
 bölge kimliğiyle uygulanır, elle maskelenmiş sürümler (`maskeleme-elle.json`) kanıt değişmedikçe
 kullanılır (`elle_maskelendi`). Son adım redaksiyon doğrulaması (`dogrula`). Önbellek
 (`onbellek`, `<ws>/.cache/maske.sqlite`): değişmeyen dosya yeniden işlenmez, kural değişince OCR
-yeniden çalışmaz. Teslim kapısı (`bidr/teslim/run.py`): `bekliyor(kayıt)` doğru olan dosya pakete
-girmez.
+yeniden çalışmaz. Teslim (`bidr/teslim/run.py`, politika 2026-11-22 ikinci karar): `bekliyor(kayıt)`
+doğru olan dosya pakete o anki maskeli hâliyle (`teslim_kopya`/`kopya`; maskelenemediyse özgünü) girer ve
+"maskeleme kararı bekleyen" diye listelenir; `bidr teslim --kararsizlari-disla` eski davranış (girmez).
 """
 from __future__ import annotations
 
@@ -31,6 +35,7 @@ from .ocr import ocr_available as raster_ocr_available
 
 OUT_DIR = "evidence-maskeli"
 FAIL_DIR = "maskeleme-basarisiz"
+TESLIM_DIR = "maskeleme-bekleyen"     # karar bekleyen dosyanın çerçevesiz maskeli kopyası (teslim paketi için)
 REPORT = "maskeleme-raporu.json"
 MARKER = ".bidr-maskeleme.json"
 INDEX = "evidence-index.csv"
@@ -114,7 +119,8 @@ def _sayfalar(bs: list[dict]) -> str:
 
 
 def mask_and_check(src: Path, dst: Path, rules: MaskRules, eng: str, model_text: str | None = None, *,
-                   kararlar: dict[str, dict] | None = None, sha: str | None = None, kind: str | None = None) -> dict:
+                   kararlar: dict[str, dict] | None = None, sha: str | None = None, kind: str | None = None,
+                   temiz: Path | None = None) -> dict:
     """Tek dosya: tara → maskele (`dst`; bölgeler kimlikli, insan kararları uygulanır) → maskeli kopyayı
     bağımsız yeniden tara → bölgeleri uzlaştır → redaksiyon doğrulaması.
 
@@ -122,7 +128,8 @@ def mask_and_check(src: Path, dst: Path, rules: MaskRules, eng: str, model_text:
     `bulunan`/`maskelenen`/`kalan` (tür → sayı), `temizlenen`, `kalan_sorunlar`, `uyarilar`, imza
     alanları, `bolgeler` (PDF/PyMuPDF ve görsellerde; bkz. `bolge`). `hata`da `dst` silinir; diğer
     durumlarda maskeli kopya `dst`'de kalır (nereye konacağına çağıran karar verir). Değerlerin
-    kendisi yazılmaz. `sha`: kaynak dosyanın sha256'sı (bölge kimliği; verilmezse hesaplanır)."""
+    kendisi yazılmaz. `sha`: kaynak dosyanın sha256'sı (bölge kimliği; verilmezse hesaplanır). `temiz`:
+    açık öneri çerçevesi çizilecekse kopyanın çerçevesiz hâli önce buraya yazılır (teslim paketi)."""
     from . import bolge as BG
     from . import dogrula
     from .onbellek import sha256_file
@@ -152,6 +159,8 @@ def mask_and_check(src: Path, dst: Path, rules: MaskRules, eng: str, model_text:
         # yeniden taramanın adayları: bilinen bölgeyle örtüşen açıklanmış sayılır (kapatıldı/bırakıldı ya
         # da zaten onay bekliyor); örtüşmeyen yeni bölge olarak onay bekler
         for a in after["bolge_adaylari"]:
+            if a.get("kaynak") == "sablon":
+                continue          # şablon önerisi tarama içindir (ilk turda sorulur); kopyada yeniden önerilmez
             if bg.acikla(a) is None:
                 bg.sayfa(a["sayfa"], [dict(a, id=None)], ilk=False)
         sorunlar = [s for s in sorunlar if not s.startswith("imza:")]
@@ -204,6 +213,9 @@ def mask_and_check(src: Path, dst: Path, rules: MaskRules, eng: str, model_text:
             sorunlar.append(f"redaksiyon doğrulaması başarısız ({len(dog)} kutu): " + "; ".join(dog[:3]))
         acik = [b for b in onay if not b.get("kapali")]
         if acik and dst.is_file():
+            if temiz is not None:                       # teslim paketi: çerçevesiz (öneriler açık) hâl
+                temiz.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(dst, temiz)
             # inceleme kopyası (maskeleme-basarisiz/ ya da --kaynak ağacı): açık kalan öneriler renkli kesik
             # çerçeveyle çizilir; inceleyici kopyayı tamamen maskeli sanmasın
             try:
@@ -325,6 +337,22 @@ def kural_izi(rules: MaskRules) -> str:
                    rules.local_model)
 
 
+def sablon_izi() -> str | None:
+    """Çalışma alanının form şablon belleğinin (`maske-sablonlari.json`; `BIDR_MASKE_WS`) özeti: başka
+    belgede öğrenilen bölge (kullanıcı çizimi, kapat kararı) değişmemiş belgenin önerilerini de değiştirir."""
+    import os
+    from .onbellek import sha256
+    from .sablon import DOSYA
+    ws = os.environ.get("BIDR_MASKE_WS")
+    if not ws:
+        return None
+    p = Path(ws) / DOSYA
+    try:
+        return sha256(p.read_bytes()) if p.is_file() else None
+    except OSError:
+        return None
+
+
 def aday_anahtari(sha: str, rules: MaskRules, eng: str, kararlar: dict[str, dict], model_text: str | None,
                   kind: str | None) -> str:
     from .onbellek import anahtar, sha256
@@ -333,13 +361,14 @@ def aday_anahtari(sha: str, rules: MaskRules, eng: str, kararlar: dict[str, dict
     ocr = raster_ocr_available()
     return anahtar("aday", sha, KURAL_SURUM, _kod_izi(), kural_izi(rules), eng, kind, kk,
                    sha256(model_text.encode("utf-8")) if model_text is not None else None,
-                   ocr, tesseract_version() if ocr else None)
+                   ocr, tesseract_version() if ocr else None, sablon_izi())
 
 
 def mask_cached(src: Path, dst: Path, rules: MaskRules, eng: str, model_text: str | None = None, *,
-                kararlar: dict[str, dict] | None = None, sha: str | None = None, kind: str | None = None) -> dict:
+                kararlar: dict[str, dict] | None = None, sha: str | None = None, kind: str | None = None,
+                temiz: Path | None = None) -> dict:
     """`mask_and_check` + önbellek `aday` katmanı: değişmeyen dosya (aynı içerik, kural, karar, model
-    metni) yeniden işlenmez; kayıt ve maskeli kopya önbellekten gelir."""
+    metni, şablon belleği) yeniden işlenmez; kayıt, maskeli kopya ve çerçevesiz hâli önbellekten gelir."""
     from . import bolge as BG
     from . import onbellek
     sha = sha or onbellek.sha256_file(src)
@@ -350,19 +379,27 @@ def mask_cached(src: Path, dst: Path, rules: MaskRules, eng: str, model_text: st
         hit = ob.get_json("aday", key)
         if hit is not None:
             blob = ob.get("aday_cikti", key) if hit.get("cikti") else None
-            if not hit.get("cikti") or blob is not None:
+            tblob = ob.get("aday_temiz", key) if hit.get("temiz") and temiz is not None else None
+            if (not hit.get("cikti") or blob is not None) and (not hit.get("temiz") or temiz is None
+                                                               or tblob is not None):
                 if blob is not None:
                     dst.parent.mkdir(parents=True, exist_ok=True)
                     dst.write_bytes(blob)
+                if tblob is not None:
+                    temiz.parent.mkdir(parents=True, exist_ok=True)
+                    temiz.write_bytes(tblob)
                 rec = hit["rec"]
                 rec["onbellek"] = True
                 return rec
-    rec = mask_and_check(src, dst, rules, eng, model_text=model_text, kararlar=mine, sha=sha, kind=kind)
+    rec = mask_and_check(src, dst, rules, eng, model_text=model_text, kararlar=mine, sha=sha, kind=kind, temiz=temiz)
     if ob is not None:
         has = dst.is_file()
         if has:
             ob.put("aday_cikti", key, dst.read_bytes())
-        ob.put_json("aday", key, {"rec": rec, "cikti": has})
+        has_t = temiz is not None and temiz.is_file()
+        if has_t:
+            ob.put("aday_temiz", key, temiz.read_bytes())
+        ob.put_json("aday", key, {"rec": rec, "cikti": has, "temiz": has_t})
     return rec
 
 
@@ -470,7 +507,7 @@ def _isle(job: dict) -> dict:
                 conv, how = _legacy(src, Path(td))
             except ConvertError as e:
                 rec.update(bicim=src.suffix.lower().lstrip("."), durum="desteklenmiyor", elle_bakilmali=True,
-                           onay_bekliyor=True, neden=f"eski biçim çevrilemedi: {e}; kontrol bekliyor (pakete girmez)")
+                           onay_bekliyor=True, neden=f"eski biçim çevrilemedi: {e}; karar bekliyor (teslimde özgün hâliyle, uyarıyla)")
                 return rec
             except Exception as e:
                 rec.update(bicim=src.suffix.lower().lstrip("."), durum="hata", elle_bakilmali=True, onay_bekliyor=True,
@@ -487,7 +524,10 @@ def _isle(job: dict) -> dict:
                        maskeli=out.relative_to(Path(job["dst_root"])).as_posix())
             if k2 == "pdf":
                 rec["motor"] = eng
-            rec.update(mask_cached(conv, out, rules, eng, model_text=mt, kararlar=job.get("kararlar"), sha=sha, kind=k2))
+            temiz = _temiz_yolu(job, out)
+            rec.update(mask_cached(conv, out, rules, eng, model_text=mt, kararlar=job.get("kararlar"), sha=sha, kind=k2,
+                                   temiz=temiz))
+            _teslim_kopya(rec, job, temiz)
             return rec
     rec["bicim"] = kind or (src.suffix.lower().lstrip(".") or "?")
     if kind is None:
@@ -498,8 +538,23 @@ def _isle(job: dict) -> dict:
         rec["motor"] = eng
     if mt is not None:
         rec["model_metni"] = True
-    rec.update(mask_cached(src, dst, rules, eng, model_text=mt, kararlar=job.get("kararlar"), sha=sha, kind=kind))
+    temiz = _temiz_yolu(job, dst)
+    rec.update(mask_cached(src, dst, rules, eng, model_text=mt, kararlar=job.get("kararlar"), sha=sha, kind=kind,
+                           temiz=temiz))
+    _teslim_kopya(rec, job, temiz)
     return rec
+
+
+def _temiz_yolu(job: dict, dst: Path) -> Path | None:
+    """Maskeli kopyanın (`dst`, `dst_root` altında) çerçevesiz teslim hâlinin yolu (`maskeleme-bekleyen/`)."""
+    if not job.get("teslim_root"):
+        return None
+    return Path(job["teslim_root"]) / Path(dst).relative_to(Path(job["dst_root"]))
+
+
+def _teslim_kopya(rec: dict, job: dict, temiz: Path | None) -> None:
+    if temiz is not None and temiz.is_file():
+        rec["teslim_kopya"] = f"{TESLIM_DIR}/{temiz.relative_to(Path(job['teslim_root'])).as_posix()}"
 
 
 def run(ws_root: Path, *, evidence: Path | None = None, out: Path | None = None, engine: str = "auto",
@@ -516,8 +571,8 @@ def run(ws_root: Path, *, evidence: Path | None = None, out: Path | None = None,
     if not ev.is_dir():
         raise FileNotFoundError(f"kanıt klasörü yok: {ev} (önce `bidr file`)")
     out = Path(out).expanduser().resolve() if out else ev.parent
-    dst_root, fail_root = out / OUT_DIR, out / FAIL_DIR
-    for d in (dst_root, fail_root):
+    dst_root, fail_root, teslim_root = out / OUT_DIR, out / FAIL_DIR, out / TESLIM_DIR
+    for d in (dst_root, fail_root, teslim_root):
         if _inside(d, ev) or _inside(ev, d):
             raise MaskRunError(f"çıktı klasörü kanıt klasörüyle iç içe olamaz: {d} / {ev}")
     if rules is None:
@@ -528,6 +583,7 @@ def run(ws_root: Path, *, evidence: Path | None = None, out: Path | None = None,
     eng = pdf_engine(engine)
     _prepare_dir(dst_root)
     _prepare_dir(fail_root)
+    _prepare_dir(teslim_root)
     ob_yol = None
     if onbellek_kullan:
         onbellek.ac(ws)
@@ -554,6 +610,7 @@ def run(ws_root: Path, *, evidence: Path | None = None, out: Path | None = None,
             e = dict(e, yol=str(ws / e["dosya"]))
         mt = read_model_text(model_texts.get(rel))
         jobs.append({"src": str(src), "rel": rel, "dst": str(dst_root / rel), "dst_root": str(dst_root),
+                     "teslim_root": str(teslim_root),
                      "rules": rules, "eng": eng, "model_text": mt, "kararlar": kararlar, "elle": e,
                      "elle_sha": elle_sha, "onbellek": ob_yol})
     if workers > 1 and len(jobs) > 1:
@@ -583,18 +640,21 @@ def run(ws_root: Path, *, evidence: Path | None = None, out: Path | None = None,
         toplam_imza["ortusen_kelime"] += rec.get("imza_ortusen_kelime", 0)
         if rec["durum"] in ("hata", "desteklenmiyor"):
             yayimlanamaz.append({"dosya": rel, "neden": rec["neden"]})
-        elif rec["durum"] not in ("tamam", ELLE):
+        elif bekliyor(rec):
+            # maskelemesi eksik ya da kararı verilmemiş önerisi olan: inceleme kopyası maskeleme-basarisiz/'e
             mrel = rec.get("maskeli") or rel
             dst, target = dst_root / mrel, fail_root / mrel
             if dst.is_file():
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.move(str(dst), str(target))
                 rec["kopya"] = f"{FAIL_DIR}/{mrel}"
-            yayimlanamaz.append({"dosya": rel, "neden": rec["neden"]})
+            if rec["durum"] != "tamam":
+                yayimlanamaz.append({"dosya": rel, "neden": rec["neden"]})
         kayitlar.append(rec)
 
     # boş kalan klasörleri temizle
-    for d in sorted((p for p in dst_root.rglob("*") if p.is_dir()), key=lambda p: -len(p.parts)):
+    for d in sorted((p for root in (dst_root, teslim_root) for p in root.rglob("*") if p.is_dir()),
+                    key=lambda p: -len(p.parts)):
         if not any(d.iterdir()):
             d.rmdir()
 
@@ -624,7 +684,7 @@ def run(ws_root: Path, *, evidence: Path | None = None, out: Path | None = None,
     }
     yaz_rapor(out / REPORT, rapor)
     marker = {"surum": SURUM, "zaman": rapor["zaman"], "kaynak": str(ev), "rapor": str(out / REPORT)}
-    for d in (dst_root, fail_root):
+    for d in (dst_root, fail_root, teslim_root):
         d.mkdir(parents=True, exist_ok=True)
         (d / MARKER).write_text(json.dumps(marker, ensure_ascii=False, indent=1), encoding="utf-8")
     return rapor
@@ -637,9 +697,12 @@ def yaz_rapor(p: Path, rapor: dict) -> None:
 
 
 def bekliyor(rec: dict) -> bool:
-    """Dosya kanıt paketine girmeden önce insan kontrolü bekliyor mu (maskelenecek yeri çözülmemiş):
-    `tamam` ya da `elle_maskelendi` dışındaki her durum."""
-    return rec.get("durum") not in ("tamam", ELLE)
+    """Dosyanın maskelemesi insan kararı bekliyor mu: `tamam` ya da `elle_maskelendi` dışındaki her durum ve
+    kararı verilmemiş öneri bölgesi (`onay_bekliyor`) olan `tamam` dosya. Teslimde dışlanmaz, listelenir."""
+    d = rec.get("durum")
+    if d == ELLE:
+        return False
+    return d != "tamam" or bool(rec.get("onay_bekleyen"))
 
 
 def _mask_index(src: Path, dst: Path, rules: MaskRules, durum: dict[str, str]) -> Path | None:

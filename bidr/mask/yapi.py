@@ -30,7 +30,7 @@ katmanı). Çıktı: `Bolge` listesi (kutu, karar, neden, kaynak, güven, geri b
    üst bandı (antet/logo), dairesel kaşe/mühür, küçük tik/çentik, satır düzeni tutarlı el yazısı
    paragrafı, aynı konumda başka sayfalarda (ya da dosyalarda) tekrarlayan öğe, tamamen basılı sayfada
    (not dökümü) eşiği geçemeyen tek aday → `birakildi`. Kalan etiketsiz aday KAPATILMAZ, `onay_bekliyor`
-   olur (inceleme kopyasında renkli kesik çerçeveyle çizilir; dosya karar verilene kadar pakete girmez).
+   olur (inceleme kopyasında renkli kesik çerçeveyle çizilir; dosya karar verilene kadar "karar bekliyor" listelenir).
    Fotoğraf/afişte ya da sayfada 10'dan çok aday varsa adaylar tek sayfa onayına (`etiketsiz_sayfa`) iner.
 
 Koordinatlar: çözümleme `imza.A_PPI` (100 ppi) çözünürlüğünde yapılır; dönen kutular girdi

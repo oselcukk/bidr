@@ -422,6 +422,17 @@ def _hook_bolgeleri(ad: str, sn: int, *args) -> list[dict]:
     return out
 
 
+def kullaniciyla_ortusen_oneriyi_at(regs: list[dict]) -> list[dict]:
+    """Kullanıcının çizdiği bölgeyle örtüşen şablon önerisi (aynı çizimden öğrenilen, aynı belgede) atılır:
+    karar zaten verilmiş, yeniden sorulmaz."""
+    from . import bolge as BG
+    kul = [b["kutu"] for b in regs if b.get("kaynak") == BG.KULLANICI]
+    if not kul:
+        return regs
+    return [b for b in regs if not (b.get("kaynak") == "sablon" and b.get("karar") == BG.ONAY
+                                    and any(BG.ortusme(b["kutu"], k) >= 0.5 for k in kul))]
+
+
 def _birakilabilir(b: dict) -> bool:
     """Otomatik kapatılan bölgeyi insan "birak" diyebilir mi: yalnız imza (yanlış alarm). Desen ve etiket
     alanı bulguları kural ayarıyla değişir (yeniden tarama yine bulur)."""
@@ -581,7 +592,12 @@ def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules, bolge=None) -> dict
                 uyarilar.append(f"s.{sn}: bulgu konumu bulunamadı ({f.kind})")
         regs += _hook_bolgeleri("imza", sn, page, rules, ps)
         regs += bg.kullanici_bolgeleri(sn)
+        regs = kullaniciyla_ortusen_oneriyi_at(regs)
         _kararla(bg, sn, regs)
+        try:                              # "kapat" kararlı bölge: mürekkep bileşenlerini tümüyle örtsün
+            raster.pdf_kapat_genislet(page, regs)
+        except Exception as e:            # noqa: BLE001 — genişletilemedi: kararın kutusu kapanır
+            uyarilar.append(f"s.{sn}: kapat kutusu genişletilemedi ({type(e).__name__})")
         labels: list = []                 # (dikdörtgen, yer tutucu): kapatmadan sonra metin katmanına yazılır
         siyahlar: list = [fitz.Rect(*b["kutu"]) for b in regs if b.get("_uygulandi")]
         imza_bolge += _kapat_turu(fitz, page, [b for b in regs if kapanir(b) and not b.get("_uygulandi")],

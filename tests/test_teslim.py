@@ -381,7 +381,10 @@ def _maskele(ws: Path, kayitlar: dict[str, str]) -> None:
     os.utime(ws / "maskeleme-raporu.json", (t, t))
 
 
-def test_paket_maskeleme(tmp_path):
+def test_paket_maskeleme(tmp_path, capsys):
+    """Politika 2026-11-22 (ikinci karar): maskeleme kararı bekleyen kanıt dışlanmaz; o anki maskeli hâli (yoksa
+    özgünü) pakete girer ve listelenir. `--kararsizlari-disla` eski davranış."""
+    from bidr.teslim.run import MASKE_UYARI
     ws = _ws(tmp_path)
     _render(ws, tmp_path, "dekanlik")
     _maskele(ws, {"A/A.1/A.1.1/[1-OD3]. Sentetik kanıt bir.pdf": "tamam",
@@ -392,44 +395,88 @@ def test_paket_maskeleme(tmp_path):
     k = ws / "teslim" / "kanitlar" / "A" / "A.1"
     assert (k / "A.1.1" / "[1-OD3]. Sentetik kanıt bir.pdf").read_bytes() == b"%PDF-1.4 MASKELI"
     assert any(b"MASKELI duyuru" in h for h in arac.htmls)                 # web PDF maskeli HTML'den
-    # teslim kapısı: maskelemesi çözülmemiş (başarısız) ve raporda olmayan dosya pakete GİRMEZ (kısmen maskeli
-    # kopya da girmez); rapordaki atıf ve numara değişmez, dizinde satır kalır
-    assert not (k / "A.1.2" / "[1-OD3]. Kurul kararı.pdf").exists()
-    assert not (k / "A.1.2" / "[2-OD2]. Adressiz sayfa.html").exists()
-    assert res.eksik == []
+    # kararı bekleyen: kısmen maskeli kopya pakette; raporda olmayan: özgünü pakette (+ web PDF'i)
+    assert (k / "A.1.2" / "[1-OD3]. Kurul kararı.pdf").read_bytes() == b"%PDF-1.4 KISMI"
+    assert (k / "A.1.2" / "[2-OD2]. Adressiz sayfa.html").is_file()
+    assert (k / "A.1.2" / "[2-OD2]. Adressiz sayfa.pdf").is_file()
+    assert res.eksik == [] and res.kontrol_bekliyor == [] and not (ws / "teslim" / EKSIK).exists()
     rows = {(r["Ölçüt"], r["Kanıt no"]): r for r in _rows(ws / "teslim" / "kanit-dizini.csv")}
     assert {key: r["Maskeleme"] for key, r in rows.items()} == {
         ("A.1.1", "1_OD3"): "tamam", ("A.1.1", "2_OD2"): "tamam",
-        ("A.1.2", "1_OD3"): "kontrol bekliyor", ("A.1.2", "2_OD2"): "kontrol bekliyor"}
-    assert rows[("A.1.2", "1_OD3")]["Paketteki dosya"] == "" and "kontrol bekliyor" in rows[("A.1.2", "1_OD3")]["Durum"]
-    kb = {x["kanit"].rsplit("/", 1)[1]: x["neden"] for x in res.kontrol_bekliyor}
-    assert "basarisiz" in kb["[1-OD3]. Kurul kararı.pdf"] and "raporunda yok" in kb["[2-OD2]. Adressiz sayfa.html"]
-    assert any("maskelenecek yeri var, kontrol bekliyor: 2 dosya" in u for u in res.uyarilar)
-    assert "KONTROL BEKLİYOR: 2 DOSYA" in (ws / "teslim" / EKSIK).read_text(encoding="utf-8")
+        ("A.1.2", "1_OD3"): "karar bekliyor", ("A.1.2", "2_OD2"): "maskelenmedi"}
+    assert rows[("A.1.2", "1_OD3")]["Paketteki dosya"] == "kanitlar/A/A.1/A.1.2/[1-OD3]. Kurul kararı.pdf"
+    kb = {x["kanit"].rsplit("/", 1)[1]: x for x in res.karar_bekleyen}
+    assert set(kb) == {"[1-OD3]. Kurul kararı.pdf", "[2-OD2]. Adressiz sayfa.html"}
+    assert all(x["pakette"] and x["dosya"].startswith("kanitlar/") for x in kb.values())
+    assert "basarisiz" in kb["[1-OD3]. Kurul kararı.pdf"]["neden"]
+    assert "raporunda yok" in kb["[2-OD2]. Adressiz sayfa.html"]["neden"]
+    assert any("maskeleme kararı bekleyen belge: 2" in u and "1 tanesi MASKELENMEDİ" in u for u in res.uyarilar)
+    uy = (ws / "teslim" / MASKE_UYARI).read_text(encoding="utf-8")
+    assert "MASKELEME KARARI BEKLEYEN BELGELER: 2" in uy and "Kurul kararı" in uy and "maskelenmedi" in uy
     m = json.loads((ws / MANIFEST).read_text(encoding="utf-8"))
-    assert m["maskeleme"] == {"rapor": True, "tamam": 2, "elle maskelendi": 0, "kontrol bekliyor": 2, "yapılmadı": 0}
-    assert m["kontrol_uyarisi"] == "maskelenecek yeri var, kontrol bekliyor: 2 dosya"
+    assert m["maskeleme"] == {"rapor": True, "tamam": 2, "elle maskelendi": 0, "karar bekliyor": 1, "maskelenmedi": 1,
+                              "kontrol bekliyor": 0, "yapılmadı": 0}
+    assert len(m["karar_bekleyen"]) == 2 and m["karar_bekleyen_uyarisi"].startswith("maskeleme kararı bekleyen belge: 2")
     ctx = Ctx(Workspace(ws), None, lambda s: s, {"komut": ["bidr teslim -w {ws}"]})
     c = durum(ctx)
+    assert c.bitti and any("maskeleme kararı bekleyen belge: 2" in u for u in c.uyarilar)
+    # eski davranış (isteğe bağlı): kararı bekleyen pakete girmez, dizinde satır kalır, insan bekler
+    res = build(ws, arac=Sahte(), zip_yap=False, kararsizlari_disla=True)
+    assert not (k / "A.1.2" / "[1-OD3]. Kurul kararı.pdf").exists()
+    assert not (k / "A.1.2" / "[2-OD2]. Adressiz sayfa.html").exists()
+    assert len(res.kontrol_bekliyor) == 2 and res.eksik == []
+    rows = {(r["Ölçüt"], r["Kanıt no"]): r for r in _rows(ws / "teslim" / "kanit-dizini.csv")}
+    assert rows[("A.1.2", "1_OD3")]["Maskeleme"] == "kontrol bekliyor" and rows[("A.1.2", "1_OD3")]["Paketteki dosya"] == ""
+    assert "KONTROL BEKLİYOR: 2 DOSYA" in (ws / "teslim" / EKSIK).read_text(encoding="utf-8")
+    c = durum(ctx)
     assert c.kim == "insan" and "kontrol bekliyor: 2 dosya" in c.neden
-    # karar / elle yükleme sonrası (rapor: tamam ya da elle_maskelendi) yeniden teslimde girer
+    # CLI: varsayılan çıkış 0 + uyarı; --kararsizlari-disla 1
+    import bidr.teslim.run as TR
+    import pytest as _p
+    mp = _p.MonkeyPatch()
+    mp.setattr(TR, "pdf_araci", lambda tercih="otomatik": Sahte())
+    try:
+        assert main(["teslim", "-w", str(ws), "--tarih", "2025-12-31"]) == 0
+        err = capsys.readouterr().err
+        assert "MASKELEME KARARI BEKLEYEN BELGELER: 2" in err and "MASKELENMEDİ" in err
+        assert main(["teslim", "-w", str(ws), "--tarih", "2025-12-31", "--kararsizlari-disla"]) == 1
+    finally:
+        mp.undo()
+    capsys.readouterr()
+    # karar / elle yükleme sonrası (rapor: tamam ya da elle_maskelendi): liste boşalır
     _maskele(ws, {"A/A.1/A.1.1/[1-OD3]. Sentetik kanıt bir.pdf": "tamam",
                   "A/A.1/A.1.1/[2-OD2]. Sentetik web sayfası.html": "tamam",
                   "A/A.1/A.1.2/[1-OD3]. Kurul kararı.pdf": "tamam",
                   "A/A.1/A.1.2/[2-OD2]. Adressiz sayfa.html": "elle_maskelendi"})
     res = build(ws, arac=Sahte(), zip_yap=False)
     assert (k / "A.1.2" / "[1-OD3]. Kurul kararı.pdf").read_bytes() == b"%PDF-1.4 MASKELI"
-    assert res.kontrol_bekliyor == [] and durum(ctx).bitti
+    assert res.karar_bekleyen == [] and durum(ctx).bitti and not (ws / "teslim" / MASKE_UYARI).exists()
+    assert not any("kararı bekleyen" in u for u in durum(ctx).uyarilar)
     rows = {(r["Ölçüt"], r["Kanıt no"]): r["Maskeleme"] for r in _rows(ws / "teslim" / "kanit-dizini.csv")}
     assert rows[("A.1.2", "2_OD2")] == "elle maskelendi"
-    # kanıt maskelemeden sonra yeniden yazıldı: maskeli kopya eski → pakete girmez, kontrol bekler
-    f = ws / "evidence" / "A" / "A.1" / "A.1.1" / "[1-OD3]. Sentetik kanıt bir.pdf"
+    # tamam ama kararı verilmemiş öneri bölgesi var: karar bekliyor, çerçevesiz teslim kopyası girer
+    rep = json.loads((ws / "maskeleme-raporu.json").read_text(encoding="utf-8"))
+    rel = "A/A.1/A.1.2/[1-OD3]. Kurul kararı.pdf"
+    r = next(x for x in rep["dosyalar"] if x["dosya"] == rel)
+    tk = ws / "maskeleme-bekleyen" / rel
+    tk.parent.mkdir(parents=True, exist_ok=True)
+    tk.write_bytes(b"%PDF-1.4 CERCEVESIZ")
+    r.update(onay_bekleyen=1, teslim_kopya=f"maskeleme-bekleyen/{rel}")
+    (ws / "maskeleme-raporu.json").write_text(json.dumps(rep), encoding="utf-8")
     import os
+    import time
+    t = time.time() + 5
+    os.utime(ws / "maskeleme-raporu.json", (t, t))
+    res = build(ws, arac=Sahte(), zip_yap=False)
+    assert (k / "A.1.2" / "[1-OD3]. Kurul kararı.pdf").read_bytes() == b"%PDF-1.4 CERCEVESIZ"
+    assert [x["kanit"] for x in res.karar_bekleyen] == [rel] and "öneri bölgesi 1" in res.karar_bekleyen[0]["neden"]
+    # kanıt maskelemeden sonra yeniden yazıldı: maskeli kopya eski → özgünü girer, listelenir
+    f = ws / "evidence" / "A" / "A.1" / "A.1.1" / "[1-OD3]. Sentetik kanıt bir.pdf"
     t = (ws / "maskeleme-raporu.json").stat().st_mtime + 10
     os.utime(f, (t, t))
     res = build(ws, arac=Sahte(), zip_yap=False)
-    assert not (k / "A.1.1" / "[1-OD3]. Sentetik kanıt bir.pdf").exists()
-    assert any("eski" in x["neden"] for x in res.kontrol_bekliyor)
+    assert (k / "A.1.1" / "[1-OD3]. Sentetik kanıt bir.pdf").read_bytes() == f.read_bytes()
+    assert any("eski" in x["neden"] and x["maskeleme"] == "maskelenmedi" for x in res.karar_bekleyen)
     # maskeleme raporu değişince paket eskir
     (ws / "maskeleme-raporu.json").write_text("{}", encoding="utf-8")
     assert durum(ctx).kim == "komut"

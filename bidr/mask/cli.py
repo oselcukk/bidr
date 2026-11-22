@@ -232,12 +232,11 @@ def _run(args) -> int:
         print(f"YAYIMLANAMAZ ({len(r['yayimlanamaz'])}):")
         for y in r["yayimlanamaz"]:
             print(f"  {y['dosya']}: {y['neden']}")
-        n = r["ozet"].get("kontrol_bekleyen_dosya", 0)
-        if n:
-            print(f"maskelenecek yeri var, kontrol bekliyor: {n} dosya (teslim paketine girmez) → "
-                  f"bidr maskele bolgeler -w {ws}")
-        return 1
-    return 0
+    n = r["ozet"].get("kontrol_bekleyen_dosya", 0)
+    if n:
+        print(f"maskeleme kararı bekleyen: {n} dosya (teslim paketine o anki maskeli hâliyle girer ve "
+              f"listelenir) → bidr maskele bolgeler -w {ws}")
+    return 1 if (r["yayimlanamaz"] or n) else 0
 
 
 def register(sub):

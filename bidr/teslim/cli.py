@@ -1,8 +1,11 @@
-"""`bidr teslim -w WS [--out DIR] [--tarih YYYY-AA-GG] [--zip-yok] [--pdf-araci …] [--canli] [--taslak]`.
+"""`bidr teslim -w WS [--out DIR] [--tarih YYYY-AA-GG] [--zip-yok] [--pdf-araci …] [--canli] [--taslak]
+[--kararsizlari-disla]`.
 
 Dekanlığa teslim paketi: dolu rapor, ölçüt klasörlü kanıtlar, web sayfası kanıtlarının alınma tarihli
-PDF kopyaları ve kanıt dizini (bidr/teslim/run.py). Çıkış kodu: 0 paket eksiksiz; 1 paket eksik
-ya da maskelenecek yeri çözülmemiş kanıt pakete girmedi (EKSIK.txt; listelenir); 2 girdi hatası ya da PDF aracı yok (hiçbir şey yazılmaz);
+PDF kopyaları ve kanıt dizini (bidr/teslim/run.py). Maskeleme kararı bekleyen kanıt pakete o anki
+maskeli hâliyle (maskelenemediyse özgünüyle) girer, konsolda ve MASKELEME-UYARI.txt'de listelenir (çıkış
+kodunu değiştirmez). Çıkış kodu: 0 paket eksiksiz; 1 paket eksik ya da (`--kararsizlari-disla` ile)
+kararı bekleyen kanıt pakete girmedi (EKSIK.txt; listelenir); 2 girdi hatası ya da PDF aracı yok (hiçbir şey yazılmaz);
 3 kapı (biçim denetimi geçmedi; `--taslak` ile taslak paket üretilebilir)."""
 from __future__ import annotations
 
@@ -23,7 +26,7 @@ def _run(args) -> int:
     try:
         res = build(ws, Path(args.out) if args.out else None, docx_path=Path(args.docx) if args.docx else None,
                     tarih=args.tarih, zip_yap=not args.zip_yok, arac=args.pdf_araci, canli=args.canli,
-                    taslak=args.taslak)
+                    taslak=args.taslak, kararsizlari_disla=args.kararsizlari_disla)
     except PdfAraciYok as e:
         print(f"HATA {e}", file=sys.stderr)
         return 2
@@ -33,10 +36,20 @@ def _run(args) -> int:
     for u in res.uyarilar:
         print(f"uyarı: {u}")
     print(ozet_json(res))
+    pakette = [x for x in res.karar_bekleyen if x["pakette"]]
+    if pakette:
+        from .run import KARAR_BASLIK, MASKE_OZGUN
+        print(f"UYARI {KARAR_BASLIK.format(n=len(pakette))} (pakette; kesin kapatmalar uygulandı, kararsız öneriler "
+              "açık; 'maskelenmedi' olanlar ÖZGÜN dosya):", file=sys.stderr)
+        for x in pakette:
+            v = "MASKELENMEDİ" if x["maskeleme"] == MASKE_OZGUN else x["maskeleme"]
+            print(f"  - {x['olcut']} [{x['kanit_no']}] {x['dosya']} ({v}): {x['neden']}", file=sys.stderr)
+        print(f"  → bidr maskele bolgeler -w {ws} ; karar/yukle, sonra bidr maskele -w {ws} ve bidr teslim "
+              "(eski davranış: --kararsizlari-disla)", file=sys.stderr)
     if res.kontrol_bekliyor:
         from .run import KONTROL_BASLIK
-        print(KONTROL_BASLIK.format(n=len(res.kontrol_bekliyor)) + " (pakete girmedi; rapordaki atıf ve "
-              "numara değişmedi):")
+        print(KONTROL_BASLIK.format(n=len(res.kontrol_bekliyor)) + " (--kararsizlari-disla: pakete girmedi; "
+              "rapordaki atıf ve numara değişmedi):")
         for x in res.kontrol_bekliyor:
             print(f"  - {x['olcut']} [{x['kanit_no']}] {x['kanit']}: {x['neden']}")
         print(f"  → bidr maskele bolgeler -w {ws} ; bidr maskele karar -w {ws} <bolge_id> kapat|birak ; "
@@ -73,4 +86,7 @@ def register(sub):
                    help="web kanıtını özgün adresinden yeniden indirip bas (adres biliniyorsa; vars.: kaydedilmiş sayfa)")
     p.add_argument("--taslak", action="store_true",
                    help="biçim denetimi geçmeden taslak paket üret (EKSIK.txt'de TASLAK; hat bitmiş saymaz)")
+    p.add_argument("--kararsizlari-disla", action="store_true",
+                   help="maskeleme kararı bekleyen (ya da maskelenemeyen) kanıtı pakete alma (eski davranış; "
+                        "varsayılan: o anki maskeli hâliyle girer ve listelenir)")
     p.set_defaults(func=_run)

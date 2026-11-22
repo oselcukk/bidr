@@ -98,10 +98,10 @@ yazar), `hazirlayanlar` (kapak; answers.yaml ile), `onceki_rapor` (geçen yılı
   `report.docx`, `kanitlar/A/A.1/A.1.1/[1-OD3]. Ad.pdf` düzeninde kanıtlar, her web kanıtının
   yanında aynı adla "Kaynak: <URL> · Alınma (erişim) tarihi: <tarih>" damgalı PDF kopyası ve
   `kanit-dizini.xlsx`/`.csv` (ölçüt, kanıt no, OD, ad, paketteki dosya, özgün bağlantı, alınma
-  tarihi, maskeleme). `bidr maskele` çalıştırıldıysa kanıtların maskeli kopyası girer; maskelenecek yeri
-  çözülmemiş kanıt (onay bekleyen bölge, başarısız maskeleme) pakete girmez — rapordaki atıfı ve
-  numarası değişmez, dizinde "kontrol bekliyor" yazar, uyarı "maskelenecek yeri var, kontrol bekliyor:
-  N dosya" — ve `bidr maskele bolgeler/karar/yukle` ile insan kontrolünden sonra girer (maskeleme hiç
+  tarihi, maskeleme). `bidr maskele` çalıştırıldıysa kanıtların maskeli kopyası girer; maskeleme kararı bekleyen kanıt (kararı verilmemiş öneri bölgesi, eksik kalan maskeleme) pakete o anki maskeli
+  hâliyle girer (kesin kapatmalar uygulanmış, öneriler açık; maskelenemediyse özgünü, "maskelenmedi") ve
+  konsolda, `MASKELEME-UYARI.txt`'de ve özetin `karar_bekleyen` alanında "maskeleme kararı bekleyen belgeler"
+  diye listelenir; `--kararsizlari-disla` eski davranıştır (girmez) (maskeleme hiç
   yapılmadıysa özgün dosya, "yapılmadı"; ayrıntı `docs/PRIVACY.md`). Raporun kanıt listesindeki her satır paketteki bir dosyayla birebir eşleşir; eşleşmeyen
   ya da PDF'i üretilemeyen satır varsa paket `EKSIK.txt` ile yazılır ve çıkış kodu 1 olur.
   Web PDF'i için kurulu bir araç gerekir (ücretsiz): Google Chrome / Chromium / Edge (yolu

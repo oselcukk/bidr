@@ -64,7 +64,7 @@ def _kaynak_modu(rap: dict) -> bool:
 
 def _durum(rec: dict) -> str:
     d = rec.get("durum")
-    if d == "tamam":
+    if d == "tamam" and not BG.onay_bekleyen(rec.get("bolgeler")):
         return "tamam"
     if d == ELLE:
         return "elle_maskeli"
@@ -247,10 +247,11 @@ def yukle(ws: Path, kanit: Path | str, maskeli: Path | str, kim: str | None = No
     (ws / ELLE_KAYIT).write_text(json.dumps(kayit, ensure_ascii=False, indent=1), encoding="utf-8")
     # raporu hemen güncelle: kopya evidence-maskeli/'ye, kayıt elle_maskelendi
     mk = Path(rap.get("maskeli_klasor") or ws / "evidence-maskeli")
-    if rec.get("kopya"):
-        kp = ws / rec["kopya"]
-        if kp.is_file():
-            kp.unlink()
+    for k_ in ("kopya", "teslim_kopya"):
+        if rec.get(k_):
+            kp = ws / rec[k_]
+            if kp.is_file():
+                kp.unlink()
     out = mk / Path(rec["dosya"]).with_suffix(hedef.suffix)
     out.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(hedef, out)
@@ -395,32 +396,39 @@ def ciz(ws: Path, ad, sayfa_no: int, kutu, kim: str | None = None) -> dict:
 
 
 def _sablona_ogret(ws: Path, src: Path, kind: str, sayfa_no: int, kutu_pt, bid: str) -> str | None:
-    """Kullanıcı çizimini form şablon belleğine öneri örneği olarak öğret (OCR + numpy gerekir; yoksa uyarı).
-    Düzlem maskeleme hattınınki: PDF sayfası 300 dpi, görsel OCR görünümü."""
+    """Kullanıcı çizimini form şablon belleğine öneri örneği olarak öğret (numpy, taranmış sayfada OCR gerekir;
+    yoksa uyarı). Düzlem ve kelimeler maskeleme hattınınki: PDF sayfası 300 dpi; metin katmanı yeterliyse onun
+    kelimeleri (tablolu sayfada tesseract hücre yazılarını atlıyor: "yeterli basılı çapa yok"), değilse özgün +
+    çizgisiz kopya OCR'ı; görsel OCR görünümü."""
     try:
         from . import alan as AL
         from . import raster
         from .ocr import ocr_available, ocr_words
         from .sablon import SablonBellegi, parmak_izi
-        if AL.np is None or not ocr_available():
-            return "şablon belleğine öğretilmedi (OCR ya da numpy yok)"
+        if AL.np is None:
+            return "şablon belleğine öğretilmedi (numpy yok)"
         if kind == "pdf":
             from .formats import _fitz
             fitz = _fitz()
             doc = fitz.open(str(src))
             try:
                 page = doc[sayfa_no - 1]
-                img = raster.render(page, 300)
+                need_ocr, has_text = raster.page_needs_ocr(page)
+                if (need_ocr or not has_text) and not ocr_available():
+                    return "şablon belleğine öğretilmedi (OCR yok)"
+                img, words = raster.sablon_gorunumu_pdf(page)
                 f = 300 / 72.0
                 px = [v * f for v in (fitz.Rect(*kutu_pt) * page.rotation_matrix)]
             finally:
                 doc.close()
         else:
+            if not ocr_available():
+                return "şablon belleğine öğretilmedi (OCR yok)"
             im = raster._open_image(src)
             img, f = raster._ocr_view(im)
             sc = raster.image_scale(im)
             px = [v / sc * f for v in kutu_pt]
-        words = ocr_words(img)
+            words = raster._ocr_birlesik(img, raster._ppi(img))
         yapi = AL.Yapi(img, AL._page_h(words, img.size[1]), words)
         sb = SablonBellegi.calisma_alani(ws)
         if sb.ogren(parmak_izi(words, img.size[0], img.size[1], yapi), [px], kaynak=bid, oneri=True) is None:

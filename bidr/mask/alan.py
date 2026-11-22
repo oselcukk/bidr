@@ -1428,7 +1428,7 @@ def _harf_okunan(box, words: list[Word]) -> bool:
 
 def el_yazisi_bolgeleri(img, words: list[Word], *, sayfa: int = 1, dosya: str = "", olcek: float = 1.0,
                         more=None, sablonlar=None, kararlar: dict | None = None, sira0: int = 1,
-                        rakam: bool = True) -> list[dict]:
+                        rakam: bool = True, yalniz_sablon: bool = False) -> list[dict]:
     """Sayfa görüntüsü + OCR kelimeleri → el yazısı alan bölgeleri (bölge sözleşmesi biçiminde).
 
     - `kaynak`: `etiket_alani` (basılı etiketin geometrik alanı), `rakam_dizisi` (etiketsiz 10-13 bileşenli
@@ -1439,10 +1439,15 @@ def el_yazisi_bolgeleri(img, words: list[Word], *, sayfa: int = 1, dosya: str = 
       verilirse "kapat" kararlı bölgeler şablona öğretilir ve eşleşen şablonun bölgeleri uygulanır; kullanıcı
       çiziminden öğrenilen şablon bölgesi (`oneri`) yalnız `onay_bekliyor` öneri olur;
     - `rakam`: etiketsiz rakam dizisi araması (metin katmanlı / güvenle OCR'lanan basılı sayfada False);
-      bileşenlerinin çoğu harf okunan dizi düşer.
+      bileşenlerinin çoğu harf okunan dizi düşer;
+    - `yalniz_sablon`: alan/rakam dizisi araması yapılmaz, yalnız şablon belleği uygulanır (metin katmanlı sayfa).
     Değer okunmaz, yazılmaz."""
     kararlar = kararlar or {}
-    fields, ctx = alan_adaylari(img, words, more=more)
+    if yalniz_sablon:
+        fields, ctx = [], {"words": list(words or []), "yapi": None, "lines": None, "found": []}
+        rakam = False
+    else:
+        fields, ctx = alan_adaylari(img, words, more=more)
     words2 = ctx["words"] or list(words or [])
     regs: list[dict] = []
     for f in fields:

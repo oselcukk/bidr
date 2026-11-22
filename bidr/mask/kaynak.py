@@ -630,6 +630,9 @@ def _files(src: Path) -> tuple[list[Path], list[str]]:
 def _work(args) -> list[dict]:
     src, rel, hedef, dst, rules, eng, ayir, mtext, ws = args
     ctx = _Ctx(rules, eng, Path(ayir) if ayir else None, mtext, ws)
+    once = os.environ.get("BIDR_MASKE_WS")
+    if ws:                      # çalışma alanının form şablon belleği (kullanıcı çizimi önerileri; raster._sablonlar)
+        os.environ["BIDR_MASKE_WS"] = str(ws)
     try:
         written = _handle(Path(src), rel, hedef, Path(dst), ctx)
     except Exception as e:      # beklenmeyen: kanıt düşmesin
@@ -639,6 +642,12 @@ def _work(args) -> list[dict]:
                             "neden": f"beklenmeyen hata ({type(e).__name__}: {str(e)[:160]}); "
                                      "olduğu gibi kopyalandı"})
         ctx.last = ctx.records[-1]
+    finally:
+        if ws:
+            if once is None:
+                os.environ.pop("BIDR_MASKE_WS", None)
+            else:
+                os.environ["BIDR_MASKE_WS"] = once
     if ctx.last is not None and ctx.last.get("dosya") == rel and ctx.set_aside(written, ctx.last):
         written.unlink()           # --ayir: maskeli kopyada kalmaz
         root, d = Path(dst).parents[len(hedef.split("/")) - 1], written.parent

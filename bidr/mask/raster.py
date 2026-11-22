@@ -183,13 +183,129 @@ def _sablonlar():
     ws = os.environ.get("BIDR_MASKE_WS")
     if not ws:
         return None
-    if ws not in _SABLON:
+    from .sablon import DOSYA
+    try:
+        st = (Path(ws) / DOSYA).stat()
+        imza = (st.st_mtime_ns, st.st_size)
+    except OSError:
+        imza = None
+    eski = _SABLON.get(ws)
+    if eski is None or (eski[0] != imza and not (eski[1] is not None and eski[1].degisti)):
+        # dosya bu süreç dışında değiştiyse (ör. `bidr maskele ciz`) yeniden yüklenir
         try:
             from .sablon import SablonBellegi
-            _SABLON[ws] = SablonBellegi.calisma_alani(ws)
+            _SABLON[ws] = (imza, SablonBellegi.calisma_alani(ws))
         except Exception:
-            _SABLON[ws] = None
-    return _SABLON[ws]
+            _SABLON[ws] = (imza, None)
+    return _SABLON[ws][1]
+
+
+def sablon_onerileri(page, sablonlar) -> list:
+    """Metin katmanlı (born-digital) sayfa: form şablon belleğinin bölgeleri (kullanıcı çizimi önerisi, öğrenilmiş
+    alan). Şablon düzlemi 300 dpi; kelimeler metin katmanından (çizimden öğrenme de öyle: `inceleme._sablona_ogret`).
+    → [(sayfa dikdörtgeni, bölge)]."""
+    from . import alan as AL
+    if sablonlar is None or AL.np is None or not any(s.get("bolgeler") for s in sablonlar.sablonlar):
+        return []
+    dpi = 300
+    img = render(page, dpi)
+    tw = text_words(page, dpi / 72.0)
+    regs = AL.el_yazisi_bolgeleri(img, tw, sayfa=1, dosya="m3", olcek=1.0, sablonlar=sablonlar, yalniz_sablon=True)
+    rects = to_page_rects(page, [tuple(e["kutu"]) for e in regs], dpi / 72.0)
+    return list(zip(rects, regs))
+
+
+GENISLET_MIN_PT = 12.0          # "kapat" kararlı bölge mürekkebe genişlerken kenar başına en az izin (pt)
+GENISLET_MAX_PT = 36.0          # ve en çok izin (kutu yüksekliği kadar, bu sınırlar arasında)
+MUREKKEP_ESIK = 170             # gri düzey: bunun altı mürekkep
+
+
+def murekkep_kutusu(img, box, sinir: float):
+    """`img` (PIL) üzerinde `box`la (piksel) kesişen mürekkep bileşenlerini tümüyle örten kutu; kutu her
+    kenarda en çok `sinir` piksel büyür. Form çizgileri (uzun ince yatay/dikey bileşen) genişletmeye katılmaz.
+    → yeni kutu (piksel) ya da numpy yoksa/mürekkep yoksa `box`."""
+    from . import alan as AL
+    np = AL.np
+    if np is None:
+        return tuple(box)
+    W, H = img.size
+    x0, y0 = max(0, int(box[0] - sinir) - 1), max(0, int(box[1] - sinir) - 1)
+    x1, y1 = min(W, int(box[2] + sinir) + 2), min(H, int(box[3] + sinir) + 2)
+    if x1 - x0 < 2 or y1 - y0 < 2:
+        return tuple(box)
+    M = np.asarray(img.crop((x0, y0, x1, y1)).convert("L")) < MUREKKEP_ESIK
+    bx = (box[0] - x0, box[1] - y0, box[2] - x0, box[3] - y0)
+    out = list(box)
+    ince = max(2.0, sinir / 6.0)
+    for g in AL._components_np(M):
+        if not (g.x0 < bx[2] and g.x1 > bx[0] and g.y0 < bx[3] and g.y1 > bx[1]):
+            continue
+        if min(g.w, g.h) <= ince and max(g.w, g.h) >= 12 * max(1, min(g.w, g.h)):
+            continue                      # form çizgisi (alt çizgi, tablo kenarı)
+        out = [min(out[0], g.x0 + x0), min(out[1], g.y0 + y0), max(out[2], g.x1 + x0), max(out[3], g.y1 + y0)]
+    pay = max(1.0, sinir / 12.0)
+    if out != list(box):
+        out = [out[0] - pay, out[1] - pay, out[2] + pay, out[3] + pay]
+    return (max(box[0] - sinir, out[0], 0), max(box[1] - sinir, out[1], 0),
+            min(box[2] + sinir, out[2], W), min(box[3] + sinir, out[3], H))
+
+
+def genisletilir(b: dict) -> bool:
+    """İnsanın "kapat" dediği (otomatik önerinin) bölgesi mürekkebi tümüyle örtecek kadar genişletilir; kullanıcı
+    çizimi (kutuyu insan çizdi), okunamayan sayfa ve yalnız sayfası bilinen model metni bölgesi hariç."""
+    return ((b.get("insan") or {}).get("karar") == "kapat" and b.get("_yama") is None and b.get("tur") not in ("kullanici", "okunamayan_sayfa")
+            and b.get("kaynak") not in ("kullanici", "model_metni"))
+
+
+def _genislet_siniri(kutu_pt) -> float:
+    return min(GENISLET_MAX_PT, max(GENISLET_MIN_PT, kutu_pt[3] - kutu_pt[1]))
+
+
+def pdf_kapat_genislet(page, regs: list[dict]) -> None:
+    """PDF sayfası: `genisletilir` bölgelerin kutusu (döndürülmemiş sayfa koordinatı) mürekkebe genişler."""
+    import pymupdf
+    dpi = 150
+    f = dpi / 72.0
+    for b in regs:
+        if not genisletilir(b):
+            continue
+        sinir = _genislet_siniri(b["kutu"])
+        r = pymupdf.Rect(*b["kutu"]) * page.rotation_matrix          # görüntülenen sayfa
+        clip = (r + (-sinir - 2, -sinir - 2, sinir + 2, sinir + 2)) & page.rect
+        if clip.is_empty:
+            continue
+        from PIL import Image
+        pix = page.get_pixmap(dpi=dpi, clip=clip)
+        img = Image.open(io.BytesIO(pix.tobytes("png"))).convert("L")
+        px = ((r.x0 - clip.x0) * f, (r.y0 - clip.y0) * f, (r.x1 - clip.x0) * f, (r.y1 - clip.y0) * f)
+        k = murekkep_kutusu(img, px, sinir * f)
+        if tuple(k) == px:
+            continue
+        yeni = pymupdf.Rect(k[0] / f + clip.x0, k[1] / f + clip.y0, k[2] / f + clip.x0, k[3] / f + clip.y0)
+        yeni = (yeni * page.derotation_matrix) | pymupdf.Rect(*b["kutu"])
+        b["kutu"] = [round(v, 2) for v in (yeni.x0, yeni.y0, yeni.x1, yeni.y1)]
+        b["neden"] += "; kutu mürekkebi örtecek kadar genişletildi"
+
+
+def sablon_gorunumu_pdf(page):
+    """Şablon belleği düzlemi (300 dpi görüntü) ve maskeleme hattının bu sayfada kullandığı kelimeler: metin
+    katmanı yeterliyse metin katmanı, değilse özgün + çizgisiz kopya OCR'ı (`analyze_image` ile aynı)."""
+    dpi = 300
+    img = render(page, dpi)
+    need_ocr, has_text = page_needs_ocr(page)
+    if not need_ocr and has_text:
+        return img, text_words(page, dpi / 72.0)
+    return img, _ocr_birlesik(img, dpi)
+
+
+def _ocr_birlesik(img, ppi) -> list:
+    ow = ocr_words(img)
+    try:
+        clean = Y.cizgisiz(img, ppi)
+        cw = ocr_words(clean) if clean is not None else None
+    except Exception:
+        cw = None
+    return _birlesik(ow, cw)
 WEAK_WORDS = 60                   # psm 3 bundan az güvenilir kelime verdiyse psm 11 ikinci geçişi
 WEAK_CONF = 80.0                  # ya da harf ağırlıklı ortalama güven bunun altındaysa
 
@@ -563,7 +679,17 @@ def mask_image(src: Path, dst: Path, rules: MaskRules, bolge=None) -> dict:
     for u in bg.kullanici_bolgeleri(1):
         u["_px"] = [v / sc for v in u["kutu"]]
         regs.append(u)
+    from .formats import kullaniciyla_ortusen_oneriyi_at
+    regs = kullaniciyla_ortusen_oneriyi_at(regs)
     _kararla(bg, 1, regs)
+    for b in regs:                           # "kapat" kararlı bölge: mürekkep bileşenlerini tümüyle örtsün
+        if genisletilir(b) and b.get("_px"):
+            sinir = _genislet_siniri(b["kutu"]) / sc
+            k = murekkep_kutusu(img, b["_px"], sinir)
+            if tuple(k) != tuple(b["_px"]):
+                b["_px"] = list(k)
+                b["kutu"] = [round(v * sc, 2) for v in k]
+                b["neden"] += "; kutu mürekkebi örtecek kadar genişletildi"
     out = img
     labels = []
     bolge_n = 0
@@ -869,6 +995,11 @@ def scan_pdf_page(page, rules: MaskRules) -> dict:
         bol = Y.goruntu_bolgeleri(img, tw, SIG_DPI, kesin=tw, bag=bag, sayfa=sayfa, metin_sayfasi=True,
                                   gomulu=gomulu, vektor=Y.vektor_cizgileri(page, scale), web=web_ciktisi(page))
         _imza_out(out, page, bol, scale)
+    if rules.label_fields:
+        try:                                 # aynı formun başka kopyasında çizilen/kapatılan bölgeler
+            out["el_yazisi"] = sablon_onerileri(page, _sablonlar())
+        except Exception:                    # şablon belleği tespiti düşürmesin
+            pass
     return out
 
 

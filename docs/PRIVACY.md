@@ -165,7 +165,8 @@ dokunulmaz.
 | dosya | içerik |
 |---|---|
 | `evidence-maskeli/` | yayımlanabilir kopyalar (yalnız yeniden taramadan temiz geçenler) |
-| `maskeleme-basarisiz/` | yeniden taramada sızıntı/şüphe kalan ya da taranamayan dosyaların kopyaları (elle inceleme için; **yayımlanmaz**) |
+| `maskeleme-basarisiz/` | yeniden taramada sızıntı/şüphe kalan, taranamayan ya da kararı verilmemiş öneri bölgesi olan dosyaların inceleme kopyaları (açık öneriler turuncu çerçeveli; elle inceleme için) |
+| `maskeleme-bekleyen/` | aynı dosyaların çerçevesiz maskeli hâli (kesin kapatmalar uygulanmış, öneriler açık; kayıtta `teslim_kopya`): teslim paketi bunu alır |
 | `maskeleme-raporu.json` | dosya başına `durum`, `elle_bakilmali`, `bulunan` / `maskelenen` / `kalan` (tür → sayı), `imza_bolgesi`, `imza_elle`, `taranamadi`, temizlenen üst veri, uyarılar, `yayimlanamaz` listesi |
 | `evidence-index-maskeli.csv` | `evidence-index.csv` varsa: `ad`, `alintilar`, `kaynak` maskeli; `maskeleme` sütunu (tamam/basarisiz/taranamadi/desteklenmiyor/hata/elle_maskelendi) |
 | `maskeleme-kararlari.jsonl` | insan bölge kararları (`bidr maskele karar`; çalıştırmalar arasında kalır) |
@@ -177,13 +178,14 @@ yüklediği maskeli sürüm `evidence-maskeli/`'de), `basarisiz` (kişisel veri 
 onay bekleyen bölge var ya da redaksiyon doğrulaması geçmedi), `taranamadi` (metin katmanı yok ve
 OCR'dan geçemedi: okunamayan sayfa bölgesi onay bekler), `desteklenmiyor` (eski biçim çevrilemediyse
 `onay_bekliyor: true`), `hata`. `tamam`/`elle_maskelendi` dışındaki her durumda `elle_bakilmali:
-true`. Maskeleme kanıt seçimini etkilemez: kanıt rapordan çıkarılmaz, atıfı ve numarası değişmez;
-yalnız **teslim kapısı** (aşağıda) dosyayı insan kontrolüne kadar pakete almaz.
+true`. Kararı verilmemiş öneri bölgesi olan `tamam` dosya da "karar bekliyor" sayılır (`bekliyor`,
+`kontrol_bekleyen_dosya`; `bolgeler --json` durumu `karar_bekliyor`). Maskeleme kanıt seçimini etkilemez:
+kanıt rapordan çıkarılmaz, atıfı ve numarası değişmez; teslimde de dışlanmaz (aşağıda).
 
 Eski biçimler (`.doc`, `.xls`, `.ppt`, `.pptx`, `.msg`) kanıt modunda da çevrilip maskelenir (yukarıdaki
 A bölümüyle aynı çeviriciler; Linux'ta LibreOffice); maskeli kopya yeni uzantısıyla durur (kayıtta
 `maskeli`, `donusum`), teslim paketi o kopyayı alır. Çeviri sonucu önbelleğe yazılır. Çevrilemeyen
-dosya kontrol bekler ve pakete girmez; LibreOffice yoksa neden açıkça söylenir.
+dosya karar bekler (teslimde özgün hâliyle, "maskelenmedi" uyarısıyla girer); LibreOffice yoksa neden açıkça söylenir.
 
 ### Bölgeler, insan kontrolü ve teslim kapısı
 
@@ -199,11 +201,16 @@ eski alanlar korunur:
 
 `kapali`: kutu maskeli kopyada kapatıldı mı. `onay_bekliyor` bölge çoğunlukla AÇIKTIR (insan kararına kadar);
 `maskeleme-basarisiz/` inceleme kopyasında (ve `--kaynak` ağacındaki eksik maskeli kopyada) bu bölgeler
-turuncu kesik çerçeve ve "[ONAY BEKLIYOR]" işaretiyle çizilir: inceleyici kopyayı maskeli sanmasın. Tek
+turuncu kesik çerçeve ve "[ONAY BEKLIYOR]" işaretiyle çizilir: inceleyici kopyayı maskeli sanmasın. Teslim
+paketine giden `maskeleme-bekleyen/` kopyasında çerçeve yoktur. Tek
 istisna metinle örtüşen imza (ad yalnız OCR'dan okundu): kutu kapalıdır, onay "geri basma gerekli mi" içindir.
 Kullanıcı bölgesi (`ciz`): `tur`/`kaynak` `kullanici`, kimlik `<sha8>-s<sayfa>-k<n>`; her koşuda gerçek
 redaksiyonla uygulanır, ayrıca form şablon belleğine öneri örneği olur (aynı formdan başka belgede yalnız
-`onay_bekliyor` öneri; kendiliğinden kapatılmaz). Kapatılan kutuya yazılan işaret: imza `[İMZA]`, imza
+`onay_bekliyor` öneri; kendiliğinden kapatılmaz; metin katmanlı belgede de: çizimden öğrenme ve öneri metin
+katmanının kelimeleriyle hizalanır, `--kaynak -w WS` ön işlemesi de çalışma alanının şablon belleğini kullanır,
+önbellek anahtarı şablon belleğini içerir; çizimin kendi belgesinde öneri yinelenmez). Otomatik önerinin
+bölgesine `kapat` kararı verilince kutu, kesiştiği mürekkep bileşenlerini (form çizgileri hariç) tümüyle
+örtecek kadar genişletilir (kenar başına en çok kutu yüksekliği, 12–36 pt). Kapatılan kutuya yazılan işaret: imza `[İMZA]`, imza
 olmayan görsel (fotoğraf, rozet, ikon) `[GÖRSEL]`.
 
 Kimlik kararlıdır (aynı girdi + aynı kurallar → aynı kimlik). Kaynaklar: `metin_deseni`,
@@ -222,22 +229,26 @@ açıklanmış sayılır; eşleşmeyen yeni bölge olarak onay bekler. `onay_bek
   geçerli). Sonraki `bidr maskele` bölgeyi kimliğiyle bulur: `kapat` → kapatılır (okunamayan sayfada
   bütün sayfa), `birak` → açık bırakılır; karar verilmiş bölge yeniden sorulmaz. Kararın kutusu/türü
   bölgeyle eşleşmezse (kurallar değişip sıra kaydıysa) karar uygulanmaz, uyarı verilir. Otomatik
-  kapatılan desen ve etiket alanı bulguları `birak` ile açılamaz (yalnız imza); `model_metni`
+  kapatılan desen ve etiket alanı bulguları `birak` ile açılamaz (yalnız imza: otomatik kapatılmış imza
+  bölgesi `birak` ile açılır, sonraki koşuda kapatılmaz ve yeniden sorulmaz); `model_metni`
   bölgesi yalnız `birak` alır (yeri bilinmediği için kapatmak elle maskelemeyle olur).
 - `bidr maskele yukle -w WS <kanit_dosyasi> <maskeli_dosya>` elle maskelenmiş sürümü kabul eder:
   `maskeleme-elle/`'ye kopyalanır, kayıt hemen `elle_maskelendi` olur ve kopya `evidence-maskeli/`'ye
   konur; sonraki çalıştırmalar kanıt dosyası değişmedikçe (sha256) aynı sürümü kullanır. Yüklenen
   dosyada metin desenine uyan kişisel veri kalmışsa reddedilir (`--zorla` ile kabul, uyarıyla).
 
-**Teslim kapısı** (`bidr teslim`, politika 2026-11-22): maskelenecek yeri çözülmemiş dosya — onay
-bekleyen bölgesi olan, `basarisiz`, `taranamadi`, `hata`, `desteklenmiyor`, maskeli kopyası eski ya
-da raporda olmayan — kanıt paketine (ve `evidence-maskeli/`'ye) otomatik **girmez**. Rapordaki kanıt
-atıfı ve numarası değişmez; kanıt dizininde satır kalır (dosya boş, Maskeleme `kontrol bekliyor`),
-teslim çıktısında ve özetinde (`kontrol_bekliyor`, `kontrol_uyarisi`) açık uyarı: "maskelenecek yeri
-var, kontrol bekliyor: N dosya"; `EKSIK.txt` listeler; hat aşaması insan bekler. Karar ya da maskeli
-yükleme ve yeniden `bidr maskele` sonrası yeniden `bidr teslim`'de dosya girer. Eski "kısmen maskeli
-kopya pakete girer" davranışı kalktı. Maskeleme hiç çalıştırılmadıysa özgün dosyalar girer
-(Maskeleme `yapılmadı`; hat uyarır).
+**Teslim** (`bidr teslim`, politika 2026-11-22, ikinci karar; önceki "maskelenecek yeri çözülmemiş dosya
+kanıt paketine otomatik girmez" kuralının yerine): maskeleme kararı bekleyen kanıt paketten **dışlanmaz**.
+Kararı verilmemiş öneri bölgesi olan ya da maskelemesi eksik kalan (`basarisiz`, `taranamadi`) kanıt o anki
+maskeli hâliyle girer (kesin kapatmalar uygulanmış, kararsız öneriler açık; `maskeleme-bekleyen/` çerçevesiz
+kopyası), kanıt dizininde Maskeleme `karar bekliyor`. Maskelenemeyen (`hata`, `desteklenmiyor`), maskeleme
+raporunda olmayan ya da maskeli kopyası eski/bulunamayan kanıt ÖZGÜN hâliyle girer, Maskeleme `maskelenmedi`.
+Hepsi teslim özetinde ve `.bidr-teslim.json`'da `karar_bekleyen` (ölçüt, kanıt no, kanıt, paketteki dosya,
+maskeleme, neden) ve `karar_bekleyen_uyarisi`, pakette `MASKELEME-UYARI.txt` ("maskeleme kararı bekleyen
+belgeler") ve konsolda uyarıyla listelenir; paket eksik sayılmaz, hat aşaması uyarıyla biter. Eski davranış
+isteğe bağlı: `bidr teslim --kararsizlari-disla` bu kanıtları pakete almaz (dizinde satır kalır, dosya boş,
+Maskeleme `kontrol bekliyor`; `EKSIK.txt`; çıkış kodu 1; hat insan bekler). Maskeleme hiç çalıştırılmadıysa
+özgün dosyalar girer (Maskeleme `yapılmadı`; hat uyarır).
 
 ### Redaksiyon doğrulaması
 

@@ -527,15 +527,14 @@ WS/.bidr-teslim.json             özet (teslim_tamam): report_sha, index_sha, ev
   biliniyorsa sayfa özgün adresten yeniden indirilip basılır.
 - **Kişisel veri maskeleme** (`bidr maskele` çıktısı, yalnız okunur): `maskeleme-raporu.json` ve
   `evidence-maskeli/` varsa kanıtın maskeli kopyası pakete girer (web PDF'i maskeli HTML'den basılır;
-  eski biçimden çevrilen kanıt maskeli kopyanın uzantısıyla). Teslim kapısı (politika 2026-11-22):
-  maskelenecek yeri çözülmemiş dosya — onay bekleyen bölge, maskeleme başarısız / taranamadı / hata /
-  desteklenmiyor, dosya raporda yok ya da maskeli kopya eski — pakete otomatik girmez; rapordaki atıf
-  ve numara değişmez, dizinde satır kalır (Maskeleme `kontrol bekliyor`, dosya boş), komut çıktısında,
-  `EKSIK.txt`'de ve `.bidr-teslim.json` `kontrol_bekliyor`'da "maskelenecek yeri var, kontrol bekliyor:
-  N dosya"; `teslim_tamam` insan bekler. Bölge kararı ya da elle maskelenmiş sürüm (`bidr maskele
-  bolgeler` / `karar` / `yukle`, sonra `bidr maskele`) sonrası yeniden teslimde girer. "Maskeleme"
-  sütunu: `tamam` | `elle maskelendi` | `kontrol bekliyor` | `yapılmadı` (maskeleme çalıştırılmamış;
-  özgün dosya girer, hat uyarır).
+  eski biçimden çevrilen kanıt maskeli kopyanın uzantısıyla). Politika 2026-11-22 (ikinci karar):
+  maskeleme kararı bekleyen kanıt dışlanmaz — kararı verilmemiş öneri bölgesi ya da eksik maskelemesi olan
+  kanıt o anki maskeli hâliyle (`karar bekliyor`), maskelenemeyen / raporda olmayan / maskeli kopyası eski
+  kanıt özgün hâliyle (`maskelenmedi`) girer; komut çıktısında, pakette `MASKELEME-UYARI.txt`'de ve
+  `.bidr-teslim.json` `karar_bekleyen`'de listelenir, `teslim_tamam` uyarıyla biter.
+  `--kararsizlari-disla`: eski davranış (girmez, Maskeleme `kontrol bekliyor`, `EKSIK.txt`, insan bekler).
+  "Maskeleme" sütunu: `tamam` | `elle maskelendi` | `karar bekliyor` | `maskelenmedi` | `kontrol bekliyor`
+  (yalnız dışlamada) | `yapılmadı` (maskeleme çalıştırılmamış; özgün dosya girer, hat uyarır).
 - **PDF aracı** (ücretsiz, kurulu olanı): Google Chrome / Chromium / Edge headless `--print-to-pdf`
   (standart yerde değilse `BIDR_CHROME`), yoksa Python `weasyprint` (isteğe bağlı). Web kanıtı varken
   araç yoksa komut hiçbir şey yazmadan kurulum notuyla durur (çıkış 2).
