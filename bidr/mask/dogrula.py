@@ -73,6 +73,20 @@ def _kapali(b: dict) -> bool:
     return b.get("karar") == "kapatildi" or (b.get("karar") == "onay_bekliyor" and bool(b.get("kapali")))
 
 
+def _kapali_kutular(bolgeler) -> list[dict]:
+    """Denetlenecek kutular: daraltılmış kapatmada (`parcalar`) her parça ayrı denetlenir (kutunun geri kalanı
+    bilerek açık: altındaki ad/unvan)."""
+    out = []
+    for b in bolgeler or []:
+        if not _kapali(b):
+            continue
+        if b.get("parcalar") and not _yamali(b):
+            out += [dict(b, kutu=list(p), parcalar=None) for p in b["parcalar"]]
+        else:
+            out.append(b)
+    return out
+
+
 def _kesisir(a, b) -> bool:
     return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
 
@@ -86,7 +100,7 @@ def pdf(path: Path, bolgeler: list[dict]) -> list[str]:
     fitz = _fitz()
     if fitz is None:
         return []
-    kapali = [b for b in bolgeler or [] if _kapali(b)]
+    kapali = _kapali_kutular(bolgeler)
     if not kapali:
         return []
     out: list[str] = []
@@ -164,7 +178,7 @@ def pdf(path: Path, bolgeler: list[dict]) -> list[str]:
 
 def gorsel(path: Path, bolgeler: list[dict]) -> list[str]:
     from .raster import _open_image, image_scale
-    kapali = [b for b in bolgeler or [] if _kapali(b)]
+    kapali = _kapali_kutular(bolgeler)
     if not kapali:
         return []
     rgb = _open_image(path)

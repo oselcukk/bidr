@@ -211,6 +211,46 @@ class _Ink:
         self.W, self.H = g.size
         self.img = g.point(lambda v: 255 if v < DARK else 0)
 
+    def murekkep_kutusu(self, box, words=None, pad: float = 2.0):
+        """Kutudaki el yazısı mürekkebinin kutusu (+ `pad`): yatay kılavuz/çizgi satırları (≥ %25 dolu),
+        dikey çizgi sütunları (≥ %85) ve kutuya merkezi düşen basılı (güvenli OCR / metin katmanı) kelimeler
+        hariç; mürekkep yoksa None."""
+        x0, y0, x1, y1 = self._clip(*box)
+        w, h = x1 - x0, y1 - y0
+        if w < 4 or h < 4:
+            return None
+        from PIL import ImageChops, ImageFilter
+        c = self.img.crop((x0, y0, x1, y1))
+        # dolu bloklar (önceki kapatma: yeniden taramada siyah kutu) mürekkep sayılmaz
+        c = ImageChops.subtract(c, c.filter(ImageFilter.MinFilter(13)).filter(ImageFilter.MaxFilter(17)))
+        if words:
+            from PIL import ImageDraw
+            c = c.copy()
+            d = ImageDraw.Draw(c)
+            for o in words:
+                if o.conf >= 80 and sum(ch.isalpha() for ch in o.text) >= 2 \
+                        and x0 <= (o.x0 + o.x1) / 2 <= x1 and y0 <= (o.y0 + o.y1) / 2 <= y1:
+                    d.rectangle([o.x0 - x0 - 1, o.y0 - y0 - 1, o.x1 - x0 + 1, o.y1 - y0 + 1], fill=0)
+        p = c.load()
+        rows = [sum(1 for x in range(w) if p[x, y]) for y in range(h)]
+        cols = [sum(1 for y in range(h) if p[x, y]) for x in range(w)]
+        bad_r = {y for y in range(h) if rows[y] >= 0.25 * w}
+        bad_c = {x for x in range(w) if cols[x] >= 0.85 * h}
+        xs, ys = [], []
+        n = 0
+        for y in range(h):
+            if y in bad_r:
+                continue
+            for x in range(w):
+                if p[x, y] and x not in bad_c:
+                    xs.append(x)
+                    ys.append(y)
+                    n += 1
+        if n < max(6, MIN_INK * w * h):
+            return None
+        return (max(box[0], x0 + min(xs) - pad), max(box[1], y0 + min(ys) - pad),
+                min(box[2], x0 + max(xs) + 1 + pad), min(box[3], y0 + max(ys) + 1 + pad))
+
     def _clip(self, x0, y0, x1, y1):
         return (max(0, int(x0)), max(0, int(y0)), min(self.W, int(x1)), min(self.H, int(y1)))
 
@@ -940,11 +980,14 @@ def _label_fields(img, ink: "_Ink", yapi, words, lines, li, kind, strong, a, b, 
         adaylar = [c for c in adaylar if c.ink and _handwritten(c.box, words, ink)]
     if not adaylar:
         if strong or page_strong:
-            # etiket bulunduysa alan her durumda kapatılır (kaçırmak pahalı): etiketin sağındaki satır bandı
+            # alan yapısı bulunamadı: etiketin sağındaki satır bandında mürekkep varsa yalnız mürekkebi kapat
+            # (en küçük yeterli maske; boş bant kapatılmaz)
             box = (x0, ly0 - 0.6 * h, min(xr, x0 + 15 * h), ly1 + 0.6 * h)
             if box[2] - box[0] >= h and ink.dark_frac(box) < DONE_DARK:
-                return [Field(kind, _f(box), strong, "kapatildi", KIND, 0.45,
-                              f"{_TUR_AD[kind]} etiketinin sağı (alan yapısı bulunamadı)")]
+                dar = ink.murekkep_kutusu(box, words, 0.25 * h)
+                if dar is not None:
+                    return [Field(kind, _f(dar), strong, "kapatildi", KIND, 0.45,
+                                  f"{_TUR_AD[kind]} etiketinin sağı (alan yapısı bulunamadı; mürekkebe daraltıldı)")]
         return []
     # aynı yöndeki adayları birleştir (yapı + üstündeki el yazısı tek alan)
     by_dir: dict = {}
@@ -970,6 +1013,12 @@ def _label_fields(img, ink: "_Ink", yapi, words, lines, li, kind, strong, a, b, 
             out_boxes.append((c, "kapatildi" if c.ink else "onay_bekliyor"))
     res = []
     for c, karar in out_boxes:
+        if not c.ink:
+            continue                     # boş alan: kapatılacak değer yok (en küçük yeterli maske)
+        dar = ink.murekkep_kutusu(c.box, words, 0.25 * h)
+        if dar is None:
+            continue
+        c = _Aday(c.yon, dar, c.yapi, c.mesafe, c.ink)
         boxes = [c.box]
         if kind == "adres" and karar == "kapatildi":
             boxes += _continuation(lines, li, lx0, c.box[2], max(ly1, c.box[3] - 1.2 * h), h, ink, right_edge)
@@ -978,9 +1027,7 @@ def _label_fields(img, ink: "_Ink", yapi, words, lines, li, kind, strong, a, b, 
         g = 0.75 if (c.ink and c.yapi != "murekkep") else 0.6 if c.yapi != "murekkep" else 0.55
         if karar == "onay_bekliyor":
             g = 0.4
-        neden = f"{_TUR_AD[kind]} etiketinin {_YON_AD[c.yon]} {_YAPI_AD[c.yapi]}"
-        if not c.ink and c.yapi != "murekkep":
-            neden += " (boş görünüyor)"
+        neden = f"{_TUR_AD[kind]} etiketinin {_YON_AD[c.yon]} {_YAPI_AD[c.yapi]} (mürekkebe daraltıldı)"
         for bx in boxes:
             res.append(Field(kind, _f(bx), strong, karar, KIND, g, neden))
     return res

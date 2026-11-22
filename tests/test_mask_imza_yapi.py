@@ -36,7 +36,7 @@ def _maskele(tmp_path, ad: str, uret):
     src, bos, dst = tmp_path / "src" / ad, tmp_path / "bos" / ad, tmp_path / "out" / ad
     uret(src, True)
     uret(bos, False)
-    rec = R.mask_and_check(src, dst, MaskRules(), "pymupdf")
+    rec = R.mask_and_check(src, dst, MaskRules(), "pymupdf", temiz=tmp_path / "temiz" / ad)
     return rec, src, bos, dst
 
 
@@ -95,7 +95,7 @@ def test_bolge_kaydi_bicimi_ve_kararli_kimlik():
     assert ids == ["abcdef12-s2-1", "abcdef12-s2-2"]
     assert bag.kimlikler(2, 1) == ["abcdef12-s2-101"]            # aynı sayfanın yeniden taranması
     rec = b.kayit(ids[0], 2, (1, 2, 3, 4))
-    assert set(rec) == KAYIT_ALANLARI and rec["tur"] == "imza" and rec["geri_basilan"] is None
+    assert set(rec) - {"parcalar"} == KAYIT_ALANLARI and rec["tur"] == "imza" and rec["geri_basilan"] is None
     json.dumps(rec)
     b.geri_basilan = "Ayşe Demir – Prof. Dr."
     assert Y.etiket_yazisi(b) == "Ayşe Demir – Prof. Dr. [imza gizlendi]"
@@ -150,7 +150,7 @@ def test_vektor_cizelge_sutun_cok_sayfa_ve_geri_basma(tmp_path):
         info.update(S.vektor_cizelge(p, sayfa=2, tasan=(4,), imzali=i))
     rec, src, bos, dst = _maskele(tmp_path, "cizelge.pdf", uret)
     bol = rec["bolgeler"]
-    assert all(set(b) == KAYIT_ALANLARI for b in bol)
+    assert all(set(b) - {"parcalar"} == KAYIT_ALANLARI for b in bol)
     sutun = [b for b in bol if b["kaynak"] == "imza_sutunu"]
     assert {b["sayfa"] for b in sutun} == {1, 2}, bol                         # başlık yalnız s.1'de
     assert any("devam" in b["neden"] for b in sutun if b["sayfa"] == 2)
@@ -217,12 +217,16 @@ def test_taranmis_cizelge_sutun_cok_sayfa_tasan_imza_onay(tmp_path):
     # sütun yalnız İmza sütununu kaplar (ad/unvan açık): sınır 860-1140 px / 150 ppi
     for b in sutun:
         assert b["kutu"][0] >= 860 * 72 / 150 - 4 and b["kutu"][2] <= 1140 * 72 / 150 + 4, b
-    # unvan yazısının üstüne taşan imza: kapatıldı, ad/unvan yalnız OCR'dan → onay bekliyor
-    onay = [b for b in bol if b["karar"] == Y.ONAY]
-    assert onay and all(b["geri_basilan"] is None and "OCR" in b["neden"] for b in onay), bol
-    assert rec["elle_bakilmali"]                  # onay bekleyen bölge: dosya insan kararına kadar pakete girmez
+    # unvan yazısının üstüne taşan imza (en küçük yeterli maske): kapatma imza mürekkebine daraltılır, unvan
+    # siyahın altında kalmaz; "geri basma gerekli mi" onayı gerekmez
+    dar = [b for b in bol if b.get("parcalar") and "metinle örtüşen" in b["neden"]]
+    assert dar and all(b["karar"] == Y.KAPATILDI and b["geri_basilan"] is None for b in dar), bol
+    oneri = [b for b in bol if b["karar"] == Y.ONAY]
+    assert all(b["kaynak"] == "imza_metin" and not b["kapali"] for b in oneri), bol   # satır bandı: öneri
+    assert rec["kapatma_olcumu"]["siyah_altinda"] == 0, rec["kapatma_olcumu"]
     n, kacan = S.kacirilan(src, bos, dst)
-    assert n >= 25 and kacan <= len(onay)         # kapatılmayan yalnız onay bekleyen taşma
+    assert n >= 25 and kacan <= len(dar)          # metin satırında kalan vuruş görünebilir (çoğu kapalı)
+    assert S.kacirilan(src, bos, dst, esik=0.5)[1] <= len(oneri)
     doc = fitz.open(str(dst))
     try:
         for b in sutun:
@@ -254,10 +258,17 @@ def test_tutanak_imza_blogu_ve_ortusen(tmp_path):
     rec, src, bos, dst = _maskele(tmp_path, "tutanak.pdf", lambda p, i: S.tutanak(p, imzali=i))
     assert any(b["kaynak"] == "imza_blogu" for b in rec["bolgeler"]), rec
     assert not rec["elle_bakilmali"] and S.kacirilan(src, bos, dst)[1] == 0
-    # ada taşan siyah imza: kapatılır (kaçırma yok), ad OCR'dan → onay bekler
+    # ada taşan siyah imza (en küçük yeterli maske): kapatma mürekkebe daraltılır, ad/unvan okunur kalır,
+    # imzanın çoğu kapalı; onay gerekmez
     rec, src, bos, dst = _maskele(tmp_path, "ortusen.pdf", lambda p, i: S.tutanak(p, ortusen=True, imzali=i))
-    assert any(b["karar"] == Y.ONAY and "OCR" in b["neden"] for b in rec["bolgeler"]), rec
-    assert rec["elle_bakilmali"]                  # kapatılmayan bölge onay bekler; dosya pakete girmez
+    assert any(b.get("parcalar") and "metinle örtüşen" in b["neden"] for b in rec["bolgeler"]), rec
+    oneri = [b for b in rec["bolgeler"] if b["karar"] == Y.ONAY]
+    assert all(b["kaynak"] == "imza_metin" and not b["kapali"] for b in oneri), rec
+    assert S.kacirilan(src, bos, dst, esik=0.5)[1] <= len(oneri)
+    tz = tmp_path / "temiz" / "ortusen.pdf"                  # öneri çerçevesiz (teslim) kopya
+    out = S.sayfa_goruntuleri(tz if tz.is_file() else dst)[0]
+    t = " ".join(w.text for w in O.ocr_words(out.crop((100, 1290, 700, 1420))))
+    assert "Bölüm" in t and ("Demir" in t or "emir" in t), t
     # aynı imza mavi: mürekkep ayrılır, ad görünür kalır, onay gerekmez
     rec, src, bos, dst = _maskele(tmp_path, "mavi.pdf",
                                   lambda p, i: S.tutanak(p, ortusen=True, renk=S.MAVI, imzali=i))
@@ -270,7 +281,7 @@ def test_tutanak_imza_blogu_ve_ortusen(tmp_path):
 @needs_ocr
 def test_gorsel_dosya_tutanak(tmp_path):
     rec, src, bos, dst = _maskele(tmp_path, "tutanak.png", lambda p, i: S.tutanak(p, imzali=i))
-    assert rec["bolgeler"] and all(set(b) == KAYIT_ALANLARI for b in rec["bolgeler"])
+    assert rec["bolgeler"] and all(set(b) - {"parcalar"} == KAYIT_ALANLARI for b in rec["bolgeler"])
     assert not rec["elle_bakilmali"] and S.kacirilan(src, bos, dst)[1] == 0, rec
 
 
@@ -303,4 +314,4 @@ def test_imza_bolgeleri_tek_islev_kararli(tmp_path):
     a = Y.imza_bolgeleri(p)
     b = Y.imza_bolgeleri(p)
     assert a == b and a and all(x["id"].split("-s")[0] == a[0]["id"].split("-s")[0] for x in a)
-    assert all(set(x) == KAYIT_ALANLARI for x in a)
+    assert all(set(x) - {"parcalar"} == KAYIT_ALANLARI for x in a)

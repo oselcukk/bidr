@@ -322,13 +322,16 @@ def test_unvan_yakinindaki_fotograf_imza_sayilmaz(tmp_path):
 
 @needs_ocr
 def test_ocr_adli_ortusen_imza_kapali_ve_onayda(tmp_path):
+    """m5 (en küçük yeterli maske): OCR'dan okunan adın üstüne taşan imza artık bütün kutuyla kapatılıp "geri basma"
+    onayına düşmez; kapatma imza mürekkebine daraltılır (ad satırı bandı hariç), imzanın çoğu kapalı."""
     src, bos, dst = tmp_path / "s.pdf", tmp_path / "b.pdf", tmp_path / "o.pdf"
     S.tutanak(src, ortusen=True)
     S.tutanak(bos, ortusen=True, imzali=False)
     rec = R.mask_and_check(src, dst, MaskRules(), "pymupdf")
-    onay = [b for b in rec["bolgeler"] if b["karar"] == "onay_bekliyor"]
-    assert onay and all(b["kapali"] and b["geri_basilan"] is None and "geri basma" in b["neden"] for b in onay), onay
-    assert rec["elle_bakilmali"] and S.kacirilan(src, bos, dst)[1] == 0        # kutu kapalı: kaçırma yok
+    dar = [b for b in rec["bolgeler"] if b.get("parcalar")]
+    assert dar and all(b["kapali"] and b["geri_basilan"] is None for b in dar)
+    oneri = [b for b in rec["bolgeler"] if b["kaynak"] == "imza_metin" and b["karar"] == "onay_bekliyor"]
+    assert all(not b["kapali"] for b in oneri) and S.kacirilan(src, bos, dst, esik=0.5)[1] <= len(oneri), rec
 
 
 # ---------------------------------------------------------------- kural b: rakam dizisi

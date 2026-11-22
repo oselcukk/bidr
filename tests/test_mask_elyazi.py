@@ -66,28 +66,34 @@ def test_field_geometry_four_directions(name, yapi):
 @pytest.mark.parametrize("deg", [2.0, -2.5])
 def test_skewed_scan(name, deg):
     F = S.rotate(S.FORMLAR[name](1), deg)
+    if name == "bos":                    # m5: boş alan kapatılmaz (en küçük yeterli maske)
+        assert not boxes(regions(F))
+        return
     assert_closed(F, regions(F), 0.85)
 
 
-def test_empty_guided_field_is_closed():
-    """Boş görünen alan da kapatılır (kaçırma pahalı): kılavuz varsa alan bellidir."""
+def test_empty_guided_field_is_not_closed():
+    """m5 (en küçük yeterli maske): boş görünen alan kapatılmaz; kapatılacak değer yok."""
     F = S.form_bos()
     regs = regions(F)
-    assert_closed(F, regs)
-    assert any("boş görünüyor" in r["neden"] for r in regs)
-    assert AL.find_fields(F.img, F.words)               # raster hattı (find_fields) da kapatır
+    assert not boxes(regs), regs
+    assert AL.find_fields(F.img, F.words) == []
 
 
-def test_label_without_any_field_is_closed():
-    """Güçlü etiket var, ne kılavuz ne mürekkep: etiket bulunduğunda alan her durumda kapatılır (m4: kaçırmak
-    pahalı; el yazısı dilekçe gerilemesi) — etiketin sağındaki satır bandı."""
+def test_label_without_any_field_closes_only_ink():
+    """Güçlü etiket var, alan yapısı yok: yalnız etiketin sağındaki satır bandında mürekkep varsa o mürekkep
+    kapatılır (m5); bant boşsa hiçbir şey."""
     F = S.Form()
     b = F.text(100, 300, "T.C. Kimlik No:")
+    assert regions(F) == [] and AL.find_fields(F.img, F.words) == []
+    from PIL import ImageDraw
+    d = ImageDraw.Draw(F.img)
+    pts = [(520 + i * 6, 318 + (8 if i % 2 else -8)) for i in range(40)]      # el yazısı benzeri zikzak
+    d.line(pts, fill=(20, 20, 60), width=4)
     regs = regions(F)
-    assert [r["karar"] for r in regs] == ["kapatildi"] and "alan yapısı bulunamadı" in regs[0]["neden"]
+    assert [r["karar"] for r in regs] == ["kapatildi"] and "mürekkebe daraltıldı" in regs[0]["neden"], regs
     k = regs[0]["kutu"]
-    assert k[0] >= b[2] and k[1] <= b[1] and k[3] >= b[3], (b, k)          # etiketin sağı, satırı kaplar
-    assert len(AL.find_fields(F.img, F.words)) == 1
+    assert k[0] >= b[2] and 500 <= k[0] <= 522 and 754 <= k[2] <= 780 and k[1] >= 300 and k[3] <= 340, (b, k)
 
 
 def test_old_fixed_right_box_assumption_removed():

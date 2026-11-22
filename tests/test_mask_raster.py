@@ -135,8 +135,11 @@ def test_image_file_masked_and_rescanned(tmp_path):
     for v in (TC1, EMAIL, OGR):
         assert v not in txt
     assert "Karar" in txt                                    # içerik duruyor
-    # imza alanı karartıldı (içinde yalnız koyu gri "[İMZA]" etiketi; beyaz kâğıt kalmadı)
-    assert out.convert("L").crop((300, 1130, 500, 1170)).getextrema()[1] <= RA.LABEL_GRAY
+    # imza mürekkebi karartıldı (m5: kapatma mürekkebe daraltılır; çevresindeki boş kâğıt açık kalabilir)
+    o = Image.open(p).convert("L").crop((300, 1130, 500, 1170)).tobytes()
+    m = out.convert("L").crop((300, 1130, 500, 1170)).tobytes()
+    ink = [i for i, v in enumerate(o) if v < 128]
+    assert ink and sum(1 for i in ink if m[i] < 60) >= 0.9 * len(ink)
     assert TC1 not in json.dumps(rep, ensure_ascii=False)
 
 

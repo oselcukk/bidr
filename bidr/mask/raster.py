@@ -42,7 +42,18 @@ class ImageScan:
     bolgeler: list = field(default_factory=list)         # m1 imza bölgeleri (`yapi.Bolge`, görüntü pikseli)
 
 
+def _siyah_ustunde(g, w) -> bool:
+    """Kelime kutusunun çoğu siyah (önceki kapatma kutusu): OCR'ın siyah çubukta okuduğu çöp kelime."""
+    x0, y0, x1, y1 = max(0, int(w.x0)), max(0, int(w.y0)), min(g.width, int(w.x1)), min(g.height, int(w.y1))
+    if x1 - x0 < 2 or y1 - y0 < 2:
+        return False
+    h = g.crop((x0, y0, x1, y1)).histogram()
+    return sum(h[:40]) >= 0.5 * max(1, sum(h))
+
+
 def _quality_reason(img, words: list[Word]) -> str | None:
+    g = img.convert("L")
+    words = [w for w in words if not _siyah_ustunde(g, w)]      # kapatma kutusundaki çöp okuma kaliteyi düşürmesin
     good, conf = text_quality(words)
     if ink_ratio(img) < INK_EMPTY:
         return None
@@ -200,6 +211,30 @@ def _sablonlar():
     return _SABLON[ws][1]
 
 
+KASITLI_TUR = ("kisisel_veri", "el_yazisi_alan", "kullanici")       # içindeki kelime kapatılmak için bulundu
+KASITLI_KAYNAK = ("metin_deseni", "ocr_deseni", "kapatan_isaretleme")
+
+
+def basili_kelime(w) -> bool:
+    """Aşırı kapatma ölçümünde sayılan basılı kelime: güvenle okunan, en az 3 harfli."""
+    return w.conf >= 80 and sum(c.isalpha() for c in w.text) >= 3
+
+
+def asiri_kapatma(kelimeler, siyahlar, kasitli, alan: float) -> dict:
+    """Kapatma ölçümü: siyah kutuların altında kalan basılı kelime sayısı (kasıtlı kapatılan kişisel veri
+    bölgelerinin içindekiler hariç) ve sayfa alanına oranla en büyük / toplam siyah alan. `kelimeler`,
+    `siyahlar`, `kasitli`: (x0, y0, x1, y1) aynı düzlemde."""
+    def icinde(k, r):
+        cx, cy = (k[0] + k[2]) / 2, (k[1] + k[3]) / 2
+        return r[0] <= cx <= r[2] and r[1] <= cy <= r[3]
+    alti = [k for k in kelimeler if any(icinde(k, s) for s in siyahlar) and not any(icinde(k, q) for q in kasitli)]
+    alanlar = [max(0.0, s[2] - s[0]) * max(0.0, s[3] - s[1]) for s in siyahlar]
+    a = alan or 1.0
+    return {"basili_kelime": len(kelimeler), "siyah_altinda": len(alti),
+            "en_buyuk_kutu_payi": round(max(alanlar, default=0.0) / a, 4),
+            "siyah_alan_payi": round(min(1.0, sum(alanlar) / a), 4)}
+
+
 def sablon_onerileri(page, sablonlar) -> list:
     """Metin katmanlı (born-digital) sayfa: form şablon belleğinin bölgeleri (kullanıcı çizimi önerisi, öğrenilmiş
     alan). Şablon düzlemi 300 dpi; kelimeler metin katmanından (çizimden öğrenme de öyle: `inceleme._sablona_ogret`).
@@ -253,8 +288,9 @@ def murekkep_kutusu(img, box, sinir: float):
 def genisletilir(b: dict) -> bool:
     """İnsanın "kapat" dediği (otomatik önerinin) bölgesi mürekkebi tümüyle örtecek kadar genişletilir; kullanıcı
     çizimi (kutuyu insan çizdi), okunamayan sayfa ve yalnız sayfası bilinen model metni bölgesi hariç."""
-    return ((b.get("insan") or {}).get("karar") == "kapat" and b.get("_yama") is None and b.get("tur") not in ("kullanici", "okunamayan_sayfa")
-            and b.get("kaynak") not in ("kullanici", "model_metni"))
+    return ((b.get("insan") or {}).get("karar") == "kapat" and b.get("_yama") is None and not b.get("parcalar")
+            and b.get("tur") not in ("kullanici", "okunamayan_sayfa")
+            and b.get("kaynak") not in ("kullanici", "model_metni", "imza_metin"))
 
 
 def _genislet_siniri(kutu_pt) -> float:
@@ -560,6 +596,8 @@ def scan_image_obj(img, rules: MaskRules, *, flag_unlabeled: bool = True, all_zo
     if f != 1:
         for b in r.bolgeler:
             b.kutu = tuple(v / f for v in b.kutu)
+            if b.parcalar:
+                b.parcalar = [tuple(v / f for v in q) for q in b.parcalar]
             if b.yama is not None:
                 from PIL import Image
                 b.yama = b.yama.resize((max(1, int(b.kutu[2]) - int(b.kutu[0])), max(1, int(b.kutu[3]) - int(b.kutu[1]))),
@@ -698,7 +736,7 @@ def mask_image(src: Path, dst: Path, rules: MaskRules, bolge=None) -> dict:
         close = [b for b in regs if kapanir(b)]
         if not close:
             break
-        siyah_yeni = [b["_px"] for b in close if b.get("_yama") is None]
+        siyah_yeni = [p for b in close if b.get("_yama") is None for p in (b.get("_parcalar_px") or [b["_px"]])]
         yamali = []
         for b in close:                      # m1: renkli mürekkebi ayrılmış kırpıntı; siyahla örtüşen yama basılmaz
             if b.get("_yama") is None:
@@ -710,7 +748,7 @@ def mask_image(src: Path, dst: Path, rules: MaskRules, bolge=None) -> dict:
             else:
                 yamali.append(b)
         close = [b for b in close if b.get("_yama") is None]
-        labels += [(b["_px"], b.get("_etiket") or "[MASKELI]") for b in close]
+        labels += [(b["_px"], b.get("_etiket") or "[MASKELI]") for b in close if not b.get("_parcalar_px")]
         bolge_n += sum(1 for b in close + yamali if b["tur"] == "imza")
         for b in yamali:
             out = out.convert("RGB") if out.mode not in ("RGB", "L") else out.copy()
@@ -732,10 +770,14 @@ def mask_image(src: Path, dst: Path, rules: MaskRules, bolge=None) -> dict:
     out = draw_labels(out, labels)
     save_like(out, dst, src.suffix)
     first = scan_image_obj(img, rules)       # önbellekli OCR: yalnız ilk tarama uyarısı
+    kasitli = [b["_px"] for b in bg.bolgeler if b.get("_px") and (b["tur"] in KASITLI_TUR
+                                                                      or b["kaynak"] in KASITLI_KAYNAK)]
+    olcum = asiri_kapatma([w.box for w in first.words if basili_kelime(w)], siyahlar, kasitli, img.width * img.height)
     uyarilar = [f"taranamadı: {first.taranamadi}"] if first.taranamadi else []
     return {"maskelenen": found, "temizlenen": ["ust_veri"], "uyarilar": uyarilar,
             "imza_bolgesi": bolge_n, "ortusen_kelime": ortusen, "sayfa_sayisi": 1, "sayfa_kapsam": {1: dict(kapsam)},
             "bolgeler": bg.bolgeler, "sayfa_kutulari": {1: [0.0, 0.0, img.width * sc, img.height * sc]},
+            "kapatma_olcumu": {1: olcum},
             "sayfalar": [{"no": 1, "genislik": round(img.width * sc, 2), "yukseklik": round(img.height * sc, 2),
                           "donus": 0, "matris": [1, 0, 0, 1, 0, 0]}]}
 
@@ -985,6 +1027,7 @@ def scan_pdf_page(page, rules: MaskRules) -> dict:
         _imza_out(out, page, r.bolgeler, dpi / 72.0)
         out["el_yazisi"] = _el_rects(page, r, dpi / 72.0)
         out["meta"] = dict(r.meta)
+        out["basili_kelimeler"] = to_page_rects(page, [w.box for w in r.words if basili_kelime(w)], dpi / 72.0)
         return out
     scale = SIG_DPI / 72.0
     regions = signature_image_regions(page, scale)
@@ -1046,6 +1089,8 @@ def _imza_out(out: dict, page, bol, scale: float) -> None:
         rect = to_page_rects(page, [b.kutu], scale)[0]
         d = b.kayit(None, page.number + 1, tuple(rect))
         d["_etiket"] = Y.etiket_yazisi(b)
+        if b.parcalar:
+            d["parcalar"] = b.parcalar_donustur(lambda p: tuple(to_page_rects(page, [p], scale)[0]))
         if b.yama is not None and b.karar != Y.BIRAKILDI:
             buf = io.BytesIO()
             b.yama.save(buf, format="PNG")
@@ -1062,6 +1107,9 @@ def image_imza_bolgeleri(r: "ImageScan", olcek: float) -> list[dict]:
         d = b.kayit(None, 1, tuple(v * olcek for v in b.kutu))
         d["_px"] = list(b.kutu)
         d["_etiket"] = Y.etiket_yazisi(b)
+        if b.parcalar:
+            d["parcalar"] = b.parcalar_donustur(lambda p: tuple(v * olcek for v in p))
+            d["_parcalar_px"] = [list(p) for p in b.parcalar]
         if b.yama is not None and b.karar != Y.BIRAKILDI:
             d["_yama"] = b.yama
         out.append(d)

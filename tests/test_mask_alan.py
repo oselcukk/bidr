@@ -125,8 +125,8 @@ def test_empty_or_already_masked_field_is_skipped():
     img = Image.new("RGB", (1240, 600), "white")
     d = ImageDraw.Draw(img)
     words = [W("Kimlik", 100, 200, 190, 230), W("No:", 200, 200, 250, 230)]
-    # m4: güçlü etiket bulunduysa alan (boş görünse de) her durumda kapatılır: etiketin sağındaki satır bandı
-    assert [f.karar for f in AL.find_fields(img, words)] == ["kapatildi"]
+    # m5: boş alan kapatılmaz (en küçük yeterli maske)
+    assert AL.find_fields(img, words) == []
     d.rectangle([255, 170, 1220, 260], fill=0)        # önceki kapatma (yeniden tarama)
     assert AL.find_fields(img, words) == []
 

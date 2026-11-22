@@ -250,6 +250,35 @@ isteğe bağlı: `bidr teslim --kararsizlari-disla` bu kanıtları pakete almaz 
 Maskeleme `kontrol bekliyor`; `EKSIK.txt`; çıkış kodu 1; hat insan bekler). Maskeleme hiç çalıştırılmadıysa
 özgün dosyalar girer (Maskeleme `yapılmadı`; hat uyarır).
 
+### En küçük yeterli maske (m5, aşırı kapatmaya karşı)
+
+İlke: kapanmaması gereken şey kapatılmaz; bir veriyi anlaşılmaz kılacak kadarı kapatılır (imzanın
+çizgilerinin çoğu kapalıysa yeter; numaranın çoğunluğu kapalıysa kalan birkaç hane hata sayılmaz).
+
+- **Metinle örtüşen imza** ve imza bloğu/etiketi/taşma bölgeleri: kapatma imza mürekkebinin kendisine
+  daraltılır (`parcalar`: basılı kelime kutuları ve basılı satır bantları düşülmüş mürekkep ızgara
+  hücreleri, ≈ 3,6 pt). Ad/unvan, karar paragrafı siyahın altında kalmaz; daraltılan bölgeye yer tutucu
+  yazılmaz, geri basma ve "geri basma gerekli mi" onayı gerekmez. Vuruş basılı satırın (ad) içinden
+  geçiyorsa o satır bandı kapatılmaz, `imza_metin` öneri bölgesi olur (karar insanın; kapatılırsa satır
+  da kapanır). İmza sütunu hücresi ve gömülü imza görüntüsü bütün kapanır. Redaksiyon doğrulaması
+  daraltılmış bölgede her parçayı ayrı denetler.
+- **Etiket alanı** (kimlik no, telefon, e-posta …): yalnız el yazısı değerin mürekkep alanı kapatılır
+  (kılavuz/alt çizgi, tablo çizgisi, basılı kelime ve önceki siyah kutular hariç); alan boşsa hiçbir şey
+  kapatılmaz (eski "boş görünse de kapat" kuralı kalktı). Desen bulgularında kutu yalnız değerin kendisidir.
+- **Üst sınır**: otomatik kapatılan tek imza bölgesi sayfanın %30'undan büyükse kapatılmaz, öneri olur.
+- **Ölçüm**: her dosya kaydında `kapatma_olcumu` (basılı kelime sayısı; kişisel veri bölgeleri dışında
+  siyah kutu altında kalan kelime `siyah_altinda`; en büyük kutunun ve toplam siyahın sayfa payı; altında
+  kelime kalan sayfalar), raporun özetinde `asiri_kapatma`; `siyah_altinda` > 0 uyarı yazar. Basılı
+  kelimeler metin katmanından ve (taranmış sayfada) güvenle okunan OCR kelimelerinden sayılır.
+- Yanlış alarm süzgeçleri: tik/çentik yalnız ¼ inçten küçük iz ya da ½ inçten küçük **tek vuruşlu, seyrek**
+  izdir (çok vuruşlu küçük iz paraf sayılır, süzülmez); kâğıt + tek mürekkep tonlu renkli taranmış imza
+  fotoğraf (`[GÖRSEL]`) sayılmaz; üstünde metin katmanı kelimeleri olan ya da sayfanın büyük kısmını
+  kaplayan imza oranı dışı gömülü görüntü (web sayfası arka planı) mürekkep aramasına girmez; tablo
+  dikey çizgilerindeki ≈ 7 pt'ye kadar kesintiler zincirlenir (imza sütunu başlıkta kesik çizgide kopmaz).
+- Kısmi kapatma başarılıdır: yeniden tarama yalnız tam deseni (ör. 11 haneli kimlik no) kaçak sayar; özgünü
+  okunan sayfanın maskeli kopyasında OCR kalitesinin (dar siyah kutular yüzünden) düşmesi "taranamadı"
+  sayılmaz; OCR'ın siyah kutu üstünde okuduğu çöp kelimeler kalite ölçümüne girmez.
+
 ### Redaksiyon doğrulaması
 
 Son adım (PDF/PyMuPDF ve görseller): maskeli çıktıda her kapatılan bölgenin kutusunun altında

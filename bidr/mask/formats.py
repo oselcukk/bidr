@@ -482,11 +482,15 @@ def _kapat_turu(fitz, page, bolgeler: list[dict], siyahlar: list, labels: list, 
     karartması ve yamaları, sonra bu turun siyah kutuları ve yamanın değdiği önceki siyah kutular yeniden
     (yamanın siyahla örtüşen kısmı kırpılır). Siyahla çoğunlukla örtüşen yama hiç basılmaz, kutu siyah olur.
     `siyahlar` (fitz.Rect) yerinde büyür. → kapatılan imza bölgesi sayısı."""
-    siyah_yeni = [fitz.Rect(*b["kutu"]) for b in bolgeler if not b.get("_yama")]
+    siyah_yeni = [fitz.Rect(*p) for b in bolgeler if not b.get("_yama") for p in (b.get("parcalar") or [b["kutu"]])]
     beyaz = []
     n = 0
     for b in bolgeler:
         r = fitz.Rect(*b["kutu"])
+        if b.get("parcalar") and not b.get("_yama"):
+            if b["tur"] == "imza":       # daraltılmış kapatma: yer tutucu yazılmaz (altındaki ad/unvan okunur kalsın)
+                n += 1
+            continue
         if b.get("_yama"):
             if _ortusme_payi(r, siyahlar + siyah_yeni) >= YAMA_SIYAH_ORTUSME:
                 b.pop("_yama", None)
@@ -544,6 +548,7 @@ def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules, bolge=None) -> dict
     kapsam: dict[int, dict] = {}                  # sayfa → kapatılan tür sayıları (el yazısı denetimi)
     sayfa_kutu: dict[int, list] = {}
     sayfalar: list = []
+    olcum: dict[int, dict] = {}                   # sayfa → aşırı kapatma ölçümü
     flags = _redact_flags(fitz)
     for page in doc:
         sn = page.number + 1
@@ -571,6 +576,8 @@ def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules, bolge=None) -> dict
             ps = {"bulgular": Counter(), "kutular": [], "imza": None, "imza_kutular": []}
             uyarilar.append(f"s.{sn}: görüntü katmanı işlenemedi ({type(e).__name__})")
         alanlar = list(ps.get("alanlar") or [])
+        kelimeler0 = [tuple(w[:4]) for w in page.get_text("words") if sum(c.isalpha() for c in w[4]) >= 3]
+        kelimeler0 += [tuple(r) for r in ps.get("basili_kelimeler") or []]
         regs = [dict(BG.yeni(sn, _rect_list(r), "kisisel_veri", BG.KAPATILDI, "içeriği örten işaretleme",
                              "kapatan_isaretleme", 1.0), _uygulandi=True) for r in cover]
         regs += ps_bolgeleri(sn, ps, page.rect)
@@ -637,6 +644,10 @@ def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules, bolge=None) -> dict
             alanlar += list(ps.get("alanlar") or [])
             counts["etiket_alani"] += ps["bulgular"].get("etiket_alani", 0)
         _write_labels(fitz, page, labels)
+        from .raster import KASITLI_KAYNAK, KASITLI_TUR, asiri_kapatma
+        kasitli = [b["kutu"] for b in bg.bolgeler if b["sayfa"] == sn and (b["tur"] in KASITLI_TUR
+                                                                            or b["kaynak"] in KASITLI_KAYNAK)]
+        olcum[sn] = asiri_kapatma(kelimeler0, [tuple(r) for r in siyahlar], kasitli, abs(page.rect.get_area()))
         from .raster import page_coverage
         kapsam[page.number + 1] = dict(page_coverage(page_kapsam, alanlar))
         sayfa_kutu[sn] = _rect_list(page.rect)
@@ -670,7 +681,7 @@ def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules, bolge=None) -> dict
     return {"maskelenen": counts, "temizlenen": sorted(temiz), "uyarilar": uyarilar,
             "imza_bolgesi": imza_bolge, "ortusen_kelime": ortusen, "sayfa_sayisi": len(kapsam),
             "sayfa_kapsam": kapsam, "bolgeler": bg.bolgeler, "sayfa_kutulari": sayfa_kutu,
-            "sayfalar": sayfalar}
+            "sayfalar": sayfalar, "kapatma_olcumu": olcum}
 
 
 def sayfa_bilgisi(page) -> dict:
