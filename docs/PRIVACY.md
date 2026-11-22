@@ -294,13 +294,33 @@ alanı karartılır, içine `[KİŞİSEL VERİ]` yazılır; raporda `etiket_alan
   hücresi başında olmalı (akan metindeki "öğrenci numarası …" alınmaz); zayıf etiket sayfanın üst
   (%7, antet) ve alt (%8, altlık) bandında alınmaz ve ancak sayfada güçlü bir etiket varsa (form
   bağlamı) ya da alandaki mürekkebin çoğu güvenle okunan basılı metin değilse (el yazısı) alınır;
-  boş alan (mürekkep yok) ve zaten kapatılmış alan alınmaz.
-- **Alan**: etiket satır bandı (el yazısı satırdan taştığı için yukarı/aşağı genişletilir; dikey
-  sınır mürekkep koşusuyla, tablo satır çizgisinde / noktalı kılavuzda durur), etiket bitiminden
-  sağa bir sonraki etikete (`:` ile biten basılı belirteç ya da iki basılı form sözcüğü, ör.
-  "Okuduğu Dönem …"), dikey tablo çizgisine ya da sayfa kenarına kadar. Etiketten hemen sonra
-  dikey çizgi varsa değer sonraki hücrededir; `:`'sız tablo etiketinin sağı boşsa alttaki hücre.
-  Adres alanı bir-iki satır aşağı uzar (satır başında yeni etiket ya da başlık yoksa).
+  zaten kapatılmış alan alınmaz. OCR yazım hataları ("Kim1ik N0", "Kimllk", "Te1efon") etikete
+  düzeltilir (harf içi rakam karışıklığı, ≥ 5 harfli anahtar sözcükte tek harf hatası).
+- **Alan geometrisi** (sabit "etiketin sağı" varsayımı yok): sayfanın basılı iskeleti çıkarılır
+  (noktalı kılavuz, alt çizgi, kutucuk/tarak dizisi, tablo çizgileri; eğik taramada da) ve etiketin
+  dört yönünde aday aranır: sağ (kılavuz/çizgi/tarak, komşu hücre, el yazısı mürekkebi), alt (altındaki
+  sahipsiz kılavuz/tarak, alttaki hücre), üst (çizginin altındaki "(T.C. Kimlik No)" açıklaması), sol.
+  En yakın alan seçilir; puanı yakın ikinci yön de bölge olur (boşsa `onay_bekliyor`). Alan bir
+  sonraki etikete (`:` ile biten basılı belirteç, iki basılı form sözcüğü, açıklama), tablo
+  çizgisine ya da çizgi sonuna kadar kapatılır; **kılavuzlu alan boş görünse de kapatılır** (kaçırmak
+  pahalı). Başka etiketin kılavuzu (aynı bantta hemen solunda biten etiket) alt/üst aday olmaz. Adres
+  alanı bir-iki satır (ya da sahipsiz kılavuz satırı) aşağı uzar. Güçlü etiket var ama alan
+  bulunamıyorsa bölge `onay_bekliyor` olur.
+- **Rakam dizisi** (`rakam_dizisi`): etiket okunmasa da benzer yükseklikte, aynı tabanda yan yana
+  10-13 el yazısı bileşen (form çizgileri ve güvenle okunan harfli basılı kelimeler hariç) adaydır;
+  11 (kimlik) ya da 12 (öğrenci no) bileşen yalnız güveni artırır. Kişisel veri etiketi yakınındaysa
+  kapatılır, değilse `onay_bekliyor`; kişisel olmayan etiketin (ör. "Bölümü:") değeri sayılmaz. OCR'ın
+  bileşenleri rakam okuması da okuyamaması da adayı düşürmez.
+- **Form şablon belleği** (`sablon`, `bidr/mask/sablon.py`, çalışma alanında
+  `maske-sablonlari.json`): aynı formun kopyaları basılı iskelet parmak iziyle (güvenle okunan harf
+  belirteçleri, dosyada kısa özet olarak; çizgi düzeni; el yazısı hariç) tanınır. İnsanın bir
+  kopyada kapattığı bölgeler (kararlar dosyasında `kapat`) şablona kaydedilir ve parmak izi eşleşen
+  sayfalara hizalanarak (ortak tek belirteçlerden ölçek/öteleme/küçük dönme; aykırı ayıklama) uygulanır.
+  Hizalama güvenilmezse (az çapa, artık hata > 0,5 yazı yüksekliği, dönme > 6°, çizgiler örtüşmüyor)
+  otomatik kapatılmaz, `onay_bekliyor` olur.
+- Bölgeler (`el_yazisi_bolgeleri`): `tur: el_yazisi_alan`, `kaynak: etiket_alani | rakam_dizisi |
+  sablon`, `karar`, `neden`, `guven`, kutu PDF puanı (bölge sözleşmesi). Raster hattı
+  (`find_fields`) yalnız `kapatildi` alanları karartır.
 - **İkinci OCR geçişi**: tesseract'ın varsayılan sayfa bölmesi el yazısıyla karışık form satırlarını
   ya da transkript sütununu bütünüyle atlayabilir; sayfada etiket ya da kişisel belge ipucu
   (öğrenci, kimlik, başvuru, form, transkript …) varsa ve ilk geçiş (psm 3) zayıfsa — 60'tan az
