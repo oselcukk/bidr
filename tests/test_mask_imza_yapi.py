@@ -150,26 +150,26 @@ def test_vektor_cizelge_sutun_cok_sayfa_ve_geri_basma(tmp_path):
         info.update(S.vektor_cizelge(p, sayfa=2, tasan=(4,), imzali=i))
     rec, src, bos, dst = _maskele(tmp_path, "cizelge.pdf", uret)
     bol = rec["bolgeler"]
-    assert all(set(b) - {"parcalar"} == KAYIT_ALANLARI for b in bol)
+    assert all(set(b) - {"parcalar", "kapatma_olcumu"} == KAYIT_ALANLARI for b in bol)
     sutun = [b for b in bol if b["kaynak"] == "imza_sutunu"]
     assert {b["sayfa"] for b in sutun} == {1, 2}, bol                         # başlık yalnız s.1'de
     assert any("devam" in b["neden"] for b in sutun if b["sayfa"] == 2)
-    geri = [b for b in bol if b["geri_basilan"]]
-    assert len(geri) == 1 and geri[0]["geri_basilan"] == "Arş. Gör." and geri[0]["karar"] == Y.KAPATILDI, bol
+    # m6: unvana taşan gömülü imza görüntüsü kapanır, üstündeki ad/unvan kelimeleri açık kalır (geri basma yok)
+    assert all(b["geri_basilan"] is None for b in bol)
+    tasan = [b for b in bol if b["kaynak"] == "gomulu_gorsel" and b.get("parcalar")]
+    assert len(tasan) == 1 and tasan[0]["karar"] == Y.KAPATILDI, bol
     assert not rec["elle_bakilmali"] and rec["durum"] == "tamam", rec
     n, kacan = S.kacirilan(src, bos, dst)
-    assert n >= 28 and kacan == 0
+    assert n >= 28 and kacan <= 1                 # kelime kutularındaki vuruş parçası görünebilir
+    assert S.kacirilan(src, bos, dst, esik=0.5)[1] == 0
     doc = fitz.open(str(dst))
     try:
         for b in sutun:
             pg = doc[b["sayfa"] - 1]
             assert _goruntu_temiz(pg, b["kutu"])                              # imza görüntüsü silindi
-            # kutuda yalnız maskeleyicinin yazısı (yanındaki taşma kutusunun geri basılan yazısı dahil)
-            assert all(t in "[İMZA] Arş. Gör. [imza gizlendi]" for t in _kutudaki_metin(pg, b["kutu"]).split())
+            assert all(t in "[İMZA]" for t in _kutudaki_metin(pg, b["kutu"]).split())
         pg = doc[0]
-        t = _kutudaki_metin(pg, geri[0]["kutu"])
-        assert "Arş. Gör. [imza gizlendi]" in " ".join(t.split()), t           # ad/unvan geri basıldı
-        assert _goruntu_temiz(pg, geri[0]["kutu"])
+        assert "Arş" in _kutudaki_metin(pg, tasan[0]["kutu"])                   # unvan açık (siyah altında değil)
         txt = _metin(pg)
         assert "Mehmet Kaya" in txt and "Doç. Dr." in txt                      # ad/unvan sütunları açık
     finally:
@@ -281,7 +281,7 @@ def test_tutanak_imza_blogu_ve_ortusen(tmp_path):
 @needs_ocr
 def test_gorsel_dosya_tutanak(tmp_path):
     rec, src, bos, dst = _maskele(tmp_path, "tutanak.png", lambda p, i: S.tutanak(p, imzali=i))
-    assert rec["bolgeler"] and all(set(b) - {"parcalar"} == KAYIT_ALANLARI for b in rec["bolgeler"])
+    assert rec["bolgeler"] and all(set(b) - {"parcalar", "kapatma_olcumu"} == KAYIT_ALANLARI for b in rec["bolgeler"])
     assert not rec["elle_bakilmali"] and S.kacirilan(src, bos, dst)[1] == 0, rec
 
 
@@ -314,4 +314,4 @@ def test_imza_bolgeleri_tek_islev_kararli(tmp_path):
     a = Y.imza_bolgeleri(p)
     b = Y.imza_bolgeleri(p)
     assert a == b and a and all(x["id"].split("-s")[0] == a[0]["id"].split("-s")[0] for x in a)
-    assert all(set(x) - {"parcalar"} == KAYIT_ALANLARI for x in a)
+    assert all(set(x) - {"parcalar", "kapatma_olcumu"} == KAYIT_ALANLARI for x in a)

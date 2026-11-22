@@ -230,10 +230,15 @@ def mask_and_check(src: Path, dst: Path, rules: MaskRules, eng: str, model_text:
         if res.get("sayfalar"):
             rec["sayfalar"] = res["sayfalar"]
         if res.get("kapatma_olcumu"):
-            rec["kapatma_olcumu"] = kapatma_ozeti(res["kapatma_olcumu"])
-            if rec["kapatma_olcumu"]["siyah_altinda"]:
-                model_uyari.append(f"aşırı kapatma ölçümü: {rec['kapatma_olcumu']['siyah_altinda']} basılı kelime "
-                                   "siyah kutu altında (kişisel veri bölgeleri dışında)")
+            rec["kapatma_olcumu"] = kapatma_ozeti(res["kapatma_olcumu"], bg.bolgeler)
+            oz = rec["kapatma_olcumu"]
+            if oz["siyah_altinda"] or oz["dusuk_guven_altinda"] or oz["gorsel_zemin_payi"]:
+                model_uyari.append(f"aşırı kapatma ölçümü: {oz['siyah_altinda']} basılı kelime, "
+                                   f"{oz['dusuk_guven_altinda']} düşük güvenli (el yazısı) kelime siyah kutu altında, "
+                                   f"görsel zemin üstünde siyah alan %{100 * oz['gorsel_zemin_payi']:.1f} "
+                                   "(kişisel veri bölgeleri dışında)")
+            if oz["esik_asildi"]:
+                rec["asiri_kapatma_bekliyor"] = True     # yalnız uyarı değil: dosya insan kararı bekler
         if onay:
             rec["onay_bekleyen"] = len(onay)
     elif after.get("imza_aday"):
@@ -269,14 +274,25 @@ def mask_and_check(src: Path, dst: Path, rules: MaskRules, eng: str, model_text:
     return rec
 
 
-def kapatma_ozeti(olcum: dict) -> dict:
-    """Sayfa ölçümleri (`raster.asiri_kapatma`) → dosya özeti: toplam basılı kelime, siyah altında kalan (kişisel
-    veri bölgeleri dışında), en büyük kutu ve en yüksek sayfa siyah alan payı, sayfa listesi (altında kelime kalan)."""
+ASIRI_ESIK = {"siyah_altinda": 1, "dusuk_guven_altinda": 4, "gorsel_zemin_payi": 0.01, "siyah_alan_payi": 0.3}
+
+
+def kapatma_ozeti(olcum: dict, bolgeler: list[dict] | None = None) -> dict:
+    """Sayfa ölçümleri (`raster.asiri_kapatma`) + bölge ölçümleri (`kapatma_olcumu`) → dosya özeti: toplam basılı
+    kelime, siyah altında kalan (kişisel veri bölgeleri dışında), düşük güvenli (el yazısı ad/unvan) kelime, görsel/
+    fotoğraf zemini üstündeki siyah alan, en büyük kutu ve en yüksek sayfa siyah alan payı, sayfa listesi.
+    `esik_asildi`: `ASIRI_ESIK`'ten biri aşıldı (dosya "karar bekliyor")."""
     v = list(olcum.values())
-    return {"basili_kelime": sum(x["basili_kelime"] for x in v), "siyah_altinda": sum(x["siyah_altinda"] for x in v),
-            "en_buyuk_kutu_payi": max((x["en_buyuk_kutu_payi"] for x in v), default=0.0),
-            "siyah_alan_payi": max((x["siyah_alan_payi"] for x in v), default=0.0),
-            "sayfalar": sorted(int(k) for k, x in olcum.items() if x["siyah_altinda"])}
+    bo = [b["kapatma_olcumu"] for b in bolgeler or [] if b.get("kapali") and b.get("kapatma_olcumu")
+          and not b["kapatma_olcumu"].get("kasitli")]
+    oz = {"basili_kelime": sum(x["basili_kelime"] for x in v), "siyah_altinda": sum(x["siyah_altinda"] for x in v),
+          "dusuk_guven_altinda": sum(x.get("dusuk_guven_kelime", 0) for x in bo),
+          "gorsel_zemin_payi": round(sum(x.get("gorsel_zemin_payi", 0.0) for x in bo), 4),
+          "en_buyuk_kutu_payi": max((x["en_buyuk_kutu_payi"] for x in v), default=0.0),
+          "siyah_alan_payi": max((x["siyah_alan_payi"] for x in v), default=0.0),
+          "sayfalar": sorted(int(k) for k, x in olcum.items() if x["siyah_altinda"])}
+    oz["esik_asildi"] = any(oz[k] >= e for k, e in ASIRI_ESIK.items())
+    return oz
 
 
 ONAY_RENK = (1.0, 0.45, 0.0)          # turuncu: açık kalan öneri çerçevesi
@@ -332,7 +348,7 @@ def onay_cercevesi(dst: Path, kind: str, bolgeler: list[dict], eng: str) -> None
 
 # ---------------------------------------------------------------- önbellekli dosya işi
 
-KURAL_SURUM = 4            # tespit/kapatma kuralları elle sürümü (kod parmak izi ayrıca anahtara girer); 3: m4; 4: m5 en küçük yeterli maske
+KURAL_SURUM = 5            # tespit/kapatma kuralları elle sürümü (kod parmak izi ayrıca anahtara girer); 3: m4; 4: m5 en küçük yeterli maske; 5: m6 aşırı kapatma (zarf, kelime koruması, sayfa toplamı)
 _KOD_MODULLERI = ("detect", "formats", "raster", "imza", "alan", "ocr", "bolge", "dogrula", "yapi", "sablon",
                   "run", "eski", "kaynak")
 
@@ -695,6 +711,7 @@ def run(ws_root: Path, *, evidence: Path | None = None, out: Path | None = None,
                  "bolge": BG.ozet([b for r in kayitlar for b in r.get("bolgeler") or []]),
                  "kontrol_bekleyen_dosya": len(bekleyen),
                  "asiri_kapatma": {"dosya": sum(1 for r in kayitlar if (r.get("kapatma_olcumu") or {}).get("siyah_altinda")),
+                                   "karar_bekleyen": sum(1 for r in kayitlar if r.get("asiri_kapatma_bekliyor")),
                                    "siyah_altinda_kelime": sum((r.get("kapatma_olcumu") or {}).get("siyah_altinda", 0)
                                                                for r in kayitlar)},
                  "onbellekten": sum(1 for r in kayitlar if r.get("onbellek")),
@@ -723,7 +740,7 @@ def bekliyor(rec: dict) -> bool:
     d = rec.get("durum")
     if d == ELLE:
         return False
-    return d != "tamam" or bool(rec.get("onay_bekleyen"))
+    return d != "tamam" or bool(rec.get("onay_bekleyen")) or bool(rec.get("asiri_kapatma_bekliyor"))
 
 
 def _mask_index(src: Path, dst: Path, rules: MaskRules, durum: dict[str, str]) -> Path | None:

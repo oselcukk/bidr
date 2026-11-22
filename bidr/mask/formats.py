@@ -648,6 +648,12 @@ def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules, bolge=None) -> dict
         kasitli = [b["kutu"] for b in bg.bolgeler if b["sayfa"] == sn and (b["tur"] in KASITLI_TUR
                                                                             or b["kaynak"] in KASITLI_KAYNAK)]
         olcum[sn] = asiri_kapatma(kelimeler0, [tuple(r) for r in siyahlar], kasitli, abs(page.rect.get_area()))
+        from .raster import bolge_olcumu
+        for b in bg.bolgeler:             # bölge düzeyinde ölçüm: her kapatılan bölgeye
+            if b["sayfa"] == sn and kapanir(b) and "kapatma_olcumu" not in b:
+                b["kapatma_olcumu"] = bolge_olcumu(b.get("parcalar") or [b["kutu"]], kelimeler0,
+                                                   abs(page.rect.get_area()),
+                                                   b["tur"] in KASITLI_TUR or b["kaynak"] in KASITLI_KAYNAK)
         from .raster import page_coverage
         kapsam[page.number + 1] = dict(page_coverage(page_kapsam, alanlar))
         sayfa_kutu[sn] = _rect_list(page.rect)

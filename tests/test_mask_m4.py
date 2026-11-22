@@ -400,7 +400,7 @@ def test_fotografta_tek_sayfa_onayi(tmp_path):
 
 
 @needs_ocr
-def test_ondan_cok_etiketsiz_aday_tek_bolge(tmp_path):
+def test_ondan_cok_etiketsiz_aday_tek_tek_oneri(tmp_path):
     img = S._bos()
     d = ImageDraw.Draw(img)
     y = 160
@@ -416,7 +416,8 @@ def test_ondan_cok_etiketsiz_aday_tek_bolge(tmp_path):
     S.pdf_goruntu_sayfalari(p, [img])
     rec = R.mask_and_check(p, tmp_path / "o.pdf", MaskRules(), "pymupdf")
     imza = [b for b in rec.get("bolgeler") or [] if b["tur"] == "imza" and b["karar"] == "onay_bekliyor"]
-    assert len(imza) == 1 and imza[0]["kaynak"] == "etiketsiz_sayfa", imza
+    # m6: sayfa boyu tek çerçeve yerine her aday kendi küçük önerisi (paraf olabilir)
+    assert len(imza) > 10 and all(b["kaynak"] == "etiketsiz_aday" and not b["kapali"] for b in imza), imza
 
 
 # ---------------------------------------------------------------- kural e: web çıktısı

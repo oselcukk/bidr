@@ -227,12 +227,29 @@ def asiri_kapatma(kelimeler, siyahlar, kasitli, alan: float) -> dict:
     def icinde(k, r):
         cx, cy = (k[0] + k[2]) / 2, (k[1] + k[3]) / 2
         return r[0] <= cx <= r[2] and r[1] <= cy <= r[3]
-    alti = [k for k in kelimeler if any(icinde(k, s) for s in siyahlar) and not any(icinde(k, q) for q in kasitli)]
+    hs = sorted(k[3] - k[1] for k in kelimeler)
+    med = hs[len(hs) // 2] if hs else 0.0
+    # basılı metin boyunu aşan "kelime" (OCR'ın imza vuruşuna verdiği okuma) basılı kelime sayılmaz
+    alti = [k for k in kelimeler if any(icinde(k, s) for s in siyahlar) and not any(icinde(k, q) for q in kasitli)
+            and (not med or k[3] - k[1] <= 1.6 * med)]
     alanlar = [max(0.0, s[2] - s[0]) * max(0.0, s[3] - s[1]) for s in siyahlar]
     a = alan or 1.0
     return {"basili_kelime": len(kelimeler), "siyah_altinda": len(alti),
             "en_buyuk_kutu_payi": round(max(alanlar, default=0.0) / a, 4),
             "siyah_alan_payi": round(min(1.0, sum(alanlar) / a), 4)}
+
+
+def bolge_olcumu(rects, kelimeler, alan: float, kasitli: bool) -> dict:
+    """Bölge düzeyinde kapatma ölçümü (yapısal imza çözümlemesinin ölçmediği bölgeler: kişisel veri, el yazısı alan,
+    insan kararı): siyah dikdörtgenlerinin (`rects`) altında merkezi kalan basılı kelime (kasıtlı kapatılan kişisel
+    veri bölgesinde 0) ve sayfa alanına oranla siyah alan. `rects`, `kelimeler`: aynı düzlemde."""
+    def icinde(k, r):
+        cx, cy = (k[0] + k[2]) / 2, (k[1] + k[3]) / 2
+        return r[0] <= cx <= r[2] and r[1] <= cy <= r[3]
+    n = 0 if kasitli else sum(1 for k in kelimeler if any(icinde(k, r) for r in rects))
+    a = sum(max(0.0, r[2] - r[0]) * max(0.0, r[3] - r[1]) for r in rects)
+    return {"siyah_altinda_kelime": n, "dusuk_guven_kelime": 0, "alan_payi": round(a / (alan or 1.0), 4),
+            "gorsel_zemin_payi": 0.0, "kasitli": kasitli}
 
 
 def sablon_onerileri(page, sablonlar) -> list:
@@ -458,6 +475,8 @@ def _geri_cevir(r2: "ImageScan", how: str, img) -> "ImageScan":
     """Döndürülmüş görüntüde yapılan taramanın kutuları → özgün görüntü (yama yerine siyah kutu)."""
     for b in r2.bolgeler:
         b.kutu = _unrotate(b.kutu, how, img.width, img.height)
+        if b.parcalar:                   # daraltılmış kapatmanın parçaları da özgün görüntüye (yoksa yanlış yeri örter)
+            b.parcalar = [_unrotate(p, how, img.width, img.height) for p in b.parcalar]
         b.yama = None
     if r2.bolgeler:
         r2.imza = Y.sonuc(r2.bolgeler)
@@ -772,7 +791,13 @@ def mask_image(src: Path, dst: Path, rules: MaskRules, bolge=None) -> dict:
     first = scan_image_obj(img, rules)       # önbellekli OCR: yalnız ilk tarama uyarısı
     kasitli = [b["_px"] for b in bg.bolgeler if b.get("_px") and (b["tur"] in KASITLI_TUR
                                                                       or b["kaynak"] in KASITLI_KAYNAK)]
-    olcum = asiri_kapatma([w.box for w in first.words if basili_kelime(w)], siyahlar, kasitli, img.width * img.height)
+    f = _ocr_view(img)[1]                    # tarama kelimeleri OCR görünümünün (büyütülmüş) pikselinde
+    basili = [tuple(v / f for v in w.box) for w in first.words if basili_kelime(w)]
+    olcum = asiri_kapatma(basili, siyahlar, kasitli, img.width * img.height)
+    for b in bg.bolgeler:                    # bölge düzeyinde ölçüm: her kapatılan bölgeye
+        if kapanir(b) and b.get("_px") and "kapatma_olcumu" not in b:
+            b["kapatma_olcumu"] = bolge_olcumu(b.get("_parcalar_px") or [b["_px"]], basili, img.width * img.height,
+                                               b["tur"] in KASITLI_TUR or b["kaynak"] in KASITLI_KAYNAK)
     uyarilar = [f"taranamadı: {first.taranamadi}"] if first.taranamadi else []
     return {"maskelenen": found, "temizlenen": ["ust_veri"], "uyarilar": uyarilar,
             "imza_bolgesi": bolge_n, "ortusen_kelime": ortusen, "sayfa_sayisi": 1, "sayfa_kapsam": {1: dict(kapsam)},

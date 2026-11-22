@@ -202,8 +202,8 @@ eski alanlar korunur:
 `kapali`: kutu maskeli kopyada kapatıldı mı. `onay_bekliyor` bölge çoğunlukla AÇIKTIR (insan kararına kadar);
 `maskeleme-basarisiz/` inceleme kopyasında (ve `--kaynak` ağacındaki eksik maskeli kopyada) bu bölgeler
 turuncu kesik çerçeve ve "[ONAY BEKLIYOR]" işaretiyle çizilir: inceleyici kopyayı maskeli sanmasın. Teslim
-paketine giden `maskeleme-bekleyen/` kopyasında çerçeve yoktur. Tek
-istisna metinle örtüşen imza (ad yalnız OCR'dan okundu): kutu kapalıdır, onay "geri basma gerekli mi" içindir.
+paketine giden `maskeleme-bekleyen/` kopyasında çerçeve yoktur. "Kutusu kapalı ama onay bekliyor" bölge
+yoktur (m6: eski "geri basma gerekli mi" onayı kalktı).
 Kullanıcı bölgesi (`ciz`): `tur`/`kaynak` `kullanici`, kimlik `<sha8>-s<sayfa>-k<n>`; her koşuda gerçek
 redaksiyonla uygulanır, ayrıca form şablon belleğine öneri örneği olur (aynı formdan başka belgede yalnız
 `onay_bekliyor` öneri; kendiliğinden kapatılmaz; metin katmanlı belgede de: çizimden öğrenme ve öneri metin
@@ -266,7 +266,24 @@ Maskeleme `kontrol bekliyor`; `EKSIK.txt`; çıkış kodu 1; hat insan bekler). 
   (kılavuz/alt çizgi, tablo çizgisi, basılı kelime ve önceki siyah kutular hariç); alan boşsa hiçbir şey
   kapatılmaz (eski "boş görünse de kapat" kuralı kalktı). Desen bulgularında kutu yalnız değerin kendisidir.
 - **Üst sınır**: otomatik kapatılan tek imza bölgesi sayfanın %30'undan büyükse kapatılmaz, öneri olur.
-- **Ölçüm**: her dosya kaydında `kapatma_olcumu` (basılı kelime sayısı; kişisel veri bölgeleri dışında
+- **m6 (aşırı kapatmayı kökten azaltma)**: tablo dışı imza kapatması ızgara hücreleri yerine mürekkebin
+  **dolu zarfıdır** (yakın parçalar birleşir, kutu ≈ 3 pt genişletilir: imzanın biçimi okunmaz); mürekkep
+  bölge içinde duyarlı eşikle çıkarılır (gri tonlu/JPEG/eğik taramada da). **Basılı metin koruması** genel
+  kuraldır: hiçbir otomatik imza kapatması (sütun hücresi, gömülü imza görüntüsü dahil) metin katmanı ya da
+  güvenilir OCR kelimesinin üstüne taşmaz, kutu kelimeden kırpılır; kişisel veri desenleri bunun dışındadır.
+  Mürekkep basılı metinden ayrılamazsa kutu kapatılmaz, açık öneri olur; geri basma yapılmaz. **Sayfa
+  toplamı**: sayfadaki otomatik imza kapatmalarının toplam alanı %30'u ya da altlarında kalan kelime 6'yı
+  aşarsa en büyük / en az kesin olanlar öneri olur (İmza sütunu hücresi kesin kapanır, öneriye çevrilmez).
+  Web çıktısında yalnız "İmza" etiketine (ya da İmza sütununa) yakın, imza oranlı gömülü görüntü ele alınır;
+  banner/arka plan ve metin katmanındaki renkli yazı kapatılmaz. Belgede 10'dan çok etiketsiz aday (paraf)
+  varsa her biri ayrı küçük öneri olur. İmza kaynaklı bölgenin yer tutucusu her zaman `[İMZA]`; `[GÖRSEL]`
+  yalnız imza olmayan gömülü görsele. 90° dönmüş sayfada daraltılmış kapatmanın parçaları da özgün yöne
+  çevrilir.
+- **Ölçüm**: her kapatılan bölgenin kaydında `kapatma_olcumu` (altında kalan güvenilir ve düşük güvenli/el
+  yazısı kelime, siyah alan payı, fotoğraf/görsel zemin üstündeki siyah alan payı; kişisel veri bölgesinde
+  `kasitli`); dosyada `kapatma_olcumu.esik_asildi` (basılı kelime ≥ 1, düşük güvenli kelime ≥ 4, görsel zemin
+  ≥ %1 ya da sayfa siyah payı ≥ %30) ise dosya `asiri_kapatma_bekliyor` olur ve "karar bekliyor" listelenir.
+  Ayrıca her dosya kaydında `kapatma_olcumu` (basılı kelime sayısı; kişisel veri bölgeleri dışında
   siyah kutu altında kalan kelime `siyah_altinda`; en büyük kutunun ve toplam siyahın sayfa payı; altında
   kelime kalan sayfalar), raporun özetinde `asiri_kapatma`; `siyah_altinda` > 0 uyarı yazar. Basılı
   kelimeler metin katmanından ve (taranmış sayfada) güvenle okunan OCR kelimelerinden sayılır.
@@ -425,10 +442,8 @@ yazılır; aşağıdaki eski kurallar (1-8) DOCX'e gömülü görsellerde sürer
   boyutlu gömülü görüntü kutusu doğrudan kapatılır; sayfanın alt yarısındaki etiketsiz, tek renkli,
   seyrek görüntü onay bekler. Belgede "e-imza / güvenli elektronik imza" ibaresi varsa metin katmanlı
   sayfada etiketsiz görüntü/mürekkep araması yapılmaz (`birakildi`).
-- **Metinle örtüşen imza**: kapatılır; altındaki ad/unvan PDF metin katmanından okunuyorsa kutunun
-  üstüne "Ad Soyad – Unvan [imza gizlendi]" geri basılır (`geri_basilan`, `kapatildi`); yalnız
-  OCR'dan okunuyorsa geri basılmaz, kutu kapalı kalır ve bölge "geri basma gerekli mi" diye
-  `onay_bekliyor` olur (`kapali: true`). Renk ayırma yalnız yapısal imza bölgesinde ve imza boyunda
+- **Metinle örtüşen imza**: kapatma mürekkebin dolu zarfına daraltılır, ad/unvan kelimeleri açık kalır
+  (m6; geri basma yapılmaz, mürekkep ayrılamazsa açık öneri). Renk ayırma yalnız yapısal imza bölgesinde ve imza boyunda
   yapılır (kutu dışındaki mavi el yazısı içerik metni yamalanmaz); siyah kapatma her zaman en son ve
   en üsttedir: siyahla çoğunlukla örtüşen yama basılmaz, kalanı kırpılır. Mavi/mor mürekkep siyah metinden HSV ile
   ayrılabiliyorsa (yamada imza benzeri mürekkep ve renkli piksel kalmadığı doğrulanır) yalnız
