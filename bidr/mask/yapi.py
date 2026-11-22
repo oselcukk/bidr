@@ -5,24 +5,33 @@ katmanı). Çıktı: `Bolge` listesi (kutu, karar, neden, kaynak, güven, geri b
 
 1. **İmza sütunu** (`imza_sutunu`): tablo ızgarası yatay/dikey çizgilerden çıkarılır (taramada
    morfolojik koşu tespiti; metin katmanlı PDF'te ayrıca vektör çizimler). Başlık hücresi "İmza"/
-   "İmzası" olan sütunun bütün veri hücreleri kapatılır; ad/unvan sütunları açık kalır. Başlık yalnız
-   ilk sayfadaysa sütun düzeni belge bağlamında tutulur: hizası tutan devam sayfası tablosunda aynı
-   sütun kapatılır. Hücre sınırını taşan mürekkep (sütundaki mürekkebe bitişik bileşenler) ayrı
+   "İmzası" olan sütunun bütün veri hücreleri kapatılır; ad/unvan sütunları açık kalır. Sütunun
+   genişliği başlık hücresini kesen iki dikey çizgiden alınır (alt alta birleşmiş başka tablonun ara
+   çizgileri sütunu daraltmaz), alt sınırı bu çizgilerin kesintisiz sürdüğü son satırdır (sütun alttaki
+   gündem/karar tablosuna inmez). Başlık yalnız ilk sayfadaysa sütun düzeni belge bağlamında tutulur:
+   hizası tutan devam sayfası tablosunda aynı sütun kapatılır. Hücre sınırını taşan mürekkep ayrı
    taşma bölgesiyle kapatılır.
 2. **İmza bloğu** (`imza_blogu`): tablo dışındaki unvan/rol satırlarının (Üye, Başkan, Prof. Dr. …)
    üstündeki bant (önceki basılı satıra kadar, en çok ~0,9 inç) mürekkep içeriyorsa kapatılır;
-   "İmza:" etiketinin sağı/altı (`imza_etiketi`) da öyle.
-3. **Gömülü görüntü** (`gomulu_gorsel`, metin katmanlı sayfa): etiket yakınındaki ya da imza
-   sütunundaki imza boyutlu gömülü görüntü kutusu doğrudan kapatılır. Belgede "e-imza / elektronik
-   imza" ibaresi varsa metin katmanlı sayfada etiketsiz mürekkep/görüntü araması yapılmaz.
+   "İmza:" etiketinin sağı/altı (`imza_etiketi`) da öyle. Tablo (yalnız yatay çizgili karar tablosu
+   dahil) içinde, akan metnin arasında (üstünde ve altında uzun satır) ya da fotoğraf/afişte çalışmaz.
+3. **Gömülü görüntü** (`gomulu_gorsel`, metin katmanlı sayfa): imza sütunundaki ya da etiket yakınındaki
+   imza gibi (tek renkli, seyrek) gömülü görüntü kapatılır; fotoğraf/rozet/ikon imza sayılmaz. Web
+   çıktısında (üst/alt bilgide URL + tarih) yalnız gerçek "İmza" etiketine yakın ve imza oranındaki
+   görüntü alınır, mürekkep yalnız gömülü görüntülerde aranır (mavi bağlantı yazısı mürekkep değil).
+   Belgede "e-imza" ibaresi varsa metin katmanlı sayfada etiketsiz araması yapılmaz.
 4. **Metinle örtüşen imza**: kapatılır. Altındaki ad/unvan PDF metin katmanından okunuyorsa kutunun
-   üstüne geri basılır (`geri_basilan`); yalnız OCR'dan okunuyorsa bölge `onay_bekliyor`. Renkli
-   (mavi/mor) mürekkep siyah metinden HSV ile ayrılabiliyorsa yalnız mürekkep pikselleri beyazlatılır
-   (`yama`; alttaki metin kalır) ve bölge `kapatildi`.
+   üstüne geri basılır (`geri_basilan`); yalnız OCR'dan okunuyorsa geri basılmaz, kutu KAPALI kalır ve
+   bölge "geri basma gerekli mi" diye `onay_bekliyor` olur (`kapali`). Renkli (mavi/mor) mürekkep siyah
+   metinden HSV ile ayrılabiliyorsa yalnız mürekkep pikselleri beyazlatılır (`yama`; alttaki metin
+   kalır): yalnız yapısal imza bölgesinde (sütun/blok/etiket/taşma) ve imza boyunda; kutu dışındaki
+   mavi el yazısı içerik metni yamalanmaz. Siyah kapatma her zaman yamanın üstündedir (`formats`).
 5. **Yanlış alarm süzgeçleri** (yalnız etiketsiz adaylar; etiket yakınındaki aday süzülmez): sayfanın
-   üst bandı (antet/logo), dairesel kaşe/mühür, aynı konumda başka sayfalarda (ya da dosyalarda)
-   tekrarlayan öğe, tamamen basılı sayfada (not dökümü) eşiği geçemeyen tek aday → `birakildi`.
-   Kalan etiketsiz aday kapatılır ve `onay_bekliyor` olur (kaçırmak fazladan kapatmaktan pahalı).
+   üst bandı (antet/logo), dairesel kaşe/mühür, küçük tik/çentik, satır düzeni tutarlı el yazısı
+   paragrafı, aynı konumda başka sayfalarda (ya da dosyalarda) tekrarlayan öğe, tamamen basılı sayfada
+   (not dökümü) eşiği geçemeyen tek aday → `birakildi`. Kalan etiketsiz aday KAPATILMAZ, `onay_bekliyor`
+   olur (inceleme kopyasında renkli kesik çerçeveyle çizilir; dosya karar verilene kadar pakete girmez).
+   Fotoğraf/afişte ya da sayfada 10'dan çok aday varsa adaylar tek sayfa onayına (`etiketsiz_sayfa`) iner.
 
 Koordinatlar: çözümleme `imza.A_PPI` (100 ppi) çözünürlüğünde yapılır; dönen kutular girdi
 görüntüsünün pikselindedir (PDF puanına çevirme `raster`'ın işi). Değerler hiçbir yere yazılmaz.
@@ -42,6 +51,9 @@ I = IM.A_PPI
 KAPATILDI, ONAY, BIRAKILDI = "kapatildi", "onay_bekliyor", "birakildi"
 GERI_BASMA_EKI = "[imza gizlendi]"
 
+TIK_BOYU = 0.5 * I          # bundan küçük etiketsiz iz tik/çentik sayılır (imza değil)
+SAYFA_ONAYI_ESIK = 10       # sayfada bundan çok etiketsiz aday: tek sayfa onayına toplanır
+RENK_AYIRMA_KAYNAK = ("imza_sutunu", "imza_blogu", "imza_etiketi", "imza_tasmasi")
 ANTET_BANDI = 0.20          # sayfanın üst payı: etiketsiz aday antet/logo sayılır
 BASILI_SAYFA_KELIME = 120   # bu kadar okunabilir kelimeli etiketsiz sayfa "tamamen basılı" (not dökümü)
 MIN_SUTUN_MUREKKEP = 6      # imza sütunu gövdesinde kapatma için en az mürekkep pikseli (A_PPI)
@@ -59,20 +71,29 @@ class Bolge:
     tur: str = "imza"
     geri_basilan: str | None = None
     yama: object = None          # PIL görüntüsü: kutunun mürekkebi ayrılmış hâli (siyah kutu yerine)
+    kapali: bool = False         # onay bekleyen ama kutusu yine kapatılan bölge (metinle örtüşen imza, ad OCR'dan)
+    gorsel: bool = False         # imza değil görsel (fotoğraf/rozet/ikon): yer tutucu `[GÖRSEL]`
 
     @property
     def kapat(self) -> bool:
-        return self.karar != BIRAKILDI and self.yama is None
+        return (self.karar == KAPATILDI or self.kapali) and self.yama is None
 
     def kayit(self, kimlik: str, sayfa: int, kutu_pt) -> dict:
         return {"id": kimlik, "sayfa": sayfa, "kutu": [round(float(v), 1) for v in kutu_pt], "tur": self.tur,
                 "karar": self.karar, "neden": self.neden, "kaynak": self.kaynak, "guven": round(self.guven, 2),
-                "geri_basilan": self.geri_basilan}
+                "geri_basilan": self.geri_basilan, "kapali": self.karar == KAPATILDI or self.kapali}
+
+
+GORSEL_LABEL = "[GÖRSEL]"
 
 
 def etiket_yazisi(b: Bolge) -> str:
-    """Kapatılan kutuya yazılacak işaret: geri basılan ad/unvan ya da `[İMZA]`."""
-    return f"{b.geri_basilan} {GERI_BASMA_EKI}" if b.geri_basilan else IM.IMZA_LABEL
+    """Kapatılan kutuya yazılacak işaret: geri basılan ad/unvan ya da `[İMZA]`; imza olmayan görsel
+    (fotoğraf, rozet, ikon) için nötr `[GÖRSEL]`."""
+    ek = GORSEL_LABEL if b.gorsel else GERI_BASMA_EKI
+    if b.geri_basilan:
+        return f"{b.geri_basilan} {ek}"
+    return GORSEL_LABEL if b.gorsel else IM.IMZA_LABEL
 
 
 # ---------------------------------------------------------------- belge bağlamı
@@ -364,6 +385,7 @@ def _birlestir(vals, tol) -> list:
 class Tablo:
     xs: list
     ys: list
+    dik: list = None             # tabloya katılan dikey çizgi parçaları [(x, y0, y1)]
 
     @property
     def kutu(self):
@@ -396,16 +418,53 @@ def tablolar(yat, dik, tol: float = 6) -> list[Tablo]:
         ys = _birlestir(ys_raw, tol)
         if len(ys) < 3:
             continue
-        xs = []
+        xs, segs = [], []
         for xc, a, b in dik:
             if x0 - tol <= xc <= x1 + tol and any(a <= ys[i] + tol and b >= ys[i + 1] - tol
                                                   for i in range(len(ys) - 1)):
                 xs.append(xc)
+                segs.append((xc, a, b))
         xs = _birlestir(xs, tol)
         if len(xs) < 3:
             continue
-        out.append(Tablo(xs, ys))
+        out.append(Tablo(xs, ys, segs))
     return out
+
+
+def _zincir_sonu(segs, x: float, y_bas: float, tol: float = 6):
+    """`x` hizasındaki dikey çizginin `y_bas`'tan aşağı kesintisiz sürdüğü son y (çizgi parçaları
+    ≤ `tol` boşlukla zincirlenir: vektör tabloda her hücrenin kendi kenarı ayrı parça olur). Çizgi
+    `y_bas`'ı kesmiyorsa None."""
+    ps = sorted((a, b) for xc, a, b in segs if abs(xc - x) <= tol)
+    son = None
+    for a, b in ps:
+        if son is None:
+            if a <= y_bas + tol and b >= y_bas - tol:
+                son = b
+        elif a <= son + tol and b > son:
+            son = b
+    return son
+
+
+def sutun_kutusu(t: Tablo, c: int, r: int, cx: float | None = None, tol: float = 6):
+    """İmza sütununun gövdesi (A_PPI): genişlik başlık hücresini kesen iki dikey çizgiden (alt alta
+    birleşmiş başka tablonun ara çizgileri sütunu daraltmasın), alt sınır bu iki çizginin kesintisiz
+    sürdüğü son tablo satırı (sütun alttaki gündem/karar tablosuna inmesin). → (x0, y0, x1, y1) ya da None."""
+    segs = t.dik or []
+    ya, yb = t.ys[r], t.ys[r + 1]
+    cx = (t.xs[c] + t.xs[c + 1]) / 2 if cx is None else cx
+    kesen = _birlestir([x for x, a, b in segs if a <= ya + tol and b >= yb - tol], tol)
+    sol = [x for x in kesen if x <= cx]
+    sag = [x for x in kesen if x > cx]
+    x0 = max(sol) if sol else t.xs[c]
+    x1 = min(sag) if sag else t.xs[c + 1]
+    ends = [e for e in (_zincir_sonu(segs, x0, ya, tol), _zincir_sonu(segs, x1, ya, tol)) if e is not None]
+    alt = min(ends) if ends else t.ys[-1]
+    satirlar = [y for y in t.ys if yb < y <= alt + tol]
+    alt = max(satirlar) if satirlar else alt
+    if alt - yb < 4 or x1 - x0 < 4:
+        return None
+    return (x0, yb, x1, alt)
 
 
 def _imza_basligi(w: Word) -> bool:
@@ -416,7 +475,7 @@ def _imza_basligi(w: Word) -> bool:
 
 
 def imza_sutunu(t: Tablo, words: list[Word]):
-    """Başlık hücresinde (en çok 4 kelime) "İmza"/"İmzası" olan sütun → (sütun, başlık satırı)."""
+    """Başlık hücresinde (en çok 4 kelime) "İmza"/"İmzası" olan sütun → (sütun, başlık satırı, başlık x merkezi)."""
     best = None
     for w in words:
         if not _imza_basligi(w):
@@ -432,7 +491,7 @@ def imza_sutunu(t: Tablo, words: list[Word]):
         if len(inside) > 4 or not IM._line_ok([o.text for o in inside]):
             continue
         if best is None or r < best[1]:
-            best = (c, r)
+            best = (c, r, (w.x0 + w.x1) / 2)
     return best
 
 
@@ -554,7 +613,7 @@ def murekkebi_ayir(img, box):
 # ---------------------------------------------------------------- ana çözümleme
 
 _ONCELIK = {"imza_sutunu": 0, "gomulu_gorsel": 1, "imza_blogu": 2, "imza_etiketi": 3, "imza_tasmasi": 4,
-            "etiketsiz_aday": 5}
+            "etiketsiz_aday": 5, "etiketsiz_sayfa": 6}
 
 
 @dataclass
@@ -578,7 +637,7 @@ def _okunur(w: Word, kesin: bool, med) -> bool:
 def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] | None = None,
                       bag: Baglam | None = None, sayfa: int = 1, metin_sayfasi: bool = False,
                       gomulu: list | None = None, vektor: tuple | None = None, ocr_dogrula=None,
-                      ocr_kelime=None) -> list[Bolge]:
+                      ocr_kelime=None, foto: bool = False, web: bool = False) -> list[Bolge]:
     """Tek sayfa/görsel için imza bölgeleri (kutular girdi pikselinde).
 
     `words`: bütün kelimeler (OCR + metin katmanı); `kesin`: bunlardan metin katmanından gelenler
@@ -587,9 +646,23 @@ def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] |
     görüntü kutuları (girdi pikseli). `vektor`: (yatay, dikey) vektör çizgileri (girdi pikseli).
     `ocr_dogrula(kutu) → okunan kelime sayısı`: kapatılacak kutunun yeniden OCR'ı (gizli metin).
     `ocr_kelime(kutu) → kelimeler` (girdi pikseli): tablo başlık satırının hedefli OCR'ı (sayfa OCR'ı
-    ızgaralı tabloda başlığı çoğu zaman yanlış okur)."""
-    h = IM.hazirla(img, words, ppi)
+    ızgaralı tabloda başlığı çoğu zaman yanlış okur). `foto`: fotoğraf/afiş (renk çeşitliliği yüksek, az
+    metin): etiketsiz mürekkep aranmaz, adaylar tek sayfa onayına iner; unvan bandı çalışmaz. `web`: web
+    çıktısı (metin katmanı + üst/alt bilgide URL ve tarih): mürekkep yalnız gömülü görüntülerde (renkli
+    bağlantı yazısı mürekkep değil); gömülü görüntü yalnız gerçek "İmza" etiketine yakın ve imza gibiyse."""
+    h = IM.hazirla(img, words, ppi, ink_regions=[g for g, _ in gomulu or []] if web else None)
     k, W, H, wa = h.k, h.W, h.H, h.wa
+    if foto and sum(1 for w in wa if IM.readable_word(w)) >= 40:
+        foto = False                         # renkli ama metin ağırlıklı: belge, fotoğraf değil
+    if metin_sayfasi and gomulu:
+        # imza gibi olmayan gömülü görüntünün (fotoğraf, rozet, ikon) pikselleri mürekkep sayılmaz: unvan
+        # bandı/etiket alanı fotoğraf yüzünden imza bölgesi açmasın
+        from PIL import ImageDraw
+        for gb_in, imza_gibi in gomulu:
+            if not imza_gibi:
+                r_ = [gb_in[0] * k - 1, gb_in[1] * k - 1, gb_in[2] * k + 1, gb_in[3] * k + 1]
+                for im_ in (h.ink, h.colored, h.raw_ink, h.thick):
+                    ImageDraw.Draw(im_).rectangle(r_, fill=0)
     kesin_set = set(kesin or [])
     kesin_idx = {i for i, w in enumerate(words) if w in kesin_set}
     labels = set(h.strict) | set(h.role)
@@ -664,15 +737,19 @@ def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] |
                     break
         body = None
         if hit:
-            c, r = hit
-            body = (t.xs[c], t.ys[r + 1], t.xs[c + 1], t.ys[-1])
+            c, r, hx = hit
+            body = sutun_kutusu(t, c, r, hx)
             neden, guven = "İmza sütunu", 0.95
             if bag is not None:
                 bag.sutun_kaydet(t.xs, c, W, sayfa)
         elif cont is not None:
             c = cont
             if c is not None:
-                body = (t.xs[c], t.ys[0], t.xs[c + 1], t.ys[-1])
+                e = [x for x in (_zincir_sonu(t.dik or [], t.xs[c], t.ys[0]), _zincir_sonu(t.dik or [], t.xs[c + 1], t.ys[0]))
+                     if x is not None]
+                alt = min(e) if e else t.ys[-1]
+                alt = max([y for y in t.ys if y <= alt + 6] or [t.ys[-1]])
+                body = (t.xs[c], t.ys[0], t.xs[c + 1], alt) if alt - t.ys[0] >= 4 else None
                 neden, guven = "İmza sütunu (devam sayfası, hizası tutan tablo)", 0.85
         if body is None:
             continue
@@ -680,7 +757,7 @@ def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] |
         if _ink_px(h.ink, (body[0] + 2, body[1] + 2, body[2] - 2, body[3] - 2)) >= MIN_SUTUN_MUREKKEP:
             regs.append(_R((body[0] + 1, body[1] + 1, body[2] - 1, body[3] - 1), "imza_sutunu", neden, guven))
             tasma(body, "İmza sütunundan taşan mürekkep")
-    tab_kutulari = [t.kutu for t in tabs]
+    tab_kutulari = [t.kutu for t in tabs] + _yatay_tablolar(yat)
 
     def tabloda(w) -> bool:
         cx, cy = (w.x0 + w.x1) / 2, (w.y0 + w.y1) / 2
@@ -729,9 +806,18 @@ def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] |
                     b[1] |= ids
                     changed = True
     zones = []
+    uzun = [ws for ws in lines.values() if sum(1 for i in ws if IM.readable_word(wa[i])) >= 8]
+    uzun_kutu = [(min(wa[i].x0 for i in ws), min(wa[i].y0 for i in ws), max(wa[i].x1 for i in ws),
+                  max(wa[i].y1 for i in ws)) for ws in uzun]
     for blk, blk_ids in bloklar:
         if (blk[1] + blk[3]) / 2 < 0.15 * H:
             continue                        # antet bandındaki unvan satırı (yazı başlığı) imza bloğu değil
+        if foto:
+            continue                        # afiş/fotoğraf: unvan satırının üstü imza bandı değil
+        ust = any(0 <= blk[1] - u[3] <= 0.6 * I and u[0] < blk[2] and blk[0] < u[2] for u in uzun_kutu)
+        alt = any(0 <= u[1] - blk[3] <= 0.6 * I and u[0] < blk[2] and blk[0] < u[2] for u in uzun_kutu)
+        if ust and alt:
+            continue                        # akan metnin / karar tablosunun içindeki rol sözcüğü (imza bloğu değil)
         x0 = blk[0] - 0.4 * I
         x1 = max(blk[2], blk[0] + 2.2 * I) + 0.4 * I
         y1 = blk[1] - 1
@@ -781,13 +867,23 @@ def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] |
 
     # --- gömülü görüntüler (metin katmanlı sayfa)
     etiketsiz: list = []                 # (kutu, kaynak, ölçüt)
+    strict_boxes = [wa[i].box for i in h.strict]
     for gb_in, imza_gibi in gomulu or []:
         gb = (gb_in[0] * k, gb_in[1] * k, gb_in[2] * k, gb_in[3] * k)
         near = (gb[0] - 1.5 * I, gb[1] - 1.0 * I, gb[2] + 1.5 * I, gb[3] + 1.0 * I)
-        if any(IM._inter(gb, s) for s in sutun_kutulari) or any(IM._inter(near, lb) for lb in label_boxes) \
-                or any(_ic(gb, z) > 0.3 for z in zones):
+        if any(IM._inter(gb, s) for s in sutun_kutulari):
+            regs.append(_R(gb, "gomulu_gorsel", "İmza sütununda gömülü görüntü", 0.9))
+            continue
+        if not imza_gibi:
+            continue                        # fotoğraf/rozet/ikon (renkli, yoğun): imza değil
+        if web:
+            gw, gh = gb[2] - gb[0], gb[3] - gb[1]
+            if 1.2 <= gw / max(1.0, gh) <= 8 and any(IM._inter(near, lb) for lb in strict_boxes):
+                regs.append(_R(gb, "gomulu_gorsel", "İmza etiketi yakınında imza gibi gömülü görüntü", 0.9))
+            continue                        # web çıktısında etiketsiz görüntü aranmaz
+        if any(IM._inter(near, lb) for lb in label_boxes) or any(_ic(gb, z) > 0.3 for z in zones):
             regs.append(_R(gb, "gomulu_gorsel", "İmza etiketi yakınında gömülü görüntü", 0.9))
-        elif imza_gibi and (gb[1] + gb[3]) / 2 > 0.5 * H:
+        elif (gb[1] + gb[3]) / 2 > 0.5 * H:
             etiketsiz.append((gb, "gomulu_gorsel", None))
 
     # --- mürekkep adayları (etiketli: kapat; etiketsiz: süzgeçler)
@@ -821,8 +917,12 @@ def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] |
                     regs.append(_R((x0 - 5, y0 - 5, x1 + 5, y1 + 5), "imza_etiketi", "İmza etiketi/unvan yakınında imza", 0.85))
             else:
                 etiketsiz.append((box, "etiketsiz_aday", (c, cpx)))
+        paragraf = _el_yazisi_paragraf([tuple(c[:4]) for c in clusters])
 
     # --- süzgeçler
+    if metin_sayfasi:
+        paragraf = set()
+    kalan_etiketsiz: list[_R] = []
     okunur_n = sum(1 for j, w in enumerate(wa) if j not in labels and IM.readable_word(w))
     basili = okunur_n >= BASILI_SAYFA_KELIME and not labels and len(etiketsiz) == 1
     for box, kaynak, olcu in etiketsiz:
@@ -836,6 +936,13 @@ def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] |
             continue
         if olcu is not None and kase_mi(h.raw_ink, box):
             kayitlar.append(_R(box, kaynak, "dairesel kaşe/mühür", 0.7, BIRAKILDI))
+            continue
+        if olcu is not None and max(box[2] - box[0], box[3] - box[1]) < TIK_BOYU:
+            kayitlar.append(_R(box, kaynak, "küçük el işareti (tik/çentik): imza değil", 0.6, BIRAKILDI))
+            continue
+        if olcu is not None and tuple(olcu[0][:4]) in paragraf:
+            kayitlar.append(_R(box, kaynak, "el yazısı paragraf satırı (satır düzeni tutarlı): imza değil", 0.6,
+                               BIRAKILDI))
             continue
         iz = None
         if bag is not None:
@@ -853,9 +960,19 @@ def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] |
                 kayitlar.append(_R(box, kaynak, "tamamen basılı sayfada etiketsiz tek aday (eşik altı)", 0.6, BIRAKILDI))
                 continue
         pad = 5 if kaynak == "etiketsiz_aday" else 0
-        regs.append(_R((box[0] - pad, box[1] - pad, box[2] + pad, box[3] + pad), kaynak,
-                       "etiketsiz imza benzeri iz" if kaynak == "etiketsiz_aday" else "etiketsiz gömülü görüntü (imza olabilir)",
-                       0.5, ONAY))
+        kalan_etiketsiz.append(_R((box[0] - pad, box[1] - pad, box[2] + pad, box[3] + pad), kaynak,
+                                  "etiketsiz imza benzeri iz" if kaynak == "etiketsiz_aday"
+                                  else "etiketsiz gömülü görüntü (imza olabilir)", 0.5, ONAY))
+    # fotoğraf/afiş ya da çok sayıda aday: tek sayfa onayı (yanlış alarm yükü; kapatılmaz, insan bakar)
+    if kalan_etiketsiz and (foto or len(kalan_etiketsiz) > SAYFA_ONAYI_ESIK):
+        u = kalan_etiketsiz[0].box
+        for r in kalan_etiketsiz[1:]:
+            u = _union(u, r.box)
+        neden = ("fotoğraf/görsel: etiketsiz imza araması yapılmadı, sayfaya bakılmalı" if foto else
+                 f"sayfada {len(kalan_etiketsiz)} etiketsiz imza benzeri iz: tek sayfa onayı")
+        regs.append(_R(u, "etiketsiz_sayfa", neden, 0.3, ONAY))
+    else:
+        regs += kalan_etiketsiz
 
     # --- birleştir: başka bölgenin içinde kalan bölge düşer
     regs = [_R(_clip(r.box, W, H), r.kaynak, r.neden, r.guven, r.karar) for r in regs]
@@ -875,9 +992,16 @@ def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] |
         cov = [j for j, w in enumerate(wa) if _okunur(w, j in kesin_idx, med) and not IM.is_strict_label(w, 1)
                and IM._overlap(w.box, r.box) / max(1.0, (w.x1 - w.x0) * (w.y1 - w.y0)) >= 0.4]
         bol = Bolge(b_in, r.karar, r.neden, r.kaynak, r.guven)
+        bol.gorsel = _fotograf(img, b_in)
+        if r.kaynak == "etiketsiz_sayfa" or r.karar != KAPATILDI:
+            out.append(bol)
+            continue
         if cov:
             cov_in = [words[j] for j in cov]
-            yama = _renk_ayir(img, b_in, h, r.box, cov_in)
+            # renk ayırma yalnız yapısal imza bölgesinde (sütun/blok/etiket/taşma) ve imza boyunda: imza kutusu
+            # dışındaki mavi el yazısı içerik metni (karar metni, tarih) yamalanmaz
+            yama = _renk_ayir(img, b_in, h, r.box, cov_in) \
+                if r.kaynak in RENK_AYIRMA_KAYNAK and r.box[3] - r.box[1] <= 1.3 * I else None
             if yama is not None:
                 bol.yama = yama
                 bol.neden += "; renkli mürekkep ayrıldı, alttaki metin korundu"
@@ -885,22 +1009,72 @@ def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] |
                 bol.geri_basilan = _metin(cov_in)
                 bol.neden += "; metinle örtüşen imza, ad/unvan metin katmanından geri basıldı"
             else:
-                bol.karar = ONAY
-                bol.neden += "; metinle örtüşen imza, ad/unvan OCR'dan (geri basılmadı)"
-        elif ocr_dogrula is not None and r.kaynak != "imza_sutunu" and bol.karar == KAPATILDI:
+                bol.karar, bol.kapali = ONAY, True
+                bol.neden += "; metinle örtüşen imza kapatıldı, ad/unvan yalnız OCR'dan: geri basma gerekli mi?"
+        elif ocr_dogrula is not None and r.kaynak != "imza_sutunu":
             try:
                 n = ocr_dogrula(b_in)
             except Exception:
                 n = 0
             if n >= 2:
-                bol.karar = ONAY
-                bol.neden += f"; kutuda yeniden OCR'da {n} okunabilir kelime"
+                bol.karar, bol.kapali = ONAY, True
+                bol.neden += f"; kutu kapatıldı, yeniden OCR'da {n} okunabilir kelime: geri basma gerekli mi?"
         out.append(bol)
     for r in kayitlar:
         out.append(Bolge((r.box[0] / k, r.box[1] / k, r.box[2] / k, r.box[3] / k), r.karar, r.neden, r.kaynak, r.guven))
     if bag is not None:
         bag._analiz[sayfa] += 1
     return out
+
+
+def _yatay_tablolar(yat) -> list:
+    """Dikey çizgisi olmayan tablo (karar/gündem tablosu: yalnız yatay çizgiler): en az 3 uzun (≥ 4 inç),
+    x kapsamı örtüşen, aralıkları ≤ 3,5 inç yatay çizgi grubu → kutu."""
+    uzun = sorted((y, a, b) for y, a, b in yat if b - a >= 4 * I)
+    gruplar: list = []
+    for y, a, b in uzun:
+        for g in gruplar:
+            if y - g[3] <= 3.5 * I and min(g[2], b) - max(g[0], a) >= 0.6 * min(g[2] - g[0], b - a):
+                g[0], g[2], g[3] = min(g[0], a), max(g[2], b), y
+                g[4] += 1
+                break
+        else:
+            gruplar.append([a, y, b, y, 1])
+    return [(g[0], g[1], g[2], g[3]) for g in gruplar if g[4] >= 3]
+
+
+def _el_yazisi_paragraf(kumeler) -> set:
+    """El yazısı paragraf: satır halinde dizilmiş, satır yüksekliği ve satır aralığı tutarlı uzun mürekkep
+    bantları (en az 3 satır, en az ikisi ≥ 2,5 inç, sol kenarları hizalı). → bu bantların kutuları."""
+    bant = [c for c in kumeler if c[2] - c[0] >= 2.5 * (c[3] - c[1]) and 0.1 * I <= c[3] - c[1] <= 0.7 * I
+            and c[2] - c[0] >= 1.2 * I]
+    out: set = set()
+    for b in bant:
+        hb = b[3] - b[1]
+        yigin = [q for q in bant if 0.6 <= (q[3] - q[1]) / hb <= 1.65
+                 and min(q[2], b[2]) - max(q[0], b[0]) >= 0.3 * min(q[2] - q[0], b[2] - b[0])
+                 and abs(q[0] - b[0]) <= 0.6 * I]
+        if len(yigin) < 3 or sum(1 for q in yigin if q[2] - q[0] >= 2.5 * I) < 2:
+            continue
+        cys = sorted((q[1] + q[3]) / 2 for q in yigin)
+        araliklar = [y2 - y1 for y1, y2 in zip(cys, cys[1:])]
+        ort = sum(araliklar) / len(araliklar)
+        if ort <= 0 or ort > 4 * hb:
+            continue
+        sd = (sum((a - ort) ** 2 for a in araliklar) / len(araliklar)) ** 0.5
+        if sd <= 0.35 * ort and min(araliklar) >= 0.6 * hb:
+            out.update(tuple(q) for q in yigin)
+    return out
+
+
+def _fotograf(img, box) -> bool:
+    """Kutudaki görüntü fotoğraf/rozet/ikon mu (çok renkli ya da renk çeşitliliği yüksek): imza değil."""
+    from . import raster
+    x0, y0, x1, y1 = (int(max(0, box[0])), int(max(0, box[1])), int(min(img.width, box[2])), int(min(img.height, box[3])))
+    if x1 - x0 < 4 or y1 - y0 < 4:
+        return False
+    c = img.crop((x0, y0, x1, y1))
+    return raster.multicolor(c) or raster.renk_cesitliligi(c) >= raster.FOTO_RENK
 
 
 def _metin(ws: list[Word]) -> str:

@@ -2,8 +2,10 @@
 görüntü verisi kalmadığını denetleyen son adım.
 
 - PDF (PyMuPDF): kutunun içinde (kenarlardan biraz içeride) merkezi kalan kelimeler çıkarılır;
-  maskeleyicinin yazdığı yer tutucular (`[TC_NO]`, `[İMZA]` …) ve bölgenin `geri_basilan` yazısı
-  dışında harf/rakam kalırsa başarısız. Kutuyla kesişen her görüntünün (XObject) piksel verisi açılır,
+  maskeleyicinin yazdığı yer tutucular (`[TC_NO]`, `[İMZA]`, `[GÖRSEL]` …) ve aynı sayfada bu kutuyla
+  kesişen bütün bölgelerin `geri_basilan` yazıları (aynı kutuya iki bölge düşebilir; her biri kendi
+  yazısını geri basar) dışında harf/rakam kalırsa başarısız. Denetlenen: kutusu kapatılan her bölge
+  (`kapatildi` ve kutusu kapalı tutulan `onay_bekliyor`). Kutuyla kesişen her görüntünün (XObject) piksel verisi açılır,
   kutunun görüntüdeki karşılığı kırpılır: redaksiyon pikselleri tek renge boyar; kırpıntı tek renkli
   değilse (altında görüntü verisi kaldı) başarısız. Satır içi görüntü (xref 0) açılamaz: başarısız.
 - Görsel: kutunun piksel karşılığı karanlık olmalı (siyah kutu + koyu gri yer tutucu yazısı).
@@ -67,6 +69,14 @@ def _renkli_pay(img) -> float:
     return sum(1 for i in range(0, len(hsv), 3) if hsv[i + 1] >= 80 and hsv[i + 2] >= 40 and 130 <= hsv[i] <= 220) / n
 
 
+def _kapali(b: dict) -> bool:
+    return b.get("karar") == "kapatildi" or (b.get("karar") == "onay_bekliyor" and bool(b.get("kapali")))
+
+
+def _kesisir(a, b) -> bool:
+    return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+
 def _yamali(b: dict) -> bool:
     return bool(b.get("_yama") or b.get("_yamali"))
 
@@ -76,7 +86,7 @@ def pdf(path: Path, bolgeler: list[dict]) -> list[str]:
     fitz = _fitz()
     if fitz is None:
         return []
-    kapali = [b for b in bolgeler or [] if b.get("karar") == "kapatildi"]
+    kapali = [b for b in bolgeler or [] if _kapali(b)]
     if not kapali:
         return []
     out: list[str] = []
@@ -101,7 +111,9 @@ def pdf(path: Path, bolgeler: list[dict]) -> list[str]:
             if x1 <= x0 or y1 <= y0:
                 continue
             inside = [w[4] for w in words_by[sn] if x0 <= (w[0] + w[2]) / 2 <= x1 and y0 <= (w[1] + w[3]) / 2 <= y1]
-            res = _residual(" ".join(inside), [b.get("geri_basilan") or "", "imza gizlendi"])
+            izin = [o.get("geri_basilan") or "" for o in bolgeler if o.get("geri_basilan")
+                    and int(o.get("sayfa") or 0) == sn and _kesisir(o["kutu"], b["kutu"])]
+            res = _residual(" ".join(inside), izin + [b.get("geri_basilan") or "", "imza gizlendi"])
             if res:
                 out.append(f"{b.get('id')}: kutunun altında çıkarılabilir metin kaldı (s.{sn})")
                 continue
@@ -152,7 +164,7 @@ def pdf(path: Path, bolgeler: list[dict]) -> list[str]:
 
 def gorsel(path: Path, bolgeler: list[dict]) -> list[str]:
     from .raster import _open_image, image_scale
-    kapali = [b for b in bolgeler or [] if b.get("karar") == "kapatildi"]
+    kapali = [b for b in bolgeler or [] if _kapali(b)]
     if not kapali:
         return []
     rgb = _open_image(path)

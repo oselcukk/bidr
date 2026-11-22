@@ -73,6 +73,7 @@ def _c(c) -> dict:
 MODEL_KINDS = {"tc_no": "kimlik no", "telefon": "telefon", "eposta": "e-posta", "ogrenci_no": "öğrenci no",
                "iban": "IBAN"}
 EL_YAZISI_SORUN = "elle bakılmalı: el yazısı kişisel veri kapatılamadı"
+IMZA_GERI_BASMA_SORUN = "imza: kutu kapatıldı, ad/unvan yalnız OCR'dan okundu: geri basma onayı bekliyor"
 
 
 def model_text_gaps(model_text: str, res: dict, rules: MaskRules) -> tuple[list[str], str | None]:
@@ -176,11 +177,15 @@ def mask_and_check(src: Path, dst: Path, rules: MaskRules, eng: str, model_text:
             sorunlar.append(f"{EL_YAZISI_SORUN} ({'; '.join(gaps)})")
     if bolgeli:
         onay = BG.onay_bekleyen(bg.bolgeler)
-        # m1 (yapi) bölgeleri: etiketsiz aday / metinle örtüşen (kapatıldı, ad OCR'dan) nedenle ayrılır
-        mt = [b for b in onay if b["tur"] == "imza" and (b["kaynak"] == "imza_metin" or "metinle örtüşen" in b["neden"])]
-        et = [b for b in onay if b["tur"] == "imza" and b not in mt
-              and (b["kaynak"] in ("imza_etiketsiz", "etiketsiz_aday") or "etiketsiz" in b["neden"])]
-        kl = [b for b in onay if b["tur"] == "imza" and b not in mt and b not in et]
+        # m1 (yapi) bölgeleri: kutusu kapalı geri basma onayı / metinle örtüşen kapatılmamış / etiketsiz aday
+        gb = [b for b in onay if b["tur"] == "imza" and b.get("kapali")]
+        mt = [b for b in onay if b["tur"] == "imza" and b not in gb
+              and (b["kaynak"] == "imza_metin" or "metinle örtüşen" in b["neden"])]
+        et = [b for b in onay if b["tur"] == "imza" and b not in mt and b not in gb
+              and (b["kaynak"] in ("imza_etiketsiz", "etiketsiz_aday", "etiketsiz_sayfa") or "etiketsiz" in b["neden"])]
+        kl = [b for b in onay if b["tur"] == "imza" and b not in mt and b not in et and b not in gb]
+        if gb:
+            sorunlar.append(f"{IMZA_GERI_BASMA_SORUN} ({_sayfalar(gb)})")
         if et:
             sorunlar.append("imza: elle bakılmalı (" + _sayfalar(et) + ")")
             rec["imza_elle"] = [f"s.{n}" for n in sorted({b["sayfa"] for b in et})]
@@ -197,8 +202,18 @@ def mask_and_check(src: Path, dst: Path, rules: MaskRules, eng: str, model_text:
         if dog:
             rec["redaksiyon_dogrulama"] = dog
             sorunlar.append(f"redaksiyon doğrulaması başarısız ({len(dog)} kutu): " + "; ".join(dog[:3]))
+        acik = [b for b in onay if not b.get("kapali")]
+        if acik and dst.is_file():
+            # inceleme kopyası (maskeleme-basarisiz/ ya da --kaynak ağacı): açık kalan öneriler renkli kesik
+            # çerçeveyle çizilir; inceleyici kopyayı tamamen maskeli sanmasın
+            try:
+                onay_cercevesi(dst, kind, acik, eng)
+            except Exception as e:                       # noqa: BLE001 — çerçeve çizilemedi: uyarı
+                model_uyari.append(f"onay çerçevesi çizilemedi ({type(e).__name__})")
         rec["bolgeler"] = _clean_bolgeler(bg.bolgeler)
         rec["bolge_ozet"] = BG.ozet(bg.bolgeler)
+        if res.get("sayfalar"):
+            rec["sayfalar"] = res["sayfalar"]
         if onay:
             rec["onay_bekleyen"] = len(onay)
     elif after.get("imza_aday"):
@@ -234,11 +249,62 @@ def mask_and_check(src: Path, dst: Path, rules: MaskRules, eng: str, model_text:
     return rec
 
 
+ONAY_RENK = (1.0, 0.45, 0.0)          # turuncu: açık kalan öneri çerçevesi
+
+
+def onay_cercevesi(dst: Path, kind: str, bolgeler: list[dict], eng: str) -> None:
+    """Maskeli kopyada açık kalan (`onay_bekliyor`, kutusu kapatılmamış) bölgelerin çevresine turuncu kesik
+    çerçeve ve "[ONAY BEKLİYOR]" işareti. Yeniden taramadan ve redaksiyon doğrulamasından SONRA çizilir
+    (çerçeve çizgisi imza/tablo adayı sayılmasın). Kopyanın kendisi teslim paketine girmez."""
+    if kind == "pdf" and eng == "pymupdf":
+        from .formats import _fitz
+        fitz = _fitz()
+        doc = fitz.open(str(dst))
+        try:
+            for b in bolgeler:
+                sn = int(b["sayfa"])
+                if not 1 <= sn <= doc.page_count:
+                    continue
+                page = doc[sn - 1]
+                r = fitz.Rect(*b["kutu"]) & page.rect
+                if r.is_empty:
+                    continue
+                page.draw_rect(r, color=ONAY_RENK, width=1.6, dashes="[4 2] 0")
+                try:
+                    page.insert_text((r.x0 + 1, max(r.y0 - 2, 7)), "[ONAY BEKLIYOR]", fontsize=6, color=ONAY_RENK)
+                except Exception:
+                    pass
+            tmp = dst.with_suffix(dst.suffix + ".tmp")
+            doc.save(str(tmp), garbage=3, deflate=True)
+        finally:
+            doc.close()
+        tmp.replace(dst)
+    elif kind == "gorsel":
+        from PIL import ImageDraw
+        from .raster import _open_image, image_scale, save_like
+        img = _open_image(dst)
+        img = img.convert("RGB")
+        sc = image_scale(img)
+        d = ImageDraw.Draw(img)
+        col = tuple(int(255 * v) for v in ONAY_RENK)
+        lw = max(2, int(min(img.size) / 400))
+        for b in bolgeler:
+            x0, y0, x1, y1 = [v / sc for v in b["kutu"]]
+            step = 6 * lw
+            for x in range(int(x0), int(x1), 2 * step):          # kesik çizgi
+                d.line([(x, y0), (min(x + step, x1), y0)], fill=col, width=lw)
+                d.line([(x, y1), (min(x + step, x1), y1)], fill=col, width=lw)
+            for y in range(int(y0), int(y1), 2 * step):
+                d.line([(x0, y), (x0, min(y + step, y1))], fill=col, width=lw)
+                d.line([(x1, y), (x1, min(y + step, y1))], fill=col, width=lw)
+        save_like(img, dst, dst.suffix)
+
+
 # ---------------------------------------------------------------- önbellekli dosya işi
 
-KURAL_SURUM = 2            # tespit/kapatma kuralları elle sürümü (kod parmak izi ayrıca anahtara girer)
+KURAL_SURUM = 3            # tespit/kapatma kuralları elle sürümü (kod parmak izi ayrıca anahtara girer); 3: m4
 _KOD_MODULLERI = ("detect", "formats", "raster", "imza", "alan", "ocr", "bolge", "dogrula", "yapi", "sablon",
-                  "run", "eski")
+                  "run", "eski", "kaynak")
 
 
 def _kod_izi() -> str:
@@ -384,7 +450,7 @@ def _isle(job: dict) -> dict:
     rec: dict = {"dosya": rel}
     sha = onbellek.sha256_file(src)
     rec["sha256"] = sha
-    elle = job.get("elle")
+    elle = job.get("elle") or (job.get("elle_sha") or {}).get(sha)    # ön işlemede yüklenen: aynı sha256
     if elle and elle.get("kaynak_sha") == sha and Path(elle["yol"]).is_file():
         out = dst.with_suffix(Path(elle["yol"]).suffix) if Path(elle["yol"]).suffix else dst
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -478,6 +544,8 @@ def run(ws_root: Path, *, evidence: Path | None = None, out: Path | None = None,
     if eng == "pypdf":
         uyarilar.append("PyMuPDF kurulu değil: PDF'ler pypdf ile en iyi çaba ile maskelendi; gerçek "
                         "kaldırma (redaction) için `pip install 'bidr[maske]'`")
+    elle_sha = {v["kaynak_sha"]: dict(v, yol=str(ws / v["dosya"])) for v in elle.values()
+                if v.get("kaynak_sha") and v.get("dosya")}
     jobs = []
     for src in _files(ev):
         rel = src.relative_to(ev).as_posix()
@@ -487,7 +555,7 @@ def run(ws_root: Path, *, evidence: Path | None = None, out: Path | None = None,
         mt = read_model_text(model_texts.get(rel))
         jobs.append({"src": str(src), "rel": rel, "dst": str(dst_root / rel), "dst_root": str(dst_root),
                      "rules": rules, "eng": eng, "model_text": mt, "kararlar": kararlar, "elle": e,
-                     "onbellek": ob_yol})
+                     "elle_sha": elle_sha, "onbellek": ob_yol})
     if workers > 1 and len(jobs) > 1:
         from concurrent.futures import ProcessPoolExecutor
         with ProcessPoolExecutor(max_workers=workers) as ex:

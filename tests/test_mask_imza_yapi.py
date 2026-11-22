@@ -24,7 +24,7 @@ from bidr.mask import yapi as Y  # noqa: E402
 from bidr.mask.detect import MaskRules  # noqa: E402
 
 needs_ocr = pytest.mark.skipif(not O.ocr_available(), reason="tesseract + tur/eng yok")
-KAYIT_ALANLARI = {"id", "sayfa", "kutu", "tur", "karar", "neden", "kaynak", "guven", "geri_basilan"}
+KAYIT_ALANLARI = {"id", "sayfa", "kutu", "tur", "karar", "neden", "kaynak", "guven", "geri_basilan", "kapali"}
 
 
 def _fitz():
@@ -84,7 +84,7 @@ def test_tablo_izgarasi_ve_imza_sutunu():
     k = IM.A_PPI / 150
     basliklar = [O.Word(t, 95, (x + 14) * k, 130 * k, (x + 90) * k, 150 * k, (1, 1, 1, i))
                  for i, (x, t) in enumerate(zip(S.COLS, ["Sıra", "Adı Soyadı", "Unvanı", "İmza"]))]
-    assert Y.imza_sutunu(tabs[0], basliklar) == (3, 0)
+    assert Y.imza_sutunu(tabs[0], basliklar)[:2] == (3, 0)
     assert Y.imza_sutunu(tabs[0], basliklar[:3]) is None
 
 

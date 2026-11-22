@@ -940,10 +940,11 @@ def _label_fields(img, ink: "_Ink", yapi, words, lines, li, kind, strong, a, b, 
         adaylar = [c for c in adaylar if c.ink and _handwritten(c.box, words, ink)]
     if not adaylar:
         if strong or page_strong:
+            # etiket bulunduysa alan her durumda kapatılır (kaçırmak pahalı): etiketin sağındaki satır bandı
             box = (x0, ly0 - 0.6 * h, min(xr, x0 + 15 * h), ly1 + 0.6 * h)
             if box[2] - box[0] >= h and ink.dark_frac(box) < DONE_DARK:
-                return [Field(kind, _f(box), strong, "onay_bekliyor", KIND, 0.3,
-                              f"{_TUR_AD[kind]} etiketi var, alan bulunamadı")]
+                return [Field(kind, _f(box), strong, "kapatildi", KIND, 0.45,
+                              f"{_TUR_AD[kind]} etiketinin sağı (alan yapısı bulunamadı)")]
         return []
     # aynı yöndeki adayları birleştir (yapı + üstündeki el yazısı tek alan)
     by_dir: dict = {}
@@ -1414,8 +1415,20 @@ TUR = "el_yazisi_alan"
 _KAYNAK_SIRA = {KIND: 0, "rakam_dizisi": 1, "sablon": 2}
 
 
+def _harf_okunan(box, words: list[Word]) -> bool:
+    """Dizinin bileşenlerinin çoğu OCR'da harf okunuyor mu (basılı/el yazısı kelime, rakam dizisi değil)."""
+    harf = rakam = 0
+    for w in words:
+        cx, cy = (w.x0 + w.x1) / 2, (w.y0 + w.y1) / 2
+        if box[0] <= cx <= box[2] and box[1] <= cy <= box[3]:
+            harf += sum(c.isalpha() for c in w.text)
+            rakam += sum(c.isdigit() for c in w.text)
+    return harf > rakam
+
+
 def el_yazisi_bolgeleri(img, words: list[Word], *, sayfa: int = 1, dosya: str = "", olcek: float = 1.0,
-                        more=None, sablonlar=None, kararlar: dict | None = None, sira0: int = 1) -> list[dict]:
+                        more=None, sablonlar=None, kararlar: dict | None = None, sira0: int = 1,
+                        rakam: bool = True) -> list[dict]:
     """Sayfa görüntüsü + OCR kelimeleri → el yazısı alan bölgeleri (bölge sözleşmesi biçiminde).
 
     - `kaynak`: `etiket_alani` (basılı etiketin geometrik alanı), `rakam_dizisi` (etiketsiz 10-13 bileşenli
@@ -1423,7 +1436,10 @@ def el_yazisi_bolgeleri(img, words: list[Word], *, sayfa: int = 1, dosya: str = 
     - `kutu`: PDF puanı (`olcek` = piksel/puan, ör. 300 dpi için 300/72); `id`: `<dosya>-s<sayfa>-<sıra>`
       (`sira0`'dan; sıra kaynak ve konumla kararlı);
     - `kararlar` ({id: "kapat"|"birak"}): verilirse bölgeye uygulanır; `sablonlar` (`sablon.SablonBellegi`)
-      verilirse "kapat" kararlı bölgeler şablona öğretilir ve eşleşen şablonun bölgeleri uygulanır.
+      verilirse "kapat" kararlı bölgeler şablona öğretilir ve eşleşen şablonun bölgeleri uygulanır; kullanıcı
+      çiziminden öğrenilen şablon bölgesi (`oneri`) yalnız `onay_bekliyor` öneri olur;
+    - `rakam`: etiketsiz rakam dizisi araması (metin katmanlı / güvenle OCR'lanan basılı sayfada False);
+      bileşenlerinin çoğu harf okunan dizi düşer.
     Değer okunmaz, yazılmaz."""
     kararlar = kararlar or {}
     fields, ctx = alan_adaylari(img, words, more=more)
@@ -1441,7 +1457,9 @@ def el_yazisi_bolgeleri(img, words: list[Word], *, sayfa: int = 1, dosya: str = 
         pii_labs = [_lab_box(lines[li], a, b) for li, _, _, a, b in ctx["found"]]
         other = [w.box for w in words2 if w.conf >= 40 and w.text.rstrip(".)").endswith(":")
                  and sum(c.isalpha() for c in w.text) >= 2 and not any(_overlap(w.box, q) for q in pii_labs)]
-        for box, n in rakam_dizileri(yapi, words2, h, exclude=pii_labs):
+        for box, n in (rakam_dizileri(yapi, words2, h, exclude=pii_labs) if rakam else []):
+            if _harf_okunan(box, words2):
+                continue                          # bileşenlerin çoğu harf: el yazısı kelime, rakam dizisi değil
             host = next((r for r in regs if r["karar"] == "kapatildi" and _inside(box, r["_box"], 0.5)), None)
             if host is not None:                  # etiket alanının içinde: alan diziyi tümüyle kapsasın
                 host["_box"] = _union(host["_box"], box)
@@ -1470,6 +1488,14 @@ def el_yazisi_bolgeleri(img, words: list[Word], *, sayfa: int = 1, dosya: str = 
             sablonlar.ogren(iz, onay, kaynak=f"{dosya}-s{sayfa}")
         for u in sablonlar.uygula(iz):
             box = u["kutu"]
+            if u.get("oneri"):                    # kullanıcı çizimi: başka belgede yalnız öneri (kendiliğinden kapatılmaz)
+                if any(_iou(box, r["_box"]) >= 0.4 or _inside(box, r["_box"], 0.8) for r in regs):
+                    continue
+                regs.append({"_box": box, "karar": "onay_bekliyor", "kaynak": "sablon", "guven": min(u["guven"], 0.5),
+                             "neden": f"form şablonu {u['sablon']}: kullanıcının aynı formda çizdiği bölge (öneri)"})
+                regs[-1]["id"] = f"{dosya}-s{sayfa}-{k}"
+                k += 1
+                continue
             hit = next((r for r in regs if _iou(box, r["_box"]) >= 0.4 or _inside(box, r["_box"], 0.8)), None)
             if hit is not None:
                 if u["guvenilir"] and hit["karar"] == "onay_bekliyor":

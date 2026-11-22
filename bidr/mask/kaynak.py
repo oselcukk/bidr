@@ -63,8 +63,17 @@ ADDR_PLACEHOLDER = "eposta@maskeli.invalid"
 
 
 class _Ctx:
-    def __init__(self, rules: MaskRules, eng: str, ayir: Path | None = None, model_text: str | None = None):
+    def __init__(self, rules: MaskRules, eng: str, ayir: Path | None = None, model_text: str | None = None,
+                 ws: str | None = None):
         self.rules = rules
+        self.ws = Path(ws) if ws else None
+        from . import bolge as BG
+        from .run import elle_kayit
+        self.kararlar = BG.kararlar_yukle(self.ws) if self.ws else {}       # bölge kararları + kullanıcı çizimleri
+        self.elle = {}                                                     # kaynak sha256 → elle maskelenmiş sürüm
+        for v in (elle_kayit(self.ws) if self.ws else {}).values():
+            if v.get("kaynak_sha") and v.get("dosya") and (self.ws / v["dosya"]).is_file():
+                self.elle[v["kaynak_sha"]] = dict(v, yol=str(self.ws / v["dosya"]))
         self.eng = eng
         self.model_text = model_text        # en üst düzey dosyanın modelin okuma metni (yolu), varsa
         self.ayir = ayir                    # --ayir: elle bakılmalı dosyaların ayrı klasörü
@@ -202,7 +211,17 @@ def _mask_one(src: Path, rel: str, hedef: str, dst: Path, ctx: _Ctx, kind: str) 
         mt = read_model_text(Path(ctx.model_text))
         if mt is not None:
             rec["model_metni"] = True
-    rec.update(mask_and_check(src, dst, ctx.rules, ctx.eng, model_text=mt))
+    from .onbellek import sha256_file
+    sha = sha256_file(src)
+    rec["sha256"] = sha
+    e = ctx.elle.get(sha)
+    if e is not None:                                # elle maskelenmiş sürüm (bidr maskele yukle): aynı içerik
+        shutil.copyfile(e["yol"], dst)
+        rec.update(durum="elle_maskelendi", elle_bakilmali=False, neden="elle maskelendi (bidr maskele yukle)",
+                   elle_yukleme={k: e.get(k) for k in ("kim", "zaman", "sha256")})
+        _record(ctx, rel, hedef, **rec)
+        return dst
+    rec.update(mask_and_check(src, dst, ctx.rules, ctx.eng, model_text=mt, kararlar=ctx.kararlar, sha=sha, kind=kind))
     if rec["durum"] == "hata":
         _copy_as_is(src, dst)
         rec["neden"] = rec["neden"] + " — özgün dosya olduğu gibi kopyalandı (kişisel veri içerebilir)"
@@ -210,6 +229,9 @@ def _mask_one(src: Path, rel: str, hedef: str, dst: Path, ctx: _Ctx, kind: str) 
         rec["neden"] = rec["neden"] + " — maskeli kopya ağaçta (eksik maskeleme)"
     _record(ctx, rel, hedef, **rec)
     return dst
+
+
+WS_RAPOR = "maskeleme-kaynak-raporu.json"      # -w verilince çalışma alanına da yazılır (inceleme komutları okur)
 
 
 def _handle_legacy(src: Path, rel: str, hedef: str, dst: Path, ctx: _Ctx, depth: int, ext: str) -> Path:
@@ -606,8 +628,8 @@ def _files(src: Path) -> tuple[list[Path], list[str]]:
 
 
 def _work(args) -> list[dict]:
-    src, rel, hedef, dst, rules, eng, ayir, mtext = args
-    ctx = _Ctx(rules, eng, Path(ayir) if ayir else None, mtext)
+    src, rel, hedef, dst, rules, eng, ayir, mtext, ws = args
+    ctx = _Ctx(rules, eng, Path(ayir) if ayir else None, mtext, ws)
     try:
         written = _handle(Path(src), rel, hedef, Path(dst), ctx)
     except Exception as e:      # beklenmeyen: kanıt düşmesin
@@ -679,7 +701,7 @@ def run_source(source: Path, out: Path, *, rules: MaskRules | None = None, engin
         hedef = "/".join(namer.path(rel.split("/")))
         mt = mtexts.get(rel)
         jobs.append((str(p), rel, hedef, str(out / hedef), rules, eng, str(ayir_d) if ayir_d else None,
-                     str(mt) if mt else None))
+                     str(mt) if mt else None, str(Path(ws).expanduser().resolve()) if ws else None))
     records: list[dict] = []
     if workers > 1 and len(jobs) > 1:
         with ProcessPoolExecutor(max_workers=workers) as ex:
@@ -731,6 +753,13 @@ def run_source(source: Path, out: Path, *, rules: MaskRules | None = None, engin
                                                 ensure_ascii=False, indent=1), encoding="utf-8")
     rep_p.parent.mkdir(parents=True, exist_ok=True)
     rep_p.write_text(json.dumps(rapor, ensure_ascii=False, indent=1), encoding="utf-8")
+    if ws:
+        # ön işleme (bidr file öncesi): bolgeler/karar/ciz/sayfa/yukle -w bu raporu okur
+        wr = Path(ws).expanduser().resolve() / WS_RAPOR
+        if not (_inside(wr, src) or _inside(wr, out)):
+            tmp = wr.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(dict(rapor, rapor=str(rep_p)), ensure_ascii=False, indent=1), encoding="utf-8")
+            tmp.replace(wr)
     rapor["rapor"] = str(rep_p)
     marker = {"surum": SURUM, "mod": "kaynak", "zaman": rapor["zaman"], "rapor": str(rep_p)}
     (out / MARKER).write_text(json.dumps(marker, ensure_ascii=False, indent=1), encoding="utf-8")

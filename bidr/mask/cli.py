@@ -6,9 +6,16 @@
 
 İnsan kontrolü (teslim kapısı; bkz. `inceleme`):
 
-- `bidr maskele bolgeler -w WS [--json]`: onay bekleyen bölgeler;
-- `bidr maskele karar -w WS <bolge_id> kapat|birak [--kim AD]`: bölge kararı (sonraki `bidr maskele` uygular);
-- `bidr maskele yukle -w WS <kanit_dosyasi> <maskeli_dosya> [--kim AD] [--zorla]`: elle maskelenmiş sürüm.
+- `bidr maskele bolgeler -w WS [--json]`: onay bekleyen bölgeler (`--json`: bütün bölgeler + dosya/sayfa bilgisi);
+- `bidr maskele karar -w WS <bolge_id> kapat|birak|sil [--kim AD]`: bölge kararı (sonraki `bidr maskele`
+  uygular); `sil` yalnız kullanıcı bölgesi;
+- `bidr maskele ciz -w WS <dosya> --sayfa N --kutu x0,y0,x1,y1 [--kim AD] [--json]`: kullanıcı bölgesi
+  (kalıcı gerçek redaksiyon; şablon belleğine öneri örneği);
+- `bidr maskele sayfa -w WS <dosya> --sayfa N [--dpi 110] [-o cikti.png] [--maskeli] [--json]`: sayfa görüntüsü;
+- `bidr maskele yukle -w WS <dosya> <maskeli_dosya> [--kim AD] [--zorla]`: elle maskelenmiş sürüm.
+
+`<dosya>`: rapordaki dosya yolu, klasördeki yol ya da belge kimliği (sha256 / öneki). Rapor: kanıt modunun
+`<ws>/maskeleme-raporu.json`'u, yoksa ön işlemenin `<ws>/maskeleme-kaynak-raporu.json`'u (`--kaynak … -w WS`).
 """
 from __future__ import annotations
 
@@ -115,6 +122,9 @@ def _karar(args) -> int:
     except IncelemeError as e:
         print(f"HATA {e}", file=sys.stderr)
         return 2
+    if getattr(args, "json", False):
+        print(json.dumps(d, ensure_ascii=False))
+        return 0
     print(f"karar yazıldı: {d['id']} → {d['karar']} ({d['kim']}, {d['zaman']})")
     print(f"uygulamak için: bidr maskele -w {ws}")
     return 0
@@ -136,8 +146,53 @@ def _yukle(args) -> int:
     return 0
 
 
+def _ciz(args) -> int:
+    from .inceleme import IncelemeError, ciz
+    ws = _ws_req(args)
+    if ws is None:
+        return 2
+    try:
+        d = ciz(ws, args.dosya, args.sayfa, args.kutu, args.kim)
+    except IncelemeError as e:
+        print(f"HATA {e}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(d, ensure_ascii=False, indent=1))
+        return 0
+    if d.get("uyari"):
+        print(f"uyarı: {d['uyari']}")
+    k = ", ".join(f"{v:.1f}" for v in d["kutu"])
+    print(f"kullanıcı bölgesi: {d['id']} s.{d['sayfa']} [{k}] (sonraki `bidr maskele` uygular; silmek için "
+          f"bidr maskele karar -w {ws} {d['id']} sil)")
+    return 0
+
+
+def _sayfa(args) -> int:
+    from .inceleme import IncelemeError, sayfa
+    ws = _ws_req(args)
+    if ws is None:
+        return 2
+    if not args.o and not args.json:
+        print("HATA -o çıktı.png (ya da yalnız bilgi için --json) gerekli", file=sys.stderr)
+        return 2
+    try:
+        d = sayfa(ws, args.dosya, args.sayfa, args.dpi, Path(args.o) if args.o else None, maskeli=args.maskeli)
+    except IncelemeError as e:
+        print(f"HATA {e}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(d, ensure_ascii=False, indent=1))
+    else:
+        print(f"{d['png']}: s.{d['sayfa']}/{d['sayfa_sayisi']} {d['genislik']:.1f}×{d['yukseklik']:.1f} pt, {d['dpi']} dpi")
+    return 0
+
+
 def _run(args) -> int:
     islem = getattr(args, "islem", None)
+    if islem == "ciz":
+        return _ciz(args)
+    if islem == "sayfa":
+        return _sayfa(args)
     if islem == "bolgeler":
         return _bolgeler(args)
     if islem == "karar":
@@ -212,7 +267,7 @@ def register(sub):
                    help="ek ad listesi (.txt satır başına bir ad ya da .csv ilk sütun); "
                         "config.yaml privacy.maskeleme.ad_listesi'ne eklenir")
     p.set_defaults(func=_run, islem=None)
-    alt = p.add_subparsers(dest="islem", metavar="{bolgeler,karar,yukle}")
+    alt = p.add_subparsers(dest="islem", metavar="{bolgeler,karar,ciz,sayfa,yukle}")
 
     def ws_arg(q):
         q.add_argument("--workspace", "-w", default=argparse.SUPPRESS, help="çalışma alanı")
@@ -222,8 +277,24 @@ def register(sub):
     q = alt.add_parser("karar", help="bölge kararı: kapat | birak (sonraki bidr maskele uygular)")
     ws_arg(q)
     q.add_argument("bolge_id")
-    q.add_argument("karar", choices=("kapat", "birak"))
+    q.add_argument("karar", choices=("kapat", "birak", "sil"), help="sil: yalnız `ciz` ile çizilen bölge")
     q.add_argument("--kim", default=None, help="kararı veren (varsayılan: kullanıcı adı)")
+    q.add_argument("--json", action="store_true", help="yazılan karar satırı JSON")
+    q = alt.add_parser("ciz", help="kullanıcı bölgesi ekle (kalıcı gerçek redaksiyon; şablon belleğine öneri örneği)")
+    ws_arg(q)
+    q.add_argument("dosya", help="rapordaki dosya yolu, klasördeki yol ya da belge kimliği (sha256)")
+    q.add_argument("--sayfa", type=int, required=True, help="sayfa no (1'den)")
+    q.add_argument("--kutu", required=True, help="x0,y0,x1,y1: görüntülenen sayfada PDF puanı, sol üst köken")
+    q.add_argument("--kim", default=None)
+    q.add_argument("--json", action="store_true", help="yeni bölge kaydı JSON (id dahil)")
+    q = alt.add_parser("sayfa", help="belgenin sayfa görüntüsü (PNG) ve sayfa boyutları")
+    ws_arg(q)
+    q.add_argument("dosya", help="rapordaki dosya yolu, klasördeki yol ya da belge kimliği (sha256)")
+    q.add_argument("--sayfa", type=int, default=1, help="sayfa no (1'den)")
+    q.add_argument("--dpi", type=int, default=110, help="çözünürlük (PNG ölçeği = dpi/72)")
+    q.add_argument("-o", default=None, help="çıktı PNG yolu")
+    q.add_argument("--maskeli", action="store_true", help="maskeli kopyanın sayfası")
+    q.add_argument("--json", action="store_true", help="sayfa sayısı ve boyut (pt) JSON")
     q = alt.add_parser("yukle", help="elle maskelenmiş sürümü kabul et (kayıt 'elle maskelendi')")
     ws_arg(q)
     q.add_argument("kanit", help="kanıt dosyası (evidence/ içindeki yol ya da evidence/'e göreli yol)")

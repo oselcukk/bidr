@@ -222,9 +222,10 @@ class SablonBellegi:
                 best, bs = s, sc
         return (best, bs) if best is not None else None
 
-    def ogren(self, iz: dict, kutular, kaynak: str = "") -> str | None:
+    def ogren(self, iz: dict, kutular, kaynak: str = "", oneri: bool = False) -> str | None:
         """İnsanın kapattığı kutuları (sayfa pikseli) şablona ekle; eşleşen şablon yoksa yenisi açılır.
-        Eşleşen şablona hizalama güvenilmezse yeni şablon açılır (yanlış bölge öğretilmez)."""
+        Eşleşen şablona hizalama güvenilmezse yeni şablon açılır (yanlış bölge öğretilmez). `oneri`:
+        kullanıcının çizdiği bölge (`bidr maskele ciz`): başka belgede yalnız öneri olarak çıkar."""
         kutular = [tuple(float(v) for v in b) for b in kutular]
         if not kutular or len(iz["capalar"]) < MIN_ORTAK:
             return None
@@ -249,7 +250,7 @@ class SablonBellegi:
             tb = _apply_box(T, b)
             if any(_iou(tb, tuple(r["kutu"])) >= 0.6 for r in sab["bolgeler"]):
                 continue
-            sab["bolgeler"].append({"kutu": [round(v, 1) for v in tb], "kaynak": kaynak})
+            sab["bolgeler"].append({"kutu": [round(v, 1) for v in tb], "kaynak": kaynak, **({"oneri": True} if oneri else {})})
             self.degisti = True
         self.degisti = True
         return sab["id"]
@@ -274,7 +275,19 @@ class SablonBellegi:
         boxes = [(b[0] - 1.0 * h, b[1] - 0.3 * h, b[2] + 1.0 * h, b[3] + 0.3 * h) for b in boxes]
         g = round(min(0.9, 0.5 + 0.4 * sc), 2) if al["guvenilir"] else 0.35
         return [{"kutu": b, "guvenilir": al["guvenilir"], "hata": al["hata"] if T is not None else float("nan"),
-                 "guven": g, "sablon": sab["id"], "neden": al["neden"]} for b in boxes]
+                 "guven": g, "sablon": sab["id"], "neden": al["neden"], "oneri": bool(r.get("oneri"))}
+                for b, r in zip(boxes, sab["bolgeler"])]
+
+    def unut(self, kaynak: str) -> int:
+        """`kaynak` kimliğiyle öğrenilen bölgeleri sil (kullanıcı çizimini silince). → silinen sayısı."""
+        n = 0
+        for sab in self.sablonlar:
+            once = len(sab["bolgeler"])
+            sab["bolgeler"] = [r for r in sab["bolgeler"] if r.get("kaynak") != kaynak]
+            n += once - len(sab["bolgeler"])
+        if n:
+            self.degisti = True
+        return n
 
 
 def _iou(p, q) -> float:

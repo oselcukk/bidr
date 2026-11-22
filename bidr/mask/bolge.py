@@ -6,7 +6,15 @@ bölgedir:
     {"id": "<dosya-sha8>-s<sayfa>-<sıra>", "sayfa": 1, "kutu": [x0, y0, x1, y1],
      "tur": "imza" | "el_yazisi_alan" | "kisisel_veri" | "okunamayan_sayfa",
      "karar": "kapatildi" | "onay_bekliyor" | "birakildi", "neden": "…", "kaynak": "kural adı",
-     "guven": 0.0-1.0, "geri_basilan": null}
+     "guven": 0.0-1.0, "geri_basilan": null, "kapali": true | false}
+
+`kapali`: kutu maskeli kopyada kapatıldı mı. `kapatildi` her zaman kapalıdır; `onay_bekliyor` bölge
+çoğunlukla açıktır (inceleme kopyasında renkli kesik çerçeveyle işaretlenir), yalnız metinle örtüşen imza
+(ad/unvan yalnız OCR'dan okundu: "geri basma gerekli mi") kapalı tutulur.
+
+Kullanıcı bölgesi (`bidr maskele ciz`): `kaynak`/`tur` `kullanici`, kimlik `<sha8>-s<sayfa>-k<n>`, karar
+satırında `kutu` ve `sayfa`; sonraki her maskeleme koşusunda gerçek redaksiyon olarak uygulanır. Silme:
+`{"id", "karar": "sil"}` (yalnız kullanıcı bölgesi).
 
 Kimlik kararlıdır: aynı girdi + aynı kurallar → aynı kimlik. Sıra sayfa içinde önce ilk turdaki
 tespitler (yukarıdan aşağı, soldan sağa), sonra kapatmadan sonra belirenler ve yeniden taramanın
@@ -37,7 +45,8 @@ from pathlib import Path
 
 KARARLAR = "maskeleme-kararlari.jsonl"
 KAPATILDI, ONAY, BIRAKILDI = "kapatildi", "onay_bekliyor", "birakildi"
-TURLER = ("imza", "el_yazisi_alan", "kisisel_veri", "okunamayan_sayfa")
+TURLER = ("imza", "el_yazisi_alan", "kisisel_veri", "okunamayan_sayfa", "kullanici")
+KULLANICI = "kullanici"
 ESLESME = 0.5                       # karar kutusu ↔ bölge kutusu örtüşmesi (küçüğün alanına oranla)
 
 # m1/m3 sağlayıcılarının aranacağı modüller ve fonksiyon adları
@@ -63,7 +72,7 @@ def yeni(sayfa: int, kutu, tur: str, karar: str, neden: str, kaynak: str, guven:
          geri_basilan: str | None = None) -> dict:
     return {"id": None, "sayfa": int(sayfa), "kutu": [round(float(v), 2) for v in kutu], "tur": tur,
             "karar": karar, "neden": neden, "kaynak": kaynak, "guven": round(float(guven), 2),
-            "geri_basilan": geri_basilan}
+            "geri_basilan": geri_basilan, "kapali": karar == KAPATILDI}
 
 
 def alan(k) -> float:
@@ -86,7 +95,7 @@ def kararlar_yolu(ws: Path) -> Path:
 
 
 def kararlar_yukle(ws: Path | None) -> dict[str, dict]:
-    """id → son karar satırı. Bozuk satırlar atlanır."""
+    """id → son karar satırı. Bozuk satırlar atlanır; "sil" satırı kullanıcı bölgesini kaldırır."""
     out: dict[str, dict] = {}
     if ws is None:
         return out
@@ -100,7 +109,34 @@ def kararlar_yukle(ws: Path | None) -> dict[str, dict]:
             continue
         if isinstance(d, dict) and d.get("id") and d.get("karar") in ("kapat", "birak"):
             out[str(d["id"])] = d
+        elif isinstance(d, dict) and d.get("id") and d.get("karar") == "sil":
+            out.pop(str(d["id"]), None)
     return out
+
+
+def kullanici_id(ws: Path, sha8: str, sayfa: int) -> str:
+    """Yeni kullanıcı bölgesi kimliği `<sha8>-s<sayfa>-k<n>` (silinmişler dahil hiç kullanılmamış n)."""
+    p = kararlar_yolu(ws)
+    used = set()
+    pre = f"{sha8}-s{int(sayfa)}-k"
+    if p.is_file():
+        for ln in p.read_text(encoding="utf-8", errors="replace").splitlines():
+            try:
+                i = str(json.loads(ln).get("id") or "")
+            except (ValueError, AttributeError):
+                continue
+            if i.startswith(pre) and i[len(pre):].isdigit():
+                used.add(int(i[len(pre):]))
+    n = 1
+    while n in used:
+        n += 1
+    return f"{pre}{n}"
+
+
+def satir_yaz(ws: Path, d: dict) -> dict:
+    with open(kararlar_yolu(ws), "a", encoding="utf-8") as f:
+        f.write(json.dumps(d, ensure_ascii=False) + "\n")
+    return d
 
 
 def karar_yaz(ws: Path, bolge_id: str, karar: str, kim: str | None = None, *, kutu=None, tur=None,
@@ -143,6 +179,19 @@ class Baglam:
         self._sira[sayfa] = n
         return f"{self.sha8}-s{sayfa}-{n}"
 
+    def kullanici_bolgeleri(self, sayfa: int) -> list[dict]:
+        """Bu dosyanın `sayfa`'sına kullanıcının çizdiği bölgeler (karar satırından; kimlik hazır)."""
+        out = []
+        for i, d in sorted(self.kararlar.items()):
+            if d.get("kaynak") != KULLANICI or int(d.get("sayfa") or 0) != int(sayfa) or not d.get("kutu"):
+                continue
+            b = yeni(sayfa, d["kutu"], KULLANICI, KAPATILDI if d.get("karar") == "kapat" else BIRAKILDI,
+                     f"kullanıcı çizimi ({d.get('kim') or '?'})", KULLANICI, 1.0)
+            b["id"] = i
+            b["_etiket"] = "[MASKELI]"
+            out.append(b)
+        return out
+
     def _uygula(self, b: dict) -> None:
         d = self.kararlar.get(b["id"])
         if d is None:
@@ -167,6 +216,7 @@ class Baglam:
                 b["id"] = self._id(sayfa)
             b.setdefault("geri_basilan", None)
             self._uygula(b)
+            b["kapali"] = b["karar"] == KAPATILDI or (b["karar"] == ONAY and bool(b.get("kapali")))
             self.bolgeler.append(b)
         return bolgeler
 

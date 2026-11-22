@@ -451,6 +451,73 @@ def _yamalari_bas(page, yamalar) -> None:
             pass
 
 
+def kapanir(b: dict) -> bool:
+    """Bölgenin kutusu maskeli kopyada kapatılır mı: `kapatildi`, ya da kutusu kapalı tutulan onay bölgesi
+    (metinle örtüşen imza; ad yalnız OCR'dan: "geri basma gerekli mi" onayı)."""
+    return b["karar"] == "kapatildi" or (b["karar"] == "onay_bekliyor" and bool(b.get("kapali")))
+
+
+YAMA_SIYAH_ORTUSME = 0.5     # yama kutusunun bu payı siyah kapatmanın altındaysa yama basılmaz (kutu siyah olur)
+
+
+def _ortusme_payi(r, kutular) -> float:
+    """`r`'nin (fitz.Rect) `kutular` altında kalan alan payı (kesişimler toplamı, en çok 1)."""
+    a = r.get_area() or 1.0
+    return min(1.0, sum((r & k).get_area() for k in kutular if r.intersects(k)) / a)
+
+
+def _kapat_turu(fitz, page, bolgeler: list[dict], siyahlar: list, labels: list, flags: dict) -> int:
+    """Bir turun kapatması. Siyah kapatma HER ZAMAN en son ve en üstte: önce renk ayırma yamalarının beyaz
+    karartması ve yamaları, sonra bu turun siyah kutuları ve yamanın değdiği önceki siyah kutular yeniden
+    (yamanın siyahla örtüşen kısmı kırpılır). Siyahla çoğunlukla örtüşen yama hiç basılmaz, kutu siyah olur.
+    `siyahlar` (fitz.Rect) yerinde büyür. → kapatılan imza bölgesi sayısı."""
+    siyah_yeni = [fitz.Rect(*b["kutu"]) for b in bolgeler if not b.get("_yama")]
+    beyaz = []
+    n = 0
+    for b in bolgeler:
+        r = fitz.Rect(*b["kutu"])
+        if b.get("_yama"):
+            if _ortusme_payi(r, siyahlar + siyah_yeni) >= YAMA_SIYAH_ORTUSME:
+                b.pop("_yama", None)
+                b["neden"] += "; renk ayırma yaması siyah kapatmayla örtüştü: siyah kapatıldı"
+                siyah_yeni.append(r)
+                labels.append((r, b.get("_etiket") or "[MASKELI]"))
+            else:
+                beyaz.append((r, b["_yama"]))
+        else:
+            labels.append((r, b.get("_etiket") or "[MASKELI]"))
+        if b["tur"] == "imza":
+            n += 1
+    if beyaz:
+        for r, _ in beyaz:
+            page.add_redact_annot(r, fill=(1, 1, 1))
+        page.apply_redactions(**flags)
+        _yamalari_bas(page, beyaz)
+    tekrar = [k for k in siyahlar if any(k.intersects(r) for r, _ in beyaz)]
+    for r in siyah_yeni + tekrar:
+        page.add_redact_annot(r, fill=(0, 0, 0))
+    if siyah_yeni or tekrar:
+        page.apply_redactions(**flags)
+    siyahlar += siyah_yeni
+    return n
+
+
+YENIDEN_TARAMA_ICINDE = 0.9   # yeniden taramada mevcut kapatılmış kutunun içinde kalan aday atlanır
+
+
+def _icinde_payi(k, kutular) -> float:
+    """`k`'nın (liste) `kutular` (liste) içinde kalan en büyük payı (kesişim / k alanı)."""
+    from . import bolge as BG
+    a = BG.alan(k) or 1e-6
+    best = 0.0
+    for o in kutular:
+        ix = min(k[2], o[2]) - max(k[0], o[0])
+        iy = min(k[3], o[3]) - max(k[1], o[1])
+        if ix > 0 and iy > 0:
+            best = max(best, ix * iy / a)
+    return best
+
+
 def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules, bolge=None) -> dict:   # pragma: no cover - isteğe bağlı
     from . import bolge as BG
     from . import raster
@@ -465,6 +532,7 @@ def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules, bolge=None) -> dict
     imza_bolge = ortusen = 0
     kapsam: dict[int, dict] = {}                  # sayfa → kapatılan tür sayıları (el yazısı denetimi)
     sayfa_kutu: dict[int, list] = {}
+    sayfalar: list = []
     flags = _redact_flags(fitz)
     for page in doc:
         sn = page.number + 1
@@ -512,29 +580,21 @@ def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules, bolge=None) -> dict
             if not found:
                 uyarilar.append(f"s.{sn}: bulgu konumu bulunamadı ({f.kind})")
         regs += _hook_bolgeleri("imza", sn, page, rules, ps)
+        regs += bg.kullanici_bolgeleri(sn)
         _kararla(bg, sn, regs)
         labels: list = []                 # (dikdörtgen, yer tutucu): kapatmadan sonra metin katmanına yazılır
-        yamalar: list = []                # m1: renkli mürekkebi ayrılmış kırpıntılar (beyaz karartma + üstüne basılır)
-        for b in regs:
-            if b["karar"] == BG.KAPATILDI and not b.get("_uygulandi"):
-                r = fitz.Rect(*b["kutu"])
-                if b.get("_yama"):
-                    page.add_redact_annot(r, fill=(1, 1, 1))
-                    yamalar.append((r, b["_yama"]))
-                else:
-                    page.add_redact_annot(r, fill=(0, 0, 0))
-                    labels.append((r, b.get("_etiket") or "[MASKELI]"))
-                if b["tur"] == "imza":
-                    imza_bolge += 1
+        siyahlar: list = [fitz.Rect(*b["kutu"]) for b in regs if b.get("_uygulandi")]
+        imza_bolge += _kapat_turu(fitz, page, [b for b in regs if kapanir(b) and not b.get("_uygulandi")],
+                                  siyahlar, labels, flags)
         for k, n in ps["bulgular"].items():          # metin katmanı + OCR aynı bulguyu iki kez saymasın
             page_counts[k] = max(page_counts[k], n)
         counts.update(page_counts)
         page_kapsam = Counter(page_counts)
-        page.apply_redactions(**flags)
-        _yamalari_bas(page, yamalar)
         # kapatma çevreyi değiştirir (küme ayrışır, yeni vuruş belirginleşir): imza/OCR bulgusu
-        # kalmayana kadar en çok iki tur daha (yalnız otomatik kapatılanlar; adaylar yeniden taramada)
-        again = any(b["karar"] == BG.KAPATILDI and b["kaynak"] not in ("metin_deseni", "kapatan_isaretleme")
+        # kalmayana kadar en çok iki tur daha (yalnız otomatik kapatılanlar; adaylar yeniden taramada).
+        # Zaten kapatılmış kutunun içinde kalan aday (aynı kutu, geri basılan yazısıyla yeniden bulunur)
+        # yeni bölge olmaz.
+        again = any(kapanir(b) and b["kaynak"] not in ("metin_deseni", "kapatan_isaretleme", "kullanici")
                     for b in regs)
         for _ in range(2):
             if not again:
@@ -543,25 +603,16 @@ def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules, bolge=None) -> dict
                 ps = raster.scan_pdf_page(page, rules)
             except Exception:
                 break
+            kapali = [b["kutu"] for b in bg.bolgeler if b["sayfa"] == sn and kapanir(b)]
             more = [b for b in ps_bolgeleri(sn, ps, page.rect) if b["karar"] == BG.KAPATILDI]
-            more += [b for b in _hook_bolgeleri("imza", sn, page, rules, ps) if b["karar"] == BG.KAPATILDI]
+            more += [b for b in _hook_bolgeleri("imza", sn, page, rules, ps) if kapanir(b)]
             more = [b for b in more if not any(o["karar"] == BG.BIRAKILDI and BG.ortusme(o["kutu"], b["kutu"]) >= 0.5
-                                               for o in bg.bolgeler if o["sayfa"] == sn)]
+                                               for o in bg.bolgeler if o["sayfa"] == sn)
+                    and _icinde_payi(b["kutu"], kapali) < YENIDEN_TARAMA_ICINDE]
             if not more:
                 break
             _kararla(bg, sn, more, ilk=False)
-            yamalar = []
-            for b in more:
-                if b["karar"] == BG.KAPATILDI:
-                    r = fitz.Rect(*b["kutu"])
-                    if b.get("_yama"):
-                        page.add_redact_annot(r, fill=(1, 1, 1))
-                        yamalar.append((r, b["_yama"]))
-                    else:
-                        page.add_redact_annot(r, fill=(0, 0, 0))
-                        labels.append((r, b.get("_etiket") or "[MASKELI]"))
-                    if b["tur"] == "imza":
-                        imza_bolge += 1
+            imza_bolge += _kapat_turu(fitz, page, [b for b in more if kapanir(b)], siyahlar, labels, flags)
             if ps["imza"] is not None:
                 ortusen += ps["imza"].ortusen_kelime
             for k, n in ps["bulgular"].items():
@@ -569,12 +620,11 @@ def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules, bolge=None) -> dict
                     page_kapsam[k] += n
             alanlar += list(ps.get("alanlar") or [])
             counts["etiket_alani"] += ps["bulgular"].get("etiket_alani", 0)
-            page.apply_redactions(**flags)
-            _yamalari_bas(page, yamalar)
         _write_labels(fitz, page, labels)
         from .raster import page_coverage
         kapsam[page.number + 1] = dict(page_coverage(page_kapsam, alanlar))
         sayfa_kutu[sn] = _rect_list(page.rect)
+        sayfalar.append(sayfa_bilgisi(page))
     if doc.metadata and any(doc.metadata.values()):
         temiz.add("ust_veri")
     doc.set_metadata({})
@@ -603,7 +653,16 @@ def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules, bolge=None) -> dict
     dst.write_bytes(buf.getvalue())
     return {"maskelenen": counts, "temizlenen": sorted(temiz), "uyarilar": uyarilar,
             "imza_bolgesi": imza_bolge, "ortusen_kelime": ortusen, "sayfa_sayisi": len(kapsam),
-            "sayfa_kapsam": kapsam, "bolgeler": bg.bolgeler, "sayfa_kutulari": sayfa_kutu}
+            "sayfa_kapsam": kapsam, "bolgeler": bg.bolgeler, "sayfa_kutulari": sayfa_kutu,
+            "sayfalar": sayfalar}
+
+
+def sayfa_bilgisi(page) -> dict:
+    """Sayfa boyutu (görüntülenen, pt; sol üst köken) ve bölge kutusunu (döndürülmemiş sayfa koordinatı)
+    görüntülenen sayfaya çeviren matris (`/Rotate`'li sayfada birim değil)."""
+    m = page.rotation_matrix
+    return {"no": page.number + 1, "genislik": round(page.rect.width, 2), "yukseklik": round(page.rect.height, 2),
+            "donus": int(page.rotation), "matris": [round(float(v), 4) for v in (m.a, m.b, m.c, m.d, m.e, m.f)]}
 
 
 def _iter_indirect(reader):

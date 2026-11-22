@@ -300,3 +300,59 @@ def ink_ratio(img) -> float:
     hist = g.histogram()
     dark = sum(hist[:140])
     return dark / max(1, g.width * g.height)
+
+
+# ---------------------------------------------------------------- sayfa yönü (tesseract OSD)
+
+OSD_GUVEN = 2.0                # tesseract OSD yön güveni alt sınırı
+_OSD: "OrderedDict[str, int | None]" = OrderedDict()
+
+
+def _osd_png(png: bytes) -> str:
+    from bidr.ingest.ocr import OCR_TIMEOUT, _SLOTS, _tempdir
+    CAGRI["osd"] += 1
+    with _tempdir("bidr-maske-") as td:
+        src = Path(td) / "s.png"
+        src.write_bytes(png)
+        with _SLOTS:
+            r = subprocess.run(["tesseract", str(src), "stdout", "--psm", "0"], capture_output=True,
+                               timeout=OCR_TIMEOUT, env=_env1())
+        return (r.stdout or b"").decode("utf-8", "replace") if r.returncode == 0 else ""
+
+
+def sayfa_yonu(img) -> int | None:
+    """Taranmış sayfanın yönü (tesseract OSD, `osd` dil verisi): düzeltmek için saat yönünde döndürülecek
+    açı (0/90/180/270) ya da None (araç/veri yok, güven düşük). Önbellekli (bellek + `onbellek` `osd`)."""
+    if not ocr_available():
+        return None
+    im = img if img.mode in ("L", "RGB") else img.convert("RGB")
+    im = im.convert("L")
+    im.thumbnail((1800, 1800))
+    buf = io.BytesIO()
+    im.save(buf, format="PNG")
+    png = buf.getvalue()
+    key = hashlib.sha1(png).hexdigest()
+    if key in _OSD:
+        return _OSD[key]
+    from . import onbellek
+    ob = onbellek.aktif()
+    pkey = onbellek.anahtar("osd", onbellek.sha256(png), tesseract_version()) if ob is not None else None
+    out = None
+    b = ob.get("osd", pkey) if ob is not None else None
+    if b is not None:
+        out = None if b == b"-" else int(b.decode())
+    else:
+        try:
+            txt = _osd_png(png)
+        except (OSError, subprocess.SubprocessError):
+            txt = ""
+        rot = re.search(r"Rotate:\s*(\d+)", txt)
+        conf = re.search(r"Orientation confidence:\s*([\d.]+)", txt)
+        if rot and conf and float(conf.group(1)) >= OSD_GUVEN:
+            out = int(rot.group(1)) % 360
+        if ob is not None:
+            ob.put("osd", pkey, b"-" if out is None else str(out).encode())
+    _OSD[key] = out
+    while len(_OSD) > _CACHE_MAX:
+        _OSD.popitem(last=False)
+    return out

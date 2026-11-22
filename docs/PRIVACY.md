@@ -142,10 +142,20 @@ ingest onları okumaz. Bu yüzden A **riski azaltır, kaldırmaz**; yukarıdaki 
 ```
 bidr maskele -w WS [--evidence DIR] [--out DIR] [--motor auto|pymupdf|pypdf] [--ad-listesi DOSYA]
                    [--is N] [--ilerleme] [--onbellek-yok]
-bidr maskele bolgeler -w WS [--json]                         # onay bekleyen bölgeler
-bidr maskele karar -w WS <bolge_id> kapat|birak [--kim AD]   # bölge kararı
-bidr maskele yukle -w WS <kanit_dosyasi> <maskeli_dosya> [--kim AD] [--zorla]
+bidr maskele bolgeler -w WS [--json]                         # onay bekleyen (--json: bütün) bölgeler
+bidr maskele karar -w WS <bolge_id> kapat|birak|sil [--kim AD]   # bölge kararı (sil: yalnız kullanıcı bölgesi)
+bidr maskele ciz -w WS <dosya> --sayfa N --kutu x0,y0,x1,y1 [--kim AD] [--json]   # kullanıcı bölgesi
+bidr maskele sayfa -w WS <dosya> --sayfa N [--dpi 110] [-o out.png] [--maskeli] [--json]
+bidr maskele yukle -w WS <dosya> <maskeli_dosya> [--kim AD] [--zorla]
 ```
+
+İnceleme komutları (`bolgeler`, `karar`, `ciz`, `sayfa`, `yukle`) kanıt modunun `<ws>/maskeleme-raporu.json`'unu,
+o yoksa ön işlemenin `<ws>/maskeleme-kaynak-raporu.json`'unu okur (`bidr maskele --kaynak KLASÖR --out KOPYA
+-w WS`; modelsiz, `bidr file` öncesi). `<dosya>`: rapordaki yol, klasördeki yol ya da belge kimliği
+(sha256/öneki). Kararlar (`maskeleme-kararlari.jsonl`) ve elle maskelenmiş sürümler (`maskeleme-elle.json`,
+kaynağın sha256'sıyla) iki modda da geçerlidir: ön işlemede verilen karar sonraki kanıt maskelemesine taşınır,
+aynı içerikli kopyalar aynı kararı alır. Kutular dışarıya görüntülenen sayfanın PDF puanında (sol üst köken)
+verilir; `sayfa` PNG ölçeği dpi/72.
 
 `bidr file`'ın ürettiği `evidence/` klasörünün **maskeli sunum kopyasını** üretir. Asıl dosyalara
 dokunulmaz.
@@ -184,8 +194,17 @@ eski alanlar korunur:
 {"id": "<dosya-sha8>-s<sayfa>-<sıra>", "sayfa": 1, "kutu": [x0, y0, x1, y1],   # PDF puanı (görselde
  "tur": "imza" | "el_yazisi_alan" | "kisisel_veri" | "okunamayan_sayfa",       #  piksel → puan)
  "karar": "kapatildi" | "onay_bekliyor" | "birakildi", "neden": "…", "kaynak": "kural adı",
- "guven": 0.0-1.0, "geri_basilan": null, "insan": {"karar", "kim", "zaman"}?}
+ "guven": 0.0-1.0, "geri_basilan": null, "kapali": true | false, "insan": {"karar", "kim", "zaman"}?}
 ```
+
+`kapali`: kutu maskeli kopyada kapatıldı mı. `onay_bekliyor` bölge çoğunlukla AÇIKTIR (insan kararına kadar);
+`maskeleme-basarisiz/` inceleme kopyasında (ve `--kaynak` ağacındaki eksik maskeli kopyada) bu bölgeler
+turuncu kesik çerçeve ve "[ONAY BEKLIYOR]" işaretiyle çizilir: inceleyici kopyayı maskeli sanmasın. Tek
+istisna metinle örtüşen imza (ad yalnız OCR'dan okundu): kutu kapalıdır, onay "geri basma gerekli mi" içindir.
+Kullanıcı bölgesi (`ciz`): `tur`/`kaynak` `kullanici`, kimlik `<sha8>-s<sayfa>-k<n>`; her koşuda gerçek
+redaksiyonla uygulanır, ayrıca form şablon belleğine öneri örneği olur (aynı formdan başka belgede yalnız
+`onay_bekliyor` öneri; kendiliğinden kapatılmaz). Kapatılan kutuya yazılan işaret: imza `[İMZA]`, imza
+olmayan görsel (fotoğraf, rozet, ikon) `[GÖRSEL]`.
 
 Kimlik kararlıdır (aynı girdi + aynı kurallar → aynı kimlik). Kaynaklar: `metin_deseni`,
 `ocr_deseni`, `etiket_alani`, `kapatan_isaretleme`, `imza_aday` (kapatıldı), `imza_etiketsiz`,
@@ -368,7 +387,10 @@ yazılır; aşağıdaki eski kurallar (1-8) DOCX'e gömülü görsellerde sürer
   sayfada etiketsiz görüntü/mürekkep araması yapılmaz (`birakildi`).
 - **Metinle örtüşen imza**: kapatılır; altındaki ad/unvan PDF metin katmanından okunuyorsa kutunun
   üstüne "Ad Soyad – Unvan [imza gizlendi]" geri basılır (`geri_basilan`, `kapatildi`); yalnız
-  OCR'dan okunuyorsa bölge `onay_bekliyor` olur. Mavi/mor mürekkep siyah metinden HSV ile
+  OCR'dan okunuyorsa geri basılmaz, kutu kapalı kalır ve bölge "geri basma gerekli mi" diye
+  `onay_bekliyor` olur (`kapali: true`). Renk ayırma yalnız yapısal imza bölgesinde ve imza boyunda
+  yapılır (kutu dışındaki mavi el yazısı içerik metni yamalanmaz); siyah kapatma her zaman en son ve
+  en üsttedir: siyahla çoğunlukla örtüşen yama basılmaz, kalanı kırpılır. Mavi/mor mürekkep siyah metinden HSV ile
   ayrılabiliyorsa (yamada imza benzeri mürekkep ve renkli piksel kalmadığı doğrulanır) yalnız
   mürekkep pikselleri beyazlatılır, alttaki metin kalır (`kapatildi`; PDF'te alttaki görüntü
   pikselleri beyaz karartmayla silinip yama basılır).
@@ -377,8 +399,18 @@ yazılır; aşağıdaki eski kurallar (1-8) DOCX'e gömülü görsellerde sürer
   kaşe/mühür (kareye yakın kutu, mürekkebin çoğu çember bandında, köşeler boş; mühre değen imza
   kutuyu kareden çıkarır, süzülmez); aynı konumda başka sayfalarda (değiştirilmemiş kopyadan) ya da
   çağıran `TekrarBellegi` verirse başka dosyalarda görülen öğe; tamamen basılı sayfada (≥120
-  okunur kelime, etiket yok) eşiği (renkli ya da ≥1,2×0,4 inç) geçemeyen tek aday. Süzülenler
-  `birakildi` + neden; kalan etiketsiz aday `onay_bekliyor`.
+  okunur kelime, etiket yok) eşiği (renkli ya da ≥1,2×0,4 inç) geçemeyen tek aday; 0,5 inçten küçük
+  tik/çentik; satır düzeni tutarlı el yazısı paragrafı. Süzülenler `birakildi` + neden; kalan etiketsiz
+  aday `onay_bekliyor` (kapatılmaz; inceleme kopyasında çerçeveli). Fotoğraf/afişte (renk çeşitliliği
+  yüksek, az metin) ya da sayfada 10'dan çok aday varsa adaylar tek sayfa onayına (`etiketsiz_sayfa`)
+  toplanır. Unvan satırı bandı tablo içinde (yalnız yatay çizgili karar tablosu dahil), akan metinde ve
+  fotoğrafta çalışmaz. Web çıktısında (üst/alt bilgide URL + tarih) mürekkep yalnız gömülü görüntülerde
+  aranır; gömülü görüntü yalnız imza oranında, tek renkli ve gerçek "İmza" etiketine yakınsa alınır.
+- **Yön**: taranmış sayfanın yönü (tesseract OSD) imza/alan çözümlemesinden önce düzeltilir; kutular
+  özgün sayfa koordinatına çevrilir.
+- **Rakam dizisi** (`rakam_dizisi`): metin katmanlı ya da güvenle OCR'lanan basılı sayfada aranmaz;
+  bileşenlerinin çoğu harf okunan dizi düşer. Güçlü kişisel veri etiketi bulunup alanı bulunamazsa
+  etiketin sağındaki satır bandı yine kapatılır.
 
 Eski kurallar (gömülü DOCX görselleri; model kullanılmaz; basit görüntü işleme, Pillow):
 

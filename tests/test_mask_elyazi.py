@@ -78,13 +78,16 @@ def test_empty_guided_field_is_closed():
     assert AL.find_fields(F.img, F.words)               # raster hattı (find_fields) da kapatır
 
 
-def test_label_without_any_field_is_pending():
-    """Güçlü etiket var, ne kılavuz ne mürekkep: alan yeri belirsiz → kapatılmaz, onaya düşer."""
+def test_label_without_any_field_is_closed():
+    """Güçlü etiket var, ne kılavuz ne mürekkep: etiket bulunduğunda alan her durumda kapatılır (m4: kaçırmak
+    pahalı; el yazısı dilekçe gerilemesi) — etiketin sağındaki satır bandı."""
     F = S.Form()
-    F.text(100, 300, "T.C. Kimlik No:")
+    b = F.text(100, 300, "T.C. Kimlik No:")
     regs = regions(F)
-    assert [r["karar"] for r in regs] == ["onay_bekliyor"] and "alan bulunamadı" in regs[0]["neden"]
-    assert AL.find_fields(F.img, F.words) == []          # eski davranış: kapatılacak bir şey yok
+    assert [r["karar"] for r in regs] == ["kapatildi"] and "alan yapısı bulunamadı" in regs[0]["neden"]
+    k = regs[0]["kutu"]
+    assert k[0] >= b[2] and k[1] <= b[1] and k[3] >= b[3], (b, k)          # etiketin sağı, satırı kaplar
+    assert len(AL.find_fields(F.img, F.words)) == 1
 
 
 def test_old_fixed_right_box_assumption_removed():
