@@ -28,6 +28,7 @@ import json
 import time
 from pathlib import Path
 
+from bidr import notlar as N
 from bidr.common import Workspace, read_jsonl
 from bidr.decide import prompt as P
 
@@ -202,7 +203,14 @@ def normalize_parts(raw: dict | None, ad: str, text: str, quotes: dict[str, str]
     return out, notes
 
 
-def inputs_of(ws: Workspace, did: str, rec: dict, doc: dict | None, cs=None) -> dict:
+def note_stale(did: str, have: dict | None, notes: dict[str, list]) -> bool:
+    """Model kanıt adı bölümün şimdiki belge notuyla mı verildi (bidr/notlar.py). Not eklenince/değişince ad
+    yeniden sorulur (model adı ince kararın adının önüne geçer, eski not ya da notsuz ad kalmasın)."""
+    m = (have or {}).get("model")
+    return bool(m) and (m.get("belge_notu") or "") != N.note_sha(notes.get(did))
+
+
+def inputs_of(ws: Workspace, did: str, rec: dict, doc: dict | None, cs=None, notes: list[dict] | None = None) -> dict:
     if cs is None:
         from bidr.criteria.loader import load_criteria
         cs = load_criteria()
@@ -219,7 +227,7 @@ def inputs_of(ws: Workspace, did: str, rec: dict, doc: dict | None, cs=None) -> 
     text = _text(ws, did)
     body, _ = P.excerpt(text, NAME_CHARS)
     bas = (doc or {}).get("baslik")
-    return {"belge_bilgisi": P.render_info(P.content_info(doc)),
+    return {"belge_bilgisi": N.with_note(P.render_info(P.content_info(doc)), notes, "ad"),
             "baslik": bas.strip() if isinstance(bas, str) and bas.strip() else "(yok)",
             "olcutler": "\n".join(lines) or "(yok)",
             "parcalar": part_heads(text, [(m["yuva"], m.get("alinti") or "") for m in acc]),
@@ -237,6 +245,7 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
     recs = decisions_view(ws, cs=cs)
     docs = {r["doc_id"]: r for r in read_jsonl(ws.documents)} if ws.documents.exists() else {}
     have = load_names(ws.root)
+    notes = N.load(ws.root)
     d = work_dir(ws)
     d.mkdir(parents=True, exist_ok=True)
     st = {"paket": 0, "yeni": 0, "zaten_adli": 0, "derleme": 0, "uygun_degil": [], "klasor": str(d)}
@@ -249,12 +258,13 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
     else:
         ids = pool
     for did in ids:
-        if only is None and not redo and ("model" in (have.get(did) or {}) or decision_name(recs[did])):
+        if only is None and not redo and ("model" in (have.get(did) or {}) or decision_name(recs[did])) \
+                and not note_stale(did, have.get(did), notes):
             if not (parca and _needs_parts(ws, did, recs[did], have.get(did) or {}, cache)):
                 st["zaten_adli"] += 1
                 continue
             st["derleme"] += 1
-        r = render(TASK, inputs_of(ws, did, recs[did], docs.get(did), cs))
+        r = render(TASK, inputs_of(ws, did, recs[did], docs.get(did), cs, notes.get(did)))
         sha = _sha(r["prompt"])[:16]
         p = d / f"{did}.json"
         st["paket"] += 1
@@ -266,6 +276,7 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
             out.replace(d / f"{did}.out.json.eski")
         p.write_text(json.dumps({"gorev": r["task"], "surum": str(r["version"]), "doc_id": did,
                                  "istem_sha": sha, "cikti_dosyasi": f"{did}.out.json",
+                                 **({"belge_notu": N.note_sha(notes[did])} if notes.get(did) else {}),
                                  "istem": r["prompt"], "sema": r["schema"]}, ensure_ascii=False, indent=1),
                      encoding="utf-8")
         st["yeni"] += 1
@@ -386,6 +397,9 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", only: list[str] |
         rec = {"doc_id": did, "ad": ad, "kaynak": "model", "model": model, "gorev": {TASK: ver},
                "istem_sha": pkg["istem_sha"], "cevap_sha": _sha(raw)[:16],
                "gerekce": out.get("gerekce", "")}
+        if pkg.get("belge_notu"):           # ad yükleyenin notu görülerek verildi (bidr/notlar.py)
+            rec["belge_notu"] = pkg["belge_notu"]
+            rec["not_uyusmuyor"] = N.conflict(out.get("gerekce"))
         if notes:
             rec["oneri"] = out.get("kanit_adi")
             rec["not"] = notes

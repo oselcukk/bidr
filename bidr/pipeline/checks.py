@@ -235,8 +235,8 @@ def karar_tamam(c: Ctx) -> Check:
         if h is None or h.get("parmak") != input_fingerprint(ws, stage):
             return Check(kim=KOMUT, ilerleme=prog, uyarilar=uy, komutlar=[prep],
                          neden="eski olabilir (araç sürümü ya da girdiler değişti; son tam prepare'den sonra "
-                               "görev/istem kodu, ölçüt verisi, text/, documents.jsonl ya da candidates.jsonl "
-                               "değişti): prepare (onaysız; model çağrısı yok) etkiyi hesaplar, belgeye özgü "
+                               "görev/istem kodu, ölçüt verisi, text/, documents.jsonl, candidates.jsonl ya da "
+                               "belge-notlari.yaml değişti): prepare (onaysız; model çağrısı yok) etkiyi hesaplar, belgeye özgü "
                                "girdisi değişen belgeleri yeniden paketler, yalnız ortak kural metni değişenleri "
                                "geçerli sayar")
     if not missing:
@@ -508,7 +508,8 @@ def _invalid_keys(gfile: Path, pattern: str) -> set[str]:
 
 def name_tamam(c: Ctx) -> Check:
     from bidr.name.resolve import decision_name, load_names
-    from bidr.name.run import (_pkgs, _text, compilation_hint, decisions_view, eligible, parts_pending,
+    from bidr import notlar as N
+    from bidr.name.run import (_pkgs, _text, compilation_hint, decisions_view, eligible, note_stale, parts_pending,
                                task_version, work_dir)
     from bidr.write.sources import rapor_section
     ws = c.ws
@@ -521,8 +522,11 @@ def name_tamam(c: Ctx) -> Check:
     if not pool:
         return Check(atlandi=True, neden="kabul edilmiş eşleşmesi olan belge yok")
     names = load_names(ws.root)
+    notes = N.load(ws.root)
+    # belge notu değişen belgenin model adı eskidir (model adı ince kararın adının önüne geçer): yeniden sorulur
+    noted = {d for d in pool if note_stale(d, names.get(d), notes) and not (names.get(d) or {}).get("insan")}
     have = {d for d in pool if (names.get(d) or {}).get("model") or (names.get(d) or {}).get("insan")
-            or decision_name(recs[d])}
+            or decision_name(recs[d])} - noted
     # parça adı: adı olan ama derleme olduğu saptanan (birleşik belge; alıntılar farklı
     # parçalardan) belge, görevin bu sürümüyle parça adı sorulana dek bekler. Aday yoksa adım biter.
     parca = set(parts_pending(ws, recs, names, sorted(have)))
@@ -538,9 +542,13 @@ def name_tamam(c: Ctx) -> Check:
     # derleme bilgisi yoksa prepare yeniler (cevaplanmış eski paket apply ile parça adı almaz)
     stale = {x for x in parca & set(pk)
              if compilation_hint(_text(ws, x)) not in json.loads(pk[x].read_text(encoding="utf-8")).get("istem", "")}
+    # notu değişen belgenin paketi eski notla (ya da notsuz) yazılmış: prepare yeniler
+    stale |= {x for x in noted & set(pk)
+              if json.loads(pk[x].read_text(encoding="utf-8")).get("belge_notu", "") != N.note_sha(notes.get(x))}
     if nopkg or stale:
         why = [f"{len(nopkg - parca)} belgenin adlandırma paketi yok" if nopkg - parca else "",
-               f"{len(parca)} derleme belgenin parça adı yok (birleşik belge)" if parca else ""]
+               f"{len(parca)} derleme belgenin parça adı yok (birleşik belge)" if parca else "",
+               f"{len(noted)} belgenin notu değişti (yükleyenin notu): ad yeniden sorulacak" if noted else ""]
         return Check(kim=KOMUT, ilerleme=prog, komutlar=[c.fmt(c.stage["komut"][0])],
                      neden=", ".join(x for x in why if x))
     old = [x for x in missing if str(json.loads(pk[x].read_text(encoding="utf-8")).get("surum")) != task_version()]

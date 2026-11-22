@@ -129,6 +129,25 @@ ok, score, span = verify_quote(quote, text)   # Türkçe katlama, boşluk, OCR t
   prepare etkiyi hesaplar (model çağrısı yok). identify kayıtlarına `arac_surumu` yazılır
   (`identify.pipeline.ARAC_SURUMU`); `identify_tamam` eski sürümlü ya da dönemi config'inkiyle
   aynı olmayan (`--period`'suz çalışmış) kaydı bitmiş saymaz.
+- **Bölümün belge notu** (`belge-notlari.yaml`, `bidr/notlar.py`). Kullanıcı (panelde Belgeler sayfası;
+  işleyici yazar) bir belge hakkında kısa not bırakabilir: `{surum: 1, notlar: [{dosya, sha256, metin, kim,
+  tarih}]}`; `dosya` (inventory `rel_path`) ya da `sha256` ile `doc_id`'ye eşlenir, kopya satırları dahil
+  (aynı içeriğin notları birleşir). Not bir İPUCU ve bağlamdır: yalnız not metni (kim/tarih/yol değil)
+  belgeye özgü girdinin sonuna "Bölümün belge hakkındaki notu (kullanıcı beyanı): <<<…>>>" bloğuyla ve
+  ilkesiyle eklenir — kaba/ince karar ve kanıt adında `belge_bilgisi`'ne, betimlemede görüntü listesine.
+  Notsuz belgenin istemi birebir aynı kalır (eskime yok). Görsel okuma (transcribe) notu görmez (birebir
+  yazıya geçirme yanlılaşmasın). Alıntı yalnız belgeden: `verify_quote` belge metnine karşı denetler, not
+  `text/`'e girmez; betimleme nottan 5+ sözcüklük dizi aktaramaz (`note_leaks`, görünen yazıda geçen hariç;
+  geçersiz cevap). Not ile belge çelişirse model kararı belgeden verir ve genel gerekçeyi `[not uyuşmuyor]`
+  ile başlatır; kayıtta `kaba`/`ince.belge_notu` (notun parmak izi) ve `not_uyusmuyor`. Audit satırına
+  `belge_notu` (bilgi; "yükleyenin notu dikkate alındı", sade "Neden"de "Yükleyenin notu dikkate alındı.";
+  verilmiş kararı yeniden baktırmaz) ve çelişkide `not_uyusmuyor` (Dikkat: "Belgeyi yükleyenin notu ile
+  belge içeriği uyuşmuyor…", yeniden baktırır) işaretleri. **Not değişince:** `belge_bilgisi` belgeye özgü
+  girdi olduğundan `staleness` → `girdi_degisti` (kayıttaki `belge_notu` şimdikiyle aynı değilse devralınan ve
+  sağlayıcı kayıtlarında da), belge onaysız yeniden paketlenir; not dosyası `input_fingerprint`'e girer
+  (`bidr next` prepare'i ister). Betimleme (`describe.jsonl` `belge_notu`, `settled`) ve model kanıt adı
+  (`kanit-adlari.jsonl` `belge_notu`, `name.note_stale`, `checks.name_tamam`) de notu değişen belgeyi yeniden
+  paketler. Notlu belge mükerrer metin grubuna girmez (kararı kendi notuyla verilir).
 - `bidr decide -w WS [--profile P] [--only-labeled] [--limit N]` →
   `decisions.jsonl`.
 - `bidr compare-labels -w WS` → geçmiş etiketle karşılaştırma: aynı / ekliyor /

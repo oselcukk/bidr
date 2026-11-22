@@ -20,7 +20,9 @@ def describe_tamam(c):
     need = set(sel) | applied
     if not need:
         return Check(atlandi=True, neden="metni seyrek görsel belge/sayfa yok")
-    done = {d for d in need if R.settled(ws, d, log)}
+    from bidr import notlar as N
+    notes = N.load(ws.root)
+    done = {d for d in need if R.settled(ws, d, log, notes)}
     todo = need - done
     tlog = T.load_log(ws)
     mb = {d for d in done if log.get(d, {}).get("durum") == "metin_belgesi"}

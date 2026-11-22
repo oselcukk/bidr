@@ -108,6 +108,8 @@ DIKKAT = {
     "haric_tur": ("Bu belge raporun kendisi ya da taslağı; kanıt olamaz. Ret seçin.", True),
     "bilgisiz_ekran": ("Bilgi içermeyen bir ekran/bağlantı sayfası; kanıt sayılmadı. Genelde Ret.", True),
     "madde_baska_birim": ("Alıntı başka bir birimin maddesinden; kanıt sayılmadı. Genelde Ret.", True),
+    "not_uyusmuyor": ("Belgeyi yükleyenin notu ile belge içeriği uyuşmuyor; öneri belgeye göre yapıldı. Belge bu "
+                      "maddeye gerçekten kanıtsa Kabul, değilse Ret seçin.", True),
     "betimleme_alintisi": ("Alıntı belgenin yazısı değil, görselin betimlemesi. Görsel bunu gerçekten "
                            "gösteriyorsa Kabul.", True),
     "dongu_halkasi": ("Önceki yıla ait ama maddedeki düzenli gözden geçirme döngüsünün parçası olarak "
@@ -115,7 +117,7 @@ DIKKAT = {
     "faaliyet_asamasi_uyusmuyor": ("Faaliyet kaydına göre daha düşük bir aşama sayıldı.", False),
 }
 # metni olmayan, bakılmayı gerektirmeyen işaretler (karar sonucu ya da kodun kendi düzeltmesi)
-BILGI = frozenset({"insan_reddetti", "insan_duzeltti", "birim_aitligi_onaylandi", "birim_iliskisi_insan",
+BILGI = frozenset({"belge_notu", "insan_reddetti", "insan_duzeltti", "birim_aitligi_onaylandi", "birim_iliskisi_insan",
                    "kurum_tavani_kaldirildi", "birim_sayfasi", "ikinci_arama", "asama_dusuruldu",
                    "asama_yuva_etiketine_uymuyor", "od_asamayla_tutarsiz", "fakulte_geneli",
                    "uygulama_kaniti_eksik", "madde_baska_fakulte", "birim_aitligi_dogrulanmali",
@@ -369,6 +371,8 @@ def inceleme_satirlari(a, cs) -> list[dict]:
                                                                if "/" in dosya else "")) if dosya else r.get("belge") or ""
         asama = r.get("asama") or ""
         neden = (f"Maddenin \"{ASAMA_KISA[asama]}\" kısmı için. " if asama in ASAMA_KISA else "") + (r.get("gerekce") or "")
+        if "belge_notu" in (r.get("flags") or []):
+            neden = neden.rstrip() + " Yükleyenin notu dikkate alındı."
         alinti = r.get("alinti") or ""
         out.append({
             "satir": r["satir"], "bolum": bolum, "_rb": rb, "_birim": bool(r.get("birim_onay_bekliyor")),
