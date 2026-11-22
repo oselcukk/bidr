@@ -492,11 +492,13 @@ def _kapat_turu(fitz, page, bolgeler: list[dict], siyahlar: list, labels: list, 
                 n += 1
             continue
         if b.get("_yama"):
-            if _ortusme_payi(r, siyahlar + siyah_yeni) >= YAMA_SIYAH_ORTUSME:
+            if _ortusme_payi(r, siyahlar + siyah_yeni) >= YAMA_SIYAH_ORTUSME and b.get("_yedek"):
+                # yama siyahla çoğunlukla örtüşüyor: bütün kutu değil, basılı metinden kırpılmış yedek zarf kapatılır
+                # (koruma her yolda geçerli); yedek yoksa yama basılır (siyah kapatma zaten en üstte kalır)
                 b.pop("_yama", None)
-                b["neden"] += "; renk ayırma yaması siyah kapatmayla örtüştü: siyah kapatıldı"
-                siyah_yeni.append(r)
-                labels.append((r, b.get("_etiket") or "[MASKELI]"))
+                b["neden"] += "; renk ayırma yaması siyah kapatmayla örtüştü: korumalı zarf siyah kapatıldı"
+                b["parcalar"] = [list(p) for p in b["_yedek"]]
+                siyah_yeni += [fitz.Rect(*p) for p in b["parcalar"]]
             else:
                 beyaz.append((r, b["_yama"]))
         else:

@@ -357,9 +357,12 @@ def test_paraflar_tek_tek_kucuk_oneri():
     bol = Y.goruntu_bolgeleri(img, [], I)
     imza = [b for b in bol if b.karar == Y.ONAY]
     assert not any(b.kaynak == "etiketsiz_sayfa" for b in bol)
-    assert len(imza) > Y.SAYFA_ONAYI_ESIK, [(b.kaynak, b.karar, b.neden) for b in bol]
-    assert all("paraf olabilir" in b.neden for b in imza)
-    assert all(Y._area(b.kutu) <= 0.01 * W * H for b in imza)
+    # m7: aynı düşey hizadaki paraflar sütun başına tek öneri; her paraf `parcalar`da kendi küçük kutusuyla
+    assert len(imza) == 4 and all(b.parcalar and len(b.parcalar) >= 3 for b in imza), \
+        [(b.kaynak, b.karar, b.neden) for b in bol]
+    assert sum(len(b.parcalar) for b in imza) >= 17
+    assert all("paraf" in b.neden for b in imza)
+    assert all(Y._area(p) <= 0.01 * W * H for b in imza for p in b.parcalar)
     assert not any(b.kapat for b in bol)
 
 

@@ -279,6 +279,33 @@ Maskeleme `kontrol bekliyor`; `EKSIK.txt`; çıkış kodu 1; hat insan bekler). 
   varsa her biri ayrı küçük öneri olur. İmza kaynaklı bölgenin yer tutucusu her zaman `[İMZA]`; `[GÖRSEL]`
   yalnız imza olmayan gömülü görsele. 90° dönmüş sayfada daraltılmış kapatmanın parçaları da özgün yöne
   çevrilir.
+- **m7 (yazı satırı yapısı, tablo kuralı, sessiz kaçak yok)**:
+  - **Yazı satırı yapısı** (`mask/satir.py`, OCR güveninden bağımsız): mürekkep bileşenlerinden kelime
+    aralıklı, taban çizgisi hizalı, boyu tutarlı parça dizileri "yazı benzeri satır"dır. Basılı satır bandı
+    OCR okuyamasa da (imza üstünden geçmiş, düşük güvenli ad satırı) otomatik kapatmadan korunur; bant, imzanın
+    üstünden geçtiği harflere mürekkep dolgusu satırınkine yakın kaldıkça uzar. Blokta yalnız unvan satırı
+    okunduysa hemen üstündeki ad satırı satır düzeninden çıkarılır (`ust_satir`). Koruma için güçlü kanıt
+    aranır (≥ 6 parça ya da üstünde OCR'ın metin boyunda kelime okuduğu satır).
+  - **Tablo kuralı**: ızgaralı tabloda mürekkebe dayalı otomatik kapatma yalnız İmza sütunu hücrelerinde
+    yapılır; öteki hücreler (ad, unvan, görev, karar; basılı ya da el yazısı) hiçbir yolda otomatik kapatılmaz.
+    İmzanın içerik hücresine taşan kısmı tablo başına **tek öneri** olur (onaylanırsa yalnız taşan vuruşun zarfı
+    kapanır). İmza sütunlu tabloda öteki hücrelerdeki el yazısı ve İmza sütunu olmayan tabloda başlığı
+    ad/unvan/görev/ders … olan sütundaki el yazısı imza adayı da olmaz.
+  - **Sessiz kaçak yok**: yapısal imza bölgesinde zarfa girmeyen (harf boyu, büyük vuruştan ayrı) izler ve
+    basılı satır bandının içinden geçen vuruş kapatılmaz ama düşmez de: imza başına en çok bir ek öneri
+    (`imza_kalinti` / `imza_metin`; `parcalar` onaylanınca kapanacak dikdörtgenlerdir). Zarf, bölgeye değen
+    vuruşu bütün bileşeniyle alır ve bitişik parçaları izler (bölge dışına en çok ≈ 0,6 inç): kuyruk açık
+    kalmaz.
+  - **Renk ayırma yaması** siyah kapatmayla çoğunlukla örtüşünce bütün kutu değil basılı metinden kırpılmış
+    yedek zarf kapatılır (yedek yoksa yama basılır; döndürülmüş sayfada yedek yoksa öneri).
+  - **Onay yükü**: yazı satırındaki kelime (el yazısı dilekçe gövdesi, OCR'ın okumadığı basılı satır), mürekkebi
+    okunmuş kelime kutularının içinde kalan renkli basılı yazı (bağlantı) aday olmaz; aynı düşey hizada alt alta
+    ≥ 3 aday (paraf sütunu) tek öneridir; metin katmanlı web çıktısının görüntü olarak çözümlenen sayfasında
+    etiketsiz aday aranmaz; makam adı ("Bölüm Başkanlığına") unvan etiketi sayılmaz.
+  - **Ölçüm**: `kapatma_olcumu.yazi_parca` / `yazi_alan_payi` siyah altında kalan yazı benzeri satır
+    parçalarını OCR'dan bağımsız sayar (dosyada `yazi_altinda`, eşik ≥ 2; sayfa toplamı sınırı da kullanır);
+    görsel zemin, baskın açık ve doygun olmayan kâğıt tonu olmayan zemindir (gri/sararmış/gürültülü tarama
+    üstündeki renkli mürekkep görsel sayılmaz).
 - **Ölçüm**: her kapatılan bölgenin kaydında `kapatma_olcumu` (altında kalan güvenilir ve düşük güvenli/el
   yazısı kelime, siyah alan payı, fotoğraf/görsel zemin üstündeki siyah alan payı; kişisel veri bölgesinde
   `kasitli`); dosyada `kapatma_olcumu.esik_asildi` (basılı kelime ≥ 1, düşük güvenli kelime ≥ 4, görsel zemin

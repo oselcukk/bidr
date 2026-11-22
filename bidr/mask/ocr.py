@@ -179,10 +179,14 @@ def _build(words: list[Word], variant: int) -> tuple[str, list[tuple[int, int] |
     düzeltmeli, 2 ayrıca sayılar arası ve e-posta noktalaması (. @ _ -) yanındaki boşluk kaldırılmış."""
     chars: list[str] = []
     where: list = []
+    hs = sorted(w.y1 - w.y0 for w in words if sum(c.isalnum() for c in w.text) >= 3)
+    med = hs[len(hs) // 2] if hs else None
     for li in _lines(words):
         for k, i in enumerate(li):
             t = words[i].text
-            if variant:
+            # tek başına "©"/"®" ve metin boyunu aşan kutu: OCR'ın imza vuruşuna (döngü) verdiği okuma, "@" değil
+            vurus = med is not None and t.strip() in ("©", "®") and words[i].y1 - words[i].y0 > 1.8 * med
+            if variant and not vurus:
                 t = t.translate(_OCR_AT)
                 if _digitish(t):
                     t = t.translate(_OCR_DIGIT)

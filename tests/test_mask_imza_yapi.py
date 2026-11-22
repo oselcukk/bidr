@@ -222,10 +222,12 @@ def test_taranmis_cizelge_sutun_cok_sayfa_tasan_imza_onay(tmp_path):
     dar = [b for b in bol if b.get("parcalar") and "metinle örtüşen" in b["neden"]]
     assert dar and all(b["karar"] == Y.KAPATILDI and b["geri_basilan"] is None for b in dar), bol
     oneri = [b for b in bol if b["karar"] == Y.ONAY]
-    assert all(b["kaynak"] == "imza_metin" and not b["kapali"] for b in oneri), bol   # satır bandı: öneri
+    # m7 tablo kuralı: unvan hücresine taşan vuruş otomatik kapatılmaz, tablo başına tek öneri (yalnız taşan zarf)
+    assert oneri and all(b["kaynak"] in ("imza_metin", "imza_tasmasi") and not b["kapali"] for b in oneri), bol
+    assert len([b for b in oneri if b["kaynak"] == "imza_tasmasi"]) == 1, oneri
     assert rec["kapatma_olcumu"]["siyah_altinda"] == 0, rec["kapatma_olcumu"]
     n, kacan = S.kacirilan(src, bos, dst)
-    assert n >= 25 and kacan <= len(dar)          # metin satırında kalan vuruş görünebilir (çoğu kapalı)
+    assert n >= 25 and kacan <= len(oneri)        # unvan hücresine taşan kısım açık (öneride); İmza sütunu kapalı
     assert S.kacirilan(src, bos, dst, esik=0.5)[1] <= len(oneri)
     doc = fitz.open(str(dst))
     try:

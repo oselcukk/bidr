@@ -90,7 +90,9 @@ def test_yama_siyah_kutunun_ustune_basilmaz(tmp_path):
     F._kapat_turu(fitz, page, [sonra], siyahlar, labels, F._redact_flags(fitz))
     doc.save(str(dst))
     doc.close()
-    assert "_yama" not in icinde and "_yama" not in sonra and "siyah kapatıldı" in icinde["neden"]
+    # m7: siyahla örtüşen yama bütün kutuyu siyaha çevirmez (koruma her yolda geçerli): yedek zarf yoksa yama
+    # basılır, siyah kapatma yine en üstte kalır (aşağıdaki görsel sınama)
+    assert "siyah kapatıldı" not in icinde["neden"] and "siyah kapatıldı" not in sonra["neden"]
     im = _render(dst)
     siyah_kutu = im.crop((102, 52, 298, 248)).convert("L")
     assert siyah_kutu.getextrema()[1] < 40, "siyah kutunun içinde beyaz dikdörtgen / soluk iz kaldı"
@@ -328,9 +330,9 @@ def test_ocr_adli_ortusen_imza_kapali_ve_onayda(tmp_path):
     S.tutanak(src, ortusen=True)
     S.tutanak(bos, ortusen=True, imzali=False)
     rec = R.mask_and_check(src, dst, MaskRules(), "pymupdf")
-    dar = [b for b in rec["bolgeler"] if b.get("parcalar")]
+    dar = [b for b in rec["bolgeler"] if b.get("parcalar") and b["karar"] == "kapatildi"]
     assert dar and all(b["kapali"] and b["geri_basilan"] is None for b in dar)
-    oneri = [b for b in rec["bolgeler"] if b["kaynak"] == "imza_metin" and b["karar"] == "onay_bekliyor"]
+    oneri = [b for b in rec["bolgeler"] if b["kaynak"] in ("imza_metin", "imza_kalinti") and b["karar"] == "onay_bekliyor"]
     assert all(not b["kapali"] for b in oneri) and S.kacirilan(src, bos, dst, esik=0.5)[1] <= len(oneri), rec
 
 
@@ -416,8 +418,10 @@ def test_ondan_cok_etiketsiz_aday_tek_tek_oneri(tmp_path):
     S.pdf_goruntu_sayfalari(p, [img])
     rec = R.mask_and_check(p, tmp_path / "o.pdf", MaskRules(), "pymupdf")
     imza = [b for b in rec.get("bolgeler") or [] if b["tur"] == "imza" and b["karar"] == "onay_bekliyor"]
-    # m6: sayfa boyu tek çerçeve yerine her aday kendi küçük önerisi (paraf olabilir)
-    assert len(imza) > 10 and all(b["kaynak"] == "etiketsiz_aday" and not b["kapali"] for b in imza), imza
+    # m6: sayfa boyu tek çerçeve yok; m7: aynı düşey hizadaki adaylar sütun başına tek öneri, her aday `parcalar`da
+    # kendi küçük kutusuyla (onaylanırsa yalnız izler kapanır)
+    assert 1 <= len(imza) <= 3 and all(b["kaynak"] == "etiketsiz_aday" and not b["kapali"] for b in imza), imza
+    assert sum(len(b.get("parcalar") or [b["kutu"]]) for b in imza) >= 11, imza
 
 
 # ---------------------------------------------------------------- kural e: web çıktısı

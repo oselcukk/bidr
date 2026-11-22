@@ -109,7 +109,8 @@ def _analyze_once(img, ppi, rules, ocr, extra_words, flag_unlabeled, need_text, 
         kelime = (lambda b: _crop_words(clean if clean is not None else img, b)) if ran and ocr_available() else None
         r.bolgeler = Y.goruntu_bolgeleri(img, ywords, ppi, kesin=list(extra_words or []), bag=yapi.get("bag"),
                                          sayfa=yapi.get("sayfa", 1), ocr_dogrula=dogrula, ocr_kelime=kelime,
-                                         foto=bool(yapi.get("foto")), web=bool(yapi.get("web")))
+                                         foto=bool(yapi.get("foto")), web=bool(yapi.get("web")),
+                                         etiketsiz_ara=not yapi.get("etiketsiz_yok"))
         r.imza = Y.sonuc(r.bolgeler)
         return r, ran
     r.imza = IM.analyze(img, words, ppi, flag_unlabeled=flag_unlabeled, all_zone=all_zone)
@@ -477,7 +478,15 @@ def _geri_cevir(r2: "ImageScan", how: str, img) -> "ImageScan":
         b.kutu = _unrotate(b.kutu, how, img.width, img.height)
         if b.parcalar:                   # daraltılmış kapatmanın parçaları da özgün görüntüye (yoksa yanlış yeri örter)
             b.parcalar = [_unrotate(p, how, img.width, img.height) for p in b.parcalar]
-        b.yama = None
+        if b.yama is not None:
+            # yama döndürülmüş görüntünündür, basılamaz: bütün kutu değil korumalı yedek kapatma; yedek yoksa öneri
+            b.yama = None
+            if b.yedek:
+                b.parcalar = [_unrotate(p, how, img.width, img.height) for p in b.yedek]
+            elif b.karar == Y.KAPATILDI:
+                b.karar = Y.ONAY
+                b.neden += "; renk ayırma yaması döndürülmüş sayfada basılamadı, mürekkep metinden ayrılamadı: öneri"
+            b.yedek = None
     if r2.bolgeler:
         r2.imza = Y.sonuc(r2.bolgeler)
     r2.kutular = [_unrotate(b, how, img.width, img.height) for b in r2.kutular]
@@ -617,6 +626,8 @@ def scan_image_obj(img, rules: MaskRules, *, flag_unlabeled: bool = True, all_zo
             b.kutu = tuple(v / f for v in b.kutu)
             if b.parcalar:
                 b.parcalar = [tuple(v / f for v in q) for q in b.parcalar]
+            if b.yedek:
+                b.yedek = [tuple(v / f for v in q) for q in b.yedek]
             if b.yama is not None:
                 from PIL import Image
                 b.yama = b.yama.resize((max(1, int(b.kutu[2]) - int(b.kutu[0])), max(1, int(b.kutu[3]) - int(b.kutu[1]))),
@@ -760,12 +771,15 @@ def mask_image(src: Path, dst: Path, rules: MaskRules, bolge=None) -> dict:
         for b in close:                      # m1: renkli mürekkebi ayrılmış kırpıntı; siyahla örtüşen yama basılmaz
             if b.get("_yama") is None:
                 continue
-            if _icinde_toplam(b["_px"], siyahlar + siyah_yeni) >= YAMA_SIYAH_ORTUSME:
+            if _icinde_toplam(b["_px"], siyahlar + siyah_yeni) >= YAMA_SIYAH_ORTUSME and b.get("_yedek_px"):
+                # yama siyahla çoğunlukla örtüşüyor: bütün kutu değil, basılı metinden kırpılmış yedek zarf kapatılır
                 b.pop("_yama")
-                b["neden"] += "; renk ayırma yaması siyah kapatmayla örtüştü: siyah kapatıldı"
-                siyah_yeni.append(b["_px"])
+                b["neden"] += "; renk ayırma yaması siyah kapatmayla örtüştü: korumalı zarf siyah kapatıldı"
+                b["_parcalar_px"] = [list(p) for p in b["_yedek_px"]]
+                b["parcalar"] = [[round(v * sc, 2) for v in p] for p in b["_yedek_px"]]
+                siyah_yeni += b["_parcalar_px"]
             else:
-                yamali.append(b)
+                yamali.append(b)                 # yedek yoksa yama basılır (siyah kapatma zaten en üstte kalır)
         close = [b for b in close if b.get("_yama") is None]
         labels += [(b["_px"], b.get("_etiket") or "[MASKELI]") for b in close if not b.get("_parcalar_px")]
         bolge_n += sum(1 for b in close + yamali if b["tur"] == "imza")
@@ -1018,7 +1032,8 @@ def scan_pdf_page(page, rules: MaskRules) -> dict:
     need_ocr, has_text = page_needs_ocr(page)
     bag = Y.baglam(page.parent)
     sayfa = page.number + 1
-    yapi = {"bag": bag, "sayfa": sayfa}
+    # metin katmanlı web çıktısı görüntü olarak çözümlense de (büyük görüntülü sayfa) etiketsiz imza adayı aranmaz
+    yapi = {"bag": bag, "sayfa": sayfa, "etiketsiz_yok": has_text and web_ciktisi(page)}
     out = {"bulgular": Counter(), "kutular": [], "turler": [], "imza": None, "taranamadi": None,
            "imza_kutular": [], "alanlar": [], "imza_aday_kutular": [], "ocr": bool(need_ocr), "bolgeler": []}
     if not need_ocr and has_text and _big_image(page)[1] >= 0.4:
@@ -1120,6 +1135,8 @@ def _imza_out(out: dict, page, bol, scale: float) -> None:
             buf = io.BytesIO()
             b.yama.save(buf, format="PNG")
             d["_yama"] = buf.getvalue()
+            if b.yedek:
+                d["_yedek"] = b.yedek_donustur(lambda p: tuple(to_page_rects(page, [p], scale)[0]))
         elif b.kapat:
             out["imza_kutular"].append(rect)
         out["bolgeler"].append(d)
@@ -1137,6 +1154,8 @@ def image_imza_bolgeleri(r: "ImageScan", olcek: float) -> list[dict]:
             d["_parcalar_px"] = [list(p) for p in b.parcalar]
         if b.yama is not None and b.karar != Y.BIRAKILDI:
             d["_yama"] = b.yama
+            if b.yedek:
+                d["_yedek_px"] = [list(p) for p in b.yedek]
         out.append(d)
     return out
 

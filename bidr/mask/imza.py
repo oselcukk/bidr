@@ -95,7 +95,12 @@ def is_role_label(w: Word, line_len: int = 1) -> bool:
     if line_len > 7:
         return False
     c = _core(w.text)
+    if _MAKAM_RE.match(c):
+        return False                     # makam adı ("Bölüm Başkanlığına", "Dekanlığı", "Müdürlüğü"): kişi unvanı değil
     return c in _ROLE or c.startswith(("başkan", "baskan", "dekan", "müdür", "rektör"))
+
+
+_MAKAM_RE = re.compile(r"^(başkan|baskan|dekan|müdür|mudur|rektör|rektor)l[ıiuü][ğgk]")
 
 
 def _confident(w: Word) -> bool:

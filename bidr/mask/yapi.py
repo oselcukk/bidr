@@ -39,8 +39,16 @@ katmanı). Çıktı: `Bolge` listesi (kutu, karar, neden, kaynak, güven, geri b
    paragrafı, aynı konumda başka sayfalarda (ya da dosyalarda) tekrarlayan öğe, tamamen basılı sayfada
    (not dökümü) eşiği geçemeyen tek aday → `birakildi`. Kalan etiketsiz aday KAPATILMAZ, `onay_bekliyor`
    olur (inceleme kopyasında renkli kesik çerçeveyle çizilir; dosya karar verilene kadar "karar bekliyor" listelenir).
-   Fotoğraf/afişte adaylar tek sayfa onayına (`etiketsiz_sayfa`) iner; belgede 10'dan çok aday (paraflı sayfa)
-   varsa her biri ayrı küçük öneri olur.
+   Fotoğraf/afişte adaylar tek sayfa onayına (`etiketsiz_sayfa`) iner; aynı düşey hizada alt alta dizilen adaylar
+   (paraf sütunu) tek öneride toplanır (m7), kalanlar tek tek küçük öneridir.
+6. **m7** — (a) **yazı satırı yapısı** (`satir.py`, OCR güveninden bağımsız): basılı satır bandı OCR okuyamasa da
+   (imza üstünden geçmiş ad satırı) kapatmadan korunur; el yazısı/basılı satırın kelimesi imza-paraf adayı olmaz.
+   (b) **tablo kuralı**: ızgaralı tabloda mürekkebe dayalı otomatik kapatma yalnız İmza sütunu hücrelerinde; içerik
+   hücresine (ad, unvan …) taşan vuruş tablo başına tek öneri (`imza_tasmasi`, `parcalar`). (c) **sessiz kaçak
+   yok**: yapısal bölgede zarfa girmeyen iz (`imza_kalinti`) ve satır bandından geçen vuruş (`imza_metin`) öneri
+   olur, imza başına tek öneride birleşir; zarf bağlı vuruşu bölge dışına izler (`ZARF_YAY`). (d) aynı düşey
+   hizadaki etiketsiz adaylar (paraf sütunu) tek öneri (`_paraf_gruplari`). (e) yamalı bölgenin korumalı yedeği
+   (`Bolge.yedek`). (f) ölçümde yazı benzeri satır parçası (`yazi_parca`) ve kâğıt/görsel zemin ayrımı.
 
 Koordinatlar: çözümleme `imza.A_PPI` (100 ppi) çözünürlüğünde yapılır; dönen kutular girdi
 görüntüsünün pikselindedir (PDF puanına çevirme `raster`'ın işi). Değerler hiçbir yere yazılmaz.
@@ -53,6 +61,7 @@ from collections import Counter
 from dataclasses import dataclass
 
 from . import imza as IM
+from . import satir as SA
 from .ocr import Word
 
 I = IM.A_PPI
@@ -81,6 +90,11 @@ ZARF_BOSLUK = 0.15 * I      # bu kadar yakın mürekkep parçaları tek dolu zar
 ZARF_EN_BUYUK = 2.5 * I     # bundan uzun tek parça (tablo/çerçeve çizgisi) zarfa girmez
 ZARF_ESIK = 40              # bölge içi duyarlı mürekkep eşiği (yerel kâğıt parlaklığından fark; gri tarama)
 DEVAM_TOL = 0.12 * I        # devam sayfasında sütun sınırı hiza toleransı
+ZARF_YAY = 0.6 * I          # zarf, bölgeden çıkan bağlı vuruşu izleyerek bölge dışına en çok bu kadar uzar (kuyruk açık kalmasın)
+ARTIK_MIN = 14              # zarfa girmeyen (harf boyu, büyük vuruştan ayrı) iz kümesi bu kadar pikselse sessiz düşmez: öneri
+ARTIK_BOY = 0.10 * I        # ve en az bu boydaysa
+PARAF_GRUP = 3              # aynı düşey hizada (sütunda) bu kadar etiketsiz aday tek öneride toplanır (paraf sütunu)
+PARAF_HIZA = 0.45 * I       # hiza toleransı (x merkezi)
 EGIM_TOL = 0.021            # çizgi tespitinde tolere edilen eğim (≈ 1,2°): kalınlık sınırına uzunluğun bu payı eklenir
 
 
@@ -98,6 +112,7 @@ class Bolge:
     gorsel: bool = False         # imza değil görsel (fotoğraf/rozet/ikon): yer tutucu `[GÖRSEL]`
     parcalar: list | None = None  # daraltılmış kapatma: kutu yerine kapatılan dikdörtgenler (girdi pikseli)
     olcum: dict | None = None     # kapatma ölçümü (`kapatma_olcumu`): siyah altında kalan kelime, alan, görsel zemin
+    yedek: list | None = None     # yamalı bölgenin yedek kapatması (yama basılamazsa: korumalı dikdörtgenler, girdi pikseli)
 
     @property
     def kapat(self) -> bool:
@@ -114,6 +129,9 @@ class Bolge:
     def parcalar_donustur(self, fn) -> list | None:
         """Parçalar (girdi pikseli) → `fn(kutu)` ile başka düzleme (PDF puanı, görsel ölçeği)."""
         return [[round(float(v), 2) for v in fn(p)] for p in self.parcalar] if self.parcalar else None
+
+    def yedek_donustur(self, fn) -> list | None:
+        return [[round(float(v), 2) for v in fn(p)] for p in self.yedek] if self.yedek else None
 
 
 GORSEL_LABEL = "[GÖRSEL]"
@@ -676,6 +694,7 @@ class _R:
     neden: str
     guven: float
     karar: str = KAPATILDI
+    parcalar: list | None = None     # öneri onaylanırsa kutu yerine kapatılacak dikdörtgenler (A_PPI)
 
 
 def _okunur(w: Word, kesin: bool, med) -> bool:
@@ -690,7 +709,8 @@ def _okunur(w: Word, kesin: bool, med) -> bool:
 def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] | None = None,
                       bag: Baglam | None = None, sayfa: int = 1, metin_sayfasi: bool = False,
                       gomulu: list | None = None, vektor: tuple | None = None, ocr_dogrula=None,
-                      ocr_kelime=None, foto: bool = False, web: bool = False) -> list[Bolge]:
+                      ocr_kelime=None, foto: bool = False, web: bool = False,
+                      etiketsiz_ara: bool = True) -> list[Bolge]:
     """Tek sayfa/görsel için imza bölgeleri (kutular girdi pikselinde).
 
     `words`: bütün kelimeler (OCR + metin katmanı); `kesin`: bunlardan metin katmanından gelenler
@@ -702,7 +722,8 @@ def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] |
     ızgaralı tabloda başlığı çoğu zaman yanlış okur). `foto`: fotoğraf/afiş (renk çeşitliliği yüksek, az
     metin): etiketsiz mürekkep aranmaz, adaylar tek sayfa onayına iner; unvan bandı çalışmaz. `web`: web
     çıktısı (metin katmanı + üst/alt bilgide URL ve tarih): mürekkep yalnız gömülü görüntülerde (renkli
-    bağlantı yazısı mürekkep değil); gömülü görüntü yalnız gerçek "İmza" etiketine yakın ve imza gibiyse."""
+    bağlantı yazısı mürekkep değil); gömülü görüntü yalnız gerçek "İmza" etiketine yakın ve imza gibiyse.
+    `etiketsiz_ara=False`: etiketsiz aday hiç aranmaz (metin katmanlı web çıktısının görüntü olarak çözümlenen sayfası)."""
     gomulu = [g for g in gomulu or [] if not _arka_plan(g[0], g[1], kesin or [], img.size)]
     h = IM.hazirla(img, words, ppi, ink_regions=[g for g, _ in gomulu] if web else None)
     k, W, H, wa = h.k, h.W, h.H, h.wa
@@ -723,7 +744,9 @@ def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] |
     hs = sorted(w.h for w in wa if IM._confident(w))
     med = hs[len(hs) // 2] if hs else None
     conf_boxes = [w.box for w in wa if IM._confident(w)]
-    korunan = [w for j, w in enumerate(wa) if _korunan(w, j in kesin_idx, med)]
+    # korunan basılı kelime: metin katmanı / güvenle okunan kelime; unvan-rol sözcüğü ("Dr.", "Üye") kısa olsa da
+    korunan = [w for j, w in enumerate(wa) if _korunan(w, j in kesin_idx, med)
+               or (j in labels and IM._confident(w) and not IM.is_placeholder(w.text) and (med is None or w.h <= 2 * med))]
     korunan_set = set(map(id, korunan))
 
     # --- tablo ızgarası
@@ -779,7 +802,8 @@ def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] |
             regs.append(_R((g[0] - 3, g[1] - 3, g[2] + 3, g[3] + 3), "imza_tasmasi", kaynak_neden, 0.8))
 
     sutun_kutulari = []
-    for t in tabs:
+    govde: dict = {}                     # tablo sırası → İmza sütunu gövdesi
+    for ti, t in enumerate(tabs):
         hit = imza_sutunu(t, wa)
         cont = bag.sutun_eslesir(t.xs, W) if bag is not None and not hit and not web else None
         if not hit and cont is None and ocr_kelime is not None:
@@ -812,12 +836,48 @@ def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] |
         if body is None:
             continue
         sutun_kutulari.append(body)
+        govde[ti] = body
         if web:
             continue                         # web çıktısı: sütunda yalnız imza oranlı gömülü görüntü ele alınır
         if _ink_px(h.ink, (body[0] + 2, body[1] + 2, body[2] - 2, body[3] - 2)) >= MIN_SUTUN_MUREKKEP:
             regs.append(_R((body[0] + 1, body[1] + 1, body[2] - 1, body[3] - 1), "imza_sutunu", neden, guven))
             tasma(body, "İmza sütunundan taşan mürekkep")
     tab_kutulari = [t.kutu for t in tabs] + _yatay_tablolar(yat)
+    # tablo kuralı: ızgaralı tabloda mürekkebe dayalı otomatik kapatma yalnız İmza sütunu hücrelerinde yapılır; öteki
+    # hücreler (ad, unvan, görev, karar …; basılı ya da el yazısı) hiçbir yolda otomatik kapatılmaz (`yasak`)
+    yasak: list = []
+    for ti, t in enumerate(tabs):
+        yasak += _cikar(t.kutu, govde[ti]) if ti in govde else [t.kutu]
+    icerik_hucre = _icerik_sutunlari(tabs, govde, wa)
+
+    def icerik_hucresinde(box) -> bool:
+        cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+        return any(a <= cx <= c and b <= cy <= d for a, b, c, d in icerik_hucre)
+
+    # yazı satırı yapısı (OCR güveninden bağımsız): basılı satır bantları korunur, el yazısı satır kelimesi aday olmaz
+    satir: list = []                     # [(Satir, bant)]
+    kaynaklar: list = []
+    if not (metin_sayfasi or web or foto):
+        from PIL import ImageChops, ImageFilter
+        s_ink = SA.temiz_murekkep(h.raw_ink)
+        kaynaklar = [s_ink]
+        if h.colored.histogram()[255] >= 60:
+            # renkli (mavi) imza siyah basılı adın üstünden geçmiş: renkli mürekkep çıkarılınca satır bütün görünür
+            kaynaklar.append(ImageChops.subtract(s_ink, h.colored.filter(ImageFilter.MaxFilter(3))))
+        for kay in kaynaklar:
+            for st in SA.satirlar(kay, med, dikey=dik):
+                bt = SA.genislet(kay, st) if st.basili else st.kutu
+                if not any(o.basili == st.basili and _ic(bt, ob) >= 0.8 for o, ob in satir):
+                    satir.append((st, bt))
+    # koruma için güçlü kanıt: uzun satır (≥ 6 parça) ya da üstünde OCR'ın (düşük güvenle de olsa) metin boyunda
+    # kelime okuduğu satır; kısa ve OCR desteksiz hizalı parçalar imza parçası olabilir (korunmaz: zarf ya da öneri)
+    def ocr_destekli(bt) -> bool:
+        return any(w.conf >= 30 and sum(ch.isalnum() for ch in w.text) >= 3 and (not med or w.h <= 1.6 * med)
+                   and bt[0] <= (w.x0 + w.x1) / 2 <= bt[2] and bt[1] - 2 <= (w.y0 + w.y1) / 2 <= bt[3] + 2 for w in wa)
+    basili_bant = [(bt[0], bt[1] - 0.35 * st.hm, bt[2], bt[3] + 0.25 * st.hm) for st, bt in satir if st.basili
+                   and (st.n >= 6 or ocr_destekli(bt)) and not any(_ic(bt, sk) >= 0.5 for sk in sutun_kutulari)]
+    yazi_parca = [q for st, _ in satir if st.basili for q in SA.parcalar(st)]
+    metin_satiri = _metin_satirlari_yapi([st for st, _ in satir])
 
     def tabloda(w) -> bool:
         cx, cy = (w.x0 + w.x1) / 2, (w.y0 + w.y1) / 2
@@ -865,6 +925,20 @@ def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] |
                     b[0] = _union(g, bx)
                     b[1] |= ids
                     changed = True
+    # ad satırı çıkarımı: blokta yalnız unvan/rol satırı okunduysa (ad satırının üstünden imza geçmiş, OCR okuyamamış)
+    # hemen üstünde aynı hizada, aynı satır düzeninde basılı satır aranır (`satir.ust_satir`); bulunursa korunur
+    if not (metin_sayfasi or web or foto):
+        for blk, blk_ids in bloklar:
+            if abs(blk[3] - blk[1]) > 1.6 * (med or 20) or blk[2] - blk[0] < 12:
+                continue                    # blokta birden çok satır var (ad satırı zaten okunmuş)
+            for kay in reversed(kaynaklar):
+                us = SA.ust_satir(kay, blk)
+                if us is not None:
+                    bt = (us[0], us[1] - 1, us[2], us[3] + 1)
+                    if not any(_ic(bt, o) >= 0.5 for o in basili_bant) and \
+                            sum(IM._overlap(bt, w.box) for w in korunan) < 0.5 * _area(bt):
+                        basili_bant.append(bt)
+                    break
     zones = []
     uzun = [ws for ws in lines.values() if sum(1 for i in ws if IM.readable_word(wa[i])) >= 8]
     uzun_kutu = [(min(wa[i].x0 for i in ws), min(wa[i].y0 for i in ws), max(wa[i].x1 for i in ws),
@@ -959,6 +1033,7 @@ def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] |
         from PIL import ImageChops
         clusters = IM._cluster([c for c in comps if c[4] >= 8], int(0.08 * I))
         col_data = ImageChops.multiply(h.colored, h.colored)
+        metin_kutulari = [w.box for j, w in enumerate(wa) if j in kesin_idx or IM._confident(w) or IM._texty(w, med)]
         for c in clusters:
             cpx = col_data.crop((c[0], c[1], c[2], c[3])).histogram()[255]
             if not IM._signature_like(c, cpx):
@@ -968,7 +1043,19 @@ def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] |
             box = (c[0], c[1], c[2], c[3])
             if any(_ic(box, r.box) >= 0.7 for r in regs):
                 continue
+            if _basili_yazi(h.ink, box, c[4], metin_kutulari):
+                continue                     # renkli basılı yazı (bağlantı, başlık): mürekkebi kelime kutularının içinde
             ana = next((r for r in regs if IM._inter(box, r.box)), None)
+            if ana is None and icerik_hucresinde(box):
+                # İmza sütunlu tabloda öteki hücreler / ad-unvan başlıklı sütun: el yazısı içerik, imza adayı değil
+                kayitlar.append(_R(box, "etiketsiz_aday", "tablonun ad/unvan/içerik hücresindeki el yazısı: imza değil",
+                                   0.6, BIRAKILDI))
+                continue
+            if ana is None and etiket_yakin(box) and _satir_ici(box, metin_satiri):
+                # unvan/etiket yakınında ama bir yazı satırının kelimesi (el yazısı ad/unvan/metin): imza değil
+                kayitlar.append(_R(box, "etiketsiz_aday", "etiket yakınında yazı satırındaki kelime (el yazısı metin): "
+                                   "imza değil", 0.6, BIRAKILDI))
+                continue
             if ana is not None or etiket_yakin(box):
                 nearz = (box[0] - 0.25 * I, box[1] - 0.25 * I, box[2] + 0.25 * I, box[3] + 0.25 * I)
                 x0, y0, x1, y1 = box
@@ -983,7 +1070,7 @@ def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] |
                     regs.append(_R((x0 - 5, y0 - 5, x1 + 5, y1 + 5), "imza_tasmasi", _tasma_nedeni(ana.neden), 0.8))
                 else:
                     regs.append(_R((x0 - 5, y0 - 5, x1 + 5, y1 + 5), "imza_etiketi", "İmza etiketi/unvan yakınında imza", 0.85))
-            else:
+            elif etiketsiz_ara:
                 etiketsiz.append((box, "etiketsiz_aday", (c, cpx)))
         paragraf = _el_yazisi_paragraf([tuple(c[:4]) for c in clusters])
 
@@ -999,7 +1086,9 @@ def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] |
         if metin_sayfasi and bag is not None and bag.e_imza:
             kayitlar.append(_R(box, kaynak, "e-imzalı belge: metin katmanlı sayfada mürekkep araması yapılmaz", 0.7, BIRAKILDI))
             continue
-        if cy < ANTET_BANDI * H:
+        if cy < ANTET_BANDI * H and not any(a <= (box[0] + box[2]) / 2 <= c and b <= cy <= d
+                                            for a, b, c, d in tab_kutulari):
+            # antet/logo süzgeci tablo hücresindeki ize uygulanmaz (sayfanın üstünde başlayan tablonun parafı)
             kayitlar.append(_R(box, kaynak, "sayfanın üst bandı (antet/logo)", 0.7, BIRAKILDI))
             continue
         if olcu is not None and kase_mi(h.raw_ink, box):
@@ -1011,6 +1100,10 @@ def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] |
         if olcu is not None and tuple(olcu[0][:4]) in paragraf:
             kayitlar.append(_R(box, kaynak, "el yazısı paragraf satırı (satır düzeni tutarlı): imza değil", 0.6,
                                BIRAKILDI))
+            continue
+        if olcu is not None and _satir_ici(box, metin_satiri):
+            kayitlar.append(_R(box, kaynak, "yazı satırındaki kelime (kelime aralıklı, taban çizgisi hizalı dizilim): "
+                               "imza/paraf değil", 0.6, BIRAKILDI))
             continue
         iz = None
         if bag is not None:
@@ -1039,20 +1132,23 @@ def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] |
             u = _union(u, r.box)
         regs.append(_R(u, "etiketsiz_sayfa", "fotoğraf/görsel: etiketsiz imza araması yapılmadı, sayfaya bakılmalı",
                        0.3, ONAY))
-    elif len(kalan_etiketsiz) > SAYFA_ONAYI_ESIK:
-        regs += [_R(r.box, r.kaynak, f"{r.neden} (sayfada {len(kalan_etiketsiz)} aday: paraf olabilir)", r.guven, ONAY)
-                 for r in kalan_etiketsiz]
     else:
-        regs += kalan_etiketsiz
+        # aynı düşey hizada tekrarlayan adaylar (paraf sütunu) tek öneride toplanır: onay bir kez, kapanan yalnız izler
+        kalan_etiketsiz = _paraf_gruplari(kalan_etiketsiz)
+        if len(kalan_etiketsiz) > SAYFA_ONAYI_ESIK:
+            regs += [_R(r.box, r.kaynak, f"{r.neden} (sayfada {len(kalan_etiketsiz)} aday: paraf olabilir)", r.guven,
+                        ONAY, r.parcalar) for r in kalan_etiketsiz]
+        else:
+            regs += kalan_etiketsiz
 
     # --- birleştir: başka bölgenin içinde kalan bölge düşer
-    regs = [_R(_clip(r.box, W, H), r.kaynak, r.neden, r.guven, r.karar) for r in regs]
+    regs = [_R(_clip(r.box, W, H), r.kaynak, r.neden, r.guven, r.karar, r.parcalar) for r in regs]
     regs.sort(key=lambda r: (_ONCELIK.get(r.kaynak, 9), -_area(r.box)))
     kept: list[_R] = []
     for r in regs:
         if _area(r.box) < 4:
             continue
-        if any(_ic(r.box, o.box) >= 0.9 for o in kept):
+        if any(_ic(r.box, q) >= 0.9 for o in kept for q in (o.parcalar or [o.box])):
             continue
         kept.append(r)
 
@@ -1060,16 +1156,44 @@ def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] |
     # sütunu hücresi ve gömülü imza görüntüsü bütün kapanır; hiçbir kapatma basılı kelimenin üstüne taşmaz
     # (kelimeden kırpılır). Mürekkep ayrılamayan bölge kapatılmaz, öneri olur (eski "geri basma" yolu yok).
     out: list[Bolge] = []
+    yasak_parca: list = []               # tablonun içerik hücresine taşan imza zarfları: tek öneride toplanır
+    olc = lambda parca_: _kapatma_olcumu(img, k, parca_, wa, korunan, med, W * H, yazi_parca)   # noqa: E731
+
+    def girdi(p_):
+        return (p_[0] / k, p_[1] / k, p_[2] / k, p_[3] / k)
+
     for r in kept:
-        b_in = (r.box[0] / k, r.box[1] / k, r.box[2] / k, r.box[3] / k)
+        b_in = girdi(r.box)
         bol = Bolge(b_in, r.karar, r.neden, r.kaynak, r.guven)
         # [GÖRSEL] yalnız imza olmayan görsele: imza kaynaklı bölge (sütun, blok, etiket, taşma, aday) hep [İMZA]
         bol.gorsel = r.kaynak == "gomulu_gorsel" and _fotograf(img, b_in)
+        if r.parcalar:
+            bol.parcalar = [girdi(p_) for p_ in r.parcalar]
         if r.kaynak == "etiketsiz_sayfa" or r.karar != KAPATILDI:
             out.append(bol)
             continue
         cov = [j for j, w in enumerate(wa) if _okunur(w, j in kesin_idx, med) and not IM.is_strict_label(w, 1)
                and IM._overlap(w.box, r.box) / max(1.0, (w.x1 - w.x0) * (w.y1 - w.y0)) >= 0.4]
+        bant: list = []
+        kume: list = []
+        artik: list = []
+        tasan: list = []
+        daralt = r.kaynak in DARALT_KAYNAK
+        if daralt:
+            genis = (r.box[0] - ZARF_YAY, r.box[1] - ZARF_YAY, r.box[2] + ZARF_YAY, r.box[3] + ZARF_YAY)
+            bant = _bantlar(wa, genis, med, basili_bant) if not metin_sayfasi else \
+                (_metin_satirlari(wa, r.box, med) if cov else [])
+            delik = [w.box for w in korunan if IM._overlap(w.box, genis) > 0] + bant
+            kume, sayac = _murekkep_zarfi(img, k, r.box, delik, med)
+            artik = list(getattr(sayac, "artik", None) or [])
+            ham = [p_ for p_ in _kirp(kume, delik, pay=2.5) if sayac(p_) >= 3]
+            # tablo kuralı: içerik hücresine düşen kısım otomatik kapatılmaz (öneri olur)
+            parca = [p_ for p_ in _kirp(ham, yasak, pay=0.0) if sayac(p_) >= 3] if yasak else ham
+            tasan = [q for p_ in ham for y_ in yasak for q in [_kes(p_, y_)] if q is not None and sayac(q) >= 3]
+            artik = [a_ for a_ in artik if not any(_ic(a_, y_) >= 0.5 for y_ in yasak)]
+        else:
+            # imza sütunu hücresi / gömülü imza görüntüsü: bütün kutu; yalnız üstündeki basılı kelimeler açık kalır
+            parca = _kirp([r.box], [w.box for w in korunan if _ic(w.box, r.box) >= KORUMA_ORTUSME])
         renkli = r.kaynak in RENK_AYIRMA_KAYNAK and r.box[3] - r.box[1] <= 1.3 * I and h_renkli(h, r.box)
         if cov and renkli:
             # renk ayırma yalnız yapısal imza bölgesinde ve imza boyunda: kutu dışındaki mavi el yazısı içerik
@@ -1077,17 +1201,16 @@ def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] |
             yama = _renk_ayir(img, b_in, h, r.box, [words[j] for j in cov])
             if yama is not None:
                 bol.yama = yama
+                # yama basılamazsa (siyah kapatmayla örtüşürse) bütün kutu değil korumalı yedek kapatılır
+                bol.yedek = [girdi(p_) for p_ in parca] or None
                 bol.neden += "; renkli mürekkep ayrıldı, alttaki metin korundu"
                 out.append(bol)
                 continue
-        bant: list = []
-        kume: list = []
-        if r.kaynak in DARALT_KAYNAK:
-            bant = _metin_satirlari(wa, r.box, med) if cov else []
-            delik = [w.box for w in korunan if IM._overlap(w.box, r.box) > 0] + bant
-            kume, sayac = _murekkep_zarfi(img, k, r.box, delik, med)
-            parca = [p_ for p_ in _kirp(kume, delik, pay=2.5) if sayac(p_) >= 3]
-            if not parca and r.kaynak == "imza_tasmasi" and not kume:
+        if daralt:
+            yasak_parca += tasan
+            if not parca and tasan:
+                continue                 # bölge bütünüyle içerik hücresinde: toplu taşma önerisine girdi
+            if not parca and r.kaynak == "imza_tasmasi" and not kume and not artik:
                 # taşma bölgesinde basılı kelimeler dışında mürekkep yok: taşan imza değil (etiket/ad yazısının kendisi)
                 bol.karar = BIRAKILDI
                 bol.neden += "; basılı kelimeler dışında mürekkep yok: taşma değil"
@@ -1099,11 +1222,10 @@ def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] |
                               "(kutu kapatılırsa altındaki yazı da kapanır)")
                 out.append(bol)
                 continue
-            bol.neden += ("; metinle örtüşen imza: kapatma mürekkebin dolu zarfına daraltıldı, ad/unvan açık" if cov
+            bol.neden += ("; metinle örtüşen imza: kapatma mürekkebin dolu zarfına daraltıldı, ad/unvan açık"
+                          if cov or any(IM._inter(bt, r.box) for bt in bant)
                           else "; kapatma mürekkebin dolu zarfına daraltıldı")
         else:
-            # imza sütunu hücresi / gömülü imza görüntüsü: bütün kutu; yalnız üstündeki basılı kelimeler açık kalır
-            parca = _kirp([r.box], [w.box for w in korunan if _ic(w.box, r.box) >= KORUMA_ORTUSME])
             if not parca:
                 bol.karar = ONAY
                 bol.neden += "; kutu basılı kelimelerle dolu: kapatılmadı, öneri"
@@ -1128,20 +1250,66 @@ def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] |
             out.append(bol)
             continue
         if parca != [r.box]:
-            bol.parcalar = [(a / k, b / k, c / k, d / k) for a, b, c, d in parca]
-        bol.olcum = _kapatma_olcumu(img, k, parca, wa, korunan, med, W * H)
+            bol.parcalar = [girdi(p_) for p_ in parca]
+            if daralt:                   # zarf bağlı vuruşu izleyip bölge dışına uzamış olabilir: kutu parçaları kapsar
+                u = r.box
+                for p_ in parca:
+                    u = _union(u, p_)
+                bol.kutu = girdi(_clip(u, W, H))
+        bol.olcum = olc(parca)
         out.append(bol)
-        # basılı satırın içinden geçen vuruş ayrılamaz: satır bandı kapatılmaz, öneri olur (karar insanın)
+        # sessiz kaçak olmasın: (1) basılı satırın içinden geçen vuruş ayrılamaz, satırın vuruşun geçtiği kısmı öneri
+        # olur (kapatılmaz; karar insanın); (2) zarfa girmeyen imza benzeri küçük izler öneri olur
         for bt in bant:
-            kes = (max(bt[0], r.box[0]), max(bt[1], r.box[1]), min(bt[2], r.box[2]), min(bt[3], r.box[3]))
-            if kes[2] - kes[0] < 4 or kes[3] - kes[1] < 0.5 * (bt[3] - bt[1]):
-                continue
-            if not any(IM._inter(z, kes) for z in kume):
+            deg = [z for z in kume if z[0] < bt[2] and bt[0] < z[2] and z[1] < bt[3] + 1.5 and bt[1] - 1.5 < z[3]]
+            if not deg:
                 continue                 # imza zarfı bu satıra değmiyor
-            out.append(Bolge((kes[0] / k, kes[1] / k, kes[2] / k, kes[3] / k), ONAY,
+            kes = (max(bt[0], min(z[0] for z in deg)), bt[1], min(bt[2], max(z[2] for z in deg)), bt[3])
+            if kes[2] - kes[0] < 4 or any(_ic(kes, y_) >= 0.5 for y_ in yasak):
+                continue
+            if sayac((kes[0], bt[1] - 7, kes[2], bt[1] - 2)) + sayac((kes[0], bt[3] + 2, kes[2], bt[3] + 7)) < 3:
+                continue                 # vuruş satır bandının sınırına değmiyor: imza satırın üstünde/altında bitiyor
+            # vuruş bandın içinde yana da sürebilir (zarfın değmediği kısım; bant içinde yazıdan ayrılamaz): öneri
+            # satır bandının bölge çevresindeki bütün kısmını ve bandın ucundan çıkan kuyruğu kapsar
+            kes = (max(bt[0], genis[0]), bt[1], min(bt[2], genis[2]), bt[3])
+            kuy = 0.3 * I
+            if sayac((kes[0] - kuy, bt[1], kes[0] - 2, bt[3])) >= 4:
+                kes = (kes[0] - kuy, kes[1], kes[2], kes[3])
+            if sayac((kes[2] + 2, bt[1], kes[2] + kuy, bt[3])) >= 4:
+                kes = (kes[0], kes[1], kes[2] + kuy, kes[3])
+            kes = _clip(kes, W, H)
+            if h_renkli(h, kes):
+                # renkli vuruş siyah basılı satırın içinden geçiyor: yalnız mürekkep beyazlatılır, satır kalır
+                yama = _renk_ayir(img, girdi(kes), h, kes, [])
+                if yama is not None:
+                    yb = Bolge(girdi(kes), KAPATILDI, "imza vuruşu basılı satırın içinden geçiyor; renkli mürekkep "
+                               "ayrıldı, alttaki metin korundu", "imza_tasmasi", 0.8)
+                    yb.yama = yama
+                    out.append(yb)
+                    continue
+            out.append(Bolge(girdi(kes), ONAY,
                              "imza vuruşu basılı satırın (ad/unvan) içinden geçiyor: satır bandı kapatılsın mı? "
                              "(kapatılırsa satırdaki yazı da kapanır)", "imza_metin", 0.4))
+        if artik:
+            u = artik[0]
+            for a_ in artik[1:]:
+                u = _union(u, a_)
+            ek = Bolge(girdi(u), ONAY, "imza bölgesinde zarfa girmeyen küçük izler (imza parçası olabilir): kapatılsın "
+                       "mı? (onaylanırsa yalnız izlerin kutuları kapanır)", "imza_kalinti", 0.4)
+            ek.parcalar = [girdi(a_) for a_ in artik]
+            out.append(ek)
+    if yasak_parca:
+        for grup in _yakin_gruplar(yasak_parca, tabs):
+            u = grup[0]
+            for q in grup[1:]:
+                u = _union(u, q)
+            ek = Bolge(girdi(u), ONAY, "imza tablonun ad/unvan (içerik) hücresine taşıyor: içerik hücresi otomatik "
+                       "kapatılmaz; taşan vuruş kapatılsın mı? (onaylanırsa yalnız taşan vuruşun zarfı kapanır)",
+                       "imza_tasmasi", 0.5)
+            ek.parcalar = [girdi(q) for q in grup]
+            out.append(ek)
     _sayfa_siniri(out)
+    out = _oneri_birlestir(out, 0.3 * I / k)
     for r in kayitlar:
         out.append(Bolge((r.box[0] / k, r.box[1] / k, r.box[2] / k, r.box[3] / k), r.karar, r.neden, r.kaynak, r.guven))
     if bag is not None:
@@ -1290,52 +1458,258 @@ def _kirp(rects, delikler, pay: float = 1.0, min_kenar: float = 1.5) -> list:
 
 
 def _murekkep_zarfi(img, k: float, box, delik, med=None) -> tuple:
-    """Bölgedeki imza mürekkebinin dolu zarfları (A_PPI): bölge içinde duyarlı eşikle (gri/soluk taramada da;
-    yerel kâğıt parlaklığından `ZARF_ESIK` koyu) mürekkep çıkarılır, korunan kutular (`delik`: basılı kelime,
-    satır bandı) ve uzun çizgiler silinir, yakın parçalar (`ZARF_BOSLUK`) birleşir, her kümenin kutusu `ZARF_PAY`
-    genişletilir: imzanın biçimi (silüeti) okunmaz. → (zarflar, sayaç(kutu) → kutudaki mürekkep pikseli)."""
+    """Bölgedeki imza mürekkebinin dolu zarfları (A_PPI): bölge ve çevresinde (`ZARF_YAY`) duyarlı eşikle (gri/soluk
+    taramada da; yerel kâğıt parlaklığından `ZARF_ESIK` koyu) mürekkep çıkarılır, korunan kutular (`delik`: basılı
+    kelime, satır bandı) ve uzun çizgiler silinir. Bölgeye değen vuruşlar BÜTÜN bileşeniyle alınır (bölge sınırında
+    kesilmez: kuyruk açık kalmaz) ve onlara bitişik (kırık/tablo çizgisiyle bölünmüş) vuruşlar izlenir; zarf bölgeden
+    en çok `ZARF_YAY` taşar. Yakın parçalar (`ZARF_BOSLUK`) birleşir, her kümenin kutusu `ZARF_PAY` genişletilir:
+    imzanın biçimi (silüeti) okunmaz. Harf boyundaki, büyük vuruşa bitişik olmayan parçalar (OCR'ın okumadığı basılı
+    yazı olabilir) zarfı büyütmez ama sessizce de düşmez: yeterince büyük kümeleri `sayaç.artik`'te döner (öneri).
+    → (zarflar, sayaç(kutu) → kutudaki mürekkep pikseli)."""
     from PIL import Image, ImageChops, ImageDraw, ImageFilter
     W, H = max(1, int(img.width * k)), max(1, int(img.height * k))
-    m = 8
+    m = int(ZARF_YAY) + 8
     x0, y0 = max(0, int(box[0]) - m), max(0, int(box[1]) - m)
     x1, y1 = min(W, int(box[2] + 0.999) + m), min(H, int(box[3] + 0.999) + m)
+    bos = lambda b: 0                                   # noqa: E731
+    bos.artik = []
     if x1 - x0 < 3 or y1 - y0 < 3:
-        return [], lambda b: 0
+        return [], bos
     crop = img.crop((int(x0 / k), int(y0 / k), max(int(x0 / k) + 1, int(x1 / k)), max(int(y0 / k) + 1, int(y1 / k))))
     lum = crop.convert("L").resize((x1 - x0, y1 - y0), Image.BILINEAR)
     bg = lum.filter(ImageFilter.MaxFilter(15))
     ink = ImageChops.subtract(bg, lum).point(lambda v: 255 if v >= ZARF_ESIK else 0)
     solid = lum.point(lambda v: 255 if v < 110 else 0).filter(ImageFilter.MinFilter(5)).filter(ImageFilter.MaxFilter(9))
     ink = ImageChops.subtract(ink, solid)               # önceden karartılmış alan, kalın logo gövdesi
-    keep = Image.new("L", ink.size, 0)
-    ImageDraw.Draw(keep).rectangle([box[0] - x0, box[1] - y0, box[2] - x0, box[3] - y0], fill=255)
-    ink = ImageChops.multiply(ink, keep)
     d = ImageDraw.Draw(ink)
     for t in delik:
         d.rectangle([t[0] - x0 - 2, t[1] - y0 - 2, t[2] - x0 + 2, t[3] - y0 + 2], fill=0)
-    # yalnız bölgeyi boydan boya geçen çizgi (tablo/form çizgisi) silinir: imzanın düz alt çizgisi zarfta kalır
-    IM._drop_lines(ink, int(0.6 * I))
-    comps = [c for c in IM._components(ink) if c[4] >= 4 and max(c[2] - c[0], c[3] - c[1]) <= ZARF_EN_BUYUK]
-    # basılı harf boyundaki parçalar (OCR'ın okumadığı basılı yazı) zarfı büyütmez: yalnız imza vuruşu boyundaki
-    # parçalar ve onlara bitişik küçük kırıntılar alınır
+    # yalnız uzun düz çizgi (tablo/form çizgisi) silinir: imzanın düz alt çizgisi zarfta kalır
+    IM._drop_lines(ink, int(1.0 * I))
+    bx = (box[0] - x0, box[1] - y0, box[2] - x0, box[3] - y0)
+    sn = (bx[0] - ZARF_YAY, bx[1] - ZARF_YAY, bx[2] + ZARF_YAY, bx[3] + ZARF_YAY)
+    def ic_boy(c) -> float:                             # bileşenin bölge (yoksa çevresi) içindeki boyu
+        q = _kes(c, bx) or _kes(c, sn) or c
+        return max(q[2] - q[0], q[3] - q[1])
+    # bölge içinde `ZARF_EN_BUYUK`'ten uzun tek parça (tablo/çerçeve çizgisi kalıntısı) zarfa girmez
+    comps = [c for c in IM._components(ink) if c[4] >= 4 and ic_boy(c) <= ZARF_EN_BUYUK]
     esik = 1.5 * med if med else 0.3 * I
-    buyuk = [c for c in comps if max(c[2] - c[0], c[3] - c[1]) > esik]
     yakin = 0.05 * I
-    comps = buyuk + [c for c in comps if c not in buyuk and any(
-        c[0] <= b[2] + yakin and b[0] <= c[2] + yakin and c[1] <= b[3] + yakin and b[1] <= c[3] + yakin for b in buyuk)]
-    kume = [c for c in IM._cluster(comps, int(ZARF_BOSLUK)) if c[4] >= 10]
-    sinir = (box[0] - ZARF_PAY, box[1] - ZARF_PAY, box[2] + ZARF_PAY, box[3] + ZARF_PAY)
+
+    def bitisik(c, grup, pay) -> bool:
+        return any(c[0] <= b[2] + pay and b[0] <= c[2] + pay and c[1] <= b[3] + pay and b[1] <= c[3] + pay for b in grup)
+
+    def boy(c) -> float:
+        return max(c[2] - c[0], c[3] - c[1])
+    degen = [c for c in comps if IM._inter(c, bx)]
+    buyuk = [c for c in degen if boy(c) > esik]
+    dis = [c for c in comps if not IM._inter(c, bx) and IM._inter(c, sn) and boy(c) > esik]
+    for _ in range(2):                                  # bölünmüş vuruşun devamı (en çok iki sıçrama)
+        ek = [c for c in dis if c not in buyuk and bitisik(c, buyuk, 0.06 * I)]
+        if not ek:
+            break
+        buyuk += ek
+    kucuk = [c for c in comps if c not in buyuk and boy(c) <= esik and IM._inter(c, sn)]
+    alinan = buyuk + [c for c in kucuk if bitisik(c, buyuk, yakin)]
+    kume = [c for c in IM._cluster(alinan, int(ZARF_BOSLUK)) if c[4] >= 10]
+    sinir = (box[0] - ZARF_YAY, box[1] - ZARF_YAY, box[2] + ZARF_YAY, box[3] + ZARF_YAY)
     zarf = [(max(sinir[0], c[0] + x0 - ZARF_PAY), max(sinir[1], c[1] + y0 - ZARF_PAY),
              min(sinir[2], c[2] + x0 + ZARF_PAY), min(sinir[3], c[3] + y0 + ZARF_PAY)) for c in kume]
+    # zarfa girmeyen, bölgenin içindeki küçük izler: imza parçası olabilir (sessiz düşmez)
+    ic = [c for c in degen if c not in alinan and c[4] >= 6]
+    for _ in range(3):                                  # bölge sınırının hemen dışında süren küçük iz dizisi
+        ek = [c for c in kucuk if c not in alinan and c not in ic and c[4] >= 6 and bitisik(c, ic, 0.3 * I)]
+        if not ek:
+            break
+        ic += ek
+    artik = []
+    for c in IM._cluster(ic, int(ZARF_BOSLUK)):
+        q = (c[0] + x0 - ZARF_PAY, c[1] + y0 - ZARF_PAY, c[2] + x0 + ZARF_PAY, c[3] + y0 + ZARF_PAY)
+        if c[4] >= ARTIK_MIN and boy(c) >= ARTIK_BOY and c[4] >= 1.2 * boy(c) and not any(_ic(q, z) >= 0.7 for z in zarf):
+            artik.append(q)
 
     def sayac(b) -> int:
         return _ink_px(ink, (b[0] - x0, b[1] - y0, b[2] - x0, b[3] - y0))
+    sayac.artik = artik
     return zarf, sayac
 
 
-def _kapatma_olcumu(img, k: float, parca: list, wa: list[Word], korunan: list[Word], med, sayfa_alani: float) -> dict:
+def _kes(a, b):
+    """İki dikdörtgenin kesişimi ya da None (kenarı 1,5 pikselden kısa kesişim yok sayılır)."""
+    q = (max(a[0], b[0]), max(a[1], b[1]), min(a[2], b[2]), min(a[3], b[3]))
+    return q if q[2] - q[0] >= 1.5 and q[3] - q[1] >= 1.5 else None
+
+
+def _bantlar(wa: list[Word], box, med, basili_bant: list) -> list:
+    """Bölgeye (çevresiyle) değen korunacak satır bantları: güvenle okunan satırlar (`_metin_satirlari`) + yapıdan
+    bulunan basılı satır bantları (OCR okuyamasa da: imza üstünden geçmiş, düşük güvenli ad satırı)."""
+    out = list(_metin_satirlari(wa, box, med))
+    for b in basili_bant:
+        if IM._inter(b, box) and not any(_ic(b, o) >= 0.8 for o in out):
+            out.append(tuple(b))
+    return out
+
+
+_ICERIK_BASLIK = re.compile(r"^(ad[i]?|soyad[i]?|adi?soyadi?|isim|unvan[i]?|gorev[i]?|bolum[u]?|birim[i]?|ders(in)?|"
+                            r"aciklama(lar)?|tarih|konu(su)?|karar|gundem|kurum[u]?|ogrenci|ogretim|numara(si)?)$")
+
+
+def _icerik_sutunlari(tabs: list, govde: dict, wa: list[Word]) -> list:
+    """Etiketsiz imza adayı aranmayan tablo hücreleri (A_PPI kutuları): İmza sütunu bulunan tabloda öteki bütün
+    hücreler (imzanın yeri İmza sütunudur; ad/unvan sütunundaki el yazısı içeriktir); İmza sütunu olmayan tabloda
+    başlığı ad/unvan/görev/ders … olan sütunlar."""
+    out: list = []
+    for ti, t in enumerate(tabs):
+        if ti in govde:
+            out += _cikar(t.kutu, govde[ti])
+            continue
+        for c in range(len(t.xs) - 1):
+            for r in range(min(2, len(t.ys) - 1)):
+                ic = [w for w in wa if IM._confident(w) and t.xs[c] <= (w.x0 + w.x1) / 2 < t.xs[c + 1]
+                      and t.ys[r] <= (w.y0 + w.y1) / 2 < t.ys[r + 1]]
+                if 1 <= len(ic) <= 4 and any(_ICERIK_BASLIK.match(IM._core(w.text).translate(_FOLD)) for w in ic):
+                    out.append((t.xs[c], t.ys[r + 1], t.xs[c + 1], t.ys[-1]))
+                    break
+    return out
+
+
+def _basili_yazi(ink, box, n: int, metin_kutulari: list) -> bool:
+    """Aday kümenin mürekkebinin çoğu (≥ %70) okunmuş kelime kutularının içinde mi: renkli basılı yazı (bağlantı,
+    başlık), imza değil. (Siyah basılı yazı mürekkep çözümlemesinde zaten silinir; renkli vuruş korunduğu için renkli
+    basılı yazı aday olurdu.) Adın üstünden geçen renkli imzanın mürekkebi çoğunlukla kelime kutularının dışındadır."""
+    ic = 0
+    for w in metin_kutulari:
+        q = _kes(box, w)
+        if q is not None:
+            ic += _ink_px(ink, q)
+    return ic >= 0.7 * max(1, n)
+
+
+def _metin_satirlari_yapi(satirlar: list) -> list:
+    """Aday süzmede "yazı satırı" sayılan satırlar: basılı düzenli satır; ya da en az beş parçalı satır; ya da dört
+    parçalı ve hemen üstünde/altında benzer boyda başka satır olan (paragrafın kısa satırı) satır. Her durumda parçalar
+    kelime aralığıyla dizilidir (ortanca boşluk ≤ 1 parça boyu): yan yana atılmış imzalar/paraflar (aralarında en az
+    bir imza boyu boşluk) yazı satırı sayılmaz."""
+    def kelime_aralikli(s) -> bool:
+        uy = sorted(s.uyeler, key=lambda u: u[0])
+        bos = sorted(max(0.0, b[0] - a[2]) for a, b in zip(uy, uy[1:]))
+        return bool(bos) and bos[len(bos) // 2] <= 1.0 * s.hm
+    out = []
+    for s in satirlar:
+        if not kelime_aralikli(s):
+            continue
+        if s.basili or s.n >= 5:
+            out.append(s)
+            continue
+        if s.n < 4:
+            continue
+        for o in satirlar:
+            if o is s or not 0.5 <= o.hm / s.hm <= 2.0 or not kelime_aralikli(o):
+                continue
+            ara = max(o.kutu[1] - s.kutu[3], s.kutu[1] - o.kutu[3])
+            ort = min(o.kutu[2], s.kutu[2]) - max(o.kutu[0], s.kutu[0])
+            if 0 <= ara <= 3.0 * s.hm and ort >= 0.4 * min(o.kutu[2] - o.kutu[0], s.kutu[2] - s.kutu[0]):
+                out.append(s)
+                break
+    return out
+
+
+def _satir_ici(box, satirlar: list) -> bool:
+    """Aday kutusu bir yazı satırının içindeki kelime mi: satır bandıyla düşeyde örtüşür, boyu satırın parça boyunu
+    aşmaz ve satırın yalnız bir kısmıdır (satırın bütünü tek aday ise parçalı imza olabilir: süzülmez)."""
+    hc, wc = box[3] - box[1], box[2] - box[0]
+    cx = (box[0] + box[2]) / 2
+    for s in satirlar:
+        z = s.zarf
+        ov = min(box[3], z[3]) - max(box[1], z[1])
+        if z[0] <= cx <= z[2] and ov >= 0.6 * hc and hc <= 2.4 * s.hm and wc <= 0.7 * (z[2] - z[0]):
+            return True
+    return False
+
+
+def _paraf_gruplari(adaylar: list) -> list:
+    """Aynı düşey hizada (x merkezi ± `PARAF_HIZA`) alt alta dizilmiş en az `PARAF_GRUP` etiketsiz mürekkep adayı
+    (paraf/imza sütunu: tablo satırlarının sonunda tekrarlayan konum) tek öneri olur; kutusu grubun birleşimi,
+    `parcalar` her izin kendi kutusu (onaylanırsa yalnız izler kapanır). Öteki adaylar tek tek kalır."""
+    mur = [r for r in adaylar if r.kaynak == "etiketsiz_aday"]
+    kalan = [r for r in adaylar if r.kaynak != "etiketsiz_aday"]
+    gruplar: list = []
+    for r in sorted(mur, key=lambda r: (r.box[0] + r.box[2]) / 2):
+        cx = (r.box[0] + r.box[2]) / 2
+        for g in gruplar:
+            gx = sum((q.box[0] + q.box[2]) / 2 for q in g) / len(g)
+            if abs(cx - gx) <= PARAF_HIZA and not any(min(q.box[3], r.box[3]) - max(q.box[1], r.box[1]) > 0.5 * min(
+                    q.box[3] - q.box[1], r.box[3] - r.box[1]) for q in g):
+                g.append(r)
+                break
+        else:
+            gruplar.append([r])
+    for g in gruplar:
+        if len(g) < PARAF_GRUP:
+            kalan += g
+            continue
+        u = g[0].box
+        for q in g[1:]:
+            u = _union(u, q.box)
+        kalan.append(_R(u, "etiketsiz_aday", f"aynı hizada alt alta {len(g)} etiketsiz imza benzeri iz (paraf/imza "
+                        "sütunu olabilir): onaylanırsa yalnız izlerin kutuları kapanır", 0.5, ONAY,
+                        [q.box for q in sorted(g, key=lambda q: q.box[1])]))
+    return kalan
+
+
+def _oneri_birlestir(out: list, bosluk: float) -> list:
+    """Aynı imzanın yan önerileri (satır bandından geçen vuruş `imza_metin`, zarfa girmeyen izler `imza_kalinti`)
+    birbirine yakınsa tek öneride toplanır (onay yükü: imza başına en çok bir ek öneri); `parcalar` her birinin kendi
+    dikdörtgenleridir (onaylanırsa yalnız onlar kapanır)."""
+    yan = [b for b in out if b.karar == ONAY and b.kaynak in ("imza_metin", "imza_kalinti")]
+    if len(yan) < 2:
+        return out
+    gruplar: list = []
+    for b in yan:
+        hedef = [g for g in gruplar if any(b.kutu[0] <= o.kutu[2] + bosluk and o.kutu[0] <= b.kutu[2] + bosluk
+                                           and b.kutu[1] <= o.kutu[3] + bosluk and o.kutu[1] <= b.kutu[3] + bosluk
+                                           for o in g)]
+        if not hedef:
+            gruplar.append([b])
+            continue
+        hedef[0].append(b)
+        for g in hedef[1:]:
+            hedef[0].extend(g)
+            gruplar.remove(g)
+    yeni = [b for b in out if b not in yan]
+    for g in gruplar:
+        if len(g) == 1:
+            yeni.append(g[0])
+            continue
+        u = g[0].kutu
+        for o in g[1:]:
+            u = _union(u, o.kutu)
+        metin = any(o.kaynak == "imza_metin" for o in g)
+        b = Bolge(u, ONAY, ("imza vuruşu basılı satırın (ad/unvan) içinden geçiyor ve zarf dışında imza izleri var: "
+                            "kapatılsın mı? (onaylanırsa yalnız işaretli parçalar kapanır; satırdaki yazı da kapanır)")
+                  if metin else g[0].neden, "imza_metin" if metin else "imza_kalinti", 0.4)
+        b.parcalar = [p_ for o in g for p_ in (o.parcalar or [o.kutu])]
+        yeni.append(b)
+    return yeni
+
+
+def _yakin_gruplar(parcalar: list, tabs: list) -> list:
+    """İçerik hücresine taşan zarf parçaları tablo başına tek grupta (tek öneri) toplanır."""
+    gruplar: dict = {}
+    for q in parcalar:
+        cx, cy = (q[0] + q[2]) / 2, (q[1] + q[3]) / 2
+        ti = next((i for i, t in enumerate(tabs) if t.kutu[0] <= cx <= t.kutu[2] and t.kutu[1] <= cy <= t.kutu[3]), -1)
+        gruplar.setdefault(ti, []).append(q)
+    return list(gruplar.values())
+
+
+def _kapatma_olcumu(img, k: float, parca: list, wa: list[Word], korunan: list[Word], med, sayfa_alani: float,
+                    yazi_parca: list | None = None) -> dict:
     """Kapatılan bölgenin ölçümü (A_PPI): altında (≥ %50) kalan güvenilir basılı kelime ve düşük güvenli (el yazısı/
-    bulanık) metin boyunda kelime sayısı, sayfa alanına oranla siyah alan ve fotoğraf/görsel zemin üstündeki siyah alan."""
+    bulanık) metin boyunda kelime sayısı, sayfa alanına oranla siyah alan, görsel (fotoğraf/afiş) zemin üstündeki
+    siyah alan ve OCR güveninden bağımsız yapı ölçümü: altında (≥ %50) kalan "yazı benzeri satır" parçası (`yazi_parca`:
+    kelime aralıklı, taban çizgisi hizalı basılı satırın kelime boyu parçaları) sayısı ve bu parçaların siyah alana
+    oranı (`yazi_alan_payi`). OCR'ın okuyamadığı (imza altında kalmış, düşük güvenli) ad satırı da böyle sayılır."""
     def pay(b) -> float:
         return min(1.0, sum(IM._overlap(b, p) for p in parca) / max(1.0, _area(b)))
     kset = set(map(id, korunan))
@@ -1344,10 +1718,19 @@ def _kapatma_olcumu(img, k: float, parca: list, wa: list[Word], korunan: list[Wo
                 and pay(w.box) > 0.5)
     a = sum(_area(p) for p in parca)
     gz = sum(_area(p) for p in parca if _area(p) >= 0.04 * I * I
-             and _fotograf(img, (p[0] / k, p[1] / k, p[2] / k, p[3] / k)))
+             and _gorsel_zemin(img, (p[0] / k, p[1] / k, p[2] / k, p[3] / k)))
+    alt = [q for q in yazi_parca or [] if pay(q) > 0.5]
     s = max(1.0, sayfa_alani)
     return {"siyah_altinda_kelime": kel, "dusuk_guven_kelime": dusuk, "alan_payi": round(a / s, 4),
-            "gorsel_zemin_payi": round(gz / s, 4)}
+            "gorsel_zemin_payi": round(gz / s, 4), "yazi_parca": len(alt),
+            "yazi_alan_payi": round(min(1.0, sum(_area(q) for q in alt) / max(1.0, a)), 4)}
+
+
+def _yuk(b) -> int:
+    """Bölgenin altında kalan yazı yükü: OCR kelimeleri (güvenilir + düşük güvenli) ile yapıdan bulunan yazı
+    parçalarından büyük olanı (aynı yazıyı iki ölçüm de sayabilir: toplanmaz)."""
+    o = b.olcum
+    return max(o["siyah_altinda_kelime"] + o["dusuk_guven_kelime"], o.get("yazi_parca", 0))
 
 
 def _sayfa_siniri(out: list) -> None:
@@ -1359,14 +1742,13 @@ def _sayfa_siniri(out: list) -> None:
 
     def toplam():
         bs = kapali()
-        return (sum(b.olcum["alan_payi"] for b in bs),
-                sum(b.olcum["siyah_altinda_kelime"] + b.olcum["dusuk_guven_kelime"] for b in bs))
+        return (sum(b.olcum["alan_payi"] for b in bs), sum(_yuk(b) for b in bs))
     a, n = toplam()
     while a > SAYFA_ASIRI_ALAN or n > SAYFA_ASIRI_KELIME:
         aday = [b for b in kapali() if b.kaynak != "imza_sutunu"]
         if n > SAYFA_ASIRI_KELIME:
-            aday = [b for b in aday if b.olcum["siyah_altinda_kelime"] + b.olcum["dusuk_guven_kelime"]] or aday
-            aday.sort(key=lambda b: (-(b.olcum["siyah_altinda_kelime"] + b.olcum["dusuk_guven_kelime"]), b.guven))
+            aday = [b for b in aday if _yuk(b)] or aday
+            aday.sort(key=lambda b: (-_yuk(b), b.guven))
         else:
             aday.sort(key=lambda b: (-b.olcum["alan_payi"], b.guven))
         if not aday:
@@ -1389,6 +1771,39 @@ def _fotograf(img, box) -> bool:
     if raster.multicolor(c):
         return True
     return raster.renk_cesitliligi(c) >= raster.FOTO_RENK and not _tek_murekkep(c)
+
+
+def _gorsel_zemin(img, box) -> bool:
+    """Kutunun zemini görsel mi (fotoğraf/afiş/renkli tasarım), kâğıt mı. Kâğıt (taranmış belge; gri, sararmış, gölgeli,
+    JPEG gürültülü de olsa): piksellerin çoğu tek bir açık zemin tonunun çevresindedir ve o ton doygun değildir;
+    üstündeki mürekkep (siyah, mavi, kaşe moru) zemini görsel yapmaz. Görsel: baskın ton yok ya da baskın ton
+    koyu/doygun (renkli afiş bandı, fotoğraf)."""
+    x0, y0, x1, y1 = (int(max(0, box[0])), int(max(0, box[1])), int(min(img.width, box[2])), int(min(img.height, box[3])))
+    if x1 - x0 < 4 or y1 - y0 < 4:
+        return False
+    im = img.crop((x0, y0, x1, y1)).convert("RGB")
+    im.thumbnail((120, 120))
+    hsv = im.convert("HSV")
+    lum = im.convert("L").tobytes()
+    hist = [0] * 256
+    for v in lum:
+        hist[v] += 1
+    n = len(lum)
+    # baskın parlaklık penceresi (± 22 düzey): kâğıt tonu
+    pre = [0]
+    for v in hist:
+        pre.append(pre[-1] + v)
+    en, tepe = 0, 0
+    for c in range(256):
+        t = pre[min(256, c + 23)] - pre[max(0, c - 22)]
+        if t > en:
+            en, tepe = t, c
+    if en < 0.55 * n or tepe < 120:
+        return True                          # baskın açık zemin yok: fotoğraf / koyu zemin
+    sat = hsv.getchannel("S").tobytes()
+    zemin = [sat[i] for i in range(n) if abs(lum[i] - tepe) <= 22]
+    zemin.sort()
+    return zemin[len(zemin) // 2] >= 90     # doygun zemin: renkli tasarım (sararmış kâğıt ≈ 20-60)
 
 
 def _tek_murekkep(c) -> bool:

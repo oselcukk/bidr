@@ -232,9 +232,10 @@ def mask_and_check(src: Path, dst: Path, rules: MaskRules, eng: str, model_text:
         if res.get("kapatma_olcumu"):
             rec["kapatma_olcumu"] = kapatma_ozeti(res["kapatma_olcumu"], bg.bolgeler)
             oz = rec["kapatma_olcumu"]
-            if oz["siyah_altinda"] or oz["dusuk_guven_altinda"] or oz["gorsel_zemin_payi"]:
+            if oz["siyah_altinda"] or oz["dusuk_guven_altinda"] or oz["gorsel_zemin_payi"] or oz["yazi_altinda"]:
                 model_uyari.append(f"aşırı kapatma ölçümü: {oz['siyah_altinda']} basılı kelime, "
-                                   f"{oz['dusuk_guven_altinda']} düşük güvenli (el yazısı) kelime siyah kutu altında, "
+                                   f"{oz['dusuk_guven_altinda']} düşük güvenli (el yazısı) kelime, "
+                                   f"{oz['yazi_altinda']} yazı benzeri satır parçası siyah kutu altında, "
                                    f"görsel zemin üstünde siyah alan %{100 * oz['gorsel_zemin_payi']:.1f} "
                                    "(kişisel veri bölgeleri dışında)")
             if oz["esik_asildi"]:
@@ -274,7 +275,10 @@ def mask_and_check(src: Path, dst: Path, rules: MaskRules, eng: str, model_text:
     return rec
 
 
-ASIRI_ESIK = {"siyah_altinda": 1, "dusuk_guven_altinda": 4, "gorsel_zemin_payi": 0.01, "siyah_alan_payi": 0.3}
+# `yazi_altinda`: OCR güveninden bağımsız yapı ölçümü (siyah altında kalan "yazı benzeri satır" parçası; `yapi` /
+# `satir`): OCR'ın okuyamadığı (imza altında kalmış, el yazısı) ad satırı da sayılır
+ASIRI_ESIK = {"siyah_altinda": 1, "dusuk_guven_altinda": 4, "yazi_altinda": 2, "gorsel_zemin_payi": 0.01,
+              "siyah_alan_payi": 0.3}
 
 
 def kapatma_ozeti(olcum: dict, bolgeler: list[dict] | None = None) -> dict:
@@ -287,6 +291,7 @@ def kapatma_ozeti(olcum: dict, bolgeler: list[dict] | None = None) -> dict:
           and not b["kapatma_olcumu"].get("kasitli")]
     oz = {"basili_kelime": sum(x["basili_kelime"] for x in v), "siyah_altinda": sum(x["siyah_altinda"] for x in v),
           "dusuk_guven_altinda": sum(x.get("dusuk_guven_kelime", 0) for x in bo),
+          "yazi_altinda": sum(x.get("yazi_parca", 0) for x in bo),
           "gorsel_zemin_payi": round(sum(x.get("gorsel_zemin_payi", 0.0) for x in bo), 4),
           "en_buyuk_kutu_payi": max((x["en_buyuk_kutu_payi"] for x in v), default=0.0),
           "siyah_alan_payi": max((x["siyah_alan_payi"] for x in v), default=0.0),
@@ -348,9 +353,9 @@ def onay_cercevesi(dst: Path, kind: str, bolgeler: list[dict], eng: str) -> None
 
 # ---------------------------------------------------------------- önbellekli dosya işi
 
-KURAL_SURUM = 5            # tespit/kapatma kuralları elle sürümü (kod parmak izi ayrıca anahtara girer); 3: m4; 4: m5 en küçük yeterli maske; 5: m6 aşırı kapatma (zarf, kelime koruması, sayfa toplamı)
+KURAL_SURUM = 6            # tespit/kapatma kuralları elle sürümü (kod parmak izi ayrıca anahtara girer); 3: m4; 4: m5 en küçük yeterli maske; 5: m6 aşırı kapatma (zarf, kelime koruması, sayfa toplamı); 6: m7 yazı satırı yapısı, tablo kuralı, sessiz kaçak yok, paraf grubu
 _KOD_MODULLERI = ("detect", "formats", "raster", "imza", "alan", "ocr", "bolge", "dogrula", "yapi", "sablon",
-                  "run", "eski", "kaynak")
+                  "run", "eski", "kaynak", "satir")
 
 
 def _kod_izi() -> str:
