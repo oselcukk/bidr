@@ -9,14 +9,20 @@ Kelimeler satırlara göre birleştirilir, `detect` aynı kurallarla çalışır
 yaptığı karışıklıklar (O↔0, l/I↔1, S↔5, B↔8) ve sayı içindeki tek boşluklar için ek iki geçiş
 yapılır (yalnız rakam ağırlıklı belirteçlerde; T.C. algoritması yanlış pozitifi süzer).
 Değerler bellekte kalır; dışarı yalnız tür ve kutu çıkar.
+
+Önbellek: aynı görüntü süreç içinde bellekten, süreçler/çalıştırmalar arasında çalışma alanının
+SQLite önbelleğinden (`onbellek`, katman `ocr`; anahtar = PNG sha256 + tesseract sürümü + dil + psm +
+görüntü boyutu) gelir: kural değişse de değişmeyen sayfa yeniden OCR'lanmaz. tesseract tek iş
+parçacığıyla çalışır (`OMP_THREAD_LIMIT=1`; paralellik dosya düzeyinde).
 """
 from __future__ import annotations
 
+import functools
 import hashlib
 import io
 import re
 import subprocess
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,6 +31,7 @@ from .detect import MaskRules, detect
 OCR_DPI = 300                  # PDF sayfası OCR çözünürlüğü
 _CACHE: "OrderedDict[str, list]" = OrderedDict()
 _CACHE_MAX = 48
+CAGRI: Counter = Counter()     # süreç içi tesseract çağrısı (psm → sayı): önbellek testleri için
 
 
 class OcrFailed(RuntimeError):
@@ -58,15 +65,33 @@ def ocr_available() -> bool:
         return False
 
 
+@functools.lru_cache(maxsize=1)
+def tesseract_version() -> str:
+    try:
+        r = subprocess.run(["tesseract", "--version"], capture_output=True, timeout=30)
+        out = (r.stdout or r.stderr or b"").decode("utf-8", "replace").strip().splitlines()
+        return out[0].strip() if out else "?"
+    except (OSError, subprocess.SubprocessError):
+        return "?"
+
+
+def _env1() -> dict:
+    from bidr.ingest.ocr import _env
+    env = _env()
+    env["OMP_THREAD_LIMIT"] = "1"          # paralellik dosya düzeyinde (işçiler); tesseract tek iş parçacığı
+    return env
+
+
 def _run_tesseract(png: bytes, psm: str | None = None) -> str:
-    from bidr.ingest.ocr import OCR_LANGS, OCR_TIMEOUT, _SLOTS, _decode, _env, _psm, _tempdir, _tool_error
+    from bidr.ingest.ocr import OCR_LANGS, OCR_TIMEOUT, _SLOTS, _decode, _psm, _tempdir, _tool_error
+    CAGRI[psm or "vars"] += 1
     with _tempdir("bidr-maske-") as td:
         src = Path(td) / "s.png"
         src.write_bytes(png)
         base = Path(td) / "o"
         with _SLOTS:
             r = subprocess.run(["tesseract", str(src), str(base), "-l", OCR_LANGS, "--psm", psm or _psm(), "tsv"],
-                               capture_output=True, timeout=OCR_TIMEOUT, env=_env())
+                               capture_output=True, timeout=OCR_TIMEOUT, env=_env1())
         out = base.with_suffix(".tsv")
         if r.returncode != 0 or not out.exists():
             raise OcrFailed(str(_tool_error("tesseract", r.returncode, _decode(r.stderr), str(src))))
@@ -104,7 +129,21 @@ def ocr_words(img, psm: str | None = None) -> list[Word]:
     if key in _CACHE:
         _CACHE.move_to_end(key)
         return _CACHE[key]
-    words = parse_tsv(_run_tesseract(png, psm))
+    from bidr.ingest.ocr import OCR_LANGS, _psm
+    from . import onbellek
+    ob = onbellek.aktif()
+    pkey = None
+    tsv = None
+    if ob is not None:
+        pkey = onbellek.anahtar("ocr", onbellek.sha256(png), tesseract_version(), OCR_LANGS, psm or _psm(),
+                                im.size, im.mode)
+        b = ob.get("ocr", pkey)
+        tsv = b.decode("utf-8") if b is not None else None
+    if tsv is None:
+        tsv = _run_tesseract(png, psm)
+        if ob is not None:
+            ob.put("ocr", pkey, tsv.encode("utf-8"))
+    words = parse_tsv(tsv)
     _CACHE[key] = words
     while len(_CACHE) > _CACHE_MAX:
         _CACHE.popitem(last=False)

@@ -293,8 +293,11 @@ aralık kurumdan sorulacak).
 Denetim geçince `bidr teslim -w WS`: `WS/teslim/` + `teslim.zip` (report.docx, ölçüt klasörlü
 kanıtlar, web kanıtlarının tarihli PDF kopyaları, kanıt dizini). Varsayılan mod `rapor.teslim:
 dekanlik` (bağlantı verilmez, dosyalar teslim edilir). Çıkış 1: `EKSIK.txt`'teki eşleşmeyen satırları
-kullanıcıya göster. Maskeleme başarısız ya da yapılmamışsa kanıt paketten çıkmaz; özgün dosya girer,
-dizinde "elle bakılmalı" yazar: bu listeyi kullanıcıya ayrıca söyle. Web kanıtının adresi bilinmiyorsa
+kullanıcıya göster. Maskelenecek yeri çözülmemiş kanıt (onay bekleyen bölge, başarısız maskeleme)
+pakete girmez ("maskelenecek yeri var, kontrol bekliyor: N dosya"; dizinde "kontrol bekliyor"):
+`bidr maskele bolgeler -w WS` listesini kullanıcıya göster. Bölge kararını (`bidr maskele karar …
+kapat|birak`) ve elle maskelenmiş sürümü (`bidr maskele yukle`) yalnız kullanıcı verir; sonra `bidr
+maskele -w WS` ve `bidr teslim` yeniden. Maskeleme hiç yapılmadıysa özgün dosya girer ("yapılmadı"). Web kanıtının adresi bilinmiyorsa
 uydurma; kullanıcıdan review.xlsx "bağlantı" sütununa yazmasını iste.
 
 ## Bitirirken

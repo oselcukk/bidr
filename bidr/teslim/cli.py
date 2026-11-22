@@ -2,7 +2,7 @@
 
 Dekanlığa teslim paketi: dolu rapor, ölçüt klasörlü kanıtlar, web sayfası kanıtlarının alınma tarihli
 PDF kopyaları ve kanıt dizini (bidr/teslim/run.py). Çıkış kodu: 0 paket eksiksiz; 1 paket eksik
-(EKSIK.txt; eksikler listelenir); 2 girdi hatası ya da PDF aracı yok (hiçbir şey yazılmaz);
+ya da maskelenecek yeri çözülmemiş kanıt pakete girmedi (EKSIK.txt; listelenir); 2 girdi hatası ya da PDF aracı yok (hiçbir şey yazılmaz);
 3 kapı (biçim denetimi geçmedi; `--taslak` ile taslak paket üretilebilir)."""
 from __future__ import annotations
 
@@ -33,9 +33,16 @@ def _run(args) -> int:
     for u in res.uyarilar:
         print(f"uyarı: {u}")
     print(ozet_json(res))
+    if res.kontrol_bekliyor:
+        from .run import KONTROL_BASLIK
+        print(KONTROL_BASLIK.format(n=len(res.kontrol_bekliyor)) + " (pakete girmedi; rapordaki atıf ve "
+              "numara değişmedi):")
+        for x in res.kontrol_bekliyor:
+            print(f"  - {x['olcut']} [{x['kanit_no']}] {x['kanit']}: {x['neden']}")
+        print(f"  → bidr maskele bolgeler -w {ws} ; bidr maskele karar -w {ws} <bolge_id> kapat|birak ; "
+              f"ya da bidr maskele yukle -w {ws} <kanit> <maskeli_dosya> ; sonra bidr maskele -w {ws} ve bidr teslim")
     if res.elle_bakilacak:
-        print(f"ELLE BAKILACAK ({len(res.elle_bakilacak)}): maskelenemedi ya da maskeli kopyası yok; özgün dosya "
-              "pakette (kanıt çıkarılmadı):")
+        print(f"NOT ({len(res.elle_bakilacak)}):")
         for x in res.elle_bakilacak:
             print(f"  - {x['dosya']}: {x['neden']}")
     elif not res.maskeleme:
@@ -48,7 +55,7 @@ def _run(args) -> int:
         for e in res.eksik:
             print(f"  - {e}")
     print(f"teslim: {res.cikti}" + (f"\nzip: {res.zip}" if res.zip else ""))
-    return 1 if res.eksik else 0
+    return 1 if (res.eksik or res.kontrol_bekliyor) else 0
 
 
 def register(sub):

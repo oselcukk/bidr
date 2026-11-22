@@ -112,6 +112,7 @@ class Baglam:
         self.sutun = None               # (xs / W, sütun sırası)
         self.bellek = bellek
         self._cagri: Counter = Counter()
+        self._analiz: Counter = Counter()      # sayfa başına çözümleme sayısı (maskeleme sonrası turlar)
         self._iz_cache: dict = {}
 
     def kimlikler(self, sayfa: int, n: int) -> list[str]:
@@ -123,7 +124,7 @@ class Baglam:
         return [f"{self.sha8}-s{sayfa}-{base + i + 1}" for i in range(n)]
 
     def sutun_kaydet(self, xs, c: int, W: int, sayfa: int = 0) -> None:
-        if sayfa and self._cagri[sayfa]:
+        if sayfa and self._analiz[sayfa]:
             return              # maskeleme sonrası yeniden tarama: karartılmış sayfanın düzeni kaydedilmez
         self.sutun = ([x / float(W) for x in xs], c)
 
@@ -897,6 +898,8 @@ def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] |
         out.append(bol)
     for r in kayitlar:
         out.append(Bolge((r.box[0] / k, r.box[1] / k, r.box[2] / k, r.box[3] / k), r.karar, r.neden, r.kaynak, r.guven))
+    if bag is not None:
+        bag._analiz[sayfa] += 1
     return out
 
 
@@ -926,17 +929,34 @@ def sonuc(bolgeler: list[Bolge]) -> IM.Result:
     return r
 
 
-def imza_bolgeleri(path, rules=None, *, bellek: TekrarBellegi | None = None) -> list[dict]:
-    """Bir dosyanın imza bölgeleri (sözleşmedeki `bolgeler` biçimi; kutu PDF puanı / görselde piksel).
-    PDF (PyMuPDF gerekir) ve görsel dosyalar; diğer biçimlerde boş liste. Maskeleme aynı kuralları
-    `raster.scan_pdf_page` / `raster.mask_image` içinde uygular ve aynı kimlikleri üretir."""
-    from pathlib import Path
+def imza_bolgeleri(hedef, rules=None, ps=None, olcek=None, *, bellek: TekrarBellegi | None = None) -> list[dict]:
+    """İmza bölgeleri (ORTAK.md bölge sözleşmesi; `kutu` PDF puanı). Üç çağrı biçimi:
 
+    - `fn(page, rules, ps)` (hat toplayıcısı, PDF sayfası): `ps` = `raster.scan_pdf_page` çıktısı; o
+      tarama bu sayfanın imza bölgelerini zaten çıkardı (`ps["bolgeler"]`). Kimlik verilmez (toplayıcı
+      verir); iç alanlar: `_etiket` (kutuya yazılacak `[İMZA]` ya da geri basılan "Ad – Unvan [imza
+      gizlendi]"), `_yama` (renkli mürekkebi beyazlatılmış kırpıntının PNG'si: siyah kutu yerine basılır).
+    - `fn(img, rules, scan, olcek)` (görsel dosya): `scan` = `raster.scan_image_obj` çıktısı; kutu =
+      piksel × `olcek`; ek iç alanlar `_px` (piksel kutu), `_yama` (PIL görüntüsü).
+    - `fn(yol)` (tek başına): dosyanın bütün bölgeleri, kararlı kimlikle (`<sha8>-s<sayfa>-<sıra>`).
+    """
     from . import raster
     from .detect import MaskRules
     rules = rules or MaskRules()
-    p = Path(path)
+    if hasattr(hedef, "get_pixmap") and hasattr(hedef, "parent"):          # PDF sayfası
+        if ps is None:
+            ps = raster.scan_pdf_page(hedef, rules)
+        return [dict(b) for b in ps.get("bolgeler") or []]
+    if hasattr(hedef, "getpixel"):                                         # PIL görüntüsü
+        scan = ps if ps is not None else raster.scan_image_obj(hedef, rules)
+        return raster.image_imza_bolgeleri(scan, olcek if olcek is not None else raster.image_scale(hedef))
+    from pathlib import Path
+    p = Path(hedef)
     ext = p.suffix.lower()
+
+    def temiz(bs: list[dict], bag: Baglam, sayfa: int) -> list[dict]:
+        ids = bag.kimlikler(sayfa, len(bs))
+        return [dict({k: v for k, v in b.items() if not k.startswith("_")}, id=i) for i, b in zip(ids, bs)]
     if ext == ".pdf":
         import pymupdf
         doc = pymupdf.open(str(p))
@@ -945,7 +965,8 @@ def imza_bolgeleri(path, rules=None, *, bellek: TekrarBellegi | None = None) -> 
             bag.bellek = bellek
             out: list = []
             for page in doc:
-                out += raster.scan_pdf_page(page, rules).get("bolgeler") or []
+                bs = raster.scan_pdf_page(page, rules).get("bolgeler") or []
+                out += temiz(bs, bag, page.number + 1)
             return out
         finally:
             doc.close()
@@ -953,5 +974,5 @@ def imza_bolgeleri(path, rules=None, *, bellek: TekrarBellegi | None = None) -> 
         img = raster._open_image(p)
         bag = Baglam(sha8=hashlib.sha256(p.read_bytes()).hexdigest()[:8], bellek=bellek)
         r = raster.scan_image_obj(img, rules, bag=bag)
-        return raster.bolge_kayitlari(r.bolgeler, bag, 1, lambda b: b)
+        return temiz(raster.image_imza_bolgeleri(r, raster.image_scale(img)), bag, 1)
     return []
