@@ -24,6 +24,9 @@ işini ajan kendisi yapar (iş paketleri): `bidr <aşama> prepare` → ajan `*.o
 `bidr <aşama> apply` (transcribe, describe, decide, name, write, verify). Rapor katmanı
 (name → file → write → verify → render): `docs/REPORT_LAYER.md`. Metni yazmak, doğrulamak ve
 reddedilen metni yeniden yazmak ayrı, taze ajanların işidir; doğrulayıcı yazarın paketini görmez.
+Paket çoksa `bidr next` "Paralel:" satırı `bidr parcala` ile ayrık parça listeleri önerir (alt ajan
+başına bir liste; `docs/MODEL_LAYER.md` "Paralel model aşamaları"). Yeni model aşamasına
+`pipeline.yaml` `paralel` alanı (bölünebilir mi + gerekçe) zorunludur.
 
 ## Değişmez kurallar (her ajan için)
 

@@ -36,6 +36,32 @@ Kapı hatası (`HATA kapı: ...`, çıkış kodu 3): önkoşul bitmemiş. Atlatm
 (config'i düzenlemek, dosya silmek, bayrak denemek yok); `bidr next`'e dön.
 Uyarılar (`Uyarı:`) engel değildir ama sonunda kullanıcıya özetlenir.
 
+## Paralel ajanlar (parça listeleri)
+
+Model aşamasında `bidr next` bir `Paralel:` satırı yazar (aşama başına karar ve gerekçe
+`bidr/data/pipeline.yaml` `paralel`):
+
+- `Paralel: bölünmez` (yonler) ya da `gerekmez` (paket sayısı eşiğin altında) → tek ajan yapar.
+- `Paralel: bu aşama N ajanla paralel yapılabilir` →
+  1. `bidr parcala -w WS <aşama>` cevapsız paketleri N AYRIK listeye böler:
+     `work/<klasör>/_parca/<k>.txt` (satır başına bir paket yolu; write'ta aynı alt bölümün
+     ölçütleri, ör. A.1.x, aynı listede).
+  2. N alt ajan başlat; her birine YALNIZ bir parça dosyasını ve bu aşamanın bu skill'deki
+     kurallarını ver (talimat tek ajanınkiyle aynı: README + her paketin `istem`i; rubrik, alıntı
+     kuralı, şema değişmez). Her alt ajana açıkça söyle: yalnız kendi listesindeki paketlere
+     `.out.json` yazar; başka cevaba dokunmaz; apply/prepare çalıştırmaz; kendisi alt ajan açmaz.
+     Doğrulama (verify) parçalarını metni yazan ajanlardan ayrı, taze alt ajanlara ver.
+  3. Hepsi bitince bir kez `bidr parca-denetle -w WS <aşama>` (liste dışı yazılmış ya da ezilmiş
+     cevabı `_parca/reddedilen/`'e taşır, eskisini geri koyar) ve aşamanın apply komutu (apply de
+     aynı denetimi yapar). Reddedilen ya da geçersiz kalan paketler `bidr next`'te yeniden cevapsız
+     görünür; yeniden `parcala` ile böl ya da kendin yap.
+- Alt ajan desteklemiyorsan parçaları sırayla kendin yap (1.txt, 2.txt, …); sonuç aynıdır.
+
+Paralellik sonucu değiştirmez: her paket tek belgeye (ya da tek ölçüte) aittir ve belgeler arası
+bağlantılar (PUKÖ zinciri, faaliyet kayıtları, OD) modelsiz `bidr faaliyet` ve `bidr audit`'te
+bütün kararlar birlikte okunarak kurulur. Kota için tavan: `BIDR_PARALEL_AZAMI` ortam değişkeni ya
+da config.yaml `rapor.paralel_azami` (en çok 10).
+
 ## İş paketi döngüsü (karar_kaba, karar_ince)
 
 Model işini sen yaparsın; hiçbir API ya da `bidr decide run` / `bidr llm` kullanılmaz.
@@ -56,8 +82,8 @@ Model işini sen yaparsın; hiçbir API ya da `bidr decide run` / `bidr llm` kul
      bağımsız değerlendir (yine `kanit_degil` olabilir).
 3. Cevabı YALNIZ JSON olarak (açıklama, kod çiti yok) `work/<aşama>/<doc_id>.out.json`'a yaz.
    Paket dosyalarını (`<doc_id>.json`), `decisions.jsonl`'i ve başka dosyaları değiştirme.
-4. Çok paket varsa alt ajanlar kullanabilirsin: her birine bir grup paket ve bu bölümün
-   2-3. maddelerini ver; birbirlerinin dosyalarına yazmasınlar.
+4. Çok paket varsa `bidr next`'in `Paralel:` satırına uy ("Paralel ajanlar"): `bidr parcala`
+   ile ayrık listeler, alt ajan başına bir liste ve bu bölümün 2-3. maddeleri.
 5. `bidr decide apply -w WS --stage <coarse|fine> --model <ajan adı>` (`next` tam komutu verir;
    `<ajan-adı>` yazıyorsa kendi adını koy, ör. `claude-code:sonnet`).
 6. Sonuç:

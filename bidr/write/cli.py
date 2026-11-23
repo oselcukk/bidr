@@ -51,6 +51,8 @@ def _cmd(args) -> int:
                       f"bidr write prepare -w {args.workspace} --eski-kurallar")
             print(f"Ajan: {st['klasor']}/README.md")
             return 0
+        from bidr.pipeline.paralel import apply_oncesi
+        apply_oncesi(args.workspace, "work/write")   # parça dışı yazılmış/ezilmiş cevap reddedilir
         st = R.apply(args.workspace, model=args.model, index=args.index, audit=args.audit)
     except (FileNotFoundError, KeyError) as e:
         print(f"HATA {e}")

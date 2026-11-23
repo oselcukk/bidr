@@ -27,6 +27,10 @@ de günde bir kez "Yeni bidr sürümü var" satırıyla hatırlatır.
    (file, write, verify, render). Metni yazmak, doğrulamak ve reddedilen metni yeniden yazmak
    ayrı, taze ajanların işidir.
 5. Genel durum: `bidr status -w {ws_q}` (`--json` makine için).
+6. `next` "Paralel: bu aşama N ajanla paralel yapılabilir" derse: `bidr parcala` ile ayrık parça
+   listeleri (`work/<klasör>/_parca/<k>.txt`), alt ajan başına bir liste; her alt ajan yalnız kendi
+   listesindeki `.out.json`'ları yazar (apply yok, alt ajan yok); hepsi bitince `bidr parca-denetle`
+   ve apply. Alt ajan yoksa parçaları sırayla kendin yap (skill `bidr-rapor`, "Paralel ajanlar").
 
 ## Ne istenirse hangi skill
 

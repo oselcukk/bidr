@@ -17,6 +17,10 @@
 #   sart.metin    tamamlanma şartının insan/ajan için açıklaması
 #   onay       yok | insan  (insan: aşama kullanıcının kararı olmadan bitemez)
 #   skill      bu aşamada okunacak skill
+#   paralel    (yalnız M aşamaları) bölünebilir mi: `bolunebilir: true|false` + `gerekce`; bölünebilirse
+#              `dizin` (paket klasörü), `duzen` (dosya: <anahtar>.json | klasor: <anahtar>/<anahtar>.json),
+#              isteğe bağlı `anahtar` (paket adı deseni) ve `grup` (alt_bolum: A.1.x ölçütleri aynı parçada).
+#              `bidr parcala` cevapsız paketleri ayrık parça listelerine böler (docs/MODEL_LAYER.md "Paralel").
 surum: 1
 asamalar:
   - id: kurulum
@@ -70,6 +74,12 @@ asamalar:
         yazıya geçirilmiş ve apply ile işlenmiş; geçersiz/şüpheli cevap yok.
     onay: yok
     skill: bidr-rapor
+    paralel:
+      bolunebilir: true
+      dizin: work/transcribe
+      duzen: klasor
+      gerekce: >-
+        Paket tek belgenin sayfa görüntüleri; istem başka belge görmez, cevap yalnız o belgenin metnini yazar. Belgeler arası bağlantı (PUKÖ, faaliyet, OD) modelsiz aşamalarda (faaliyet, audit) bütün kararlardan kurulur.
 
   - id: describe
     ad: Görsel betimleme (metni az fotoğraf/afiş/tabela; model işi ajanda)
@@ -92,6 +102,12 @@ asamalar:
         transcribe ile sırası serbest: ikisi de uygulanırsa yazıya geçirilen metin betimlemenin altında kalır.
     onay: yok
     skill: bidr-rapor
+    paralel:
+      bolunebilir: true
+      dizin: work/describe
+      duzen: klasor
+      gerekce: >-
+        Paket tek belgenin görselleri; betimleme belgeye özgüdür, başka belgeye bakılmaz.
 
   - id: etiketler
     ad: Geçmiş etiketler (isteğe bağlı)
@@ -156,6 +172,12 @@ asamalar:
         atlandı: öz-referans türü, boş metin); bekleyen ya da geçersiz cevap yok.
     onay: yok
     skill: bidr-rapor
+    paralel:
+      bolunebilir: true
+      dizin: work/coarse
+      duzen: dosya
+      gerekce: >-
+        Paket tek belge + profilin ölçüt listesi; belge başına bağımsız karar. Zincir (PUKÖ), faaliyet ve OD modelsiz `bidr faaliyet` / `bidr audit`'te bütün kararlar birlikte okunarak kurulur; bölme onları etkilemez.
 
   - id: karar_ince
     ad: İnce karar (rubrik, yuva, OD, birebir alıntı; model işi ajanda)
@@ -177,6 +199,12 @@ asamalar:
         kullanılmaz (uyarı olarak gösterilir, bir kez yeniden denenir).
     onay: yok
     skill: bidr-rapor
+    paralel:
+      bolunebilir: true
+      dizin: work/fine
+      duzen: dosya
+      gerekce: >-
+        Paket tek belge + aday ölçütlerin rubriği; alıntı yalnız o belgeden. Belgeler arası bağlantı ve OD toplamı modelsiz aşamalarda (faaliyet, audit) kurulur; parça dağılımı sonucu değiştirmez.
 
   - id: belirsiz_okuma
     ad: Birimi belirsiz OCR'lı belgelerin görsel yeniden okuması (koşullu; model işi ajanda)
@@ -204,6 +232,12 @@ asamalar:
         Kadro adı, grup bağlamı ya da klasör adıyla birim kabul edilmez.
     onay: yok
     skill: bidr-rapor
+    paralel:
+      bolunebilir: true
+      dizin: work/transcribe
+      duzen: klasor
+      gerekce: >-
+        Görsel okuma gibi: paket tek belgenin görüntüleri.
 
   - id: hakem
     ad: Geçmiş etiketle karşılaştırma ve hakem kararları
@@ -248,6 +282,12 @@ asamalar:
         ise ya da adlandırılacak belge yoksa atlanır; ad önceliği insan > model parça adı > model > kural.
     onay: yok
     skill: bidr-rapor
+    paralel:
+      bolunebilir: true
+      dizin: work/name
+      duzen: dosya
+      gerekce: >-
+        Ad belge başına; istem yalnız o belgenin metni ve eşleştiği ölçütler. Adlandırma kuralları her parçada aynı istemde.
 
   - id: faaliyet
     ad: Faaliyet kayıtları (aynı toplantı/etkinliğin belgeleri; belirleyici)
@@ -312,6 +352,12 @@ asamalar:
         yeni satırları kullanıcı inceler; sonra bu aşama bitti olur.
     onay: yok
     skill: bidr-rapor
+    paralel:
+      bolunebilir: true
+      dizin: work/ikinci_arama
+      duzen: dosya
+      gerekce: >-
+        Arşiv taraması (ölçüt başına belge seçimi) prepare'de kodla yapılır; paket tek belge + ona seçilen zayıf ölçütler (bir belgenin bütün ölçütleri aynı pakette). Model başka belgeye bakmaz.
 
   - id: file
     ad: Kanıt dosyalama (evidence/A/A.1/…, evidence-index.csv, bağlantılar)
@@ -350,6 +396,14 @@ asamalar:
         bekleyen (cevapsız, geçersiz ya da işlenmemiş) paket yok; yeniden yazım turu paketleri dahil.
     onay: yok
     skill: bidr-rapor
+    paralel:
+      bolunebilir: true
+      dizin: work/write
+      duzen: dosya
+      anahtar: '[A-E]\.\d+\.\d+'
+      grup: alt_bolum
+      gerekce: >-
+        Paket tek ölçüt: ölçütün bütün kanıtları, faaliyet özeti ve PUKÖ bilgisi aynı pakette (ölçütün zinciri bölünmez). Aynı alt bölümün (A.1, A.2 …) ölçütleri aynı faaliyeti farklı anlatmasın diye tek parçada kalır.
 
   - id: verify
     ad: Metin doğrulama (kod + bağımsız ajan) ve yeniden yazım döngüsü
@@ -371,6 +425,13 @@ asamalar:
         için kullanıcı karar verir (bidr verify karar: cikar | tekrar).
     onay: yok
     skill: bidr-rapor
+    paralel:
+      bolunebilir: true
+      dizin: work/verify
+      duzen: dosya
+      anahtar: '[A-E]\.\d+\.\d+'
+      gerekce: >-
+        Paket tek ölçütün metni ve atıf yaptığı kanıtlar; doğrulayıcı yazarın paketini görmez (parça ajanları da yazım ajanlarından ayrı, taze olmalı). Ölçüt başına bağımsız.
 
   - id: yonler
     ad: Güçlü / Gelişmeye Açık Yönler (alan düzeyi; model işi ajanda, doğrulama verify akışında)
@@ -394,6 +455,10 @@ asamalar:
         rapor.yeniden_yazim_siniri turdan sonra hücreler şablon yönergesiyle kalır (rapor TASLAK, uyarı).
     onay: yok
     skill: bidr-rapor
+    paralel:
+      bolunebilir: false
+      gerekce: >-
+        Alan (A–D) düzeyinde en çok 4 paket; maddeler alanın bütün doğrulanmış metinlerinden ve bulgularından çıkar, alanlar arası denge ve tekrar raporun bütününde okunur. Bölmenin kazancı yok, tutarlılık riski var.
 
   - id: render
     ad: Rapor üretimi (report.docx; kanıt adları bağlantılı)

@@ -43,6 +43,8 @@ def _cmd(args) -> int:
                     print(f"  girdisi değişen alan (önce bidr yonler prepare): {', '.join(y['eski_metin'])}")
             print(f"Ajan (metni yazandan bağımsız olmalı): {st['klasor']}/README.md")
             return 1 if st["kod_reddi"] or y.get("kod_reddi") else 0
+        from bidr.pipeline.paralel import apply_oncesi
+        apply_oncesi(args.workspace, "work/verify")   # parça dışı yazılmış/ezilmiş cevap reddedilir
         st = R.apply(args.workspace, model=args.model)
     except (FileNotFoundError, KeyError, ValueError) as e:
         print(f"HATA {e}")

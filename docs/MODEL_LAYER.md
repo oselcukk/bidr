@@ -292,3 +292,57 @@ işlenmiş arşivin bütün belgeleri derlem. Kod: `bidr/candidates/ikinci.py` (
   olur (faaliyet kaydı da içerikle yeniden denetlenir). Hakem kuyruğu decisions.jsonl yalnız
   yeniden yazıldıysa (karşılaştırma ve sorular aynı) eskimez; ikinci arama etiketli bir belgeye
   kabul eklediyse eskir.
+
+## Paralel model aşamaları (`bidr parcala`)
+
+Model işi gerektiren aşamalarda cevapsız iş paketleri, paket sayısına göre artan sayıda ajana
+**ayrık** listelerle bölünebilir. Kod: `bidr/pipeline/paralel.py`; aşama kararı `pipeline.yaml`
+`paralel` alanında (`bolunebilir`, `gerekce`, `dizin`, `duzen` dosya|klasor, isteğe bağlı `anahtar`
+deseni ve `grup: alt_bolum`). `load_spec` her M aşamasında bu alanı ister.
+
+| Aşama | Bölünür | Bölme birimi | Gerekçe |
+|---|---|---|---|
+| transcribe, belirsiz_okuma | evet | belge (`<doc_id>/`) | paket tek belgenin sayfa görüntüleri |
+| describe | evet | belge | betimleme belgeye özgü |
+| karar_kaba | evet | belge | istem: tek belge + profilin ölçüt listesi |
+| karar_ince | evet | belge | istem: tek belge + adayların rubriği; alıntı yalnız o belgeden |
+| ikinci_arama | evet | belge | arşiv taraması (ölçüt başına belge seçimi) prepare'de kodla; paket tek belge + ona seçilen bütün zayıf ölçütler |
+| name | evet | belge | ad belge başına; adlandırma kuralları her parçada aynı istemde |
+| write | evet | alt bölüm (A.1, A.2 …) | paket tek ölçüt ve onun bütün kanıtları/faaliyet özeti (ölçütün zinciri bölünmez); aynı alt bölümün ölçütleri aynı faaliyeti farklı anlatmasın diye tek parçada |
+| verify | evet | ölçüt | doğrulayıcı yazarın paketini görmez; parça ajanları da yazım ajanlarından ayrı ve taze |
+| yonler (+ yönlerin doğrulaması) | hayır | — | en çok 4 alan paketi; maddeler alanın bütün doğrulanmış metinlerinden, alanlar arası denge ve tekrar raporun bütününde okunur |
+
+**PUKÖ zinciri, faaliyet ve OD bölmeden etkilenmez.** Belgeler arası bağlantıyı hiçbir model
+paketi kurmaz: `classify_coarse`/`classify_fine`/`name_evidence`/`transcribe`/`describe` istemlerinin
+girdileri yalnız tek belgenindir (`belge_metni`, `belge_bilgisi`, aday ölçütler, birim). Faaliyet
+kayıtları `bidr faaliyet` (`faaliyet/run.py`: yalnız `decisions.jsonl`), PUKÖ bağlantıları ve OD
+`bidr audit` (`audit/puko.py` `build_links(docs, recs, …)`, `audit/run.py` `build`) içinde modelsiz,
+bütün kararlar birlikte okunarak kurulur; apply bütün cevap dosyalarını kimin yazdığından bağımsız
+işler. Ölçüt düzeyinde başka belgeleri gören tek model paketi `write_criterion`'dır ve ölçütün bütün
+kanıtları tek pakettedir. `tests/test_paralel.py` aynı cevaplar üç parçaya (ve ters sırayla)
+dağıtıldığında `decisions.jsonl`, `faaliyetler.json` ve `audit-olcutler.json`'un tek ajanlı koşuyla
+birebir aynı olduğunu sınar.
+
+**Parça sayısı.** `N = 1` (≤ `esik` paket, vars. 20), sonra her `adim` (vars. 40) pakette +1, en çok
+`azami` (vars. 10) ve paket (write'ta alt bölüm) sayısı: 443 paket → 10. Ayar önceliği: komut bayrağı
+(`--esik/--adim/--azami`, `--parca` zorlar) > config.yaml `rapor.paralel_{esik,adim,azami}` >
+varsayılan; tavanı `BIDR_PARALEL_AZAMI` (kota) da düşürür; hiçbiri 10'u aşamaz. Bölme dengeli:
+ağırlık paketin bayt boyutu (klasör düzeninde sayfa görüntüleri), en ağır paket/grup en hafif parçaya
+(LPT); sonuç belirlenimci.
+
+**Komutlar.** `bidr next` model aşamasında `Paralel:` satırı yazar (bölünmez + gerekçe | gerekmez |
+"N ajanla paralel yapılabilir" + komutlar); `next --json` `sonraki.paralel` (`bolunebilir`,
+`parca_sayisi`, `bekleyen`, `komut`, `denetim`). Bekleyen paketleri aşamanın tamamlanma denetimi
+söyler (`Check.bekleyen`: cevapsız ∪ geçersiz); yönetilmeyen çalışma alanında klasör taranır.
+- `bidr parcala -w WS [aşama] [--json]` → `work/<klasör>/_parca/<k>.txt` (başlık yorum satırları +
+  satır başına WS'ye göreli paket yolu) ve `_parca/parcalar.json` (parçalar, paket izi, bölmeden önce
+  var olan liste dışı cevapların sha'sı; kopyaları `_parca/yedek/`). `_` ile başlayan ad hiçbir
+  aşamada paket sayılmaz.
+- Parça ajanının talimatı tek ajanınkiyle aynıdır (README + paketin `istem`i); fark yalnız listedir:
+  kendi listesindeki `.out.json`'lar, apply yok, alt ajan yok.
+- `bidr parca-denetle -w WS [aşama] [--kuru]` ve **her apply'ın başında** (`apply_oncesi`;
+  transcribe, describe, decide, arama, name, write, verify): hiçbir listede olmayan pakete yazılmış
+  cevap ya da bölmeden önce var olan liste dışı cevabın değişmesi/silinmesi ihlaldir; yazılan dosya
+  `_parca/reddedilen/`'e taşınır, eskisi geri konur (çıkış 1). Paketler bölmeden sonra değiştiyse
+  (yeniden prepare) bildirim eskidir ve yok sayılır. Hangi parçanın hangi dosyayı yazdığını dosya
+  sistemi söylemez; panel işleyicisi bunu çağrı başına ayrıca denetler (bidr-panel docs/ISLEYICI.md).
