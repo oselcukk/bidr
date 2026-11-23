@@ -198,9 +198,10 @@ def test_scan_copy_group_one_package_one_review_row(tmp_path):
     wb = load_workbook(root / "review.xlsx")
     sh = wb["İnceleme"]
     head = [c.value for c in sh[1]]
-    hb, hk = head.index("Belge (klasördeki dosya)"), head.index("kopyaları")
+    hb, hd, hk = head.index("Belge (klasördeki dosya)"), head.index("Dikkat"), head.index("kopyaları")
     satir = [r for r in sh.iter_rows(min_row=2, values_only=True) if r[hk]]
-    assert len(satir) == 1 and satir[0][hk] == ids["t2"] and "Kopyaları: t2.jpg" in satir[0][hb]
+    assert len(satir) == 1 and satir[0][hk] == ids["t2"] and "Kopyaları: t2.jpg" in satir[0][hd]
+    assert "Kopyaları" not in (satir[0][hb] or "")        # Belge hücresi panelin ayrıştırdığı biçimde kalır
 
     # satır kararı gruba: dosyalamada temsilcinin kalemi kopyayı taşır (tek kanıt numarası)
     from bidr.file.run import plan

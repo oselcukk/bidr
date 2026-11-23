@@ -155,7 +155,7 @@ ok, score, span = verify_quote(quote, text)   # Türkçe katlama, boşluk, OCR t
   `mukerrer.durum: devralindi` + `kopyasi: <temsilci>` ile kararı devralır. Tarama kopyasında OCR farkı
   temsilcinin alıntısını üyede bozsa da grup bölünmez (`mukerrer.alinti_tutmayan`). Tarihi/revizyonu farklı
   sürüm kopya değildir. Görüntü karmaları `work/_durum/goruntu-karma.json`'da (yalnız karma; görüntü
-  saklanmaz). İnceleme tablosunda grup tek satırdır (temsilci; "kopyaları" sütunu ve sade "Belge" hücresinde
+  saklanmaz). İnceleme tablosunda grup tek satırdır (temsilci; gizli "kopyaları" sütunu ve sade "Dikkat" hücresinde
   "Kopyaları: …"); satır kararı dosyalamada bütün gruba uygulanır (tek kanıt numarası).
 - `bidr decide -w WS [--profile P] [--only-labeled] [--limit N]` →
   `decisions.jsonl`.

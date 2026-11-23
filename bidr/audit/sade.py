@@ -354,6 +354,11 @@ def inceleme_satirlari(a, cs) -> list[dict]:
     out = []
     for r in a.rows:
         uy, bak = dikkat(r, a.donem)
+        if r.get("kopya_dosyalari"):
+            # bilgi (baktırmaz): aynı belgenin kopyaları tek satırda; panel "Dikkat"i olduğu gibi gösterir.
+            # "Belge" hücresine yazılmaz: panel ikinci satırı "(klasör: …)" diye ayrıştırır.
+            kd = "; ".join(x.replace("\\", "/").rsplit("/", 1)[-1] for x in r["kopya_dosyalari"].split("; "))
+            uy.append(f"Kopyaları: {kd} (aynı belge; kararınız hepsine uygulanır)")
         rb = bool(r.get("yeniden_bak"))
         lab, dog = karar_etiketi(r)
         if rb:
@@ -370,9 +375,6 @@ def inceleme_satirlari(a, cs) -> list[dict]:
         dosya = r.get("kaynak_dosya") or ""
         belge = (dosya.replace("\\", "/").rsplit("/", 1)[-1] + (f"\n(klasör: {dosya.rsplit('/', 1)[0]})"
                                                                if "/" in dosya else "")) if dosya else r.get("belge") or ""
-        if r.get("kopya_dosyalari"):
-            kd = "; ".join(x.replace("\\", "/").rsplit("/", 1)[-1] for x in r["kopya_dosyalari"].split("; "))
-            belge += f"\nKopyaları: {kd} (aynı belge; kararınız hepsine uygulanır)"
         asama = r.get("asama") or ""
         neden = (f"Maddenin \"{ASAMA_KISA[asama]}\" kısmı için. " if asama in ASAMA_KISA else "") + (r.get("gerekce") or "")
         if "belge_notu" in (r.get("flags") or []):
