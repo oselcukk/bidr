@@ -314,3 +314,47 @@ def test_yeni_tasarim_gidis_donus_eski_bicimle_ayni(ws, tmp_path):
     d = {r["satir"]: r for r in ty_}
     assert d[rows[0]]["karar"] == "ret" and d[rows[2]]["duzelt_olcut"] == "B.3.2"
     assert b2 and all(d[s]["karar"] for s in b2)                          # toplu kabul iki biçimde de işledi
+
+
+# -- "başka maddenin konusu" reti ----------------------------------------------------------------
+
+def test_ret_baska_madde_needs_target_and_moves(ws):
+    a, paths = audit(ws)
+    _set(paths["xlsx"], {"d_plan|B.1.1/1": {"karar": S.K_RET_BASKA}})
+    st = apply(ws)
+    assert "Doğru madde" in st["gecersiz"]["d_plan|B.1.1/1"] and "rapordan" in st["gecersiz"]["d_plan|B.1.1/1"]
+    a, paths = audit(ws)
+    _set(paths["xlsx"], {"d_plan|B.1.1/1": {"karar": S.K_RET_BASKA, "dogru": "B.3.2/3", "not": "B.3.2 konusu"}})
+    st = apply(ws)
+    assert not st["gecersiz"]
+    d = load_review_decisions(ws)["d_plan|B.1.1/1"]
+    assert d["karar"] == "duzelt" and d["duzelt"]["olcut"] == "B.3.2" and d["duzelt"]["yuva"] == "B.3.2/3"
+    assert S.K_RET_BASKA in S.KARAR_SECENEK
+
+
+def test_ret_note_citing_other_criterion_warns_document_dropped(ws):
+    a, paths = audit(ws)
+    _set(paths["xlsx"], {"d_plan|B.1.1/1": {"karar": "Ret", "not": "önceki turda B.3.5 olarak; bu madde değil"}})
+    assert not apply(ws)["gecersiz"]
+    a, paths = audit(ws)
+    gaps = (ws / FILES["gaps"]).read_text(encoding="utf-8")
+    assert "rapor dışına düştü" in gaps and "B.3.5" in gaps
+    r = next(x for x in a.rows if x["satir"] == "d_plan|B.1.1/1")
+    assert "ret_hedefsiz_dustu" in r["flags"] and r["ret_anilan"] == ["B.3.5"]
+    row = _rows(ws / "review.xlsx")["d_plan|B.1.1/1"]
+    assert "rapor dışına düştü" in (row["dikkat"] or "") and row["bolum"] == 3   # bilgi; yeniden baktırmaz
+
+
+def test_ret_cited_and_mark_dropped_units():
+    from bidr.audit.run import mark_dropped_rejections, ret_cited
+    assert ret_cited("tek dersin sınav kuralı, B.2.2 konusu", "B.1.6") == ["B.2.2"]
+    assert ret_cited("başka maddeye ait", "B.1.1") == ["başka madde"]
+    assert ret_cited("alıntı yetersiz", "B.1.1") == [] and ret_cited("B.1.1 değil", "B.1.1") == []
+    rows = [{"doc_id": "a", "belge": "a", "olcut": "C.2.1", "karar": "ret", "not": "B.3.5 konusu",
+             "sayilir": False, "flags": []},
+            {"doc_id": "b", "belge": "b", "olcut": "C.2.1", "karar": "ret", "not": "B.3.5 konusu",
+             "sayilir": False, "flags": []},
+            {"doc_id": "b", "belge": "b", "olcut": "B.3.5", "karar": "", "not": "", "sayilir": True, "flags": []}]
+    uy: list[str] = []
+    out = mark_dropped_rejections(rows, uy)
+    assert [r["doc_id"] for r in out] == ["a"] and len(uy) == 1 and "1 belge rapor dışına düştü" in uy[0]

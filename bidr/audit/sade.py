@@ -4,8 +4,8 @@ Teknik sayfalar ("Eşleşmeler", "Ölçüt özeti", "Başka birime ait sayılanl
 dosyada kalır; `bidr audit apply` ikisini birlikte okur. Komisyon üyesi yalnız şu sayfaları görür:
 
 - **İnceleme**: satır = bir öneri ("şu belge şu maddeye kanıt"). Düz Türkçe sütunlar ve tek karar
-  sütunu (KARARINIZ: Kabul · Kabul — etkinlik yapıldı · Ret · Başka maddeye taşı · Başka maddeye
-  taşı — etkinlik yapıldı). Üç bölüm: (1) bakılması gerekenler, (2) sorunsuz görünenler (bölüm
+  sütunu (KARARINIZ: Kabul · Kabul — etkinlik yapıldı · Ret · Ret — başka maddenin konusu · Başka
+  maddeye taşı · Başka maddeye taşı — etkinlik yapıldı). Üç bölüm: (1) bakılması gerekenler, (2) sorunsuz görünenler (bölüm
   başlığındaki "Hepsini kabul" boş satırları kabul eder), (3) daha önce karar verilenler.
 - **Bölümünüze ait mi?**: birimi belirsiz ya da başka birime ait sayılan belgeler (Evet/Hayır…).
 - **Maddeler**: önerilen olgunluk düzeyi ve komisyonun onayladığı düzey.
@@ -32,7 +32,11 @@ SADE_SHEETS = (SH_INC, SH_BIRIM, SH_MADDE, SH_NASIL)
 # KARARINIZ seçenekleri (açılır liste; virgül içeremez)
 K_KABUL, K_ETK, K_RET, K_TASI, K_TASI_ETK = (
     "Kabul", "Kabul — etkinlik yapıldı", "Ret", "Başka maddeye taşı", "Başka maddeye taşı — etkinlik yapıldı")
-KARAR_SECENEK = (K_KABUL, K_ETK, K_RET, K_TASI, K_TASI_ETK)
+# "Başka maddenin konusu" türü ret: hedef madde zorunlu, karar taşıma olarak uygulanır (belge rapordan
+# sessizce düşmez). Sonraki turda satır "Başka maddeye taşı" olarak görünür.
+K_RET_BASKA = "Ret — başka maddenin konusu"
+KARAR_SECENEK = (K_KABUL, K_ETK, K_RET, K_RET_BASKA, K_TASI, K_TASI_ETK)
+TASIMA_SECENEK = (K_TASI, K_TASI_ETK, K_RET_BASKA)
 TOPLU = "Hepsini kabul"                         # 2. bölüm başlığındaki toplu kabul seçeneği
 TOPLU_NOT = "toplu kabul (sade tablo, 2. bölüm)"
 TOPLU_SATIR = "#toplu"                          # gizli kimlik sütununda bölüm başlığı işareti
@@ -57,6 +61,9 @@ ORDER = {"planla": 1, "uygula": 2, "kontrol_et": 3, "onlem_al": 4, "ozgun": 5}
 # -- işaretlerin düz Türkçe karşılığı -------------------------------------------------------------
 # (metin, bakılmalı mı). {yil}: rapor yılı, {byil}: belgenin yılı. Bakılmalı olmayanlar yalnız bilgi.
 DIKKAT = {
+    "ret_hedefsiz_dustu": ("Ret notunda başka madde ({anilan}) anılıyor ama belge taşınmadı; belge rapor dışına "
+                           "düştü. O maddeye aitse \"Ret — başka maddenin konusu\" ya da \"Başka maddeye taşı\" "
+                           "seçip doğru maddeyi verin.", False),
     "ayni_alinti_kabul": ("Aynı alıntı {ayni} ölçütünde zaten kabul edildi (ikinci arama). Alıntı bu maddeye "
                           "AYRI ve özgül bir içerikle karşılık vermiyorsa Ret; başka maddeye aitse Düzelt.", True),
     "birim_onay_bekliyor": ("Bu belgenin bölümünüze ait olduğundan emin değiliz; onaylanana dek kanıt "
@@ -207,7 +214,9 @@ NASIL = [
     "bıraktığınız satırlar kabul sayılır; itiraz ettiğiniz satırı tek tek değiştirin. 3) Daha önce karar "
     "verdikleriniz: değiştirmek istemedikçe dokunmayın.",
     "KARARINIZ: Kabul = belge bu maddeye kanıttır. Kabul — etkinlik yapıldı = belgede yalnız duyuru/plan "
-    "görünse de etkinlik gerçekten yapıldı. Ret = kanıt değil. Başka maddeye taşı = kanıt ama başka bir "
+    "görünse de etkinlik gerçekten yapıldı. Ret = kanıt değil. Ret — başka maddenin konusu = bu maddeye değil "
+    "başka bir maddeye ait; \"Doğru madde\" zorunlu, belge o maddeye taşınır (rapordan düşmez). "
+    "Başka maddeye taşı = kanıt ama başka bir "
     "maddeye; \"Doğru madde\" sütununda maddeyi seçin (ör. B.3.2). Başka maddeye taşı — etkinlik yapıldı = "
     "ikisi birden.",
     "\"Önerilen kanıt adı\" raporda görünecek addır; düzeltebilirsiniz (kişi adı, unvan, e-posta yazmayın). "
@@ -340,7 +349,8 @@ def dikkat(r: dict, yil: int | None) -> tuple[list[str], bool]:
     for f in fl:
         if f in DIKKAT:
             t, b = DIKKAT[f]
-            out.append(t.format(yil=ys, byil=byil, ayni=", ".join(r.get("ayni_alinti_olcut") or []) or "başka bir"))
+            out.append(t.format(yil=ys, byil=byil, ayni=", ".join(r.get("ayni_alinti_olcut") or []) or "başka bir",
+                                anilan=", ".join(r.get("ret_anilan") or []) or "başka madde"))
             bak = bak or b
         elif f not in BILGI:
             bak = True
@@ -614,7 +624,7 @@ def _write_inceleme(wb, a, cs) -> None:
     K = f"${kc}{ILK}"
     cf = sh.conditional_formatting
     cf.add(rng, Rule(type="expression", dxf=dx(R_RET), formula=[f'OR({K}="Ret",{K}="Red")'], stopIfTrue=True))
-    cf.add(rng, Rule(type="expression", dxf=dx(R_TASI), formula=[f'LEFT({K},5)="Başka"'], stopIfTrue=True))
+    cf.add(rng, Rule(type="expression", dxf=dx(R_TASI), formula=[f'OR(LEFT({K},5)="Başka",{K}="{K_RET_BASKA}")'], stopIfTrue=True))
     cf.add(rng, Rule(type="expression", dxf=dx(R_KABUL), formula=[f'LEFT({K},5)="Kabul"'], stopIfTrue=True))
     cf.add(rng, Rule(type="expression", dxf=dx(R_DUZ), formula=[f'LEFT({K},10)="Düzeltildi"'], stopIfTrue=True))
     if toplu_r:
@@ -786,9 +796,12 @@ def _karar_hucreleri(s: dict, xr: dict, cs, tags) -> dict:
         if ORDER.get(etkin, 0) > ORDER["uygula"] and _s(xr.get("karar")) != "duzelt":
             return {"karar": "kabul", **bos}           # zaten üst kısım sayılıyor: düşürme
         return {"karar": "duzelt", **bos, "duzelt_asama": "uygula"}
-    if k in (_key(K_TASI), _key(K_TASI_ETK)):
+    if k in (_key(K_TASI), _key(K_TASI_ETK), _key(K_RET_BASKA)):
         kod = _madde_kodu(_s(s.get("dogru")))
         if not kod:
+            if k == _key(K_RET_BASKA):
+                return {"sade_hata": f"\"{K_RET_BASKA}\": belge rapordan düşmesin diye \"Doğru madde\" "
+                                     "sütununda o maddeyi seçin (ör. B.3.5/1); hiçbir maddeye ait değilse \"Ret\""}
             return {"sade_hata": f"\"{_s(s.get('karar'))}\": \"Doğru madde\" sütununda maddeyi seçin (ör. B.3.2)"}
         olcut = kod.split("/")[0]
         try:

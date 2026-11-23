@@ -286,7 +286,8 @@ anlaşılmıyordu. Dosya açılınca yalnız şu sayfalar görünür; teknik say
   sabit, filtre açık.
   - KARARINIZ (açılır liste) → teknik karar: `Kabul` = kabul; `Kabul — etkinlik yapıldı` = duzelt
     aşama `uygula` (mevcut yuva; satır zaten izleme/iyileştirme sayılıyorsa düşürmemek için kabul);
-    `Ret` = ret; `Başka maddeye taşı` = duzelt ölçüt+yuva; `Başka maddeye taşı — etkinlik yapıldı` =
+    `Ret` = ret; `Ret — başka maddenin konusu` = duzelt ölçüt+yuva (Doğru madde zorunlu; belge rapordan
+    sessizce düşmesin diye); `Başka maddeye taşı` = duzelt ölçüt+yuva; `Başka maddeye taşı — etkinlik yapıldı` =
     ikisi birden (gerçek incelemede 14 düzeltmenin 5'i böyleydi). Doğru madde ölçüt kodu (açılır
     liste, `B.3.2 — başlık`) ya da yuva (`B.3.2/3`) olabilir; yalnız ölçüt verilirse yuvayı kod seçer
     (yuva etiketi satırın sayılan aşamasını içeren tek yuva; tek değilse ilk yuva ve Not'a "maddedeki
@@ -609,3 +610,8 @@ tavanındadır (üst birim istisnası değişmedi). Birim adı yoksa bugünkü t
 Bilinen sınırlar: desenler sözcük düzeyindedir (eşanlamlı ifade kaçabilir); birim adı
 `config.yaml`'da yoksa birim/madde/usul denetimleri çalışmaz; madde bloğu "Madde N",
 "Gündem N", "Karar N" ya da numaralı satırla bölünür.
+
+**Hedefsiz "başka madde" reti.** `audit apply` ret notunda başka bir ölçüt kodu ("B.2.2 konusu",
+"önceki turda B.3.5 olarak") ya da "başka madde/ölçüt" geçen, taşınmamış ve belgesi hiçbir satırda
+sayılmayan satırlar için uyarı verir ("N belge rapor dışına düştü") ve satırın Dikkat hücresine bilgi
+yazar (`ret_hedefsiz_dustu`, yeniden baktırmaz). Panel bu türü hedef madde olmadan kabul etmez.

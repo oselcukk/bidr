@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -64,7 +65,46 @@ KARAR_ISARETLERI = frozenset({"insan_reddetti", "insan_duzeltti", "birim_aitligi
                               "birim_onay_bekliyor", "birim_aitligi_dogrulanmali"})
 # Yalnız bilgi veren işaretler: eklenmeleri verilmiş kararı "yeniden bak"a düşürmez. `belge_notu`: karar
 # yükleyenin notu görülerek verildi (not çelişkisi `not_uyusmuyor` ise yeniden baktırır).
-BILGI_ISARETLERI = frozenset({"belge_notu"})
+BILGI_ISARETLERI = frozenset({"belge_notu", "ret_hedefsiz_dustu"})
+
+# Ret notunda başka ölçüt anılıyor mu ("B.2.2 konusu", "önceki turda B.3.5 olarak", "başka madde").
+# Hedef verilmeden reddedilip belge hiçbir satırda sayılmıyorsa belge rapor dışına düşmüştür:
+# uyarı + satırda bilgi (`ret_hedefsiz_dustu`). Panel bu türü hedefsiz kabul etmez.
+_KOD_RE = re.compile(r"\b([A-Ea-e])\s*\.\s*(\d+)\s*\.\s*(\d+)")
+_BASKA_RE = re.compile(r"ba[sş]ka\s+(madde|[oö]l[cç][uü]t)|[oö]nceki\s+turda\b.{0,60}\bolarak", re.I | re.S)
+
+
+def ret_cited(note: str | None, olcut: str) -> list[str]:
+    """Ret notunda anılan başka ölçütler (kod yoksa ve "başka madde" deniyorsa ["başka madde"])."""
+    t = str(note or "")
+    kod = list(dict.fromkeys(f"{a.upper()}.{b}.{c}" for a, b, c in _KOD_RE.findall(t)))
+    kod = [k for k in kod if k != olcut]
+    if kod:
+        return kod
+    return ["başka madde"] if _BASKA_RE.search(t) else []
+
+
+def mark_dropped_rejections(rows: list[dict], uy: list[str]) -> list[dict]:
+    """Ret notu başka ölçütü işaret eden ama taşınmamış, belgesi hiçbir satırda sayılmayan satırlar:
+    işaret + `ret_anilan`; tek bir uyarı satırı. Dönen: işaretlenen satırlar."""
+    sayilan = {r["doc_id"] for r in rows if r.get("sayilir")}
+    out = []
+    for r in rows:
+        if r.get("karar") != "ret" or r["doc_id"] in sayilan:
+            continue
+        an = ret_cited(r.get("not"), r.get("olcut_model") or r["olcut"])
+        if not an:
+            continue
+        r["flags"] = list(dict.fromkeys([*r["flags"], "ret_hedefsiz_dustu"]))
+        r["isaretler"] = ", ".join(r["flags"])
+        r["ret_anilan"] = an
+        out.append(r)
+    if out:
+        ornek = "; ".join(f"{r['belge']} ({r['olcut']} → {', '.join(r['ret_anilan'])})" for r in out[:5])
+        uy.append(f"{len({r['doc_id'] for r in out})} belge rapor dışına düştü: ret notunda başka madde anılıyor "
+                  f"ama hedef verilmedi ({ornek}{'; …' if len(out) > 5 else ''}). O maddeye aitse KARARINIZ "
+                  "'Ret — başka maddenin konusu' ya da 'Başka maddeye taşı' + Doğru madde, sonra `bidr audit apply`")
+    return out
 
 
 def load_seen(out: Path) -> dict[str, dict]:
@@ -756,6 +796,7 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
         r["kopyalar"] = "; ".join(ks) if ks else ""
         r["kopya_dosyalari"] = "; ".join(inv.get(x) or (docs.get(x) or {}).get("calisma_adi") or x
                                          for x in ks) if ks else ""
+    mark_dropped_rejections(rows, uy)
     if not n_ince:
         uy.append("decisions.jsonl'de ince karar yok: tablo boş")
     for x in birim["belirsiz"]:          # satır kararıyla onaylanan / bekleyen eşleşme sayısı
