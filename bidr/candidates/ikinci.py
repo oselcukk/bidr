@@ -28,6 +28,7 @@ from pathlib import Path
 from bidr.common import Workspace, read_jsonl
 from bidr.criteria.model import CriteriaSet, id_key
 
+from .dil import expand_bag, query_terms
 from .model import BM25, SlotBM25, criterion_text
 from .synonyms import expand
 from .text import bag
@@ -126,7 +127,13 @@ def weak_criteria(allowed: list[str], recs: dict[str, dict], *, audit: dict[str,
 def query_bag(cs: CriteriaSet, sid: str, synonyms: bool = True):
     """(sorgu torbası, eşanlamlıdan eklenen belirteçler)."""
     t = criterion_text(cs, sid)
-    return expand(t) if synonyms else (bag(t), [])
+    if not synonyms:
+        return bag(t), []
+    q, added = expand(t)
+    for x in query_terms(t, q):       # Türkçe ölçüt → İngilizce belge (izlence, ders sitesi)
+        q[x] = 1
+        added.append(x)
+    return q, added
 
 
 @dataclass
@@ -140,9 +147,10 @@ class Archive:
         bags = {}
         if ws.text_dir.exists():
             for p in sorted(ws.text_dir.glob("*.txt")):
-                b = bag(p.read_text(encoding="utf-8", errors="replace"))
+                t = p.read_text(encoding="utf-8", errors="replace")
+                b = bag(t)
                 if b:
-                    bags[p.stem] = dict(b)
+                    bags[p.stem] = expand_bag(t, dict(b))
         return cls(bags)
 
 

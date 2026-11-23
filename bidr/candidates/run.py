@@ -29,6 +29,12 @@ def _slots(rows) -> list[dict]:
     return [{"yuva": k, "puan": round(v, 6)} for k, v in rows]
 
 
+def type_priorities() -> dict[str, dict[str, float]]:
+    """Belge türü kataloğundan `olcut_onceligi` (tür -> {alt ölçüt: öncelik})."""
+    from bidr.identify.catalog import load_catalog
+    return {t.name: dict(t.criteria_priority) for t in load_catalog().types if t.criteria_priority}
+
+
 def candidate_row(model: Model, doc: Doc, k: int, signals: tuple[str, ...] = DEFAULT_COMBO) -> dict:
     base = {"doc_id": doc.doc_id, "durum": doc.durum, "chars": doc.chars, "doc_type": doc.doc_type}
     if model.excluded(doc):
@@ -64,7 +70,8 @@ def candidate_row(model: Model, doc: Doc, k: int, signals: tuple[str, ...] = DEF
 
 def build(ws_root: Path, train_roots: list[Path], k: int = 10, criteria=None, *,
           profile: str | None = None, signals: tuple[str, ...] = DEFAULT_COMBO,
-          exclude_types: frozenset | None = None) -> tuple[list[dict], dict]:
+          exclude_types: frozenset | None = None,
+          type_priority: dict | None = None) -> tuple[list[dict], dict]:
     cs = criteria or load_criteria()
     prof = load_profile(profile) if profile else None
     allowed = frozenset(prof.allowed(cs)) if prof else None
@@ -73,7 +80,9 @@ def build(ws_root: Path, train_roots: list[Path], k: int = 10, criteria=None, *,
     train: list[Doc] = []
     for r in train_roots:
         train.extend(load(r))
-    model = Model(cs, allowed=allowed, excluded_types=ex).fit(train)
+    model = Model(cs, allowed=allowed, excluded_types=ex,
+                  type_priority=type_priorities() if type_priority is None else type_priority
+                  ).fit(train)
     rows = [candidate_row(model, d, k, signals) for d in target]
     ozet = {
         "belge": len(target),

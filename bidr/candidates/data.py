@@ -14,6 +14,7 @@ from pathlib import Path
 
 from bidr.common import Workspace, read_jsonl
 
+from .dil import expand_bag
 from .text import bag, text_hash
 
 MIN_CHARS = 200          # bundan kısa (boşluksuz değil, kırpılmış) metin "kisa"
@@ -34,6 +35,13 @@ class Doc:
     gold: tuple[str, ...] = ()          # alt ölçüt etiketleri (değerlendirme için)
     units: tuple[str, ...] = ()         # yalnız bölme için; özellik değil
     doc_type: str | None = None
+    xbag: dict | None = field(default=None, repr=False)   # + öteki dil karşılıkları
+
+    @property
+    def match_bag(self) -> dict:
+        """Ölçüt/yuva eşleşmesinde kullanılan torba (dil karşılıklarıyla genişletilmiş).
+        knn ve sızıntı denetimi özgün `bag`'i kullanır."""
+        return self.bag if self.xbag is None else self.xbag
 
     @property
     def labeled(self) -> bool:
@@ -106,5 +114,6 @@ def load(ws_root: Path | str, *, name: str | None = None) -> list[Doc]:
             d.durum = BOS if not s else (KISA if len(s) < MIN_CHARS else OK)
             if s:
                 d.bag = dict(bag(t))
+                d.xbag = expand_bag(t, d.bag)
         docs.append(d)
     return docs

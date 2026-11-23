@@ -34,6 +34,9 @@ from .text import bag
 SIGNALS = ("bm25", "yuva", "knn", "tur", "oncel")
 DEFAULT_COMBO = ("bm25", "yuva", "knn", "tur", "oncel")
 DEFAULT_WEIGHTS = {"bm25": 1.0, "yuva": 1.0, "knn": 1.0, "tur": 0.5, "oncel": 0.05}
+# Belge türü kataloğundaki `olcut_onceligi` (ör. izlence → B.3.2) birleşik puana eklenir:
+# öncelik (0..1) × bu ağırlık. Sinyal değil: aday sayısı (k) ve sinyal raporu değişmez.
+TYPE_PRIORITY_WEIGHT = 1.0
 
 
 def criterion_text(cs: CriteriaSet, sid: str) -> str:
@@ -133,6 +136,7 @@ class Model:
     alpha: float = 2.0          # tür dağılımı için önsel ağırlığı
     allowed: frozenset | None = None        # birim profili süzgeci (None = 46'nın hepsi)
     excluded_types: frozenset = frozenset()  # öz-referans türler: eğitime girmez, aday almaz
+    type_priority: dict = field(default_factory=dict)  # tür -> {alt ölçüt: 0..1}
 
     def __post_init__(self):
         self.ids = [s.id for s in self.cs.sub_criteria]
@@ -182,8 +186,9 @@ class Model:
         """Her sinyal için ham puanlar. Eğitimde aynı içerik varsa (doc_id veya
         metin özeti) o belge komşu/sayım olarak kullanılmaz."""
         excl = self._excluded(doc)
-        out = {"bm25": self.bm25.score(doc.bag) if doc.bag else dict.fromkeys(self.ids, 0.0)}
-        out["yuva"] = self.slots.score(doc.bag) if doc.bag else dict.fromkeys(self.ids, 0.0)
+        mb = doc.match_bag
+        out = {"bm25": self.bm25.score(mb) if mb else dict.fromkeys(self.ids, 0.0)}
+        out["yuva"] = self.slots.score(mb) if mb else dict.fromkeys(self.ids, 0.0)
 
         knn = dict.fromkeys(self.ids, 0.0)
         if self.train and doc.bag:
@@ -225,9 +230,9 @@ class Model:
 
     def best_slots(self, doc: Doc, n: int = 3) -> list[tuple[str, float]]:
         """Belgenin en iyi eşleşen kanıt yuvaları (profil süzgecine uyan), azalan puan."""
-        if not doc.bag:
+        if not doc.match_bag:
             return []
-        sc = self.slots.slot_scores(doc.bag)
+        sc = self.slots.slot_scores(doc.match_bag)
         ok = set(self.out_ids)
         rows = [(k, v) for k, v in sc.items() if v > 0 and self.slots.crit[k] in ok]
         rows.sort(key=lambda r: (-r[1], id_key(r[0].split("/")[0]), int(r[0].split("/")[1])))
@@ -236,9 +241,9 @@ class Model:
     def criterion_slots(self, doc: Doc) -> dict[str, list[tuple[str, float]]]:
         """Ölçüt başına yuvaları puan sırasıyla (yalnız > 0)."""
         out: dict[str, list] = {}
-        if not doc.bag:
+        if not doc.match_bag:
             return out
-        for k, v in self.slots.slot_scores(doc.bag).items():
+        for k, v in self.slots.slot_scores(doc.match_bag).items():
             if v > 0:
                 out.setdefault(self.slots.crit[k], []).append((k, v))
         for v in out.values():
@@ -253,10 +258,14 @@ class Model:
             mx = max(sc.values()) if sc else 0.0
             norm[name] = {k: (v / mx if mx > 0 else 0.0) for k, v in sc.items()}
         use = signals or DEFAULT_COMBO
+        prio = self.type_priority.get(doc.doc_type or "", {}) if len(use) > 1 and doc.match_bag \
+            else {}
+        pw = self.weights.get("tur_onceligi", TYPE_PRIORITY_WEIGHT)
         rows = []
         for sid in self.out_ids:
             total = sum(self.weights.get(s, 0.0) * norm[s][sid] for s in use) \
                 if len(use) > 1 else norm[use[0]][sid]
+            total += pw * prio.get(sid, 0.0)
             rows.append((sid, total, {s: norm[s][sid] for s in raw}))
         # eşitlikte deterministik: kimlik sırası
         rows.sort(key=lambda r: (-r[1], id_key(r[0])))

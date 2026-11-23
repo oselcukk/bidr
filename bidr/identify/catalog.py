@@ -39,6 +39,8 @@ class DocType:
     description: str
     signatures: list[Signature]
     date_labels: list[str] = field(default_factory=list)
+    # Aday üretiminde bu türe ölçüt önceliği: {alt ölçüt: 0..1} (`olcut_onceligi`).
+    criteria_priority: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -120,9 +122,26 @@ def _load_type(raw: dict, i: int) -> DocType:
         ))
     if not sigs:
         raise CatalogError(f"{name}: en az bir imza gerekli")
+    prio = raw.get("olcut_onceligi") or {}
+    if isinstance(prio, list):
+        prio = dict.fromkeys(prio, 1.0)
+    if not isinstance(prio, dict):
+        raise CatalogError(f"{name}: 'olcut_onceligi' sözlük ya da liste olmalı")
+    crit_prio = {}
+    for k, v in prio.items():
+        if not re.fullmatch(r"[A-E]\.\d+\.\d+", str(k)):
+            raise CatalogError(f"{name}.olcut_onceligi: geçersiz alt ölçüt {k!r}")
+        try:
+            fv = float(v)
+        except (TypeError, ValueError):
+            raise CatalogError(f"{name}.olcut_onceligi.{k}: sayı olmalı") from None
+        if not 0 < fv <= 1:
+            raise CatalogError(f"{name}.olcut_onceligi.{k}: 0 < değer <= 1 olmalı")
+        crit_prio[str(k)] = fv
     return DocType(
         name=name, label=raw.get("etiket", name), description=raw.get("aciklama", ""),
         signatures=sigs, date_labels=list(raw.get("tarih_etiketleri") or []),
+        criteria_priority=crit_prio,
     )
 
 

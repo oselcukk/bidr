@@ -1,0 +1,36 @@
+# Türkçe–İngilizce karşılık sözlüğü (aday üretimi ve ikinci arama).
+#
+# Ölçüt ve yuva metinleri Türkçe; izlence (syllabus), ders sitesi gibi belgeler çoğu kez
+# İngilizce. Her grup aynı kavramın iki dildeki adlarıdır. Eşleşme iki yönlüdür:
+#   - belgede bir `en` öbeği geçerse grubun `tr` sözcükleri belgenin eşleşme torbasına,
+#   - belgede bir `tr` öbeği geçerse `en` sözcükleri eklenir;
+#   - ikinci aramada ölçüt sorgusunda `tr` öbeği geçerse `en` sözcükleri sorguya eklenir.
+# Aynı dil içindeki eşanlamlılar burada DEĞİL (bidr/candidates/synonyms.py); böylece
+# yalnız Türkçe belgelerin puanı değişmez. Öbekler katlanmış (aksansız, küçük harf)
+# metinde sözcük başından aranır; her sözcük tam yazılır, yalnız sonuna ek gelebilir.
+surum: 1
+gruplar:
+  - tr: [danışman, danışmanlık, ofis saati, görüşme saati, görüşme saatleri]
+    en: [advisor, adviser, advising, office hours, office hour, by appointment]
+  - tr: [ders izlencesi, izlence]
+    en: [syllabus, course outline, course description, course plan]
+  - tr: [öğrenme çıktısı, öğrenme çıktıları, ders kazanımı, ders kazanımları]
+    en: [learning outcome, learning outcomes, course outcomes, learning objectives]
+  - tr: [ölçme ve değerlendirme, ölçme değerlendirme, notlandırma]
+    en: [assessment, grading, evaluation, grade]
+  - tr: [ödev]
+    en: [homework, assignment, problem set]
+  - tr: [sınav]
+    en: [exam, examination, midterm, final exam, quiz]
+  - tr: [anket]
+    en: [survey, questionnaire]
+  - tr: [iş yükü, akts, öğrenci iş yükü]
+    en: [workload, ects, student workload]
+  - tr: [staj]
+    en: [internship]
+  - tr: [seminer, kolokyum]
+    en: [seminar, colloquium]
+  - tr: [proje]
+    en: [project]
+  - tr: [yayın, makale]
+    en: [publication, paper, article]
