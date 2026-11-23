@@ -51,18 +51,32 @@ def test_sheets_sections_and_plain_text(ws):
     assert wb.sheetnames[:3] == [S.SH_INC, S.SH_MADDE, S.SH_NASIL] and wb.active.title == S.SH_INC
     assert all(wb[n].sheet_state == "hidden" for n in (SHEET_ROWS, "Ölçüt özeti", "Açıklama", "_meta"))
     sh = wb[S.SH_INC]
-    vis = [c.value for c in sh[1] if not sh.column_dimensions[c.column_letter].hidden]
-    assert vis == ["Sıra", "Madde", "Belge (klasördeki dosya)", "Önerilen kanıt adı (düzeltebilirsiniz)",
-                   "Belgede ne yazıyor", "Neden bu maddeye", "Dikkat", "Önerimiz", "KARARINIZ",
-                   "Doğru madde (yalnız taşınacaksa)", "Not"]
-    assert sh.freeze_panes == "C2" and sh.print_title_rows
+    # 1. satır gizli: okuyucu başlıkları (bidr'in tam metinleri); görünen başlık 5. satırda
+    assert sh.row_dimensions[1].hidden and [c.value for c in sh[1]] == [h for _, h, _, _ in S.INC_COLS]
+    vis = [c.value for c in sh[S.INC_BASLIK_SATIRI] if not sh.column_dimensions[c.column_letter].hidden]
+    assert vis[:8] == ["Madde", "Önerilen belge", "Belgede ne yazıyor (kısa)", "Öneri", "KARARINIZ ▼",
+                       "Doğru madde (yalnız taşınacaksa) ▼", "Kanıt adı (düzeltebilirsiniz)", "Not"]
+    assert {"Kılavuz örneği (madde yuvası)", "Klasör · kaynak dosya", "Dikkat (uyarılar)"} <= set(vis)
+    for c in sh[S.INC_BASLIK_SATIRI]:                    # ayrıntı sütunları katlanabilir, genişlik korunur
+        d = sh.column_dimensions[c.column_letter]
+        k = S.INC_COLS[c.column - 1][0]
+        assert d.width == S.INC_COLS[c.column - 1][2]
+        assert d.outline_level == (1 if S.INC_GORUNEN[k][1] == "d" else 0)
+    assert sh.freeze_panes == f"C{S.INC_ILK}" and sh.print_title_rows
+    assert sh.auto_filter.ref.startswith(f"A{S.INC_BASLIK_SATIRI}:")
+    assert sh["A2"].value.startswith("Renkler") and sh["A3"].value.startswith('="Toplam öneri: "')
+    # alan ve madde ayraç satırları (satır kimliği boş)
+    a_col = [str(sh.cell(row=r, column=1).value or "") for r in range(S.INC_ILK, sh.max_row + 1)]
+    assert "B — Eğitim ve Öğretim" in a_col and any(t.strip().startswith("B.1.1 — ") and "öneri" in t for t in a_col)
     rows = _rows(paths["xlsx"])
     assert set(rows) == {r["satir"] for r in a.rows}
     # düşük güven ve önceki yıl olayı: bakılacak (1. bölüm), düz Türkçe uyarı, kod adı yok
     low, old = rows["d_onlem|B.1.1/5"], rows["d_eski|A.1.1/2"]
     assert low["bolum"] == 1 and low["oneri"] == "Bakın" and "emin değil" in low["dikkat"]
     assert old["bolum"] == 1 and "önceki bir yıla ait" in old["dikkat"]
-    assert "B.1.1 — " in low["madde"] and "_" not in (low["dikkat"] + old["dikkat"])
+    assert low["madde"].startswith("B.1.1 — ") and "Kılavuz" not in low["madde"]
+    assert "_" not in (low["dikkat"] + old["dikkat"])
+    assert low["kilavuz"] and "\n" not in (low["belge"] or "") and "(klasör:" not in (low["belge"] or "")
     # sorunsuz satır: 2. bölüm, öneri Kabul, karar boş
     ok = rows["d_plan|B.1.1/1"]
     assert ok["bolum"] == 2 and ok["oneri"] == "Kabul" and not ok["karar"]
@@ -210,3 +224,93 @@ def test_od_sheet_level(ws):
 def test_cols_unchanged_for_technical_sheet():
     keys = [k for k, _, _, _ in COLS]
     assert {"satir", "karar", "duzelt_olcut", "duzelt_yuva", "duzelt_asama", "not", "kanit_adi"} <= set(keys)
+
+
+# -- gidiş-dönüş: yeni tasarım ↔ eski (tek başlık satırı, 14 sütun) biçim --------------------------
+
+ESKI_COLS = [("sira", "Sıra"), ("madde", "Madde"), ("belge", "Belge (klasördeki dosya)"),
+             ("ad", "Önerilen kanıt adı (düzeltebilirsiniz)"), ("alinti", "Belgede ne yazıyor"),
+             ("neden", "Neden bu maddeye"), ("dikkat", "Dikkat"), ("oneri", "Önerimiz"), ("karar", "KARARINIZ"),
+             ("dogru", "Doğru madde (yalnız taşınacaksa)"), ("not", "Not"), ("satir", "satır kimliği"),
+             ("bolum", "bölüm"), ("yazilan", "yazılan")]
+OKUNAN = ("satir", "karar", "dogru", "not", "ad", "bolum", "yazilan")
+
+
+def _eski_bicim(a, path):
+    """Önceki `write_sade` İnceleme düzeni (yalnız okuyucunun gördüğü yapı): 1. satır başlık, bölüm başlıkları,
+    2. bölüm başlığında #toplu, ardından satırlar."""
+    from openpyxl import Workbook
+    from bidr.criteria.loader import load_criteria
+    wb = Workbook()
+    sh = wb.active
+    sh.title = S.SH_INC
+    sh.append([h for _, h in ESKI_COLS])
+    rows = S.inceleme_satirlari(a, load_criteria())
+    for b in (1, 2, 3):
+        grp = [x for x in rows if x["bolum"] == b]
+        if not grp:
+            continue
+        baslik = [S.BOLUM_BASLIK[b].format(n=len(grp))] + [None] * (len(ESKI_COLS) - 1)
+        if b == 2:
+            baslik[11] = S.TOPLU_SATIR
+        sh.append(baslik)
+        for x in grp:
+            sh.append([x.get(k, "") for k, _ in ESKI_COLS])
+    wb.save(path)
+    return path
+
+
+def _isaretle(path, kararlar, toplu=False):
+    """Okuyucunun sütun eşlemesiyle (1. satır başlıkları) kararları yazar: iki biçimde de aynı yol."""
+    wb = load_workbook(path)
+    sh = wb[S.SH_INC]
+    head = [c.value for c in sh[1]]
+    col = {k: head.index(h) + 1 for k, h, _, _ in S.INC_COLS if h in head}
+    for r in range(2, sh.max_row + 1):
+        sid = sh.cell(row=r, column=col["satir"]).value
+        if sid == S.TOPLU_SATIR and toplu:
+            sh.cell(row=r, column=col["karar"], value=S.TOPLU)
+        for k, v in kararlar.get(sid, {}).items():
+            sh.cell(row=r, column=col[k], value=v)
+    wb.save(path)
+
+
+def test_yeni_tasarim_gidis_donus_eski_bicimle_ayni(ws, tmp_path):
+    import copy
+    from bidr.criteria.loader import load_criteria
+    a, paths = audit(ws)
+    yeni = paths["xlsx"]
+    eski = _eski_bicim(a, tmp_path / "eski.xlsx")
+
+    def oku(p):
+        r, t = S.read_inceleme(load_workbook(p))
+        return {sid: {k: x.get(k) for k in OKUNAN} for sid, x in r.items()}, t
+
+    ry, ty = oku(yeni)
+    re_, te = oku(eski)
+    assert set(ry) == set(re_) == {r["satir"] for r in a.rows}            # aynı satırlar / anahtarlar
+    assert ry == re_ and ty == te is False                                # aynı alan değerleri
+    # yeni dosyada fazladan okunan satır yok (ayraç, açıklama, görünen başlık atlanır)
+    wb = load_workbook(yeni)
+    sh = wb[S.SH_INC]
+    sc = [h for _, h, _, _ in S.INC_COLS].index("satır kimliği") + 1
+    ids = [sh.cell(row=r, column=sc).value for r in range(2, sh.max_row + 1)]
+    assert sorted(i for i in ids if i and "|" in str(i)) == sorted(ry)
+    assert [i for i in ids if i == S.TOPLU_SATIR] == [S.TOPLU_SATIR]
+    # aynı kararlar işaretlenince aynı teknik kararlar
+    rows = list(ry)
+    b2 = [s for s, x in ry.items() if x["bolum"] == 2]
+    kararlar = {rows[0]: {"karar": "Ret", "not": "kanıt değil"},
+                rows[1]: {"karar": "Kabul — etkinlik yapıldı"},
+                rows[2]: {"karar": "Başka maddeye taşı", "dogru": "B.3.2 — Akademik destek hizmetleri"},
+                rows[3]: {"karar": "Kabul", "ad": "Sentetik Ad"}}
+    for p in (yeni, eski):
+        _isaretle(p, kararlar, toplu=True)
+    cs = load_criteria()
+    ty_ = S.merge_rows(copy.deepcopy(a.rows), S.read_inceleme(load_workbook(yeni)), cs)
+    te_ = S.merge_rows(copy.deepcopy(a.rows), S.read_inceleme(load_workbook(eski)), cs)
+    alan = ("satir", "karar", "duzelt_olcut", "duzelt_yuva", "duzelt_asama", "not", "kanit_adi", "bakildi", "sade_hata")
+    assert [{k: r.get(k) for k in alan} for r in ty_] == [{k: r.get(k) for k in alan} for r in te_]
+    d = {r["satir"]: r for r in ty_}
+    assert d[rows[0]]["karar"] == "ret" and d[rows[2]]["duzelt_olcut"] == "B.3.2"
+    assert b2 and all(d[s]["karar"] for s in b2)                          # toplu kabul iki biçimde de işledi
