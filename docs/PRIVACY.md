@@ -290,7 +290,9 @@ Maskeleme `kontrol bekliyor`; `EKSIK.txt`; çıkış kodu 1; hat insan bekler). 
     yapılır; öteki hücreler (ad, unvan, görev, karar; basılı ya da el yazısı) hiçbir yolda otomatik kapatılmaz.
     İmzanın içerik hücresine taşan kısmı tablo başına **tek öneri** olur (onaylanırsa yalnız taşan vuruşun zarfı
     kapanır). İmza sütunlu tabloda öteki hücrelerdeki el yazısı ve İmza sütunu olmayan tabloda başlığı
-    ad/unvan/görev/ders … olan sütundaki el yazısı imza adayı da olmaz.
+    ad/unvan/görev/ders … olan sütundaki el yazısı imza adayı da olmaz; ancak adayın satırındaki İmza hücresi
+    boşsa (imza yanlış hücreye atılmış olabilir) aday süzülmez, öneri olur. Başlığı karma olan sütunda ("Adı
+    Soyadı / İmza": ad da aynı hücrede) hücre kapatılırken yapıdan bulunan basılı satır bantları açık kalır.
   - **Sessiz kaçak yok**: yapısal imza bölgesinde zarfa girmeyen (harf boyu, büyük vuruştan ayrı) izler ve
     basılı satır bandının içinden geçen vuruş kapatılmaz ama düşmez de: imza başına en çok bir ek öneri
     (`imza_kalinti` / `imza_metin`; `parcalar` onaylanınca kapanacak dikdörtgenlerdir). Zarf, bölgeye değen

@@ -538,6 +538,18 @@ def sutun_kutusu(t: Tablo, c: int, r: int, cx: float | None = None, tol: float =
     return (x0, yb, x1, alt)
 
 
+def _karma_baslik(t: "Tablo", c: int, r: int, words: list[Word]) -> bool:
+    """İmza sütununun başlık hücresinde ad/unvan sözcüğü de var mı ("Adı Soyadı / İmza", "Unvan, Ad Soyad, İmza"):
+    ad da aynı hücreye yazılır; hücrede basılı satır bantları kapatılmaz."""
+    x0, x1, y0, y1 = t.xs[c], t.xs[c + 1], t.ys[r], t.ys[r + 1]
+    for o in words:
+        if x0 <= (o.x0 + o.x1) / 2 < x1 and y0 <= (o.y0 + o.y1) / 2 < y1:
+            for part in IM._core(o.text).translate(_FOLD).replace("/", " ").replace(",", " ").replace("-", " ").split():
+                if re.match(r"^(ad[i]?|soyad[i]?|adi?soyadi?|isim|unvan[i]?)$", part):
+                    return True
+    return False
+
+
 def _imza_basligi(w: Word) -> bool:
     if IM.is_placeholder(w.text):
         return False
@@ -803,8 +815,10 @@ def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] |
 
     sutun_kutulari = []
     govde: dict = {}                     # tablo sırası → İmza sütunu gövdesi
+    karma: list = []                     # başlığı "Adı Soyadı / İmza" gibi karma olan sütun gövdeleri (ad da bu hücrede)
     for ti, t in enumerate(tabs):
         hit = imza_sutunu(t, wa)
+        bas_kel = wa
         cont = bag.sutun_eslesir(t.xs, W) if bag is not None and not hit and not web else None
         if not hit and cont is None and ocr_kelime is not None:
             for r in range(min(2, len(t.ys) - 2)):        # başlık satırı adayları: hedefli OCR
@@ -816,6 +830,7 @@ def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] |
                       if IM._confident(w)]
                 hit = imza_sutunu(t, ek)
                 if hit:
+                    bas_kel = ek
                     break
         body = None
         if hit:
@@ -837,6 +852,8 @@ def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] |
             continue
         sutun_kutulari.append(body)
         govde[ti] = body
+        if hit and _karma_baslik(t, hit[0], hit[1], bas_kel):
+            karma.append(body)
         if web:
             continue                         # web çıktısı: sütunda yalnız imza oranlı gömülü görüntü ele alınır
         if _ink_px(h.ink, (body[0] + 2, body[1] + 2, body[2] - 2, body[3] - 2)) >= MIN_SUTUN_MUREKKEP:
@@ -852,7 +869,19 @@ def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] |
 
     def icerik_hucresinde(box) -> bool:
         cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
-        return any(a <= cx <= c and b <= cy <= d for a, b, c, d in icerik_hucre)
+        if not any(a <= cx <= c and b <= cy <= d for a, b, c, d in icerik_hucre):
+            return False
+        # İmza sütunlu tabloda adayın satırındaki İmza hücresi BOŞSA imza yanlış hücreye atılmış olabilir: aday kalır
+        # (sessiz düşmez); İmza hücresi doluysa öteki hücredeki el yazısı içeriktir
+        for ti, t in enumerate(tabs):
+            g = govde.get(ti)
+            if g is None or not (t.kutu[0] <= cx <= t.kutu[2] and t.kutu[1] <= cy <= t.kutu[3]):
+                continue
+            r_ = next((i for i in range(len(t.ys) - 1) if t.ys[i] <= cy < t.ys[i + 1]), None)
+            if r_ is not None and g[1] - 3 <= t.ys[r_] and t.ys[r_ + 1] <= g[3] + 3 \
+                    and _ink_px(h.ink, (g[0] + 3, t.ys[r_] + 3, g[2] - 3, t.ys[r_ + 1] - 3)) < MIN_SUTUN_MUREKKEP:
+                return False
+        return True
 
     # yazı satırı yapısı (OCR güveninden bağımsız): basılı satır bantları korunur, el yazısı satır kelimesi aday olmaz
     satir: list = []                     # [(Satir, bant)]
@@ -875,7 +904,8 @@ def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] |
         return any(w.conf >= 30 and sum(ch.isalnum() for ch in w.text) >= 3 and (not med or w.h <= 1.6 * med)
                    and bt[0] <= (w.x0 + w.x1) / 2 <= bt[2] and bt[1] - 2 <= (w.y0 + w.y1) / 2 <= bt[3] + 2 for w in wa)
     basili_bant = [(bt[0], bt[1] - 0.35 * st.hm, bt[2], bt[3] + 0.25 * st.hm) for st, bt in satir if st.basili
-                   and (st.n >= 6 or ocr_destekli(bt)) and not any(_ic(bt, sk) >= 0.5 for sk in sutun_kutulari)]
+                   and (st.n >= 6 or ocr_destekli(bt))
+                   and not any(_ic(bt, sk) >= 0.5 for sk in sutun_kutulari if sk not in karma)]
     yazi_parca = [q for st, _ in satir if st.basili for q in SA.parcalar(st)]
     metin_satiri = _metin_satirlari_yapi([st for st, _ in satir])
 
@@ -1193,7 +1223,10 @@ def goruntu_bolgeleri(img, words: list[Word], ppi: float, *, kesin: list[Word] |
             artik = [a_ for a_ in artik if not any(_ic(a_, y_) >= 0.5 for y_ in yasak)]
         else:
             # imza sütunu hücresi / gömülü imza görüntüsü: bütün kutu; yalnız üstündeki basılı kelimeler açık kalır
-            parca = _kirp([r.box], [w.box for w in korunan if _ic(w.box, r.box) >= KORUMA_ORTUSME])
+            # (karma başlıklı "Ad Soyad / İmza" sütununda yapıdan bulunan basılı satır bantları da açık kalır)
+            ekb = [bt for bt in basili_bant if _ic(bt, r.box) >= 0.5] if r.kaynak == "imza_sutunu" and any(
+                _ic(r.box, kb) >= 0.8 for kb in karma) else []
+            parca = _kirp([r.box], [w.box for w in korunan if _ic(w.box, r.box) >= KORUMA_ORTUSME] + ekb)
         renkli = r.kaynak in RENK_AYIRMA_KAYNAK and r.box[3] - r.box[1] <= 1.3 * I and h_renkli(h, r.box)
         if cov and renkli:
             # renk ayırma yalnız yapısal imza bölgesinde ve imza boyunda: kutu dışındaki mavi el yazısı içerik

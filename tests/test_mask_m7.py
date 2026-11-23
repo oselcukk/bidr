@@ -202,6 +202,61 @@ def test_tabloda_otomatik_kapatma_yalniz_imza_sutununda():
                    if a[0] < 300), a
 
 
+def test_imza_hucresi_bossa_oteki_hucredeki_imza_sessiz_dusmez():
+    """İmza sütunlu tabloda imza yanlış hücreye (unvan) atılmış, İmza hücresi boş: aday süzülmez, öneri olur."""
+    W, H = int(8.27 * I), int(7 * I)
+    img = Image.new("RGB", (W, H), "white")
+    d = ImageDraw.Draw(img)
+    cols, y0, rh = (40, 300, 520, 790), 100, 66
+    for i in range(5):
+        d.line([(cols[0], y0 + i * rh), (cols[-1], y0 + i * rh)], fill="black", width=1)
+    for x in cols:
+        d.line([(x, y0), (x, y0 + 4 * rh)], fill="black", width=1)
+    ws = [_w("Adı", 50, 122, 80, 137, 1), _w("Unvanı", 310, 122, 370, 137, 1), _w("İmza", 530, 122, 570, 137, 1)]
+    for j in range(3):
+        yy = y0 + (j + 1) * rh
+        M.el_yazisi_kelime(d, 52, yy + 46, 6, 12, M.EL_SIYAH, 300 + j, 2)
+        if j == 1:
+            S.imza_ciz(d, 320, yy + 10, w=170, h=44, seed=20 + j, width=2)         # unvan hücresinde; İmza hücresi boş
+        else:
+            S.imza_ciz(d, 560, yy + 10, w=190, h=44, seed=20 + j, width=2)
+    bol = Y.goruntu_bolgeleri(img, ws, I, kesin=ws)
+    yanlis = (320, y0 + 2 * rh + 10, 490, y0 + 2 * rh + 54)
+    ilgili = [b for b in bol if IM._overlap(b.kutu, yanlis) > 0.3 * Y._area(yanlis)]
+    assert ilgili and all(b.karar == Y.ONAY for b in ilgili), [(b.kaynak, b.karar, b.kutu, b.neden) for b in bol]
+    assert not any(b.kapat and IM._overlap(p, yanlis) > 0 for b in bol for p in (b.parcalar or [b.kutu]))
+
+
+def test_karma_baslikli_sutunda_basili_ad_satiri_acik_kalir():
+    """Başlık "Adı Soyadı / İmza": ad da imza hücresinde. OCR adı okuyamasa da (kelime verilmedi) basılı ad satırı
+    yapıdan bulunur ve hücre kapatılırken açık kalır; imza kapanır."""
+    W, H = int(8.27 * I), int(6 * I)
+    img = Image.new("RGB", (W, H), "white")
+    d = ImageDraw.Draw(img)
+    cols, y0, rh = (40, 380, 790), 100, 90
+    for i in range(4):
+        d.line([(cols[0], y0 + i * rh), (cols[-1], y0 + i * rh)], fill="black", width=1)
+    for x in cols:
+        d.line([(x, y0), (x, y0 + 3 * rh)], fill="black", width=1)
+    ws = [_w("Görevi", 50, 132, 110, 147, 1), _w("Adı", 390, 132, 420, 147, 1), _w("Soyadı", 425, 132, 480, 147, 1),
+          _w("/", 485, 132, 490, 147, 1), _w("İmza", 495, 132, 535, 147, 1)]
+    adlar = []
+    for j in range(2):
+        yy = y0 + (j + 1) * rh
+        d.text((392, yy + 8), "Prof. Dr. Ayşe Demir Kaya", fill="black", font=S.font(15))
+        adlar.append((392, yy + 10, 580, yy + 24))
+        S.imza_ciz(d, 520, yy + 34, w=200, h=44, seed=50 + j, width=2)
+    bol = Y.goruntu_bolgeleri(img, ws, I, kesin=ws)
+    sutun = [b for b in bol if b.kaynak == "imza_sutunu" and b.kapat]
+    assert sutun, [(b.kaynak, b.karar, b.neden) for b in bol]
+    kapali = [p for b in bol if b.kapat for p in (b.parcalar or [b.kutu])]
+    for a in adlar:
+        assert sum(IM._overlap(a, p) for p in kapali) <= 0.1 * Y._area(a), (a, kapali)
+    for j in range(2):                                                    # imza kapalı
+        im = (530, y0 + (j + 1) * rh + 40, 700, y0 + (j + 1) * rh + 72)
+        assert sum(IM._overlap(im, p) for p in kapali) >= 0.9 * Y._area(im), (im, kapali)
+
+
 def test_imzasiz_tabloda_ad_basligi_sutunu_aday_olmaz_paraflar_tek_oneri():
     W, H = int(8.27 * I), int(9 * I)
     img = Image.new("RGB", (W, H), "white")
