@@ -206,18 +206,26 @@ def test_sade_lists_institution_documents(ref_ws_yok, tmp_path):
     res = R.run(tgt, referans=build_reference(ref_ws), out=tmp_path / "o", kurum=es)
     r = {x["olcut"]: x for x in res["sade"]}
     b11 = r["B.1.1"]
-    assert "FR-0784" not in b11["belgeler"]                          # form sade listeye girmez
-    # geçen yılın kurum yönergesi katalogda bulundu: ad ve kodla (bağlantı yazılmaz), "ya da güncel hâli" yok
-    b23 = r["B.2.3"]["belgeler"]
+    assert "FR-0784" not in b11["belgeler"] + b11["kurum_belgeler"]  # form sade listeye girmez
+    # geçen yılın kurum yönergesi katalogda bulundu: ad ve kodla (bağlantı yazılmaz), "ya da güncel hâli" yok;
+    # kurum belgeleri "belgeler"den ayrı listede
+    b23 = r["B.2.3"]["kurum_belgeler"]
     assert "• Sentetik Danışmanlık Yönergesi (YZ-0001)" in b23.split("\n")
-    assert "https://" not in b23 and "«Sentetik Danismanlik Yonergesi»" not in b23
-    m = next(x for x in r["B.2.3"]["maddeler"] if x["tur"] == "kurum")
-    # ayrım yok: sütunlar ve sayfalar aynı; kime gönderilecek sayfasında sorumlusunun listesinde
+    assert "YZ-0001" not in r["B.2.3"]["belgeler"]
+    assert "https://" not in b23 and "«Sentetik Danismanlik Yonergesi»" not in r["B.2.3"]["belgeler"]
+    m = next(x for x in r["B.2.3"]["kurum"] if x["tur"] == "kurum")
+    assert all(x["tur"] != "kurum" for row in res["sade"] for x in row["maddeler"])
+    # ana listede tek işaretlenebilir satır; adlar ayrıntı sütununda; kimden o satırda
     wb = load_workbook(res["paths"]["sade"])
     assert wb.sheetnames == list(S.SHEETS)
-    assert [c.value for c in wb[S.SHEETS[0]][1]] == [h for _, h, _ in S.COLS]
-    kime = [(row[0].value, row[3].value) for row in wb[S.SHEETS[1]].iter_rows(min_row=2)]
-    assert any(k == m["kimden"] and "YZ-0001" in (b or "") for k, b in kime)
+    sh = wb[S.SHEETS[0]]
+    assert [c.value for c in sh[S.BASLIK_SATIRI]] == [h for _, h, _ in S.COLS]
+    ad = S._madde_kisa(r["B.2.3"]["madde"])
+    blok = [row for row in sh.iter_rows(min_row=S.BASLIK_SATIRI + 1) if row[0].value == ad]
+    ks = [row for row in blok if row[3].value == S.kurum_satiri(r["B.2.3"]["kurum_n"])]
+    assert len(ks) == 1 and m["kimden"] in ks[0][4].value.split("\n")
+    assert "YZ-0001" in blok[0][9].value
+    assert S.bilgi_denetimi(res["sade"], res["paths"]["sade"]) == []
     # eşleme yokken satırlar değişmez
     res0 = R.run(tgt, referans=build_reference(ref_ws), out=tmp_path / "o0")
     assert all(x["tur"] != "kurum" for row in res0["sade"] for x in row["maddeler"])

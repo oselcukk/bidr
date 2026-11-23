@@ -130,24 +130,49 @@ F_KARAR = PatternFill("solid", fgColor="E8F0FE")     # doldurulacak hücre
 _INCE = Side(style="thin", color="B7C3CE")
 KENAR = Border(left=_INCE, right=_INCE, top=_INCE, bottom=_INCE)
 
-# (anahtar, başlık, genişlik, kullanıcı)
+# (anahtar, 1. satır başlığı [okuyucu bunu okur; gizli], genişlik, kullanıcı doldurur mu)
 INC_COLS = [
+    ("madde", "Madde", 30, False),
+    ("belge", "Belge (klasördeki dosya)", 32, False),
+    ("alinti_kisa", "Alıntı (kısa)", 44, False),
+    ("oneri", "Önerimiz", 8, False),
+    ("karar", "KARARINIZ", 19, True),
+    ("dogru", "Doğru madde (yalnız taşınacaksa)", 18, True),
+    ("ad", "Önerilen kanıt adı (düzeltebilirsiniz)", 28, True),
+    ("not", "Not", 26, True),
+    ("dikkat", "Dikkat", 40, False),
+    ("neden", "Neden bu maddeye", 40, False),
+    ("guven", "Güven", 8, False),
+    ("asama", "Sayılan kısım", 14, False),
+    ("od", "OD (sayılan)", 5, False),
+    ("donem", "Dönem · tarih", 26, False),
+    ("tur_birim", "Belge türü · birim", 16, False),
+    ("alinti", "Belgede ne yazıyor", 50, False),
+    ("kilavuz", "Kılavuz örneği", 34, False),
+    ("klasor", "Klasör · kaynak dosya", 22, False),
+    ("baglanti", "Bağlantı", 22, False),
+    ("isaretler", "İşaretler (iç)", 18, False),
     ("sira", "Sıra", 5, False),
-    ("madde", "Madde", 26, False),
-    ("belge", "Belge (klasördeki dosya)", 26, False),
-    ("ad", "Önerilen kanıt adı (düzeltebilirsiniz)", 26, True),
-    ("alinti", "Belgede ne yazıyor", 46, False),
-    ("neden", "Neden bu maddeye", 36, False),
-    ("dikkat", "Dikkat", 38, False),
-    ("oneri", "Önerimiz", 9, False),
-    ("karar", "KARARINIZ", 17, True),
-    ("dogru", "Doğru madde (yalnız taşınacaksa)", 16, True),
-    ("not", "Not", 24, True),
+    ("bolum_ad", "Bölüm (iç)", 12, False),
     ("satir", "satır kimliği", 10, False),       # gizli
     ("bolum", "bölüm", 4, False),                # gizli
     ("yazilan", "yazılan", 10, False),           # gizli
 ]
 INC_GIZLI = ("satir", "bolum", "yazilan")
+# görünen başlık (5. satır) ve sütun türü: m = ana, u = kullanıcının, d = katlanabilir ayrıntı, h = gizli
+INC_GORUNEN = {
+    "madde": ("Madde", "m"), "belge": ("Önerilen belge", "m"), "alinti_kisa": ("Belgede ne yazıyor (kısa)", "m"),
+    "oneri": ("Öneri", "m"), "karar": ("KARARINIZ ▼", "u"), "dogru": ("Doğru madde (yalnız taşınacaksa) ▼", "u"),
+    "ad": ("Kanıt adı (düzeltebilirsiniz)", "u"), "not": ("Not", "u"), "dikkat": ("Dikkat (uyarılar)", "d"),
+    "neden": ("Neden bu maddeye (gerekçe)", "d"), "guven": ("Güven", "d"), "asama": ("Sayılan kısım (aşama)", "d"),
+    "od": ("OD", "d"), "donem": ("Dönem · tarih", "d"), "tur_birim": ("Belge türü · birim", "d"),
+    "alinti": ("Alıntının tamamı", "d"), "kilavuz": ("Kılavuz örneği (madde yuvası)", "d"),
+    "klasor": ("Klasör · kaynak dosya", "d"), "baglanti": ("Bağlantı", "d"),
+    "isaretler": ("İşaretler (iç kod)", "d"), "sira": ("Sıra", "d"), "bolum_ad": ("Bölüm", "d"),
+    "satir": ("satır kimliği", "h"), "bolum": ("bölüm", "h"), "yazilan": ("yazılan", "h"),
+}
+INC_BASLIK_SATIRI, INC_ILK = 5, 6               # görünen başlık satırı; ilk veri satırı
+# (anahtar, başlık, genişlik, kullanıcı)
 BIR_COLS = [
     ("sira", "Sıra", 5, False),
     ("belge", "Belge (klasördeki dosya)", 34, False),
@@ -171,7 +196,8 @@ MAD_COLS = [
 
 NASIL = [
     "Bu dosya, aracın bulduğu kanıt önerilerini onaylamanız içindir. \"İnceleme\" sayfasında her satır "
-    "bir öneridir: \"şu belge, şu maddeye kanıttır\". Belgeyi klasörde \"Belge\" sütunundaki adla bulabilirsiniz.",
+    "bir öneridir: \"şu belge, şu maddeye kanıttır\". Belgeyi klasörde \"Önerilen belge\" sütunundaki adla bulabilirsiniz "
+    "(klasörü sağdaki ayrıntı sütunlarında; ayrıntılar üstteki [–] ile katlanır).",
     "\"İnceleme\" üç bölümdür. 1) Bakmanız gerekenler: \"Dikkat\" sütununu okuyun ve KARARINIZ'ı seçin. "
     "2) Sorunsuz görünenler: bölüm başlığındaki KARARINIZ hücresinde \"Hepsini kabul\" seçerseniz boş "
     "bıraktığınız satırlar kabul sayılır; itiraz ettiğiniz satırı tek tek değiştirin. 3) Daha önce karar "
@@ -365,28 +391,51 @@ def inceleme_satirlari(a, cs) -> list[dict]:
             ymetin = cs.get_slot(ym).text
         except KeyError:
             ymetin = r.get("yuva_metni") or ""
-        madde = madde_ad(cs, om) + (f"\nKılavuz örneği: {_kisalt(ymetin, 140)}" if ymetin else "")
-        dosya = r.get("kaynak_dosya") or ""
-        belge = (dosya.replace("\\", "/").rsplit("/", 1)[-1] + (f"\n(klasör: {dosya.rsplit('/', 1)[0]})"
-                                                               if "/" in dosya else "")) if dosya else r.get("belge") or ""
+        dosya = (r.get("kaynak_dosya") or "").replace("\\", "/")
+        belge = dosya.rsplit("/", 1)[-1] if dosya else r.get("belge") or ""
+        klasor = dosya.rsplit("/", 1)[0] if "/" in dosya else ""
         asama = r.get("asama") or ""
         neden = (f"Maddenin \"{ASAMA_KISA[asama]}\" kısmı için. " if asama in ASAMA_KISA else "") + (r.get("gerekce") or "")
         if "belge_notu" in (r.get("flags") or []):
             neden = neden.rstrip() + " Yükleyenin notu dikkate alındı."
         alinti = r.get("alinti") or ""
+        alinti = f"“{_kisalt(alinti, 600)}”" if alinti else ""
+        etkin = r.get("etkin_asama") or ""
+        sayilan = ASAMA_KISA.get(etkin, etkin) + (f" (model: {ASAMA_KISA.get(asama, asama)})"
+                                                 if asama and etkin and asama != etkin else "")
         out.append({
             "satir": r["satir"], "bolum": bolum, "_rb": rb, "_birim": bool(r.get("birim_onay_bekliyor")),
-            "_olcut": om, "madde": madde, "belge": belge, "ad": r.get("kanit_adi") or "",
-            "alinti": f"“{_kisalt(alinti, 600)}”" if alinti else "",
+            "_olcut": om, "madde": madde_ad(cs, om), "belge": belge, "ad": r.get("kanit_adi") or "",
+            "alinti": alinti, "alinti_kisa": _kisalt(alinti, 220),
             "neden": neden.strip(), "dikkat": "\n".join(f"• {x}" for x in uy) if len(uy) > 1 else "".join(uy),
             "oneri": "Bakın" if bak or rb else "Kabul",
             "karar": lab, "dogru": dog, "not": r.get("not") or "",
+            "kilavuz": _kisalt(ymetin, 140) if ymetin else "",
+            "klasor": " · ".join(x for x in (klasor, r.get("kaynak_dosya") or "") if x),
+            "baglanti": r.get("baglanti") or r.get("baglanti_oneri") or "",
+            "guven": GUVEN.get(r.get("guven"), r.get("guven") or ""), "asama": sayilan, "od": r.get("od"),
+            "donem": " · ".join(str(v) for v in (r.get("donem_kurali"), r.get("tarih_bilgisi")) if v),
+            "tur_birim": " · ".join(str(v) for v in (r.get("belge_turu"), r.get("birim_iliskisi")) if v),
+            "isaretler": r.get("isaretler") or "", "bolum_ad": BOLUM_AD[bolum],
         })
     from bidr.criteria.model import id_key
-    out.sort(key=lambda x: (x["bolum"], not x["_rb"], not x["_birim"], id_key(x["_olcut"]), x["satir"]))
+    # bölüm içinde madde madde (madde ayraç satırları); madde içinde önce yeniden bakılacak, birimi belirsiz
+    out.sort(key=lambda x: (x["bolum"], id_key(x["_olcut"]), not x["_rb"], not x["_birim"], x["satir"]))
     for x in out:
         x["yazilan"] = json.dumps({"k": x["karar"], "m": x["dogru"], "n": x["not"], "a": x["ad"]}, ensure_ascii=False)
     return out
+
+
+GUVEN = {"yuksek": "yüksek", "orta": "orta", "dusuk": "düşük"}
+BOLUM_AD = {1: "1 · bakılacak", 2: "2 · sorunsuz görünen", 3: "3 · önceden karar verilmiş"}
+ALAN_AD = {"A": "A — Liderlik, Yönetişim ve Kalite", "B": "B — Eğitim ve Öğretim",
+           "C": "C — Araştırma ve Geliştirme", "D": "D — Toplumsal Katkı", "E": "E — Uluslararasılaşma"}
+INC_NOT = ("Turuncu başlıklı sütunlar (KARARINIZ, Doğru madde, Kanıt adı, Not) sizin; açılır listeden seçin. "
+           "Mavi altı çizili belge adına tıklayınca bağlantı açılır. Soluk mavi sütunlar ayrıntıdır; üstteki [–] ile "
+           "katlanır. Gizli sütun/satırlar araç içindir: sütun ya da sayfa silmeyin. Ayrıntılı açıklama: «Nasıl doldurulur».")
+# satır rengi (karar seçilince)
+R_KABUL, R_RET, R_TASI, R_DUZ, R_TOPLU, R_BEKLER, R_BAK = (
+    "C6EFCE", "F8CBAD", "FFE699", "BDD7EE", "E2EFDA", "FFF2CC", "FCE4D6")
 
 
 BOLUM_BASLIK = {
@@ -400,58 +449,8 @@ BOLUM_BASLIK = {
 def write_sade(wb, a, cs) -> None:
     """Sade sayfaları kitabın başına ekler; teknik sayfaları gizler."""
     teknik = list(wb.sheetnames)
-    sh = wb.create_sheet(SH_INC, 0)
-    _head(sh, INC_COLS)
-    idx = {k: i for i, (k, _, _, _) in enumerate(INC_COLS, 1)}
-    rows = inceleme_satirlari(a, cs)
-    sira = 0
-    for b in (1, 2, 3):
-        grp = [x for x in rows if x["bolum"] == b]
-        if not grp:
-            continue
-        sh.append([BOLUM_BASLIK[b].format(n=len(grp))])
-        n = sh.max_row
-        sh.merge_cells(start_row=n, start_column=1, end_row=n, end_column=idx["karar"] - 1)
-        c = sh.cell(row=n, column=1)
-        c.font = Font(bold=True)
-        c.alignment = Alignment(wrap_text=True, vertical="center")
-        for i in range(1, idx["not"] + 1):
-            sh.cell(row=n, column=i).fill = F_BOLUM
-        sh.row_dimensions[n].height = 34 if b == 2 else 20
-        if b == 2:
-            sh.cell(row=n, column=idx["satir"], value=TOPLU_SATIR)
-            t = sh.cell(row=n, column=idx["karar"])
-            t.fill = F_KARAR
-            t.border = KENAR
-            t.font = Font(bold=True)
-            dv = DataValidation(type="list", formula1=f'"{TOPLU}"', allow_blank=True)
-            dv.add(t.coordinate)
-            sh.add_data_validation(dv)
-        for x in grp:
-            sira += 1
-            x["sira"] = sira
-            _row(sh, INC_COLS, x, F_BAK if b == 1 else None)
-    last = max(sh.max_row, 2)
-    kcol, dcol = get_column_letter(idx["karar"]), get_column_letter(idx["dogru"])
-    dv = DataValidation(type="list", formula1='"' + ",".join(KARAR_SECENEK) + '"', allow_blank=True,
-                        showErrorMessage=True, errorTitle="KARARINIZ", error="Listeden seçin.")
-    for r in range(2, last + 1):
-        if sh.cell(row=r, column=idx["satir"]).value not in (None, TOPLU_SATIR):
-            dv.add(f"{kcol}{r}")
-    sh.add_data_validation(dv)
-    # Doğru madde: madde listesi (açılır), elle yazmak da serbest (ör. yuva: B.3.2/3)
-    ls = wb.create_sheet(SH_LISTE)
-    for s in cs.sub_criteria:
-        ls.append([madde_ad(cs, s.id)])
-    ls.sheet_state = "hidden"
-    dv2 = DataValidation(type="list", formula1=f"'{SH_LISTE}'!$A$1:$A${max(1, ls.max_row)}",
-                         allow_blank=True, showErrorMessage=False)
-    dv2.add(f"{dcol}2:{dcol}{last}")
-    sh.add_data_validation(dv2)
-    _hide(sh, INC_COLS, INC_GIZLI)
-    sh.freeze_panes = "C2"
-    _page(sh, idx["not"])
-    sh.print_area = f"A1:{get_column_letter(idx['not'])}{last}"
+    _write_inceleme(wb, a, cs)
+    wb.calculation.fullCalcOnLoad = True         # özet satırı formülü
 
     pos = 1
     if a.birim_sayfa:
@@ -471,6 +470,177 @@ def write_sade(wb, a, cs) -> None:
     for name in teknik:
         wb[name].sheet_state = "hidden"
     wb.active = 0
+
+
+def _write_inceleme(wb, a, cs) -> None:
+    """İnceleme sayfası: 1. satır (gizli) okuyucu başlıkları (`INC_COLS`; `_read` bunları okur, panel ilk 5 satırda
+    "satır kimliği"ni arar); 2 renk açıklaması; 3 formüllü özet; 4 kısa not; 5 görünen başlık. Bölüm başlıkları,
+    alan (A/B/C/D) ve madde ayraç satırlarında "satır kimliği" boştur (okuyucular atlar); 2. bölüm başlığı
+    `#toplu` kimliğini ve toplu kabul hücresini taşır."""
+    from openpyxl.formatting.rule import Rule
+    from openpyxl.styles.differential import DifferentialStyle
+    L = get_column_letter
+
+    def fill(c):
+        return PatternFill("solid", fgColor=c)
+
+    FONT = "Calibri"
+    ince = Side(style="thin", color="BFBFBF")
+    kutu = Border(left=ince, right=ince, top=ince, bottom=ince)
+    ust = Alignment(wrap_text=True, vertical="top")
+    detay = Font(name=FONT, sz=9, color="595959")
+    H, ILK = INC_BASLIK_SATIRI, INC_ILK
+    ix = {k: i for i, (k, _, _, _) in enumerate(INC_COLS, 1)}
+    tur = {k: INC_GORUNEN[k][1] for k, _, _, _ in INC_COLS}
+    n_ana = max(i for i, (k, _, _, _) in enumerate(INC_COLS, 1) if tur[k] in "mu")
+    n_gor = max(i for i, (k, _, _, _) in enumerate(INC_COLS, 1) if tur[k] != "h")
+    kc, bc, sc = L(ix["karar"]), L(ix["bolum"]), L(ix["satir"])
+
+    sh = wb.create_sheet(SH_INC, 0)
+    for i, (k, h, w, _) in enumerate(INC_COLS, 1):
+        sh.cell(1, i, h).font = Font(name=FONT, sz=8, color="808080")
+        sh.column_dimensions[L(i)].width = w
+        c = sh.cell(H, i, INC_GORUNEN[k][0])
+        c.border = kutu
+        c.fill = fill({"m": "305496", "u": "C65911"}.get(tur[k], "8EA9DB"))
+        c.font = Font(name=FONT, b=True, sz=11 if tur[k] in "mu" else 9, color="FFFFFF")
+        c.alignment = Alignment(wrap_text=True, vertical="center")
+        if tur[k] == "d":      # sütun sütun: column_dimensions.group() genişlikleri bozuyor
+            sh.column_dimensions[L(i)].outline_level = 1
+        if tur[k] == "h":
+            sh.column_dimensions[L(i)].hidden = True
+    sh.row_dimensions[1].hidden = True
+    sh.row_dimensions[H].height = 32
+
+    dv = DataValidation(type="list", formula1='"' + ",".join(KARAR_SECENEK) + '"', allow_blank=True,
+                        showErrorMessage=True, errorTitle="KARARINIZ", error="Listeden seçin.")
+    dv.promptTitle, dv.prompt, dv.showInputMessage = "Kararınız", "Kabul · etkinlik yapıldı · Ret · Başka maddeye taşı", True
+    dvt = DataValidation(type="list", formula1=f'"{TOPLU}"', allow_blank=True)
+    ls = wb.create_sheet(SH_LISTE)
+    for s_ in cs.sub_criteria:
+        ls.append([madde_ad(cs, s_.id)])
+    ls.sheet_state = "hidden"
+    # Doğru madde: madde listesi (açılır), elle yazmak da serbest (ör. yuva: B.3.2/3)
+    dvm = DataValidation(type="list", formula1=f"'{SH_LISTE}'!$A$1:$A${max(1, ls.max_row)}",
+                         allow_blank=True, showErrorMessage=False)
+    for d in (dv, dvt, dvm):
+        sh.add_data_validation(d)
+
+    def satir_say(v, w):
+        return 1 if v in (None, "") else sum(max(1, -(-len(p) // max(1, int(w * 1.1)))) for p in str(v).split("\n"))
+
+    r, toplu_r, sira = ILK, None, 0
+
+    def ayrac(text, f, font, h=20):
+        nonlocal r
+        for i in range(1, n_gor + 1):
+            c = sh.cell(r, i)
+            c.fill, c.border = f, kutu
+        c = sh.cell(r, 1, text)
+        c.font, c.alignment = font, Alignment(vertical="center", wrap_text=False)
+        sh.row_dimensions[r].height = h
+        r += 1
+
+    rows = inceleme_satirlari(a, cs)
+    for b in (1, 2, 3):
+        grp = [x for x in rows if x["bolum"] == b]
+        if not grp:
+            continue
+        for i in range(1, n_gor + 1):
+            c = sh.cell(r, i)
+            c.fill, c.border = fill("1F3864"), kutu
+        sh.merge_cells(start_row=r, start_column=1, end_row=r, end_column=ix["karar"] - 1)
+        c = sh.cell(r, 1, BOLUM_BASLIK[b].format(n=len(grp)))
+        c.font = Font(name=FONT, b=True, sz=12, color="FFFFFF")
+        c.alignment = Alignment(wrap_text=True, vertical="center")
+        sh.row_dimensions[r].height = 36 if b == 2 else 22
+        if b == 2:
+            sh.cell(r, ix["satir"], TOPLU_SATIR)
+            t = sh.cell(r, ix["karar"])
+            t.fill, t.border, t.font = fill(R_BEKLER), kutu, Font(name=FONT, b=True)
+            dvt.add(t.coordinate)
+            toplu_r = r
+            sh.cell(r, ix["dogru"], "◀ toplu kabul").font = Font(name=FONT, i=True, sz=9, color="FFFFFF")
+        r += 1
+        alan = madde = None
+        for x in grp:
+            kod = x["_olcut"]
+            if kod[:1] != alan:
+                alan = kod[:1]
+                ayrac(ALAN_AD.get(alan, alan), fill("D9E1F2"), Font(name=FONT, b=True, sz=12, color="1F3864"))
+            if kod != madde:
+                madde = kod
+                n = sum(1 for y in grp if y["_olcut"] == kod)
+                ayrac(f"   {x['madde']}   ·   {n} öneri", fill("EDF1F9"), Font(name=FONT, b=True, sz=10, color="1F3864"), 18)
+            sira += 1
+            x["sira"] = sira
+            for i, (k, _, w, _) in enumerate(INC_COLS, 1):
+                c = sh.cell(r, i, x.get(k, ""))
+                c.alignment, c.border = ust, kutu
+                c.font = Font(name=FONT, sz=10) if tur[k] in "mu" else detay
+                if tur[k] == "u":
+                    c.fill = fill(R_BEKLER)
+                elif tur[k] == "m" and b == 1:
+                    c.fill = fill(R_BAK)
+            sh.cell(r, ix["madde"]).font = Font(name=FONT, b=True, sz=10)
+            sh.cell(r, ix["karar"]).font = Font(name=FONT, b=True, sz=10)
+            if x["oneri"] == "Bakın":
+                sh.cell(r, ix["oneri"]).font = Font(name=FONT, b=True, sz=10, color="C00000")
+            if str(x.get("baglanti") or "").startswith("http"):
+                c = sh.cell(r, ix["belge"])
+                c.hyperlink = x["baglanti"]
+                c.font = Font(name=FONT, sz=10, color="0563C1", u="single")
+            dv.add(sh.cell(r, ix["karar"]).coordinate)
+            dvm.add(sh.cell(r, ix["dogru"]).coordinate)
+            mh = max(satir_say(x.get(k), w) for k, _, w, _ in INC_COLS if tur[k] in "mu") * 14 + 4
+            dh = max(satir_say(x.get(k), w) for k, _, w, _ in INC_COLS if tur[k] == "d") * 12 + 4
+            sh.row_dimensions[r].height = min(409, max(mh, min(dh, mh * 1.6, 120)))
+            r += 1
+    son = max(r - 1, ILK)
+
+    def dx(c):
+        return DifferentialStyle(fill=PatternFill("solid", bgColor=c, fgColor=c))
+
+    rng = f"A{ILK}:{L(n_ana)}{son}"
+    K = f"${kc}{ILK}"
+    cf = sh.conditional_formatting
+    cf.add(rng, Rule(type="expression", dxf=dx(R_RET), formula=[f'OR({K}="Ret",{K}="Red")'], stopIfTrue=True))
+    cf.add(rng, Rule(type="expression", dxf=dx(R_TASI), formula=[f'LEFT({K},5)="Başka"'], stopIfTrue=True))
+    cf.add(rng, Rule(type="expression", dxf=dx(R_KABUL), formula=[f'LEFT({K},5)="Kabul"'], stopIfTrue=True))
+    cf.add(rng, Rule(type="expression", dxf=dx(R_DUZ), formula=[f'LEFT({K},10)="Düzeltildi"'], stopIfTrue=True))
+    if toplu_r:
+        cf.add(rng, Rule(type="expression", dxf=dx(R_TOPLU), stopIfTrue=True,
+                         formula=[f'AND({K}="",${bc}{ILK}=2,${kc}${toplu_r}="{TOPLU}")']))
+    sh["A2"] = "Renkler (karar seçince satır boyanır):"
+    sh["A2"].font = Font(name=FONT, b=True, sz=10)
+    for i, (ad, renk) in enumerate((("Kabul", R_KABUL), ("Ret", R_RET), ("Başka maddeye taşı", R_TASI),
+                                    ("Toplu kabulle sayılacak", R_TOPLU), ("Karar bekliyor (doldurun)", R_BEKLER),
+                                    ("Bakılacak satır", R_BAK)), 2):
+        c = sh.cell(2, i, ad)
+        c.fill, c.border, c.font = fill(renk), kutu, Font(name=FONT, b=True, sz=10)
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    sh.row_dimensions[2].height = 30
+    S_, KR, BR = f"${sc}${ILK}:${sc}${son}", f"${kc}${ILK}:${kc}${son}", f"${bc}${ILK}:${bc}${son}"
+    top, ver = f'COUNTIF({S_},"*|*")', f'COUNTIFS({S_},"*|*",{KR},"?*")'
+    tk = f'IF(${kc}${toplu_r}="{TOPLU}",COUNTIFS({S_},"*|*",{BR},2,{KR},""),0)' if toplu_r else "0"
+    sh["A3"] = (f'="Toplam öneri: "&{top}&"     Karar verilen: "&{ver}&"     Kalan: "&({top}-{ver}-{tk})'
+                f'&"     ·     Kabul: "&COUNTIF({KR},"Kabul*")&"   Ret: "&COUNTIF({KR},"Ret")'
+                f'&"   Taşı: "&COUNTIF({KR},"Başka*")&"   Toplu kabulle: "&{tk}')
+    sh["A3"].font = Font(name=FONT, b=True, sz=12, color="1F3864")
+    sh.merge_cells(f"A3:{L(n_ana)}3")
+    sh["A3"].alignment = Alignment(vertical="center")
+    sh.row_dimensions[3].height = 22
+    sh["A4"] = INC_NOT
+    sh["A4"].font = Font(name=FONT, i=True, sz=9, color="595959")
+    sh.merge_cells(f"A4:{L(n_ana)}4")
+    sh["A4"].alignment = Alignment(wrap_text=True, vertical="center")
+    sh.row_dimensions[4].height = 30
+    sh.freeze_panes = f"C{ILK}"
+    sh.auto_filter.ref = f"A{H}:{L(n_gor)}{son}"
+    sh.sheet_properties.outlinePr.summaryRight = False
+    _page(sh, n_ana, f"{H}:{H}")
+    sh.print_area = f"A2:{L(n_ana)}{son}"
+    sh.sheet_view.zoomScale = 110
 
 
 def _write_birim(sh, a, cs) -> None:

@@ -271,12 +271,19 @@ anlaşılmıyordu. Dosya açılınca yalnız şu sayfalar görünür; teknik say
 özeti", "Başka birime ait sayılanlar", "Açıklama", `_meta`) gizli kalır ve uzman/ajan yolu olarak
 çalışmaya devam eder.
 
-- **İnceleme** — satır = bir öneri ("şu belge şu maddeye kanıt"). Sütunlar: Sıra · Madde (kod —
-  kılavuz başlığı; altında yuvanın kılavuz örneği) · Belge (klasördeki özgün dosya adı; alt klasör
-  ayrı satırda) · Önerilen kanıt adı (düzeltilebilir) · Belgede ne yazıyor (alıntı) · Neden bu
-  maddeye (aşamanın düz adı + modelin gerekçesi) · Dikkat (işaretlerin düz Türkçe karşılığı ve ne
-  yapılacağı; `sade.DIKKAT`) · Önerimiz (Kabul/Bakın) · **KARARINIZ** · Doğru madde · Not. Gizli
-  sütunlar: satır kimliği, bölüm, yazılan (yazıldığı andaki karar/madde/not/ad, JSON).
+- **İnceleme** — satır = bir öneri ("şu belge şu maddeye kanıt"). Düzen: 1. satır gizli, okuyucunun
+  başlıkları (`sade.INC_COLS`; `_read` yalnız bunu okur, panel ilk 5 satırda "satır kimliği"ni arar); 2 renk
+  açıklaması; 3 formüllü özet (toplam öneri, karar verilen, kalan, kabul/ret/taşı, toplu kabulle); 4 kısa not;
+  5 görünen başlık (`sade.INC_GORUNEN`); bölüm başlıkları, alan (A/B/C/D) ve madde ayraç satırları ("· N öneri";
+  satır kimliği boş, okuyucular atlar). Bölüm içinde satırlar madde madde. Ana sütunlar: Madde (kod — kılavuz
+  başlığı) · Önerilen belge (özgün dosya adı; bağlantı varsa tıklanır) · Belgede ne yazıyor (kısa) · Öneri
+  (Kabul/Bakın) · **KARARINIZ** · Doğru madde · Kanıt adı (düzeltilebilir) · Not. Katlanabilir ayrıntı (sütun
+  sütun outline): Dikkat (işaretlerin düz Türkçe karşılığı; `sade.DIKKAT`) · Neden bu maddeye · Güven · Sayılan
+  kısım (aşama; modelinkinden farklıysa o da) · OD · Dönem · tarih · Belge türü · birim · Alıntının tamamı ·
+  Kılavuz örneği (yuva metni) · Klasör · kaynak dosya · Bağlantı · İşaretler (iç kod) · Sıra · Bölüm. Gizli
+  sütunlar: satır kimliği, bölüm, yazılan (yazıldığı andaki karar/madde/not/ad, JSON). Karar seçilince satırın
+  ana bölümü renklenir (Kabul yeşil, Ret kırmızı, taşı sarı, toplu kabulle açık yeşil). Başlık + Madde + Belge
+  sabit, filtre açık.
   - KARARINIZ (açılır liste) → teknik karar: `Kabul` = kabul; `Kabul — etkinlik yapıldı` = duzelt
     aşama `uygula` (mevcut yuva; satır zaten izleme/iyileştirme sayılıyorsa düşürmemek için kabul);
     `Ret` = ret; `Başka maddeye taşı` = duzelt ölçüt+yuva; `Başka maddeye taşı — etkinlik yapıldı` =

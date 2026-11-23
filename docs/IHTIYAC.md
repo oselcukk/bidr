@@ -139,11 +139,20 @@ komisyon, bölüm başkanlığı, kalite komisyonu…); birimin kendi düzenine 
 Komisyon dışındaki okur (bölüm sekreterliği, komisyon başkanları, öğretim elemanları) için; her
 `bidr ihtiyac` çalışmasında yazılır. Model yok; metinler kodla şablonlanır (`bidr/ihtiyac/sade.py`).
 
-- **Satır = madde (alt ölçüt)**: talepler ölçüt başına tek satırda toplanır. Sıralama: öncelik, sonra
-  kanıtsız maddeler, sonra puan, sonra madde kodu.
-- **Sütunlar**: Sıra · Madde (`B.3.2 — Akademik destek hizmetleri`, kılavuz başlığı) · Öncelik ·
-  İstenen belgeler · Neden gerekli · Kimden istenebilir · Kılavuzdaki örnek kanıtlar · Not / örnek.
-  Puan, kaynak, belge türü ve yuva kimliği yazılmaz.
+- **Tek sayfa, belge başına satır**: talepler ölçüt başına toplanır (`satirlar_kur`, öncelik sırası
+  "Öncelik sırası" sütununda: öncelik, sonra kanıtsız maddeler, sonra puan, sonra madde kodu); Excel'de
+  maddeler kod sırasıyla, A/B/C/D ayraç satırlarıyla dizilir ve maddenin **her istenen belgesi ayrı satırdır**
+  (madde adı sonraki satırlarda soluk tekrar). Üstte renk açıklaması ve formüllü özet (toplam istek, bulunan,
+  kalan, tamamlanan madde); altta "nasıl okunur" notu.
+- **Sütunlar**: Madde (`B.3.2 Akademik destek hizmetleri`) · Bulundu (☐/☑ veri doğrulaması; ☑ → satır yeşil,
+  belge metni üstü çizili) · Durum (formül: "<ilk durum> · k/n bulundu"; hepsi ☑ → "Tamamlandı" açık mavi,
+  bir kısmı → "Kısmen bulundu" sarı) · Eksik / istenen belge · Kimden (belgenin kendi sorumlusu; kişi başına
+  liste için filtre) · Var olan kanıt (dosyada) · sağda katlanabilir soluk ayrıntı (sütun sütun outline):
+  Öncelik · Neden gerekli · Geçen yıl kullanılan · Kurumun ilgili yönerge/form/iş akışları · Kılavuzdaki
+  örnek kanıtlar · Öncelik sırası. Başlık + Madde + Bulundu sabit, filtre açık. Puan, kaynak, belge türü ve
+  yuva kimliği yazılmaz.
+- **İlk durum** veriden (`durum` alanı; gerekçe metni aranmaz): maddede hiç belge yok → "Hiç belge yok"
+  (turuncu); Yüksek öncelik → "Eksiği var" (sarı); Orta/Düşük → "Az eksik" (açık yeşil).
 - **Öncelik** (sözle): Yüksek = kanıtsız madde ya da tek belgeyle olgunluk düzeyi artan madde (puan
   ≥ 80); Orta = geçen yılın karşılığı bulunamayan belgesi ya da bir üst düzeyin eksik belgesi (45–60);
   Düşük = yalnız tamamlayıcı kılavuz önerileri. Elle istek satırın önceliğini yükseltebilir (varsayılan
@@ -178,10 +187,13 @@ Komisyon dışındaki okur (bölüm sekreterliği, komisyon başkanları, öğre
   ("… ve N örnek daha").
 - **Kimden istenebilir**: maddelerin sorumluları (en çok 3); `ihtiyac_sorumlular.yaml`, kayıtta varsa
   `ihtiyac_somut.yaml`'daki `kimden`. Belirsiz "İlgili komisyon" yerine alanın sorumlusu yazılır.
-- **Not / örnek**: dosyada zaten olan belgeler (en çok 4) ve geçen yıl bu amaçla kullanılan belge.
-- **Sayfalar**: "İstenen kanıtlar", "Kime gönderilecek" (aynı istekler kişi/birim × madde),
-  "Nasıl okunur" (5 satır). Hücreler kaydırmalı, başlık satırı dondurulmuş ve her sayfada yinelenir,
-  yatay A4'e genişlikte sığar.
+- **Var olan kanıt (dosyada)** (`dosyada`): dosyada zaten olan belgeler (en çok 4); **Geçen yıl kullanılan**
+  (`gecen_yil`): geçen yıl bu amaçla kullanılan belge. İkisi ayrı alandır (`not` eski birleşik metin).
+- **Kurum belgeleri** (`kurum`, `kurum_n`) istenen belgelerden (`maddeler`) ayrı listedir: ana listede tek
+  işaretlenebilir satır "Kurumun ilgili N yönerge/form/iş akışı", adları ayrıntı sütununda.
+- **Bilgi kaybı denetimi**: `sade.bilgi_denetimi(rows, xlsx)` eski üç sayfalı biçimin her hücre bilgisini
+  (madde, istek, kimden, öncelik, gerekçe, geçen yıl, kurum belgeleri, kılavuz, sıra, dosyada olanlar,
+  kişi × madde × istek, nasıl okunur) yeni dosyada arar; testler boş liste bekler.
 
 ### 5.1 Kılavuz eki: "Örnek Uygulama ve Kanıtlar Listesi"
 
@@ -208,7 +220,7 @@ Araştırma-Geliştirme, Toplumsal Katkı) "Uygulama | Kanıt" tabloları vardı
   kılavuz/öneri sınırı (6) ve kurum belgesi sınırı (10) değişmedi. Kimden: yuvanın sorumlusu (somut tablo
   ile aynı kural). Metin: `{kanıt} — {uygulama}`; uygulamanın baş harfi küçültülür (kısaltma ya da ad öbeği
   "Ana Bilim Dalı", "Birim/Program" ise olduğu gibi).
-- **Uygun/uygun olmayan kanıt notu**: "Nasıl okunur" sayfasında şablonun uyarısı kısaca yinelenir (Excel/Word
+- **Uygun/uygun olmayan kanıt notu**: altta "nasıl okunur" notunda şablonun uyarısı kısaca yinelenir (Excel/Word
   ekran görüntüsü ve ilgisiz dosya yığını kanıt sayılmaz; web sayfası PDF olarak da eklenir; kişisel veri
   maskelenir). Araç bu kuralları ayrıca denetlemez; bkz. Sınırlar.
 
