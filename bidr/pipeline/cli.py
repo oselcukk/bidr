@@ -76,6 +76,17 @@ def _next(args) -> int:
     return 0
 
 
+def _next_guncel(args) -> int:
+    """`next` + günde en çok bir kez güncellik hatırlatması (bidr/guncel; git klonu değilse hiçbir şey)."""
+    rc = _next(args)
+    if not args.json:
+        from bidr.guncel.core import next_notice
+        line = next_notice(args.workspace)
+        if line:
+            print(line)
+    return rc
+
+
 def register(sub):
     from . import hakem
     hakem.register(sub)
@@ -87,4 +98,4 @@ def register(sub):
     p = sub.add_parser("next", help="sıradaki tam adım: komut(lar), tamamlanma şartı, insan onayı")
     p.add_argument("--workspace", "-w", required=True)
     p.add_argument("--json", action="store_true")
-    p.set_defaults(func=_next)
+    p.set_defaults(func=_next_guncel)

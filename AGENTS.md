@@ -12,6 +12,9 @@ Bu repo, BİDR (Birim İç Değerlendirme Raporu) için kanıt hattıdır (`bidr
 | "raporu hazırla", "devam et", "nerede kaldık", "sıradaki adım" | `bidr-rapor` |
 | "hakem soruları", "etiket farkları" | `bidr-hakem` |
 
+Oturum başında `bidr guncel` (bidr güncel mi; çevrimdışıysa yalnız "denetlenemedi"). Geride ise
+kullanıcıya söyle; aşama sınırında (açık iş paketi yokken) `bidr guncelle -w <çalışma alanı>`.
+
 Skill'i okumadan işe başlama. Rapor işi bir **çalışma alanında** (repo dışında, `bidr init`
 kurar) yürür; o klasördeki `AGENTS.md` bidr komutunun yolunu ve çalışma alanını verir.
 Her adımda `bidr next -w <çalışma alanı>` neyin, hangi komutla, hangi tamamlanma şartıyla
