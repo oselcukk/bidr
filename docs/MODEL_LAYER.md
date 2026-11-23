@@ -332,10 +332,11 @@ kanıtları tek pakettedir. `tests/test_paralel.py` aynı cevaplar üç parçaya
 dağıtıldığında `decisions.jsonl`, `faaliyetler.json` ve `audit-olcutler.json`'un tek ajanlı koşuyla
 birebir aynı olduğunu sınar.
 
-**Parça sayısı.** `N = 1` (≤ `esik` paket, vars. 20), sonra her `adim` (vars. 40) pakette +1, en çok
-`azami` (vars. 10) ve paket (write'ta alt bölüm) sayısı: 443 paket → 10. Ayar önceliği: komut bayrağı
-(`--esik/--adim/--azami`, `--parca` zorlar) > config.yaml `rapor.paralel_{esik,adim,azami}` >
-varsayılan; tavanı `BIDR_PARALEL_AZAMI` (kota) da düşürür; hiçbiri 10'u aşamaz. Bölme dengeli:
+**Parça sayısı.** `N = taban` (vars. 2; ≤ `esik` paket, vars. 20), sonra her `adim` (vars. 20) pakette
++1, en çok `azami` (vars. 20) ve paket (write'ta alt bölüm) sayısı. Varsayılanla
+`N = min(20, n, 2 + (n-1)//20)`: 1 paket → 1, 2–20 → 2, 21–40 → 3, 41–60 → 4, …, 361+ → 20. Ayar önceliği: komut bayrağı
+(`--taban/--esik/--adim/--azami`, `--parca` zorlar) > config.yaml `rapor.paralel_{taban,esik,adim,azami}` >
+varsayılan; tavanı `BIDR_PARALEL_AZAMI` (kota) da düşürür; hiçbiri 20'yi aşamaz. Bölme dengeli:
 ağırlık paketin bayt boyutu (klasör düzeninde sayfa görüntüleri), en ağır paket/grup en hafif parçaya
 (LPT); sonuç belirlenimci.
 

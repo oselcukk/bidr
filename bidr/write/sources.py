@@ -351,7 +351,7 @@ def rapor_section(ws_root: Path) -> dict:
     şablonu, render), `kanit_kok_baglanti` (kanıt klasörünün yüklendiği kök adres),
     `yayin_alan_adlari` (belge gövdesindeki URL'nin yayın adresi sayılacağı alan adları),
     `yeniden_yazim_siniri` (reddedilen metin için en çok yeniden yazım turu; vars. 2),
-    `paralel_esik` / `paralel_adim` / `paralel_azami` (model aşamalarının parça sayısı; `bidr parcala`)."""
+    `paralel_taban` / `paralel_esik` / `paralel_adim` / `paralel_azami` (model aşamalarının parça sayısı; `bidr parcala`)."""
     p = Path(ws_root) / "config.yaml"
     if not p.exists():
         return {}

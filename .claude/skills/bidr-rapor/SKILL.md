@@ -60,7 +60,8 @@ Model aşamasında `bidr next` bir `Paralel:` satırı yazar (aşama başına ka
 Paralellik sonucu değiştirmez: her paket tek belgeye (ya da tek ölçüte) aittir ve belgeler arası
 bağlantılar (PUKÖ zinciri, faaliyet kayıtları, OD) modelsiz `bidr faaliyet` ve `bidr audit`'te
 bütün kararlar birlikte okunarak kurulur. Kota için tavan: `BIDR_PARALEL_AZAMI` ortam değişkeni ya
-da config.yaml `rapor.paralel_azami` (en çok 10).
+da config.yaml `rapor.paralel_azami` (en çok 20; varsayılan: 1 paket → 1 ajan, 2–20 → 2, 21–40 → 3,
+sonra her 20 pakette +1, 361+ → 20).
 
 ## İş paketi döngüsü (karar_kaba, karar_ince)
 

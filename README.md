@@ -19,7 +19,7 @@ doğrulama) iş paketleriyle yürür: `bidr <aşama> prepare` paketleri yazar, a
 `*.out.json` yazar, `bidr <aşama> apply` cevabı şemaya ve kod denetimine (birebir alıntı, atıf,
 OD aşımı) sokar. Rapor işinde `bidr decide run` / `bidr llm` kullanılmaz.
 
-**Paralel ajanlar.** Paket çoksa `bidr next` aşamanın kaç ajana bölünebileceğini söyler (en çok 10;
+**Paralel ajanlar.** Paket çoksa `bidr next` aşamanın kaç ajana bölünebileceğini söyler (1 paket → 1 ajan, 2–20 → 2, sonra her 20 pakette +1, en çok 20;
 `BIDR_PARALEL_AZAMI` ya da `rapor.paralel_azami` düşürür): `bidr parcala` ayrık parça listeleri yazar,
 her alt ajan yalnız kendi listesini cevaplar, `bidr parca-denetle` ve apply liste dışı yazımı reddeder.
 Güçlü/gelişmeye açık yönler bölünmez. Ayrıntı: `docs/MODEL_LAYER.md` "Paralel model aşamaları".

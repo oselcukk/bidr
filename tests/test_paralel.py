@@ -21,11 +21,15 @@ from test_decide import ws as decide_ws  # noqa: F401  (fixture)
 
 def test_parca_sayisi_grows_with_packages_and_is_capped():
     f = P.parca_sayisi
-    assert [f(n) for n in (0, 1, 20, 21, 60, 61, 100, 101, 380, 443, 5000)] == [0, 1, 1, 2, 2, 3, 3, 4, 10, 10, 10]
+    ns = (1, 2, 20, 21, 40, 41, 60, 361, 1000)
+    assert [f(n) for n in ns] == [1, 2, 2, 3, 3, 4, 4, 20, 20]
+    assert all(f(n) == min(20, n, 2 + (n - 1) // 20) for n in range(1, 2000))   # karar formülü
+    assert f(0) == 0 and f(360) == 19
     assert f(443, azami=3) == 3
-    assert f(30, esik=5, adim=5) == 6
+    assert f(30, esik=5, adim=5) == 7
+    assert f(30, taban=1, esik=5, adim=5) == 6
     assert f(3, esik=1, adim=1) == 3                 # paket sayısını aşmaz
-    assert f(10 ** 6, azami=99) == P.TAVAN           # kesin tavan 10
+    assert f(10 ** 6, azami=99) == P.TAVAN           # kesin tavan 20
 
 
 def test_bol_disjoint_complete_balanced():
@@ -53,15 +57,15 @@ def test_bol_keeps_subsection_together():
 
 def test_ayarlar_env_and_config_lower_the_cap(tmp_path, monkeypatch):
     monkeypatch.delenv(P.ENV_AZAMI, raising=False)
-    assert P.ayarlar(tmp_path) == {"esik": 20, "adim": 40, "azami": 10}
+    assert P.ayarlar(tmp_path) == {"taban": 2, "esik": 20, "adim": 20, "azami": 20}
     (tmp_path / "config.yaml").write_text("rapor:\n  paralel_azami: 4\n  paralel_esik: 10\n", encoding="utf-8")
-    assert P.ayarlar(tmp_path) == {"esik": 10, "adim": 40, "azami": 4}
+    assert P.ayarlar(tmp_path) == {"taban": 2, "esik": 10, "adim": 20, "azami": 4}
     monkeypatch.setenv(P.ENV_AZAMI, "3")
     assert P.ayarlar(tmp_path)["azami"] == 3
     assert P.ayarlar(tmp_path, azami=2)["azami"] == 2
     (tmp_path / "config.yaml").write_text("rapor:\n  paralel_azami: 50\n", encoding="utf-8")
     monkeypatch.delenv(P.ENV_AZAMI)
-    assert P.ayarlar(tmp_path)["azami"] == 10        # 10'u aşamaz
+    assert P.ayarlar(tmp_path)["azami"] == 20        # 20'yi aşamaz
     with pytest.raises(P.ParcaHatasi):
         P.ayarlar(tmp_path, azami=0)
 
@@ -228,11 +232,13 @@ def test_next_offers_split_and_cli_round_trip(tmp_path, capsys, monkeypatch):
     assert main(["decide", "prepare", "-w", str(ws), "--stage", "coarse"]) == 0
     k = evaluate(ws).get("karar_kaba")
     assert k.kim == "ajan" and len(k.bekleyen) == 4
-    assert k.paralel["bolunebilir"] and k.paralel["parca_sayisi"] == 1      # 4 paket ≤ eşik 20
+    assert k.paralel["bolunebilir"] and k.paralel["parca_sayisi"] == 2      # 4 paket ≤ eşik 20 → taban 2
+    cfg = yaml.safe_load((ws / "config.yaml").read_text(encoding="utf-8"))
+    cfg.setdefault("rapor", {}).update(paralel_taban=1)
+    (ws / "config.yaml").write_text(yaml.safe_dump(cfg, allow_unicode=True), encoding="utf-8")
     capsys.readouterr()
     main(["next", "-w", str(ws)])
     assert "Paralel: gerekmez" in capsys.readouterr().out
-    cfg = yaml.safe_load((ws / "config.yaml").read_text(encoding="utf-8"))
     cfg.setdefault("rapor", {}).update(paralel_esik=1, paralel_adim=1)
     (ws / "config.yaml").write_text(yaml.safe_dump(cfg, allow_unicode=True), encoding="utf-8")
     assert evaluate(ws).get("karar_kaba").paralel["parca_sayisi"] == 4

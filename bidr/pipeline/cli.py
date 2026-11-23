@@ -49,7 +49,7 @@ def paralel_satirlari(p: dict) -> list[str]:
         return [f"Paralel: bölünmez — tek ajan yapar. Gerekçe: {p.get('gerekce', '')}"]
     n, b = p.get("parca_sayisi") or 0, p.get("bekleyen") or 0
     if n <= 1:
-        return [f"Paralel: gerekmez ({b} paket; eşik {p.get('ayar', {}).get('esik')}): tek ajan yapar."]
+        return [f"Paralel: gerekmez ({b} paket): tek ajan yapar."]
     return [f"Paralel: bu aşama {n} ajanla paralel yapılabilir ({b} cevapsız paket).",
             f"  a. {p['komut']}   # {n} ayrık parça listesi: work/…/_parca/<k>.txt",
             "  b. Her ajana bir parça listesi verin (talimat tek ajanınkiyle aynı: README + paketin `istem`i); her "

@@ -34,8 +34,8 @@ from bidr.common import Workspace
 
 PARCA = "_parca"
 BILDIRIM = "parcalar.json"
-VARSAYILAN = {"esik": 20, "adim": 40, "azami": 10}
-TAVAN = 10                      # kesin üst sınır (ayar bunu aşamaz)
+VARSAYILAN = {"taban": 2, "esik": 20, "adim": 20, "azami": 20}
+TAVAN = 20                      # kesin üst sınır (ayar bunu aşamaz)
 ENV_AZAMI = "BIDR_PARALEL_AZAMI"
 
 
@@ -52,9 +52,9 @@ def bilgi(sid: str) -> dict | None:
 
 
 def ayarlar(ws_root: Path, *, azami: int | None = None, esik: int | None = None,
-            adim: int | None = None) -> dict:
-    """Eşik/adım/tavan: komut bayrağı > config.yaml `rapor.paralel_{esik,adim,azami}` > varsayılan.
-    Tavan ayrıca `BIDR_PARALEL_AZAMI` ortam değişkeniyle düşürülebilir (kota); hiçbiri 10'u aşamaz."""
+            adim: int | None = None, taban: int | None = None) -> dict:
+    """Taban/eşik/adım/tavan: komut bayrağı > config.yaml `rapor.paralel_{taban,esik,adim,azami}` > varsayılan.
+    Tavan ayrıca `BIDR_PARALEL_AZAMI` ortam değişkeniyle düşürülebilir (kota); hiçbiri 20'yi (TAVAN) aşamaz."""
     from bidr.write.sources import rapor_section
     r = rapor_section(ws_root)
 
@@ -70,8 +70,8 @@ def ayarlar(ws_root: Path, *, azami: int | None = None, esik: int | None = None,
         return n
 
     out = {}
-    for k in ("esik", "adim"):
-        out[k] = _int({"esik": esik, "adim": adim}[k], k) or _int(r.get(f"paralel_{k}"), f"rapor.paralel_{k}") \
+    for k in ("taban", "esik", "adim"):
+        out[k] = _int({"taban": taban, "esik": esik, "adim": adim}[k], k) or _int(r.get(f"paralel_{k}"), f"rapor.paralel_{k}") \
             or VARSAYILAN[k]
     tavanlar = [TAVAN, _int(azami, "azami"), _int(r.get("paralel_azami"), "rapor.paralel_azami"),
                 _int(os.environ.get(ENV_AZAMI), ENV_AZAMI)]
@@ -79,14 +79,15 @@ def ayarlar(ws_root: Path, *, azami: int | None = None, esik: int | None = None,
     return out
 
 
-def parca_sayisi(n_paket: int, *, esik: int = 20, adim: int = 40, azami: int = 10) -> int:
-    """Paket sayısına göre artan ajan sayısı: ≤ esik → 1; sonra her `adim` pakette +1; en çok `azami`
-    (ve paket sayısı). 0 paket → 0."""
+def parca_sayisi(n_paket: int, *, taban: int = VARSAYILAN["taban"], esik: int = VARSAYILAN["esik"],
+                 adim: int = VARSAYILAN["adim"], azami: int = VARSAYILAN["azami"]) -> int:
+    """Paket sayısına göre artan ajan sayısı: ≤ esik → `taban`; sonra her `adim` pakette +1; en çok
+    `azami`, TAVAN ve paket sayısı. 0 paket → 0. Varsayılanla (2/20/20/20) bu
+    min(20, n, 2 + (n-1)//20) demektir: 1 → 1, 2–20 → 2, 21–40 → 3, 41–60 → 4, …, 361+ → 20."""
     if n_paket <= 0:
         return 0
-    if n_paket <= esik:
-        return 1
-    return max(1, min(azami, TAVAN, n_paket, 1 + math.ceil((n_paket - esik) / adim)))
+    n = taban if n_paket <= esik else taban + math.ceil((n_paket - esik) / adim)
+    return max(1, min(azami, TAVAN, n_paket, n))
 
 
 # -- paketler ------------------------------------------------------------------------------------------
@@ -251,7 +252,7 @@ def durum(ws_root: Path, sid: str, n_bekleyen: int) -> dict:
 
 
 def parcala(ws_root: Path, sid: str, *, azami: int | None = None, esik: int | None = None,
-            adim: int | None = None, parca: int | None = None) -> dict:
+            adim: int | None = None, parca: int | None = None, taban: int | None = None) -> dict:
     """Cevapsız paketleri ayrık parça listelerine böler ve `work/<aşama>/_parca/`'ya yazar. `parca`:
     parça sayısını zorla (tavanla sınırlı). Döner: bildirim (parcalar[], dosya yolları)."""
     ws = Workspace(Path(ws_root).expanduser().resolve())
@@ -260,7 +261,7 @@ def parcala(ws_root: Path, sid: str, *, azami: int | None = None, esik: int | No
         raise ParcaHatasi(f"'{sid}' bir model aşaması değil (pipeline.yaml'da paralel alanı yok)")
     if not info.get("bolunebilir"):
         raise ParcaHatasi(f"'{sid}' bölünmez: {' '.join(str(info.get('gerekce', '')).split())}")
-    a = ayarlar(ws.root, azami=azami, esik=esik, adim=adim)
+    a = ayarlar(ws.root, azami=azami, esik=esik, adim=adim, taban=taban)
     keys = bekleyen(ws.root, sid)
     d = _dizin(ws, info)
     pk = paketler(ws, info)
@@ -391,7 +392,7 @@ def _cmd_parcala(args) -> int:
     try:
         sid = _sid(args)
         man = parcala(Path(args.workspace), sid, azami=args.azami, esik=args.esik, adim=args.adim,
-                      parca=args.parca)
+                      parca=args.parca, taban=args.taban)
     except (ParcaHatasi, KeyError) as e:
         print(f"HATA {e}", file=sys.stderr)
         return 2
@@ -442,9 +443,11 @@ def register(sub):
                                        "listelerine böler (work/<aşama>/_parca/<k>.txt)")
     p.add_argument("asama", nargs="?", help="aşama kimliği (vars. sıradaki aşama), ör. karar_ince")
     p.add_argument("--workspace", "-w", required=True)
-    p.add_argument("--azami", type=int, help=f"en çok parça (vars. 10; {ENV_AZAMI} ve rapor.paralel_azami düşürür)")
-    p.add_argument("--esik", type=int, help="bu sayıya kadar paket tek parça (vars. 20)")
-    p.add_argument("--adim", type=int, help="eşikten sonra her kaç pakette bir parça eklenir (vars. 40)")
+    p.add_argument("--azami", type=int, help=f"en çok parça (vars. ve kesin tavan {TAVAN}; {ENV_AZAMI} ve rapor.paralel_azami düşürür)")
+    p.add_argument("--taban", type=int, help=f"eşiğe kadar parça sayısı (vars. {VARSAYILAN['taban']}; "
+                                            "paket sayısını aşmaz)")
+    p.add_argument("--esik", type=int, help=f"bu sayıya kadar paket `taban` parça (vars. {VARSAYILAN['esik']})")
+    p.add_argument("--adim", type=int, help=f"eşikten sonra her kaç pakette bir parça eklenir (vars. {VARSAYILAN['adim']})")
     p.add_argument("--parca", type=int, help="parça sayısını zorla (tavanla sınırlı)")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=_cmd_parcala)
