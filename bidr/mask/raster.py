@@ -258,7 +258,11 @@ def sablon_onerileri(page, sablonlar) -> list:
     alan). Şablon düzlemi 300 dpi; kelimeler metin katmanından (çizimden öğrenme de öyle: `inceleme._sablona_ogret`).
     → [(sayfa dikdörtgeni, bölge)]."""
     from . import alan as AL
-    if sablonlar is None or AL.np is None or not any(s.get("bolgeler") for s in sablonlar.sablonlar):
+    if sablonlar is None or AL.np is None:
+        return []
+    if not any(s.get("bolgeler") for s in sablonlar.sablonlar):
+        from .sablon import iz_kaydet, on_iz
+        iz_kaydet(on_iz(text_words(page, 1.0)))      # önbellek: eşleşebilecek bölgeli şablon belirince yeniden işlenir
         return []
     dpi = 300
     img = render(page, dpi)

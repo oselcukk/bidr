@@ -31,6 +31,71 @@ MAX_DONME = 6.0              # derece
 OLCEK_ARALIK = (0.5, 2.0)
 CIZGI_ESIK = 0.5             # şablon çizgilerinin hizalama sonrası örtüşme oranı alt sınırı
 
+# Önbellek bağımlılık kaydı (`run.mask_cached`): bir dosyanın işlenmesi sırasında şablon belleğine danışılan
+# sayfa parmak izleri. Parmak izi yalnız sayfanın basılı iskeletidir (bellekten bağımsız); dosyanın önbellek
+# anahtarına belleğin TAMAMI değil, yalnız bu izlere `uygula`nın verdiği sonuç girer: başka belgedeki çizim ya da
+# karar, bu dosyanın sayfalarıyla eşleşmeyen şablonu değiştirdiyse dosya önbellekten gelir.
+_IZ_KAYDI: list | None = None
+
+
+def iz_kaydi_baslat() -> list | None:
+    """Kaydı başlat → önceki kayıt (iç içe çağrı için `iz_kaydi_bitir`e geri verilir)."""
+    global _IZ_KAYDI
+    once, _IZ_KAYDI = _IZ_KAYDI, []
+    return once
+
+
+def iz_kaydi_bitir(once: list | None = None) -> list:
+    """Kaydı bitir → bu kayıtta danışılan izler (sırasıyla); önceki kayıt (varsa) bunları da içerir."""
+    global _IZ_KAYDI
+    kayit, _IZ_KAYDI = _IZ_KAYDI or [], once
+    if once is not None:
+        once.extend(kayit)
+    return kayit
+
+
+def iz_kaydet(iz) -> None:
+    if _IZ_KAYDI is not None:
+        _IZ_KAYDI.append(iz)
+
+
+def bagimlilik_ozeti(sb: "SablonBellegi | None", izler: list) -> list:
+    """`izler` için belleğin bugünkü katkısı (önbellek anahtarı parçası): her ize `uygula` sonucu; ön ize
+    (`on_iz`) eşleşebilecek bölgeli şablonlar. Kayıt yapmaz."""
+    if sb is None:
+        return ["yok"]
+    out = []
+    for iz in izler:
+        if isinstance(iz, dict) and "on_iz" in iz:
+            # yalnız basılı belirteçleri bilinen sayfa: eşleşebilecek (üst sınır) bölgeli şablonlar
+            out.append(["on_iz", [s for s in sb.sablonlar if s.get("bolgeler") and olasi_eslesme(s, iz["on_iz"])]])
+        else:
+            out.append(sb._uygula(iz))
+    return out
+
+
+def _capa(w) -> str | None:
+    from .alan import norm
+    n = norm(w.text)
+    if w.conf < 80 or len(n) < 2 or sum(c.isalpha() for c in n) < 2 or any(c.isdigit() for c in n):
+        return None
+    return _ozet(n)
+
+
+def on_iz(words) -> dict:
+    """Render etmeden (metin katmanı kelimeleri) alınan ön iz: yalnız çapa belirteç özetleri. Bellekte bölge
+    yokken atlanan sayfanın önbellek bağımlılığı (`raster.sablon_onerileri`)."""
+    return {"on_iz": sorted(t for t in map(_capa, words) if t)}
+
+
+def olasi_eslesme(sab: dict, belirtecler: list[str]) -> bool:
+    """Şablon, belirteçleri `belirtecler` olan sayfayla eşleşebilir mi (üst sınır: çizgi benzerliği tam sayılır)."""
+    ca, cb = _sayac(sab), Counter(belirtecler)
+    inter = sum((ca & cb).values())
+    union = sum((ca | cb).values())
+    jac = inter / union if union else 0.0
+    return inter >= MIN_ORTAK and 0.75 * jac + 0.25 >= ESLESME_ESIK
+
 
 def _ozet(t: str) -> str:
     return hashlib.sha1(("bidr-sablon:" + t).encode("utf-8")).hexdigest()[:10]
@@ -38,13 +103,12 @@ def _ozet(t: str) -> str:
 
 def parmak_izi(words, W: int, H: int, yapi=None) -> dict:
     """Basılı iskelet: [özet, cx, cy, h] çapalar ve [x0, y0, x1, y1] çizgiler (piksel)."""
-    from .alan import norm
     capalar = []
     for w in words:
-        n = norm(w.text)
-        if w.conf < 80 or len(n) < 2 or sum(c.isalpha() for c in n) < 2 or any(c.isdigit() for c in n):
+        t = _capa(w)
+        if t is None:
             continue
-        capalar.append([_ozet(n), (w.x0 + w.x1) / 2, (w.y0 + w.y1) / 2, w.y1 - w.y0])
+        capalar.append([t, (w.x0 + w.x1) / 2, (w.y0 + w.y1) / 2, w.y1 - w.y0])
     cizgiler = []
     if yapi is not None:
         h = yapi.h
@@ -258,6 +322,10 @@ class SablonBellegi:
     def uygula(self, iz: dict) -> list[dict]:
         """Eşleşen şablonun bölgeleri sayfa düzlemine → [{"kutu", "guvenilir", "hata", "guven", "sablon",
         "neden"}]. Hizalama güvenilmezse kutu yaklaşık konumdadır (sayfa boyu oranı ya da dönüşüm)."""
+        iz_kaydet(iz)
+        return self._uygula(iz)
+
+    def _uygula(self, iz: dict) -> list[dict]:
         m = self.eslestir(iz)
         if m is None or not m[0]["bolgeler"]:
             return []

@@ -376,46 +376,57 @@ def kural_izi(rules: MaskRules) -> str:
                    rules.local_model)
 
 
-def sablon_izi() -> str | None:
-    """Çalışma alanının form şablon belleğinin (`maske-sablonlari.json`; `BIDR_MASKE_WS`) özeti: başka
-    belgede öğrenilen bölge (kullanıcı çizimi, kapat kararı) değişmemiş belgenin önerilerini de değiştirir."""
+def sablon_parcasi(izler: list) -> str | None:
+    """Form şablon belleğinin (`maske-sablonlari.json`; `BIDR_MASKE_WS`) BU dosyaya katkısı: dosya işlenirken
+    belleğe danışılan sayfa izlerine (`sablon.iz_kaydi_*`) belleğin bugün verdiği sonuç. Başka belgede öğrenilen
+    bölge (kullanıcı çizimi, kapat kararı) yalnız bu dosyanın sayfalarıyla eşleşen şablonu değiştirdiyse anahtarı
+    değiştirir; belleğin tamamının özeti girmez (bir belgeye çizim bütün dosyaları geçersiz kılmasın)."""
     import os
-    from .onbellek import sha256
-    from .sablon import DOSYA
-    ws = os.environ.get("BIDR_MASKE_WS")
-    if not ws:
+    from . import sablon as SB
+    from .onbellek import anahtar
+    if not os.environ.get("BIDR_MASKE_WS"):
         return None
-    p = Path(ws) / DOSYA
+    from .raster import _sablonlar
     try:
-        return sha256(p.read_bytes()) if p.is_file() else None
-    except OSError:
-        return None
+        sb = _sablonlar()
+    except Exception:                    # noqa: BLE001 — okunamayan bellek: işlemedeki gibi yok sayılır
+        sb = None
+    return anahtar(SB.bagimlilik_ozeti(sb, izler))
 
 
 def aday_anahtari(sha: str, rules: MaskRules, eng: str, kararlar: dict[str, dict], model_text: str | None,
-                  kind: str | None) -> str:
+                  kind: str | None, sablon: str | None = None) -> str:
+    """Dosyanın `aday` anahtarı. `kararlar`: YALNIZ bu dosyanın kararları (`bolge.dosya_kararlari`); `sablon`:
+    `sablon_parcasi` (bu dosyanın şablon belleği bağımlılığı)."""
     from .onbellek import anahtar, sha256
     from .ocr import tesseract_version
     kk = sorted((k, v.get("karar"), json.dumps(v.get("kutu")), v.get("kaynak")) for k, v in kararlar.items())
     ocr = raster_ocr_available()
     return anahtar("aday", sha, KURAL_SURUM, _kod_izi(), kural_izi(rules), eng, kind, kk,
                    sha256(model_text.encode("utf-8")) if model_text is not None else None,
-                   ocr, tesseract_version() if ocr else None, sablon_izi())
+                   ocr, tesseract_version() if ocr else None, sablon)
 
 
 def mask_cached(src: Path, dst: Path, rules: MaskRules, eng: str, model_text: str | None = None, *,
                 kararlar: dict[str, dict] | None = None, sha: str | None = None, kind: str | None = None,
                 temiz: Path | None = None) -> dict:
-    """`mask_and_check` + önbellek `aday` katmanı: değişmeyen dosya (aynı içerik, kural, karar, model
-    metni, şablon belleği) yeniden işlenmez; kayıt, maskeli kopya ve çerçevesiz hâli önbellekten gelir."""
+    """`mask_and_check` + önbellek `aday` katmanı: değişmeyen dosya (aynı içerik, kural, BU dosyanın kararları,
+    model metni, şablon belleğinin bu dosyaya katkısı) yeniden işlenmez; kayıt, maskeli kopya ve çerçevesiz hâli
+    önbellekten gelir. Anahtar iki adımlıdır: temel anahtar (şablon dışı her şey) → `aday_iz` katmanında dosyanın
+    son işlenişinde belleğe danıştığı sayfa izleri → bu izlerin bugünkü bellek sonucu tam anahtara girer."""
     from . import bolge as BG
     from . import onbellek
+    from . import sablon as SB
     sha = sha or onbellek.sha256_file(src)
     ob = onbellek.aktif()
     mine = BG.dosya_kararlari(kararlar or {}, sha[:8])
-    key = aday_anahtari(sha, rules, eng, mine, model_text, kind) if ob is not None else None
+    temel = aday_anahtari(sha, rules, eng, mine, model_text, kind) if ob is not None else None
     if ob is not None:
-        hit = ob.get_json("aday", key)
+        dep = ob.get_json("aday_iz", temel)
+        hit = None
+        if isinstance(dep, dict) and isinstance(dep.get("izler"), list):
+            key = onbellek.anahtar(temel, sablon_parcasi(dep["izler"]))
+            hit = ob.get_json("aday", key)
         if hit is not None:
             blob = ob.get("aday_cikti", key) if hit.get("cikti") else None
             tblob = ob.get("aday_temiz", key) if hit.get("temiz") and temiz is not None else None
@@ -430,8 +441,14 @@ def mask_cached(src: Path, dst: Path, rules: MaskRules, eng: str, model_text: st
                 rec = hit["rec"]
                 rec["onbellek"] = True
                 return rec
-    rec = mask_and_check(src, dst, rules, eng, model_text=model_text, kararlar=mine, sha=sha, kind=kind, temiz=temiz)
+    once = SB.iz_kaydi_baslat()
+    try:
+        rec = mask_and_check(src, dst, rules, eng, model_text=model_text, kararlar=mine, sha=sha, kind=kind,
+                             temiz=temiz)
+    finally:
+        izler = SB.iz_kaydi_bitir(once)
     if ob is not None:
+        key = onbellek.anahtar(temel, sablon_parcasi(izler))
         has = dst.is_file()
         if has:
             ob.put("aday_cikti", key, dst.read_bytes())
@@ -439,6 +456,7 @@ def mask_cached(src: Path, dst: Path, rules: MaskRules, eng: str, model_text: st
         if has_t:
             ob.put("aday_temiz", key, temiz.read_bytes())
         ob.put_json("aday", key, {"rec": rec, "cikti": has, "temiz": has_t})
+        ob.put_json("aday_iz", temel, {"izler": izler})
     return rec
 
 
