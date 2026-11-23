@@ -430,6 +430,17 @@ class Context:
     def note(self, did: str) -> list[dict]:
         return self.notes.get(did) or []
 
+    def page_hashes(self, did: str) -> list[str] | None:
+        """Belgenin sayfa görüntüsü karmaları (bidr/identify/imghash.py; önbellekli, yalnız karma)."""
+        if getattr(self, "_hashes", None) is None:
+            from bidr.identify.imghash import HashCache
+            self._hashes = HashCache(self.ws.root)
+        return self._hashes.get(did)
+
+    def save_hashes(self) -> None:
+        if getattr(self, "_hashes", None) is not None:
+            self._hashes.save()
+
     def pin(self, did: str) -> str | None:
         return (self.pins.get(did) or {}).get("birim_iliskisi")
 
@@ -877,9 +888,11 @@ def stale_summary(ws: Workspace, stage: str, recs: dict | None = None) -> dict[s
 
 
 def plan_members(ctx: Context, ids: list[str], recs: dict, stage: str) -> dict[str, dict]:
-    """Metni aynı/çok yakın belgeler → {üye: {temsilci, yontem, fark_sozcuk}}. Temsilci:
-    bu aşamada işlenmiş olan, yoksa en uzun metin, sonra en küçük doc_id (kararlı seçim).
-    Bu aşamada gruptan ayrılmış (`mukerrer.durum: ayrildi`) belge gruplanmaz."""
+    """Metni aynı/çok yakın belgeler ve aynı kâğıdın ayrı taramaları → {üye: {temsilci, yontem,
+    fark_sozcuk | benzerlik}}. Temsilci: bu aşamada işlenmiş olan, yoksa en uzun metin, sonra en
+    küçük doc_id (kararlı seçim). Bu aşamada gruptan ayrılmış (`mukerrer.durum: ayrildi`) belge
+    gruplanmaz. Tarama kopyası (`D.scan_copy_pairs`: OCR metni + sayfa görüntüsü karması) metin
+    grubuna bağlanır; üyesi "tarama_kopyasi" yöntemiyle devralır."""
     # notlu belge gruplanmaz (temsilci de üye de olmaz): kararı kendi notuyla verilir
     ok = [d for d in ids if not ((recs.get(d) or {}).get("mukerrer") or {}).get("durum") == "ayrildi"
           and not ctx.note(d)]
@@ -887,15 +900,50 @@ def plan_members(ctx: Context, ids: list[str], recs: dict, stage: str) -> dict[s
         return {}
     texts = {d: ctx.text(d) for d in ok}
     types = {d: (ctx.docs.get(d) or {}).get("doc_type") for d in ok}
-    out = {}
-    for g in D.find_groups(texts, types):
-        rep = min(g["uyeler"], key=lambda x: (not stage_done(recs.get(x), stage), -len(g["toks"][x]), x))
+    groups = D.find_groups(texts, types)
+    parent = {d: d for d in ok}
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    in_group = {}
+    for i, g in enumerate(groups):
         for m in g["uyeler"]:
+            in_group[m] = i
+            parent[find(m)] = find(g["uyeler"][0])
+    dates = {d: str((ctx.docs.get(d) or {}).get("tarih") or "")[:10] or None for d in ok}
+    scan = D.scan_copy_pairs(texts, dates, types, ctx.page_hashes)
+    ctx.save_hashes()
+    sim: dict[str, float] = {}
+    for a, b, v in scan:
+        parent[find(a)] = find(b)
+        sim[a], sim[b] = max(sim.get(a, 0), v), max(sim.get(b, 0), v)
+    comps: dict[str, list[str]] = {}
+    for d in ok:
+        comps.setdefault(find(d), []).append(d)
+    out = {}
+    for mem in comps.values():
+        if len(mem) < 2:
+            continue
+        ntok = {x: len(groups[in_group[x]]["toks"][x]) if x in in_group else len(D.skeleton(texts[x])) for x in mem}
+        rep = min(mem, key=lambda x: (not stage_done(recs.get(x), stage), -ntok[x], x))
+        for m in mem:
             if m == rep:
                 continue
-            rel = D.relation(g, rep, m)
-            if rel:
-                out[m] = {"temsilci": rep, "yontem": rel[0], "fark_sozcuk": rel[1]}
+            gi = in_group.get(m)
+            if gi is not None and gi == in_group.get(rep):
+                rel = D.relation(groups[gi], rep, m)
+                if rel:
+                    out[m] = {"temsilci": rep, "yontem": rel[0], "fark_sozcuk": rel[1]}
+                    continue
+                if m not in sim:       # zincirle metin grubuna girmiş, temsilciden uzak: devralmaz
+                    continue
+            # bileşen tarama kopyası bağlarıyla (metin + görüntü) ve aynı metin gruplarıyla kuruldu
+            out[m] = {"temsilci": rep, "yontem": "tarama_kopyasi",
+                      "benzerlik": sim.get(m) or max(sim.get(x, 0.0) for x in mem)}
     return out
 
 
@@ -958,8 +1006,13 @@ def inherit(ctx: Context, recs: dict, stage: str, verify: Callable) -> dict:
             extra["devralindi"] = rid
             new = apply_fine(ctx, did, rec, rep_output(rep), meta, rep["ince"].get("model"), verify, extra)
             new["gorev"] = {**new.get("gorev", {}), FINE: rep.get("gorev", {}).get(FINE)}
-            if (sum(m["kabul"] for m in new["eslesmeler"])
-                    < sum(bool(m.get("kabul")) for m in rep.get("eslesmeler") or [])):
+            kayip = (sum(bool(m.get("kabul")) for m in rep.get("eslesmeler") or [])
+                     - sum(m["kabul"] for m in new["eslesmeler"]))
+            if kayip > 0 and mk.get("yontem") == "tarama_kopyasi":
+                # aynı kâğıdın başka taraması (metin + görüntü): OCR farkı alıntıyı bozabilir; karar
+                # gruba aittir, inceleme tek satırdır (temsilcinin alıntısı temsilcinin metninde doğrulandı)
+                mk = {**mk, "alinti_tutmayan": kayip}
+            elif kayip > 0:
                 r = dict(rec)
                 r["mukerrer"] = {**mk, "durum": "ayrildi", "neden": "temsilcinin_alintisi_tutmuyor"}
                 recs[did] = r
@@ -968,6 +1021,7 @@ def inherit(ctx: Context, recs: dict, stage: str, verify: Callable) -> dict:
                 st["ayrildi"].append(did)
                 continue
         new["mukerrer"] = {**mk, "durum": "devralindi"}
+        new["kopyasi"] = rid
         recs[did] = new
         rep = dict(rep)
         rep["kopyalar"] = sorted(set(rep.get("kopyalar") or []) | {did})
@@ -1138,6 +1192,14 @@ def prepare(ws_root: Path, stage: str, *, profile: str | None = "akademik_bolum"
         rec = recs.get(did)
         forced = did in force
         done = stage_done(rec, stage)
+        if (done and not forced and (members.get(did) or {}).get("yontem") == "tarama_kopyasi"
+                and (rec.get("mukerrer") or {}).get("durum") != "devralindi"):
+            # sonradan bulunan tarama kopyası (önceki koşuda kendisi işlenmiş): model çağrısı olmadan
+            # temsilcinin kararını devralır; inceleme tablosunda ayrı öneri kalmaz
+            _mark_member(ctx, recs, did, members[did], stage)
+            _drop_unanswered_pkg(d, did)
+            st["mukerrer"] += 1
+            continue
         if done and not forced:
             why = staleness(ctx, did, rec, stage, backend)
             if why is None:

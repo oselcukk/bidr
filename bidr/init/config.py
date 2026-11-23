@@ -31,6 +31,8 @@ FIELDS: dict[str, tuple[type | tuple, bool, str]] = {
     # birim sinyalleri (isteğe bağlı; boşsa kurum profilinin `birimler:` kaydı kullanılır)
     "fakulte": ((str, type(None)), False, "birimin bağlı olduğu fakülte (ör. Temel Bilimler Fakültesi)"),
     "ders_kodlari": (list, False, "birimin ders kodu önekleri (ör. [MATH, MAT]); metinde birim sinyali"),
+    "birim_adlari": (list, False, "kurumdaki bilinen birim adları (kurum profili `birimler:` listesine eklenir); "
+                                  "başka birim adı yalnız bu listeden tanınır"),
 }
 
 
@@ -213,6 +215,9 @@ def validate(answers: dict, ws: Path | None = None) -> tuple[dict, list[str]]:
     kodlar = [str(x).strip() for x in answers.get("ders_kodlari") or [] if str(x).strip()]
     if kodlar:
         sec["ders_kodlari"] = kodlar
+    adlar = [str(x).strip() for x in answers.get("birim_adlari") or [] if str(x).strip()]
+    if adlar:
+        sec["birim_adlari"] = adlar
     return sec, []
 
 

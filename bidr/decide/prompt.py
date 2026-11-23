@@ -250,23 +250,29 @@ def _codes(v) -> list[str]:
 
 
 def unit_profile(ws_root) -> dict:
-    """Birimin metinde aranacak açık sinyalleri: {"birim", "fakulte", "ders_kodlari"}.
-    Kaynak: `config.yaml` `bidr:` (`birim`; isteğe bağlı `fakulte`, `ders_kodlari`) — yoksa kurum
-    profilinin `birimler:` listesinde aynı adlı birimin kaydı (ad karşılaştırması harf katlanmış).
-    Yalnız yapılandırmadan gelir; bilinmeyen alan boş kalır (sinyal uydurulmaz)."""
+    """Birimin metinde aranacak açık sinyalleri: {"birim", "fakulte", "ders_kodlari", "birim_adlari"}.
+    Kaynak: `config.yaml` `bidr:` (`birim`; isteğe bağlı `fakulte`, `ders_kodlari`, `birim_adlari`) —
+    yoksa kurum profilinin `birimler:` listesinde aynı adlı birimin kaydı (ad karşılaştırması harf
+    katlanmış). `birim_adlari`: kurumdaki bilinen birim adları (config `birim_adlari` + kurum
+    profilinin `birimler[].ad`); "başka birim adı" tanısının tek kaynağı. Yalnız yapılandırmadan
+    gelir; bilinmeyen alan boş kalır (sinyal uydurulmaz)."""
     from bidr.identify.text import fold
     from bidr.init.config import load_section
     sec = load_section(ws_root) or {}
     birim = str(sec.get("birim") or "").strip()
     out = {"birim": birim, "fakulte": str(sec.get("fakulte") or "").strip(),
            "ders_kodlari": _codes(sec.get("ders_kodlari"))}
+    kurum = _institution(sec.get("kurum")).get("birimler") or []
     if birim and not (out["fakulte"] and out["ders_kodlari"]):
         key = " ".join(fold(birim).split())
-        for b in _institution(sec.get("kurum")).get("birimler") or []:
+        for b in kurum:
             if isinstance(b, dict) and " ".join(fold(str(b.get("ad") or "")).split()) == key:
                 out["fakulte"] = out["fakulte"] or str(b.get("fakulte") or "").strip()
                 out["ders_kodlari"] = out["ders_kodlari"] or _codes(b.get("ders_kodlari"))
                 break
+    adlar = _codes(sec.get("birim_adlari")) + [str(b.get("ad") or "").strip() for b in kurum
+                                               if isinstance(b, dict) and str(b.get("ad") or "").strip()]
+    out["birim_adlari"] = list(dict.fromkeys(adlar))
     return out
 
 

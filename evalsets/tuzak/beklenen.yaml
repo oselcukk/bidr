@@ -18,6 +18,8 @@
 surum: 1
 set: tuzak
 birim: Örnek Bölümü
+# kurumun bilinen birim adları: başka birim adı yalnız bunlardan tanınır (config `birim_adlari`)
+birim_adlari: [Örnek Bölümü, Kıyas Bölümü]
 kurum: Örnek Üniversitesi
 donem: 2025
 

@@ -157,8 +157,9 @@ INC_COLS = [
     ("satir", "satır kimliği", 10, False),       # gizli
     ("bolum", "bölüm", 4, False),                # gizli
     ("yazilan", "yazılan", 10, False),           # gizli
+    ("kopyalar", "kopyaları", 10, False),        # gizli: kopyaların belge kimlikleri ("; ")
 ]
-INC_GIZLI = ("satir", "bolum", "yazilan")
+INC_GIZLI = ("satir", "bolum", "yazilan", "kopyalar")
 # görünen başlık (5. satır) ve sütun türü: m = ana, u = kullanıcının, d = katlanabilir ayrıntı, h = gizli
 INC_GORUNEN = {
     "madde": ("Madde", "m"), "belge": ("Önerilen belge", "m"), "alinti_kisa": ("Belgede ne yazıyor (kısa)", "m"),
@@ -170,6 +171,7 @@ INC_GORUNEN = {
     "klasor": ("Klasör · kaynak dosya", "d"), "baglanti": ("Bağlantı", "d"),
     "isaretler": ("İşaretler (iç kod)", "d"), "sira": ("Sıra", "d"), "bolum_ad": ("Bölüm", "d"),
     "satir": ("satır kimliği", "h"), "bolum": ("bölüm", "h"), "yazilan": ("yazılan", "h"),
+    "kopyalar": ("kopyaları", "h"),
 }
 INC_BASLIK_SATIRI, INC_ILK = 5, 6               # görünen başlık satırı; ilk veri satırı
 # (anahtar, başlık, genişlik, kullanıcı)
@@ -288,7 +290,7 @@ def _row(sh, cols, vals: dict, fill: PatternFill | None = None) -> int:
     row = [vals.get(k, "") for k, _, _, _ in cols]
     sh.append(row)
     n = sh.max_row
-    widths = [w if k not in ("satir", "bolum", "yazilan", "doc_id", "olcut") else 0 for k, _, w, _ in cols]
+    widths = [w if k not in ("satir", "bolum", "yazilan", "doc_id", "olcut", "kopyalar") else 0 for k, _, w, _ in cols]
     sh.row_dimensions[n].height = _yukseklik(row, widths)
     for i, (k, _, _, user) in enumerate(cols, 1):
         c = sh.cell(row=n, column=i)
@@ -379,6 +381,11 @@ def inceleme_satirlari(a, cs) -> list[dict]:
     out = []
     for r in a.rows:
         uy, bak = dikkat(r, a.donem)
+        if r.get("kopya_dosyalari"):
+            # bilgi (baktırmaz): aynı belgenin kopyaları tek satırda; panel "Dikkat"i olduğu gibi gösterir.
+            # "Belge" hücresine yazılmaz: panel ikinci satırı "(klasör: …)" diye ayrıştırır.
+            kd = "; ".join(x.replace("\\", "/").rsplit("/", 1)[-1] for x in r["kopya_dosyalari"].split("; "))
+            uy.append(f"Kopyaları: {kd} (aynı belge; kararınız hepsine uygulanır)")
         rb = bool(r.get("yeniden_bak"))
         lab, dog = karar_etiketi(r)
         if rb:
@@ -409,7 +416,7 @@ def inceleme_satirlari(a, cs) -> list[dict]:
             "alinti": alinti, "alinti_kisa": _kisalt(alinti, 220),
             "neden": neden.strip(), "dikkat": "\n".join(f"• {x}" for x in uy) if len(uy) > 1 else "".join(uy),
             "oneri": "Bakın" if bak or rb else "Kabul",
-            "karar": lab, "dogru": dog, "not": r.get("not") or "",
+            "karar": lab, "dogru": dog, "not": r.get("not") or "", "kopyalar": r.get("kopyalar") or "",
             "kilavuz": _kisalt(ymetin, 140) if ymetin else "",
             "klasor": " · ".join(x for x in (klasor, r.get("kaynak_dosya") or "") if x),
             "baglanti": r.get("baglanti") or r.get("baglanti_oneri") or "",

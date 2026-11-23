@@ -29,6 +29,7 @@ egitim: []                                # (isteğe bağlı) etiketli başka ç
 ajan: null                                # model işini yapan ajan, kayda geçer (ör. claude-code:sonnet)
 fakulte: null                             # (isteğe bağlı) birimin fakültesi; null = kurum profilindeki kayıt
 ders_kodlari: []                          # (isteğe bağlı) birimin ders kodu önekleri (ör. [MATH, MAT]); boş = kurum profili
+birim_adlari: []                          # (isteğe bağlı) kurumdaki başka birim adları (kurum profiline eklenir); başka birim yalnız bunlardan tanınır
 hazirlayanlar: []                         # kapaktaki "Raporu Hazırlayanlar" (config.yaml rapor.hazirlayanlar);
                                           # her kişi: {{unvan: …, ad_soyad: …, eposta: …, gorev: …}}; boşsa rapor TASLAK
 sablon: null                              # boş FR-0833 rapor şablonu, tam yol (.docx; config.yaml rapor.sablon);

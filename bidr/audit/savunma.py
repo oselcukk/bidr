@@ -98,14 +98,40 @@ SONUC_VAR = re.compile(r"\d+\s*(?:yanit|katilimci|kisi)|ortalama|%|(?<![\d.,])\d
 KALKMA = re.compile(r"yururlukten (?:kalk|kaldir)|ilga edil")
 GIRIS = re.compile(r"kullanici adi|parola|sifre")
 MADDE = re.compile(r"(?m)^\s*(?:madde|gundem|karar)\s*(?:no\.?\s*)?\d+|^\s*\d+\s*[.)-]\s")
-# başka birim adı geçişi: "X Bölümü…", "X Bölüm Başkanlığı/Kurulu" (aynı satırda). "Birinci Bölüm"
-# gibi bölüm başlıkları ve satır sonundaki menü öğeleri ("… Bölüm Başkanı / Bölüm Olanakları") birim
-# adı değildir.
-BIRIM_ADI = re.compile(r"\b([A-ZÇĞİÖŞÜ][A-Za-zÇĞİÖŞÜçğıöşüâîû]+)[ \t]+(?:Bölümü|BÖLÜMÜ|Bölüm[ \t]+(?:Başkan|Kurul|Sekreter)"
-                       r"|BÖLÜM[ \t]+(?:BAŞKAN|KURUL|SEKRETER))")
-_GENEL_SOZ = frozenset({"her", "ilgili", "bu", "ayni", "diger", "hangi", "bir", "tum", "butun", "ana", "alt",
-                        "ilk", "son", "kendi", "ogrencinin", "gore", "fakulte", "universite", "egitim",
-                        "birinci", "ikinci", "ucuncu", "dorduncu", "besinci", "baskani", "fakultesi", "bolum"})
+# başka birim adı geçişi: bilinen birim adı (kurum profili `birimler:` / config `birim_adlari`)
+# + "Bölümü…" ya da "Bölüm Başkan…/Kurul…/Sekreter…" (aynı satırda, katlanmış sözcük dizisi).
+# Listede olmayan ad (kişi soyadı "Ad SOYAD Bölüm Başkanı", "Birinci Bölüm", menü öğeleri)
+# hiçbir zaman başka birim sayılmaz: serbest büyük harfli sözcük kalıbı yok.
+_SOZ = re.compile(r"[^\W\d_]+")
+_BOLUM_ROL = ("baskan", "kurul", "sekreter")
+
+
+def unit_names(adlar) -> tuple[tuple[str, ...], ...]:
+    """Birim adları → katlanmış sözcük dizileri ("Fizik Bölümü" → ("fizik",)), uzundan kısaya."""
+    out = {tuple(_SOZ.findall(_stem(a))) for a in adlar or ()}
+    return tuple(sorted((x for x in out if x), key=lambda x: (-len(x), x)))
+
+
+def other_units(raw: str, names, own: str = "") -> set[str]:
+    """Metinde geçen bilinen başka birim adları (katlanmış kök, ör. "fizik"). `names`:
+    `unit_names` çıktısı; `own`: birimin kendi kökü (`_stem`) hariç tutulur."""
+    found: set[str] = set()
+    if not names:
+        return found
+    own_t = tuple(_SOZ.findall(own))
+    for line in raw.splitlines():
+        w = [fold(x) for x in _SOZ.findall(line)]
+        for i, x in enumerate(w):
+            if not (x.startswith("bolumu") or (x == "bolum" and i + 1 < len(w) and w[i + 1].startswith(_BOLUM_ROL))):
+                continue
+            for n in names:
+                if i >= len(n) and tuple(w[i - len(n):i]) == n:
+                    if n != own_t:
+                        found.add(" ".join(n))
+                    break
+    return found
+
+
 # sayfa altlığı / adres satırındaki kurum adı ("© … Rektörlüğü, 41400 …"): belge kurum geneli değildir
 ADRES = re.compile(r"(?:©|\(c\)|copyright)[^|]{0,80}?rektorlug\w*|rektorlug\w*\s*,?\s*(?:p\.?\s?k\b|\d{5})")
 # ders kodu: 2-5 büyük harf önek + 3 hane ("MATH407", "MAT 113"); 4 haneli sayı (yıl, proje no) değil
@@ -231,6 +257,7 @@ class Savunma:
     birim: str = ""                                   # config.yaml `bidr.birim`
     fakulte: str = ""                                 # birimin fakültesi (config / kurum profili)
     ders_kodlari: tuple = ()                          # birimin ders kodu önekleri (config / kurum profili)
+    birim_adlari: tuple = ()                          # bilinen birim adları (unit_names; başka birim tanısı)
     donem: int | None = None
     docs: dict = field(default_factory=dict)
     haric: frozenset = frozenset()
@@ -251,7 +278,7 @@ class Savunma:
         birim = str((load_section(ws_root) or {}).get("birim") or "").strip()
         up = unit_profile(ws_root) if birim else {}
         sv = cls(Path(ws_root), birim, up.get("fakulte") or "", tuple(up.get("ders_kodlari") or ()),
-                 donem, docs, excluded_types())
+                 unit_names(up.get("birim_adlari")), donem, docs, excluded_types())
         fp = Path(ws_root) / FAALIYET
         if fp.exists():
             try:
@@ -284,13 +311,7 @@ class Savunma:
         stem = _stem(self.birim) if self.birim else ""
         bp = birim_pattern(self.birim) if self.birim else None
         birim_var = bool(bp and bp.search(t))
-        others = set()
-        if stem:
-            last = stem.split()[-1]
-            for m in BIRIM_ADI.finditer(raw):
-                w = f(m.group(1))
-                if w not in _GENEL_SOZ and w != last and w not in stem.split():
-                    others.add(w)
+        others = other_units(raw, self.birim_adlari, stem) if stem else set()
         lines = [x.strip() for x in raw.splitlines() if x.strip()]
         madde = [x for x in lines if re.match(r"^([-*•]|\w[\w.-]*\.(example|com|org|edu|tr)\b|https?://)", x)]
         kisa = [x for x in madde if len(x.split()) <= 7]
@@ -418,10 +439,7 @@ class Savunma:
             return ""                         # düzenleme sayfası (madde yapısı): kurum geneli kalır
         if KURUM_BELGE.search(ADRES.sub(" ", t)) or FAKULTE_BELGE.search(t) or GENEL_IFADE.search(t):
             return ""
-        stem = _stem(self.birim)
-        last = stem.split()[-1] if stem else ""
-        if any(f(m.group(1)) not in _GENEL_SOZ and f(m.group(1)) != last and f(m.group(1)) not in stem.split()
-               for m in BIRIM_ADI.finditer(page)):
+        if other_units(page, self.birim_adlari, _stem(self.birim)):
             return ""
         sig = []
         kod = self._course_codes(page)

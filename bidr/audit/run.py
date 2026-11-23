@@ -647,6 +647,23 @@ def _unit_row(rec: dict, eff: dict, pin: dict | None, docs: dict, name: str) -> 
             "durum": durum, "insan_birim_iliskisi": rel, "not": (pin or {}).get("not") or ""}
 
 
+def copy_members(recs: list[dict], pins: dict | None = None) -> dict[str, list[str]]:
+    """Temsilci → kararını devralmış kopyaları (decide `mukerrer.durum: devralindi`; metni aynı/çok
+    yakın belge ya da aynı kâğıdın ayrı taraması). İnceleme tablosunda grup tek satırdır: kopyanın
+    satırı yazılmaz, temsilcinin satırı "kopyalar"ı taşır, satır kararı dosyalamada bütün gruba
+    uygulanır (bidr/file/run.py). Temsilcisinin ince kaydı yoksa ya da kopyanın insan birim kararı
+    varsa kopya kendi satırlarıyla kalır."""
+    ok = {r["doc_id"] for r in recs if r.get("durum") == "ok" and r.get("asama") == "ince"}
+    out: dict[str, list[str]] = {}
+    for r in recs:
+        mk = r.get("mukerrer") or {}
+        rid = mk.get("temsilci")
+        if (mk.get("durum") == "devralindi" and rid and rid != r["doc_id"] and rid in ok
+                and r["doc_id"] in ok and not (pins or {}).get(r["doc_id"])):
+            out.setdefault(rid, []).append(r["doc_id"])
+    return {k: sorted(v) for k, v in out.items()}
+
+
 def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
           criteria: CriteriaSet | None = None, review: dict[str, dict] | None = None,
           pins: dict[str, dict] | None = None) -> Audit:
@@ -690,9 +707,13 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
     birim: dict = {"baska_birim": [], "belirsiz": []}
     sayfa: list[dict] = []
     own: dict[str, dict] = {}                   # birime ait ince kayıtlar (PUKÖ zinciri)
+    kopya = copy_members(recs, pins)            # temsilci → kararı devralan kopyaları (tek satır)
+    uye = {m for ms in kopya.values() for m in ms}
     for orig in recs:
         if orig.get("durum") != "ok" or orig.get("asama") != "ince":
             continue
+        if orig["doc_id"] in uye:
+            continue                            # kopya: temsilcinin satırında ("kopyalar"), kararı gruba
         n_ince += 1
         pin = pins.get(orig["doc_id"])
         # insan birim kararı (öncelik insan > model): kaydın görünümü değişir, dosya değişmez
@@ -729,6 +750,11 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
                 rows.append(_row(cs, tags, docs, rec, m, review.get(f"{rec['doc_id']}|{m['yuva']}"), rule,
                                  names(rec["doc_id"]), links(rec["doc_id"]),
                                  desc(rec["doc_id"], m.get("alinti") or ""), inv.get(rec["doc_id"]), surum, sv))
+    for r in rows:
+        ks = kopya.get(r["doc_id"])
+        r["kopyalar"] = "; ".join(ks) if ks else ""
+        r["kopya_dosyalari"] = "; ".join(inv.get(x) or (docs.get(x) or {}).get("calisma_adi") or x
+                                         for x in ks) if ks else ""
     if not n_ince:
         uy.append("decisions.jsonl'de ince karar yok: tablo boş")
     for x in birim["belirsiz"]:          # satır kararıyla onaylanan / bekleyen eşleşme sayısı

@@ -29,13 +29,44 @@ onek_turleri:
 # Birimlerin metinde aranan açık sinyalleri (bidr/audit/savunma.py; config.yaml `bidr:` aşar):
 # bağlı olduğu fakülte (fakülteye göre maddeli kurum düzenlemelerinde doğru madde) ve ders kodu
 # önekleri (ör. "MATH407", "MAT 113"). Yalnız kurumun herkese açık ders kataloğundaki önekler.
+# Listenin adları aynı zamanda "başka birim adı" tanısının tek kaynağıdır: metinde "<ad> Bölümü…" /
+# "<ad> Bölüm Başkanlığı/Kurulu/Sekreterliği" geçerse belge başka birimi anıyor sayılır; listede
+# olmayan ad (kişi soyadı, sıradan sözcük) hiçbir zaman başka birim sayılmaz (bidr/audit/savunma.py).
+# Bölüm adlarının kaynağı: https://www.gtu.edu.tr/tr ana sayfa menüsü "Akademik › Fakülteler"
+# (2026-11-23'te okundu; 5 fakülte). Ders kodu öneki bilinmeyen birimde alan yok (uydurulmaz).
 birimler:
+  # Temel Bilimler Fakültesi
   - ad: Matematik Bölümü
     fakulte: Temel Bilimler Fakültesi
     ders_kodlari: [MATH, MAT]
   - ad: Kimya Bölümü
     fakulte: Temel Bilimler Fakültesi
     ders_kodlari: [CHEM, KİM, KIM]
+  - {ad: Fizik Bölümü, fakulte: Temel Bilimler Fakültesi}
+  - {ad: Moleküler Biyoloji ve Genetik Bölümü, fakulte: Temel Bilimler Fakültesi}
+  - {ad: Veri Bilimi ve Analitiği Bölümü, fakulte: Temel Bilimler Fakültesi}
+  # Mühendislik Fakültesi
+  - {ad: Bilgisayar Mühendisliği Bölümü, fakulte: Mühendislik Fakültesi}
+  - {ad: Biyomühendislik Bölümü, fakulte: Mühendislik Fakültesi}
+  - {ad: Çevre Mühendisliği Bölümü, fakulte: Mühendislik Fakültesi}
+  - {ad: Elektronik Mühendisliği Bölümü, fakulte: Mühendislik Fakültesi}
+  - {ad: Endüstri Mühendisliği Bölümü, fakulte: Mühendislik Fakültesi}
+  - {ad: Harita Mühendisliği Bölümü, fakulte: Mühendislik Fakültesi}
+  - {ad: İnşaat Mühendisliği Bölümü, fakulte: Mühendislik Fakültesi}
+  - {ad: Kimya Mühendisliği Bölümü, fakulte: Mühendislik Fakültesi}
+  - {ad: Makine Mühendisliği Bölümü, fakulte: Mühendislik Fakültesi}
+  - {ad: Malzeme Bilimi ve Mühendisliği Bölümü, fakulte: Mühendislik Fakültesi}
+  # Mimarlık Fakültesi
+  - {ad: Mimarlık Bölümü, fakulte: Mimarlık Fakültesi}
+  - {ad: Şehir ve Bölge Planlama Bölümü, fakulte: Mimarlık Fakültesi}
+  - {ad: Endüstriyel Tasarım Bölümü, fakulte: Mimarlık Fakültesi}
+  # Havacılık ve Uzay Bilimleri Fakültesi
+  - {ad: Uçak Mühendisliği Bölümü, fakulte: Havacılık ve Uzay Bilimleri Fakültesi}
+  # İşletme Fakültesi
+  - {ad: İktisat Bölümü, fakulte: İşletme Fakültesi}
+  - {ad: İşletme Bölümü, fakulte: İşletme Fakültesi}
+  - {ad: Strateji Bilimi Bölümü, fakulte: İşletme Fakültesi}
+  - {ad: Yönetim Bilişim Sistemleri Bölümü, fakulte: İşletme Fakültesi}
 kod_agirligi: 6
 kodlar:
   FR-0044: {tur: toplanti_tutanagi, ad: Toplantı Tutanağı}

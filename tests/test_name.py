@@ -188,7 +188,9 @@ def test_file_od_excludes_low_confidence_unless_reviewed(env, tmp_path):
     by = {(r["olcut"], r["doc_id"]): r for r in _index(out)}
     k = by[("B.1.1", "d_karar")]
     assert k["od"] == "2" and "dusuk_guven_od_disi" in k["isaretler"]            # eskiden OD3
-    assert by[("B.1.1", "d_anket")]["od"] == "4"                                   # yüksek güvenli Ö
+    # kopya (d_kopya, kararı devralan) ayrı satır değil: temsilcinin düşük güvenli K'sını yüksek güvenli
+    # kopya satırı tamamlamaz; zincir P+Ö → kanıt kodu ölçüt OD'si (2) ile tutarlı (eskiden kopya satırıyla 4)
+    assert by[("B.1.1", "d_anket")]["od"] == "2" and by[("B.1.1", "d_anket")]["kopyalar"] == "d_kopya"
     # yalnız düşük güvenli eşleşmesi olan: kanıt seçimi (K18) yayımlamaz; gaps.md'de nedeniyle görünür
     _set_guven(ws, "d_kom", "A.1.1/1", "dusuk")
     st = FR.run(ws, out=out, source=src)
