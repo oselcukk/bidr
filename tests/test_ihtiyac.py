@@ -533,3 +533,31 @@ def test_sade_ornek_default_data_used(tgt_ws, tmp_path):
     for x in res["sade"]:
         assert sum(1 for m in x["maddeler"] if m["tur"] == "ornek") <= S.ORNEK_EN_COK
         assert not re.search(r"\b[A-E]/\d+\b", x["belgeler"] + x["kilavuz"])
+
+
+def test_sade_derse_ozgu_gecen_yil_belgesi_tur_duzeyinde_istenir():
+    """Geçen yılki derse özgü belge (MATH407 anketi, MAT106 ders bilgi formu) bu yıl aynı dersin belgesi olarak
+    değil, aynı türden herhangi bir dersin belgesi olarak istenir; aynı türler tek istekte; tekil program belgesi
+    (ders kodu yok) eskisi gibi "ya da güncel hâli"."""
+    from bidr.criteria.loader import load_criteria
+    from bidr.ihtiyac.eslestir import YOK
+    from bidr.ihtiyac.tablolar import Sorumlular
+
+    def g(ad, bt, tek=""):
+        return {"olcut": "B.1.3", "durum": YOK, "kanit_adi": ad, "belge_turu": bt, "tekrarlayan": tek,
+                "tekrarlayan_ad": "Ders değerlendirme anketi" if tek else "", "asama": "uygula"}
+    gecen = [g("MATH407 Ders Degerlendirme Anketi Sonucu 2024-2025 Bahar", "anket_sonucu", "ders_degerlendirme"),
+             g("MAT106 Analitik Geometri Ders Bilgi Formu", "ders_bilgi_formu"),
+             g("MAT 211 Lineer Cebir Ders Bilgi Formu", "ders_bilgi_formu"),
+             g("MATH 301 Ders-Program Ciktilari Matrisi", "mufredat"),
+             g("Matematik Lisans Ders Katalogu", "mufredat")]
+    tal = [{"olcut": "B.1.3", "kaynak": "geçen yıl", "puan": 50, "yuvalar": "", "halka": "uygula"}]
+    rows = S.satirlar_kur(load_criteria(), None, Sorumlular(), tal, [], gecen, yil=2026, ref_yil=2025)
+    m = [x["metin"] for x in rows[0]["maddeler"] if x["tur"] == "gecen"]
+    assert m[0] == ("Herhangi bir dersin ders değerlendirme anketi sonucu (2025-2026) (geçen yıl örnek: "
+                    "«MATH407 Ders Degerlendirme Anketi Sonucu 2024-2025 Bahar»)")
+    assert m[1].startswith("En az bir ders için ders bilgi formu / ders–program çıktıları matrisi (güncel) "
+                           "(geçen yıl örnek: «MAT106") and m[1].endswith("ve 1 belge daha)")
+    assert m[2] == ("«Matematik Lisans Ders Katalogu» ya da güncel hâli (geçen yılki raporda vardı, bu yılki "
+                    "dosyalarda bulunamadı)")
+    assert len(m) == 3

@@ -51,6 +51,13 @@ _KURUM_SIRA = {t: i for i, t in enumerate(("yonetmelik", "yonerge", "usul_esas",
                                            "talimat"))}
 _DOLGU = frozenset("gtu gebze teknik universitesi universite akis akisi is ve ile icin iliskin hakkinda bir the of and".split())
 REF_GRUP_EN_AZ = 3          # geçen yılın aynı türden bu kadar belgesi tek maddede toplanır
+# Derse özgü geçen yıl belgesi (adında ders kodu: MATH407, MAT 106): bu yıl aynı dersin belgesi değil, aynı TÜRden
+# herhangi bir dersin belgesi istenir; geçen yılki belge yalnız örnektir. Aynı türden birden çok belge tek istek olur.
+DERS_KODU = re.compile(r"\b[A-ZÇĞİÖŞÜ]{2,5} ?\d{3}[A-Z]?\b")
+DERS_GRUP = {"ders_bilgi_formu": "ders_bilgi", "mufredat": "ders_bilgi"}
+DERS_IFADE = {"ders_degerlendirme": "ders değerlendirme anketi sonucu",
+              "ders_bilgi": "ders bilgi formu / ders–program çıktıları matrisi"}
+DERS_ORNEK_EN_COK = 2
 REF_GRUP = {"yonerge": "mevzuat", "yonetmelik": "mevzuat", "is_akisi": "mevzuat"}
 YUKSEK, ORTA, DUSUK = "Yüksek", "Orta", "Düşük"
 SIRA = {YUKSEK: 0, ORTA: 1, DUSUK: 2}
@@ -374,6 +381,14 @@ def satirlar_kur(cs, tags, sor, talepler: list[dict], satirlar: list[dict], gece
                 o = katalog_karsiligi(g, k_hepsi)
                 (kalan if o is None else k_ref).append(g if o is None else o)
             refs = kalan
+        dersler: dict[str, list[dict]] = {}
+        kalan = []
+        for g in refs:
+            k = _ders_anahtari(g)
+            (dersler.setdefault(k, []) if k else kalan).append(g)
+        refs = kalan
+        for k, xs in dersler.items():
+            ekle(ders_istegi(k, xs, yil), _kim_ref(sor, xs[0], cid), "gecen")
         gruplar: dict[str, list[dict]] = {}
         for g in refs:
             gruplar.setdefault(REF_GRUP.get(g.get("belge_turu") or "", g.get("belge_turu") or ""), []).append(g)
@@ -539,6 +554,31 @@ def katalog_karsiligi(g: dict, ogeler: list[dict]) -> dict | None:
 
 
 _ETIKET: dict[str, str] = {}
+
+
+def _ders_anahtari(g: dict) -> str | None:
+    """Derse özgü geçen yıl belgesinin tür anahtarı (tekrarlayan tür ya da belge türü grubu); değilse None."""
+    if not DERS_KODU.search(g.get("kanit_adi") or ""):
+        return None
+    bt = g.get("belge_turu") or ""
+    return g.get("tekrarlayan") or DERS_GRUP.get(bt, bt) or "belge"
+
+
+def ders_istegi(k: str, xs: list[dict], yil=None) -> str:
+    """Derse özgü geçen yıl belgeleri (aynı tür) → tür düzeyinde tek istek; geçen yılki belgeler örnek."""
+    x0 = xs[0]
+    ifade = DERS_IFADE.get(k) or ((x0.get("tekrarlayan_ad") or "").lower() if k == x0.get("tekrarlayan")
+                                  else _tur_etiketi(k)) or "belge"
+    zaman = f"{int(yil) - 1}-{int(yil)}" if any(x.get("tekrarlayan") for x in xs) and str(yil or "").isdigit() \
+        else "güncel"
+    ornek = "; ".join(f"«{x.get('kanit_adi') or ''}»" for x in xs[:DERS_ORNEK_EN_COK])
+    if len(xs) > DERS_ORNEK_EN_COK:
+        ornek += f" ve {len(xs) - DERS_ORNEK_EN_COK} belge daha"
+    bas = "Herhangi bir dersin" if len(xs) == 1 else "En az bir ders için"
+    m = f"{bas} {ifade} ({zaman}) (geçen yıl örnek: {ornek})"
+    if any(x.get("durum") == ESKI for x in xs):
+        m += "; elde yalnız eski sürümü var"
+    return m
 
 
 def _tur_etiketi(tur: str) -> str:
