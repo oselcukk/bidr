@@ -11,6 +11,8 @@ Cevap uydurma: bilmediğin her alanı kullanıcıya sor.
 ## 1. bidr kurulu mu?
 
 - Çalışma alanında `AGENTS.md` varsa oradaki "bidr komutu" yolunu kullan; kurulum tamamdır, 2. adıma geç.
+- Kuruluysa `bidr guncel` ile güncel olup olmadığına bak; geride ise kullanıcıya söyleyip
+  `bidr guncelle` (temiz main dalında ileri sarar, bağımlılık değiştiyse yeniden kurar).
 - Repo içindeysen: `.venv/bin/bidr --help` (Windows: `.venv\Scripts\bidr --help`) çalışıyorsa kurulu.
 - Değilse repo kökünde (Python ≥ 3.11):
   - `uv venv && uv pip install -e '.[dev]'`

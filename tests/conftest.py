@@ -15,6 +15,12 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
+def _guncel_denetim_kapali(monkeypatch):
+    """`bidr next`'in günlük güncellik denetimi testlerde ağa çıkmasın (tests/test_guncel.py açar)."""
+    monkeypatch.setenv("BIDR_GUNCEL_DENETIM", "0")
+
+
+@pytest.fixture(autouse=True)
 def _tmp_repo_icinde(request, monkeypatch):
     from bidr.init import config
 

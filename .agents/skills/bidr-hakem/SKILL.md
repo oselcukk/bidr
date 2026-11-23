@@ -10,6 +10,9 @@ WS = çalışma alanı; `bidr` yerine AGENTS.md'deki tam yolu kullan.
 
 ## Adımlar
 
+0. Oturum başında `bidr guncel -w WS`; geride ise kullanıcıya söyle, `bidr guncelle -w WS`'yi
+   cevaplanan grup yazıldıktan sonra (soru ortasında değil) yap.
+
 1. `bidr next -w WS`. Hakem kuyruğu yok ya da eskiyse önce onun verdiği
    `bidr compare-labels -w WS` komutunu çalıştır.
 2. `bidr hakem sorular -w WS` sıradaki en çok 5 cevapsız soruyu gösterir (`--json` makine

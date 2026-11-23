@@ -8,6 +8,15 @@ description: Kurulu bir bidr çalışma alanında BİDR rapor hattını yürüt�
 Çalışma alanını `AGENTS.md` ve `config.yaml` (içinde `bidr:` bölümü) belirler. `bidr`
 yerine AGENTS.md'deki tam yolu kullan. WS = çalışma alanının yolu.
 
+## Oturum başında: bidr güncel mi?
+
+`bidr guncel -w WS` çalıştır. "denetlenemedi" (çevrimdışı, git klonu değil) engel değildir; devam et.
+"N commit geride" ise kullanıcıya söyle ve güncellemeyi **aşama sınırında** yap: açık iş paketlerini
+bitir, `apply` çalıştır, sonra `bidr guncelle -w WS` ve yeniden `bidr next -w WS`. Komut yerel
+değişiklik, başka dal ya da açık paket görürse dokunmaz ve ne yapılacağını yazar; bunu kullanıcıya
+aktar, `git` ile zorlamaya ya da `--yine-de` eklemeye kendin karar verme. `bidr next`'in sonundaki
+"Yeni bidr sürümü var" satırı da aynı anlama gelir.
+
 ## Döngü
 
 1. `bidr next -w WS` çalıştır ve çıktıyı tamamen oku.

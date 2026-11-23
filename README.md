@@ -140,6 +140,24 @@ da komisyon kararları için bu dosyalarla değiştirilebilir.
 `bidr status --kisa` özetini bağlama koyar. Yalnız Claude Code'a özgüdür; kapılar ondan
 bağımsızdır.
 
+## Güncelleme
+
+bidr sık güncellenir. Git klonundan kurduysanız (yukarıdaki gibi):
+
+```
+bidr guncel  [-w <çalışma alanı>]    # güncel / N commit geride / yerel değişiklik var (çevrimdışıysa "denetlenemedi")
+bidr guncelle [-w <çalışma alanı>]   # temiz main dalında git ileri sarma; pyproject değiştiyse yeniden kurulum; özet
+```
+
+`bidr guncelle` yerel değişiklik, başka dal ya da ayrılmış geçmiş görürse hiçbir şeye dokunmaz ve
+ne yapılacağını yazar. `-w` verilirse çalışma alanında açık iş paketi (cevapsız `work/*/*.json`)
+varken durur, güncellemeyi aşama sınırına bırakır (`--yine-de` ile geçilir); güncelledikten sonra
+çalışma alanının `AGENTS.md`'sini ve skill kopyalarını yeniler. Özet hangi commit'ten hangisine
+geçildiğini ve `CHANGELOG.md`'nin yeni satırlarını gösterir. `bidr next` günde en çok bir kez
+uzak `main`ı denetler (zaman `_tmp/guncel-denetim.json`'da) ve geride ise tek satır yazar;
+`BIDR_GUNCEL_DENETIM=0` kapatır. Git klonu olmayan kurulumda (docker imajı, pip) hiçbiri ağa
+çıkmaz. Ajanlar oturum başında `bidr guncel` çalıştırır (`AGENTS.md`, skill'ler).
+
 Gebze Teknik Üniversitesi Matematik Bölümü'nde geliştirilmektedir; kurumun resmî
 aracı değildir.
 

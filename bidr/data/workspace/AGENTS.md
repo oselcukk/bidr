@@ -8,6 +8,14 @@ model işini de sen yaparsın. Ücretli API yok.
 - Kaynak klasör (SALT OKUNUR): `{kaynak}`
 - bidr komutu: `{bidr}` (aşağıda kısaca `bidr`)
 
+## Oturum başında
+
+`bidr guncel -w {ws_q}` çalıştır (bidr güncel mi; çevrimdışıysa "denetlenemedi" der, engel değildir).
+Geride ise kullanıcıya söyle ve güncellemeyi aşama sınırında yap: açık iş paketi bitip `apply`
+çalıştıktan sonra `bidr guncelle -w {ws_q}`. Yerel değişiklik ya da başka dal varsa komut dokunmaz
+ve ne yapılacağını yazar; onu kullanıcıya aktar, kendin `git` ile zorlamaya çalışma. `bidr next`
+de günde bir kez "Yeni bidr sürümü var" satırıyla hatırlatır.
+
 ## Her adımda
 
 1. `bidr next -w {ws_q}` çalıştır. Yalnız onun "Yap:" altında yazdığını yap.
