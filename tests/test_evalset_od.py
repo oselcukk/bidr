@@ -43,7 +43,9 @@ def _ws(es, out, mod="ideal", vaka=None, birim=True):
     Birim adı metin denetimlerinin (birim aitliği, madde ilkesi, bölümün kendi usul belgesi) girdisidir."""
     ws = dg.make_workspace(es, out, mod, vaka)
     if birim:
-        (ws / "config.yaml").write_text(yaml.safe_dump({"bidr": {"birim": es.veri["birim"]}}, allow_unicode=True),
+        (ws / "config.yaml").write_text(yaml.safe_dump({"bidr": {"birim": es.veri["birim"],
+                                                                  "birim_adlari": es.veri.get("birim_adlari") or []}},
+                                                        allow_unicode=True),
                                         encoding="utf-8")
     return ws
 
