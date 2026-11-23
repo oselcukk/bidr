@@ -702,6 +702,7 @@ def verify_tamam(c: Ctx) -> Check:
     ok = [t["olcut"] for t in texts if t.get("durum") == "dogrulandi" and t not in unsettled]
     rej = V.rejected(ws, log)
     out = {k for k, t in rej.items() if V.excluded(t, human)}
+    kabul = sorted((t["olcut"] for t in texts if t["olcut"] in ok and V.accepted(t, human)), key=_crit_key)
     prog = {"metin": len(texts), "dogrulandi": len(ok), "reddedildi": len(rej), "cikarildi": len(out),
             "bekleyen": len(unsettled)}
     # Alan düzeyi yönlerin doğrulaması (aynı `verify prepare|apply` komutları) bu aşamayı bekletmez:
@@ -750,7 +751,9 @@ def verify_tamam(c: Ctx) -> Check:
                   "kullanıcıya göster; kanıt eklemek, komisyon bilgisi vermek (rapor-notlari.yaml) ya da "
                   "metni rapordan çıkarmak kullanıcının kararıdır",
                   c.fmt("bidr verify karar -w {ws}") + " <ölçüt> cikar   # KULLANICI derse: metin rapora girmez",
-                  c.fmt("bidr verify karar -w {ws}") + " <ölçüt> tekrar  # KULLANICI derse: bir tur daha"]
+                  c.fmt("bidr verify karar -w {ws}") + " <ölçüt> tekrar  # KULLANICI derse: bir tur daha",
+                  c.fmt("bidr verify karar -w {ws}") + " <ölçüt> kabul   # KULLANICI derse: doğrulayıcının "
+                  "itirazı yerinde değil, metin olduğu gibi rapora girer"]
     if over:
         uy.append(f"{len(over)} ölçüt yeniden yazım sınırından sonra hâlâ reddedildi, insan gerekli: "
                   + ", ".join(f"{k} (tur {rej[k].get('tur') or 0}/{lims[k]})" for k in over))
@@ -764,6 +767,8 @@ def verify_tamam(c: Ctx) -> Check:
         return Check(kim=INSAN, ilerleme=prog, komutlar=human_cmds,
                      neden=f"{len(over)} ölçüt {min(lims[k] for k in over)} yeniden yazım turundan sonra hâlâ "
                            f"reddedildi: insan gerekli ({', '.join(over)})")
+    if kabul:
+        uy.append(f"{len(kabul)} ölçütün metni doğrulayıcı reddine rağmen insan onayıyla kabul edildi: {', '.join(kabul)}")
     if out:
         uy.append(f"{len(out)} ölçütün metni kullanıcı kararıyla rapora alınmayacak: {', '.join(sorted(out, key=_crit_key))}")
     return Check(bitti=True, ilerleme=prog, uyarilar=uy,

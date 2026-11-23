@@ -6,6 +6,7 @@ import json
 
 from test_write import GOOD, answer, make_report_ws
 
+from bidr.common import Workspace
 from bidr.verify import run as V
 from bidr.write import run as W
 from bidr.write import sources as S
@@ -274,3 +275,65 @@ def test_verified_text_rechecked_with_new_content_rule(tmp_path):
     assert any("fakulte_degeri" in g for g in t["dogrulama"]["gerekce"])
     st = W.prepare_rejected(ws)
     assert st["tur"] == {"B.1.1": 1} and not st["insan_gerekli"]
+
+
+def _rejected_ws(tmp_path):
+    ws = written(tmp_path)
+    V.prepare(ws)
+    answer(ws, "B.1.1", verdicts(ws, {"p2.2": "kismen"}), stage="verify")
+    V.apply(ws, model="test:dogrulayici")
+    assert text(ws)["durum"] == "reddedildi"
+    return ws
+
+
+def test_human_accept_keeps_text_and_trace(tmp_path):
+    ws = _rejected_ws(tmp_path)
+    r = V.decide(ws, "B.1.1", "kabul", "Matematik bölümüne ait olduğu belli")
+    assert r["karar"] == "kabul" and r["dogrulayici_reddi"]
+    t = text(ws)
+    assert t["durum"] == "dogrulandi" and t["insan_karari"] == "kabul"
+    assert t["dogrulama"]["gerekce"][0].startswith("insan onayıyla kabul (doğrulayıcı reddi: p2.2 (kismen)")
+    assert t["dogrulama"]["dogrulayici_reddi"] and t["dogrulama"]["insan_onayi"]["not"]
+    rec = V.load_log(Workspace(ws))["B.1.1"]
+    assert rec["durum"] == "dogrulandi" and rec["asama"] == "insan"
+    assert rec["dogrulayici_reddi"]["gerekce"][0].startswith("p2.2 (kismen)")
+    assert not V.rejected(Workspace(ws))
+    # yeniden doğrulanmaz (--redo dahil); eski doğrulayıcı cevabı yeniden işlenmez
+    st = V.prepare(ws, redo=True)
+    assert st["insan_kabulu"] == ["B.1.1"] and st["paket"] == 0
+    assert V.apply(ws)["degismedi"] == 1 and text(ws)["durum"] == "dogrulandi"
+    # ikinci kez karar verilemez: artık reddedilmiş değil
+    import pytest
+    with pytest.raises(ValueError):
+        V.decide(ws, "B.1.1", "kabul")
+
+
+def test_human_accept_not_for_code_reject(tmp_path):
+    import pytest
+    ws = written(tmp_path)
+    make_report_ws(tmp_path, od=2)
+    assert "B.1.1" in V.prepare(ws)["kod_reddi"]
+    with pytest.raises(ValueError, match="kod denetiminde"):
+        V.decide(ws, "B.1.1", "kabul")
+
+
+def test_human_accept_cli_and_next(tmp_path, capsys):
+    from bidr.cli import main
+    ws = _rejected_ws(tmp_path)
+    assert main(["verify", "karar", "-w", str(ws), "B.1.1", "kabul", "--not", "kimlik belli"]) == 0
+    assert "insan onayıyla" in capsys.readouterr().out
+    assert text(ws)["durum"] == "dogrulandi"
+
+
+def test_human_accept_settles_verify_stage(tmp_path):
+    """`bidr next`: kabul edilen ölçüt için artık insan beklenmez (verify aşaması biter, uyarı kalır)."""
+    from bidr.pipeline import checks as C
+    from bidr.pipeline.state import formatter, load_spec
+    ws = _rejected_ws(tmp_path)
+    w = Workspace(ws)
+    spec = next(s for s in load_spec()["asamalar"] if s["id"] == "verify")
+    ck = lambda: C.verify_tamam(C.Ctx(w, {}, formatter(w, {}), spec))   # noqa: E731
+    assert not ck().bitti
+    V.decide(ws, "B.1.1", "kabul")
+    r = ck()
+    assert r.bitti and any("insan onayıyla kabul" in u for u in r.uyarilar)
