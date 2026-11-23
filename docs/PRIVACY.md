@@ -237,6 +237,21 @@ açıklanmış sayılır; eşleşmeyen yeni bölge olarak onay bekler. `onay_bek
   konur; sonraki çalıştırmalar kanıt dosyası değişmedikçe (sha256) aynı sürümü kullanır. Yüklenen
   dosyada metin desenine uyan kişisel veri kalmışsa reddedilir (`--zorla` ile kabul, uyarıyla).
 
+**Yalnız öneri kipi** (`bidr maskele -w WS --yalniz-oneri`; kaynak kipte yok): hiçbir tespit kendiliğinden
+kapatılmaz. Kapatılacak olan bölgeler de (`kapatildi`), kutusu kapalı tutulan onay bölgeleri de açık
+`onay_bekliyor` olur (`oneri: true`); yalnız insan kararları (`karar … kapat`, `ciz`, `yukle`) uygulanır, kapatan
+işaretlemenin (özgünde içeriği örten açıklama) altı yine kapatılır. Üst veri/yorum/ek temizliği her zaman yapılır.
+Açık önerinin kendisi (kopyada kalan desen, imza adayı) dosyayı `basarisiz` yapmaz: dosya `tamam` + karar bekler,
+kalanlar `oneri_acik`'ta sayılır; okunamayan sayfa ve redaksiyon doğrulaması her zamanki gibidir. Bölgesiz
+biçimlerde (docx, xlsx, düz metin, html; pypdf motoruyla PDF) metin değiştirilmez; bulunan her desen için tek
+sayfasız öneri bölgesi yazılır: `{"id": "<sha8>-s0-<desen>", "sayfa": 0, "kutu": [0,0,0,0], "tur": "metin",
+"konum": "metin", "desen": "eposta", "adet": 2, "kaynak": "metin_deseni", …}` (değer yazılmaz; docx gömülü
+görselindeki imza adayı için `<sha8>-s0-imza`, `konum: "gomulu_gorsel"`). Bu bölgeye `kapat` denirse aynı metin
+değiştirme yolu yalnız o desene (kurallar o türlere daraltılmış) uygulanır; kapatılan desen kopyada kalırsa dosya
+başarısız olur. İnsanın kapattığı bölge `birak` ile yeniden açılabilir (normal kipte desen bulgusu yine kapanır).
+`bolgeler --json` bu bölgeleri `konum`, `desen`, `adet` alanlarıyla verir. Rapor `yalniz_oneri: true` taşır;
+önbellekte iki kipin sonucu ayrı anahtardadır, kaynak kip sonucu paylaşılmaz.
+
 **Teslim** (`bidr teslim`, politika 2026-11-22, ikinci karar; önceki "maskelenecek yeri çözülmemiş dosya
 kanıt paketine otomatik girmez" kuralının yerine): maskeleme kararı bekleyen kanıt paketten **dışlanmaz**.
 Kararı verilmemiş öneri bölgesi olan ya da maskelemesi eksik kalan (`basarisiz`, `taranamadi`) kanıt o anki

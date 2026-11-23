@@ -120,9 +120,104 @@ def _sayfalar(bs: list[dict]) -> str:
     return ", ".join(f"s.{n}" for n in sorted({b["sayfa"] for b in bs}))
 
 
+BOLGESIZ = ("docx", "xlsx", "metin", "html")      # bölge üretmeden metni doğrudan maskeleyen biçimler
+METIN_TUR_ADI = {"tc_no": "kimlik no", "iban": "IBAN", "eposta": "e-posta", "telefon": "telefon",
+                 "ogrenci_no": "öğrenci no", "ad": "ad"}
+IMZA_GORSEL = "imza_gorsel"            # bölgesiz biçimin gömülü görselindeki imza önerisi (kaynak)
+
+
+def metin_kipi(kind: str | None, eng: str) -> bool:
+    """Bölgesiz biçim mi (yalnız öneri kipinde metin önerisi olarak ele alınır): docx/xlsx/düz metin/html ve
+    pypdf motoruyla PDF."""
+    return kind in BOLGESIZ or (kind == "pdf" and eng != "pymupdf")
+
+
+def metin_bolgeleri(sha8: str, bulgular, rules: MaskRules, imza_aday: int = 0) -> list[dict]:
+    """Bölgesiz biçimin bulguları → desen başına bir öneri bölgesi (`tur: metin`, sayfa 0, kutusuz; kimlik
+    `<sha8>-s0-<desen>`), gömülü görselde imza adayı varsa bir de imza önerisi (`<sha8>-s0-imza`). Değer yazılmaz;
+    yalnız tür ve sayı."""
+    from . import bolge as BG
+    from .detect import KINDS
+    out = []
+    for k in KINDS:
+        n = int((bulgular or {}).get(k) or 0)
+        if n <= 0 or k not in rules.kinds:
+            continue
+        b = BG.yeni(BG.METIN_SAYFA, [0, 0, 0, 0], BG.METIN, BG.ONAY,
+                    f"metin içinde: {METIN_TUR_ADI.get(k, k)} ×{n}", "metin_deseni", 0.9)
+        b.update(id=f"{sha8}-s0-{k}", desen=k, adet=n, konum="metin", oneri=True)
+        out.append(b)
+    if imza_aday:
+        b = BG.yeni(BG.METIN_SAYFA, [0, 0, 0, 0], "imza", BG.ONAY,
+                    f"gömülü görselde imza benzeri mürekkep ×{imza_aday}", IMZA_GORSEL, 0.5)
+        b.update(id=f"{sha8}-s0-imza", adet=int(imza_aday), konum="gomulu_gorsel", oneri=True)
+        out.append(b)
+    return out
+
+
+def _metin_onerisi(src: Path, dst: Path, rules: MaskRules, eng: str, model_text: str | None, bg, before: dict,
+                   temiz: Path | None) -> dict:
+    """Yalnız öneri kipi, bölgesiz biçim: bulunan desenler öneri bölgesidir; metin YALNIZ insanın "kapat" dediği
+    desenlerde değiştirilir (aynı metin değiştirme yolu, kurallar o desenlere daraltılmış), üst veri/yorum temizliği
+    her zaman yapılır. Açık kalan desen yeniden taramada "kalan" sayılmaz (öneridir); kapatılan desen kalırsa başarısız."""
+    from . import bolge as BG
+    imza_aday = int(before.get("imza_aday") or 0) if kind_of(src) == "docx" else 0    # gömülü görsel imzası
+    regs = metin_bolgeleri(bg.sha8, before["bulgular"], rules, imza_aday)
+    bg.sayfa(BG.METIN_SAYFA, regs, ilk=False)
+    kapat = {b["desen"] for b in regs if b.get("desen") and b["karar"] == BG.KAPATILDI}
+    imza_kapat = any(b["kaynak"] == IMZA_GORSEL and b["karar"] == BG.KAPATILDI for b in regs)
+    r2 = replace(rules, kinds=tuple(k for k in rules.kinds if k in kapat), label_fields=False)
+    rec: dict = {"yalniz_oneri": True}
+    try:
+        res = mask_file(src, dst, r2, engine=eng, imza=imza_kapat)
+        after = scan_file(dst, rules)
+    except Exception as e:                    # noqa: BLE001 — bozuk dosya vb.
+        if dst.exists():
+            dst.unlink()
+        rec.update(durum="hata", elle_bakilmali=True, neden=f"maskelenemedi: {type(e).__name__}: {e}"[:300],
+                   bulunan=_c(before["bulgular"]))
+        return rec
+    acik = {b["desen"] for b in regs if b.get("desen") and b["karar"] != BG.KAPATILDI}
+    kalan = Counter({k: n for k, n in after["bulgular"].items() if n and k not in acik})
+    sorunlar = list(after["sorunlar"])
+    if after.get("imza_aday") and imza_kapat:
+        sorunlar.append(f"imza: kapatılamayan aday ×{after['imza_aday']}")
+    model_uyari = []
+    if model_text is not None:
+        gaps, note = model_text_gaps(model_text, dict(res, maskelenen=before["bulgular"]), rules)
+        if note:
+            model_uyari.append(note)
+        if gaps:
+            rec["el_yazisi_elle"] = gaps
+            sorunlar.append(f"{EL_YAZISI_SORUN} ({'; '.join(gaps)})")
+    onay = BG.onay_bekleyen(bg.bolgeler)
+    if onay and dst.is_file() and temiz is not None:      # teslim paketi: özgün içerik (üst verisi temiz)
+        temiz.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(dst, temiz)
+    rec.update(bulunan=_c(before["bulgular"]), maskelenen=_c(res["maskelenen"]), kalan=_c(kalan),
+               oneri_acik=_c({k: n for k, n in after["bulgular"].items() if k in acik}),
+               temizlenen=res["temizlenen"], kalan_sorunlar=sorunlar, bolgeler=_clean_bolgeler(bg.bolgeler),
+               bolge_ozet=BG.ozet(bg.bolgeler),
+               uyarilar=list(res["uyarilar"]) + list(after.get("uyarilar") or []) + model_uyari + bg.uyarilar)
+    if onay:
+        rec["onay_bekleyen"] = len(onay)
+    if before.get("imza"):
+        rec["imza_uyarisi"] = before["imza"]
+    if after.get("imza_metin"):
+        rec["imza_metin_elle"] = len(after["imza_metin"])
+        rec["imza_metin_yer"] = after["imza_metin"]
+    if kalan or sorunlar:
+        parts = [f"{k}×{n}" for k, n in sorted(kalan.items())] + sorunlar
+        rec.update(durum="basarisiz", neden=("maskeleme başarısız; kalan: " + ", ".join(parts))[:600],
+                   elle_bakilmali=True)
+    else:
+        rec.update(durum="tamam", elle_bakilmali=False)
+    return rec
+
+
 def mask_and_check(src: Path, dst: Path, rules: MaskRules, eng: str, model_text: str | None = None, *,
                    kararlar: dict[str, dict] | None = None, sha: str | None = None, kind: str | None = None,
-                   temiz: Path | None = None) -> dict:
+                   temiz: Path | None = None, yalniz_oneri: bool = False) -> dict:
     """Tek dosya: tara → maskele (`dst`; bölgeler kimlikli, insan kararları uygulanır) → maskeli kopyayı
     bağımsız yeniden tara → bölgeleri uzlaştır → redaksiyon doğrulaması.
 
@@ -131,18 +226,27 @@ def mask_and_check(src: Path, dst: Path, rules: MaskRules, eng: str, model_text:
     alanları, `bolgeler` (PDF/PyMuPDF ve görsellerde; bkz. `bolge`). `hata`da `dst` silinir; diğer
     durumlarda maskeli kopya `dst`'de kalır (nereye konacağına çağıran karar verir). Değerlerin
     kendisi yazılmaz. `sha`: kaynak dosyanın sha256'sı (bölge kimliği; verilmezse hesaplanır). `temiz`:
-    açık öneri çerçevesi çizilecekse kopyanın çerçevesiz hâli önce buraya yazılır (teslim paketi)."""
+    açık öneri çerçevesi çizilecekse kopyanın çerçevesiz hâli önce buraya yazılır (teslim paketi).
+
+    `yalniz_oneri` (`bidr maskele --yalniz-oneri`): hiçbir tespit kendiliğinden kapatılmaz; hepsi açık öneri
+    (`onay_bekliyor`) olur, yalnız insan kararları (`kapat`, `ciz`, `yukle`) uygulanır. Bölgesiz biçimler
+    (`metin_kipi`) desen başına öneri bölgesi alır (`_metin_onerisi`). Açık önerinin kendisi (kalan desen, imza
+    adayı) dosyayı başarısız saymaz; dosya karar bekler (`onay_bekleyen`)."""
     from . import bolge as BG
     from . import dogrula
     from .onbellek import sha256_file
     sha = sha or sha256_file(src)
     kind = kind or kind_of(src) or ""
-    bg = BG.Baglam(sha[:8], BG.dosya_kararlari(kararlar or {}, sha[:8]))
+    bg = BG.Baglam(sha[:8], BG.dosya_kararlari(kararlar or {}, sha[:8]), yalniz_oneri=yalniz_oneri)
     rec: dict = {}
     try:
         before = scan_file(src, rules)
     except Exception as e:
         before = {"bulgular": Counter(), "sorunlar": [f"kaynak taranamadı: {type(e).__name__}"], "imza": []}
+    if yalniz_oneri and metin_kipi(kind, eng):
+        return _metin_onerisi(src, dst, rules, eng, model_text, bg, before, temiz)
+    if yalniz_oneri:
+        rec["yalniz_oneri"] = True
     try:
         res = mask_file(src, dst, rules, engine=eng, bolge=bg)
         after = scan_file(dst, rules)
@@ -203,7 +307,7 @@ def mask_and_check(src: Path, dst: Path, rules: MaskRules, eng: str, model_text:
             bg.sayfa(sn, [b], ilk=False)
             if b["karar"] == BG.ONAY:
                 acik_iz.append(b)
-        if acik_iz:
+        if acik_iz and not yalniz_oneri:
             sorunlar.append(f"{IMZA_IZI_NEDEN} ({_sayfalar(acik_iz)})")
     if bolgeli:
         onay = BG.onay_bekleyen(bg.bolgeler)
@@ -214,6 +318,7 @@ def mask_and_check(src: Path, dst: Path, rules: MaskRules, eng: str, model_text:
         et = [b for b in onay if b["tur"] == "imza" and b not in mt and b not in gb
               and (b["kaynak"] in ("imza_etiketsiz", "etiketsiz_aday", "etiketsiz_sayfa") or "etiketsiz" in b["neden"])]
         kl = [b for b in onay if b["tur"] == "imza" and b not in mt and b not in et and b not in gb]
+        n_sorun = len(sorunlar)
         if gb:
             sorunlar.append(f"{IMZA_GERI_BASMA_SORUN} ({_sayfalar(gb)})")
         if et:
@@ -226,6 +331,8 @@ def mask_and_check(src: Path, dst: Path, rules: MaskRules, eng: str, model_text:
             rec["imza_metin_yer"] = [f"s.{n}" for n in sorted({b["sayfa"] for b in mt})]
         if kl:
             sorunlar.append(f"imza: kapatılamayan aday ×{len(kl)}")
+        if yalniz_oneri:              # açık imza önerileri öneridir, eksik maskeleme değil (dosya karar bekler)
+            del sorunlar[n_sorun:]
         taranamadi = [(f"s.{b['sayfa']}: " if res.get("sayfa_sayisi", 1) > 1 or kind == "pdf" else "görsel: ")
                       + b["neden"].removeprefix("okunamadı: ") for b in onay if b["tur"] == "okunamayan_sayfa"]
         dog = dogrula.dogrula(dst, kind, bg.bolgeler, eng)
@@ -278,6 +385,11 @@ def mask_and_check(src: Path, dst: Path, rules: MaskRules, eng: str, model_text:
             rec["imza_metin_yer"] = after["imza_metin"]
     if taranamadi:
         rec["taranamadi"] = taranamadi
+    if yalniz_oneri and bolgeli:
+        # açık önerilerin kendisi kopyada kalır (yalnız öneri); kapatılan kutuların doğrulaması `dogrula`da
+        rec["oneri_acik"] = _c(kalan)
+        kalan = Counter()
+        rec["kalan"] = {}
     if kalan or sorunlar or taranamadi:
         parts = [f"{k}×{n}" for k, n in sorted(kalan.items())] + list(sorunlar)
         if kalan or sorunlar:
@@ -418,21 +530,23 @@ def model_sha(model_text: str | None) -> str | None:
 
 
 def aday_anahtari(sha: str, rules: MaskRules, eng: str, kararlar: dict[str, dict], model_text: str | None,
-                  kind: str | None, sablon: str | None = None, *, mt_sha: str | None = None) -> str:
+                  kind: str | None, sablon: str | None = None, *, mt_sha: str | None = None,
+                  yalniz_oneri: bool = False) -> str:
     """Dosyanın `aday` anahtarı. `kararlar`: YALNIZ bu dosyanın kararları (`bolge.dosya_kararlari`); `sablon`:
-    `sablon_parcasi` (bu dosyanın şablon belleği bağımlılığı). `mt_sha`: model metni yerine özeti (metin yoksa)."""
+    `sablon_parcasi` (bu dosyanın şablon belleği bağımlılığı). `mt_sha`: model metni yerine özeti (metin yoksa).
+    `yalniz_oneri`: yalnız öneri kipinin sonucu ayrı anahtardadır (normal kipin anahtarı değişmez)."""
     from .onbellek import anahtar
     from .ocr import tesseract_version
     kk = sorted((k, v.get("karar"), json.dumps(v.get("kutu")), v.get("kaynak")) for k, v in kararlar.items())
     ocr = raster_ocr_available()
     return anahtar("aday", sha, KURAL_SURUM, _kod_izi(), kural_izi(rules), eng, kind, kk,
                    model_sha(model_text) if model_text is not None else mt_sha,
-                   ocr, tesseract_version() if ocr else None, sablon)
+                   ocr, tesseract_version() if ocr else None, sablon, *(["yalniz_oneri"] if yalniz_oneri else []))
 
 
 def mask_cached(src: Path, dst: Path, rules: MaskRules, eng: str, model_text: str | None = None, *,
                 kararlar: dict[str, dict] | None = None, sha: str | None = None, kind: str | None = None,
-                temiz: Path | None = None, cikti_kaydet: bool = False) -> dict:
+                temiz: Path | None = None, cikti_kaydet: bool = False, yalniz_oneri: bool = False) -> dict:
     """`mask_and_check` + önbellek `aday` katmanı: değişmeyen dosya (aynı içerik, kural, BU dosyanın kararları,
     model metni, şablon belleğinin bu dosyaya katkısı) yeniden işlenmez; kayıt, maskeli kopya ve çerçevesiz hâli
     önbellekten gelir. Anahtar iki adımlıdır: temel anahtar (şablon dışı her şey) → `aday_iz` katmanında dosyanın
@@ -444,7 +558,7 @@ def mask_cached(src: Path, dst: Path, rules: MaskRules, eng: str, model_text: st
     sha = sha or onbellek.sha256_file(src)
     ob = onbellek.aktif()
     mine = BG.dosya_kararlari(kararlar or {}, sha[:8])
-    temel = aday_anahtari(sha, rules, eng, mine, model_text, kind) if ob is not None else None
+    temel = aday_anahtari(sha, rules, eng, mine, model_text, kind, yalniz_oneri=yalniz_oneri) if ob is not None else None
     if ob is not None:
         dep = ob.get_json("aday_iz", temel)
         hit = None
@@ -463,7 +577,7 @@ def mask_cached(src: Path, dst: Path, rules: MaskRules, eng: str, model_text: st
                     temiz.parent.mkdir(parents=True, exist_ok=True)
                     temiz.write_bytes(tblob)
                 rec = hit["rec"]
-                if cikti_kaydet:
+                if cikti_kaydet and not yalniz_oneri:
                     _cikti_kaydet(ob, dst, temiz, rec, key, {"sha": sha, "kind": kind,
                                                              "mt": model_sha(model_text), "izler": dep["izler"]})
                 rec["onbellek"] = True
@@ -471,7 +585,7 @@ def mask_cached(src: Path, dst: Path, rules: MaskRules, eng: str, model_text: st
     once = SB.iz_kaydi_baslat()
     try:
         rec = mask_and_check(src, dst, rules, eng, model_text=model_text, kararlar=mine, sha=sha, kind=kind,
-                             temiz=temiz)
+                             temiz=temiz, yalniz_oneri=yalniz_oneri)
     finally:
         izler = SB.iz_kaydi_bitir(once)
     if ob is not None:
@@ -484,7 +598,7 @@ def mask_cached(src: Path, dst: Path, rules: MaskRules, eng: str, model_text: st
             ob.put("aday_temiz", key, temiz.read_bytes())
         ob.put_json("aday", key, {"rec": rec, "cikti": has, "temiz": has_t})
         ob.put_json("aday_iz", temel, {"izler": izler})
-        if cikti_kaydet:
+        if cikti_kaydet and not yalniz_oneri:
             _cikti_kaydet(ob, dst, temiz, rec, key, {"sha": sha, "kind": kind, "mt": model_sha(model_text),
                                                      "izler": izler})
     return rec
@@ -678,7 +792,7 @@ def _isle(job: dict) -> dict:
                 rec["motor"] = eng
             temiz = _temiz_yolu(job, out)
             rec.update(mask_cached(conv, out, rules, eng, model_text=mt, kararlar=job.get("kararlar"), sha=sha, kind=k2,
-                                   temiz=temiz))
+                                   temiz=temiz, yalniz_oneri=bool(job.get("yalniz_oneri"))))
             _teslim_kopya(rec, job, temiz)
             return rec
     rec["bicim"] = kind or (src.suffix.lower().lstrip(".") or "?")
@@ -691,10 +805,12 @@ def _isle(job: dict) -> dict:
     if mt is not None:
         rec["model_metni"] = True
     temiz = _temiz_yolu(job, dst)
-    hit = kaynak_sonucu(src, sha, dst, rules, eng, mt, kararlar=job.get("kararlar"), temiz=temiz)
+    oneri = bool(job.get("yalniz_oneri"))
+    # yalnız öneri: kaynak kipin (kapatılmış) sonucu paylaşılmaz
+    hit = None if oneri else kaynak_sonucu(src, sha, dst, rules, eng, mt, kararlar=job.get("kararlar"), temiz=temiz)
     rec.update(hit if hit is not None else
                mask_cached(src, dst, rules, eng, model_text=mt, kararlar=job.get("kararlar"), sha=sha, kind=kind,
-                           temiz=temiz))
+                           temiz=temiz, yalniz_oneri=oneri))
     _teslim_kopya(rec, job, temiz)
     return rec
 
@@ -713,9 +829,10 @@ def _teslim_kopya(rec: dict, job: dict, temiz: Path | None) -> None:
 
 def run(ws_root: Path, *, evidence: Path | None = None, out: Path | None = None, engine: str = "auto",
         names: list[str] | None = None, rules: MaskRules | None = None, workers: int = 1,
-        onbellek_kullan: bool = True, progress=None) -> dict:
+        onbellek_kullan: bool = True, progress=None, yalniz_oneri: bool = False) -> dict:
     """`workers`: paralel işçi süreç (CLI varsayılanı 2; tesseract tek iş parçacığı). `onbellek_kullan`:
-    çalışma alanının `.cache/maske.sqlite` önbelleği."""
+    çalışma alanının `.cache/maske.sqlite` önbelleği. `yalniz_oneri` (`--yalniz-oneri`): tespitler kendiliğinden
+    kapatılmaz, öneri olur (bkz. `mask_and_check`); insan kararları uygulanır."""
     import time as _time
     from . import bolge as BG
     from . import onbellek
@@ -766,7 +883,7 @@ def run(ws_root: Path, *, evidence: Path | None = None, out: Path | None = None,
         jobs.append({"src": str(src), "rel": rel, "dst": str(dst_root / rel), "dst_root": str(dst_root),
                      "teslim_root": str(teslim_root),
                      "rules": rules, "eng": eng, "model_text": mt, "kararlar": kararlar, "elle": e,
-                     "elle_sha": elle_sha, "onbellek": ob_yol})
+                     "elle_sha": elle_sha, "onbellek": ob_yol, "yalniz_oneri": yalniz_oneri})
     if workers > 1 and len(jobs) > 1:
         from concurrent.futures import ProcessPoolExecutor
         with ProcessPoolExecutor(max_workers=workers) as ex:
@@ -817,7 +934,7 @@ def run(ws_root: Path, *, evidence: Path | None = None, out: Path | None = None,
     bekleyen = [r for r in kayitlar if bekliyor(r)]
     rapor = {
         "surum": SURUM, "zaman": datetime.now().astimezone().isoformat(timespec="seconds"),
-        "kanit_klasoru": str(ev), "maskeli_klasor": str(dst_root), "pdf_motoru": eng,
+        "kanit_klasoru": str(ev), "maskeli_klasor": str(dst_root), "pdf_motoru": eng, "yalniz_oneri": yalniz_oneri,
         "kurallar": {"turler": list(rules.kinds), "ogrenci_no_desen_sayisi": len(rules.student_patterns),
                      "ad_listesi_sayisi": len(rules.names), "etiket_alani": rules.label_fields,
                      "kural_surumu": KURAL_SURUM},

@@ -445,11 +445,20 @@ def _kararla(bg, sn: int, regs: list[dict], ilk: bool = True) -> list[dict]:
     once = {id(b): b["karar"] for b in regs}
     bg.sayfa(sn, regs, ilk=ilk)
     for b in regs:
-        if once[id(b)] == BG.KAPATILDI and b["karar"] == BG.BIRAKILDI and b["tur"] != "imza":
+        if once[id(b)] == BG.KAPATILDI and b["karar"] == BG.BIRAKILDI and b["tur"] != "imza" \
+                and not getattr(bg, "yalniz_oneri", False):     # yalnız öneri: insan "açık kalsın" dedi
             b["karar"] = BG.KAPATILDI
             b.pop("insan", None)
             bg.uyarilar.append(f"{b['id']}: desen/etiket alanı bulgusu 'birak' ile açılamaz (kapatıldı)")
     return regs
+
+
+def _acik_oneriyle_ortusur(bg, sn: int, b: dict) -> bool:
+    """Yalnız öneri kipi: yeniden taramanın adayı bu sayfanın açık bir önerisiyle örtüşüyor (aynı bulgu kapatılmadığı
+    için yeniden bulundu): yeni bölge açılmaz."""
+    from . import bolge as BG
+    return any(o["karar"] == BG.ONAY and o["sayfa"] == sn and BG.ortusme(o["kutu"], b["kutu"]) >= 0.5
+               for o in bg.bolgeler)
 
 
 def _yamalari_bas(page, yamalar) -> None:
@@ -633,7 +642,8 @@ def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules, bolge=None) -> dict
             more += [b for b in _hook_bolgeleri("imza", sn, page, rules, ps) if kapanir(b)]
             more = [b for b in more if not any(o["karar"] == BG.BIRAKILDI and BG.ortusme(o["kutu"], b["kutu"]) >= 0.5
                                                for o in bg.bolgeler if o["sayfa"] == sn)
-                    and _icinde_payi(b["kutu"], kapali) < YENIDEN_TARAMA_ICINDE]
+                    and _icinde_payi(b["kutu"], kapali) < YENIDEN_TARAMA_ICINDE
+                    and not (bg.yalniz_oneri and _acik_oneriyle_ortusur(bg, sn, b))]
             if not more:
                 break
             _kararla(bg, sn, more, ilk=False)
@@ -939,7 +949,8 @@ def _drop_rels(rels, suffixes) -> bool:
     return gone
 
 
-def mask_docx(src: Path, dst: Path, rules: MaskRules) -> dict:
+def mask_docx(src: Path, dst: Path, rules: MaskRules, *, imza: bool = True) -> dict:
+    """`imza`: gömülü görsellerde imza benzeri mürekkep kapatılsın mı (yalnız öneri kipinde insan kararıyla)."""
     import docx
     from docx.opc.part import XmlPart
     d = docx.Document(str(src))
@@ -1009,7 +1020,7 @@ def mask_docx(src: Path, dst: Path, rules: MaskRules) -> dict:
         temiz.add("ust_veri")
     body = "\n".join("".join(p._element.itertext()) for p in pkg.iter_parts()
                       if isinstance(p, XmlPart) and _DOCX_TEXT_PARTS.match(str(p.partname)))
-    med = _mask_media_parts(pkg, rules, imza_label=_has_imza_label(body))
+    med = _mask_media_parts(pkg, rules, imza_label=_has_imza_label(body), imza=imza)
     counts.update(med["maskelenen"])
     dst.parent.mkdir(parents=True, exist_ok=True)
     d.save(str(dst))
@@ -1033,13 +1044,13 @@ def _media_images(pkg):
             yield part, ext
 
 
-def _mask_media_parts(pkg, rules: MaskRules, *, imza_label: bool) -> dict:
+def _mask_media_parts(pkg, rules: MaskRules, *, imza_label: bool, imza: bool = True) -> dict:
     """Gömülü görseller (docx word/media): OCR + desen kutuları; belgede imza etiketi varsa görseldeki
     imza benzeri mürekkep de kapatılır. OCR yoksa görsel olduğu gibi kalır (uyarı)."""
     from . import raster
     out = {"maskelenen": Counter(), "uyarilar": [], "imza_bolgesi": 0, "ortusen_kelime": 0}
     parts = list(_media_images(pkg))
-    if not parts:
+    if not parts or (not imza and not rules.kinds):
         return out
     if not raster.ocr_available():
         out["uyarilar"].append(f"gömülü görseller ({len(parts)}) OCR olmadan taranamadı")
@@ -1053,9 +1064,9 @@ def _mask_media_parts(pkg, rules: MaskRules, *, imza_label: bool) -> dict:
         except Exception as e:
             out["uyarilar"].append(f"gömülü görsel işlenemedi: {type(e).__name__}")
             continue
-        boxes = list(r.kutular) + list(r.imza.kapat if r.imza else [])
+        boxes = list(r.kutular) + list(r.imza.kapat if r.imza and imza else [])
         out["maskelenen"].update(r.bulgular)
-        if r.imza:
+        if r.imza and imza:
             out["imza_bolgesi"] += len(r.imza.kapat)
             out["ortusen_kelime"] += r.imza.ortusen_kelime
         if boxes:
@@ -1428,16 +1439,16 @@ def kind_of(path: Path) -> str | None:
     return None
 
 
-def mask_file(src: Path, dst: Path, rules: MaskRules, *, engine: str = "pypdf", bolge=None) -> dict:
+def mask_file(src: Path, dst: Path, rules: MaskRules, *, engine: str = "pypdf", bolge=None, imza: bool = True) -> dict:
     """`bolge`: `bolge.Baglam` (kimlik + insan kararları); PDF (PyMuPDF) ve görsellerde bölge listesi
-    üretilir (`sonuç["bolgeler"]`), diğer biçimlerde bölge yoktur."""
+    üretilir (`sonuç["bolgeler"]`), diğer biçimlerde bölge yoktur. `imza`: docx gömülü görsellerinde imza kapatma."""
     k = kind_of(src)
     if k == "pdf":
         if engine == "pymupdf":
             return mask_pdf_pymupdf(src, dst, rules, bolge=bolge)
         return mask_pdf_pypdf(src, dst, rules)
     if k == "docx":
-        return mask_docx(src, dst, rules)
+        return mask_docx(src, dst, rules, imza=imza)
     if k == "xlsx":
         return mask_xlsx(src, dst, rules)
     if k == "gorsel":

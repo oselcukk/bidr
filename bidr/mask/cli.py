@@ -1,6 +1,8 @@
 """`bidr maskele` iki kullanım:
 
-- teslim/yayın kopyası: `bidr maskele -w WS [--evidence DIR] [--out DIR] [--motor …] [--ad-listesi DOSYA]`
+- teslim/yayın kopyası: `bidr maskele -w WS [--evidence DIR] [--out DIR] [--motor …] [--ad-listesi DOSYA]
+  [--yalniz-oneri]` (`--yalniz-oneri`: hiçbir tespit kendiliğinden kapatılmaz, hepsi öneri olur; yalnız insan
+  kararları — `karar kapat`, `ciz`, `yukle` — uygulanır; docx/xlsx/düz metin/html'de desen başına sayfasız öneri)
 - model öncesi kaynak maskeleme: `bidr maskele --kaynak BÖLÜM_KLASÖRÜ --out MASKELİ_KOPYA [-w WS]
   [--motor …] [--ad-listesi DOSYA] [--is N] [--rapor DOSYA] [--ayir]`
   (`-w` ile: çalışma alanı önbelleği `.cache/maske.sqlite`, ilerleme `<ws>/maskeleme-ilerleme.json`; işaret
@@ -99,6 +101,9 @@ def _bolgeler(args) -> int:
             if b["dosya"] != last:
                 print(f"  {b['dosya']}")
                 last = b["dosya"]
+            if b.get("konum"):                       # bölgesiz biçim: sayfasız öneri
+                print(f"    {b['id']}  {b['konum']}  {b['tur']}  {b['neden']} ({b['kaynak']})")
+                continue
             k = ", ".join(f"{v:.0f}" for v in b["kutu"])
             print(f"    {b['id']}  s.{b['sayfa']}  {b['tur']}  [{k}]  {b['neden']} ({b['kaynak']}, güven {b['guven']})")
         print(f"  → bidr maskele karar -w {ws} <bolge_id> kapat|birak")
@@ -202,6 +207,9 @@ def _run(args) -> int:
     if islem == "yukle":
         return _yukle(args)
     if args.kaynak:
+        if args.yalniz_oneri:
+            print("HATA --yalniz-oneri yalnız kanıt kipinde (-w) kullanılır", file=sys.stderr)
+            return 2
         return _run_source(args)
     from .detect import load_name_list
     from .formats import MaskError
@@ -218,7 +226,7 @@ def _run(args) -> int:
         names = load_name_list(args.ad_listesi, ws) if args.ad_listesi else None
         r = run(ws, evidence=args.evidence, out=args.out, engine=args.motor, names=names,
                 workers=max(1, args.is_ if args.is_ is not None else 2), onbellek_kullan=not args.onbellek_yok,
-                progress=progress)
+                progress=progress, yalniz_oneri=args.yalniz_oneri)
     except (FileNotFoundError, MaskRunError, MaskError, ValueError) as e:
         print(f"HATA {e}", file=sys.stderr)
         return 2
@@ -261,6 +269,10 @@ def register(sub):
                    help="paralel işçi sayısı (varsayılan: kanıt modunda 2, --kaynak modunda 1; işleyici çekirdek "
                         "sayısını verir)")
     p.add_argument("--ilerleme", action="store_true", help="dosya başına ilerleme yaz")
+    p.add_argument("--yalniz-oneri", action="store_true",
+                   help="kanıt kipi: hiçbir tespit kendiliğinden kapatılmaz; hepsi onay bekleyen öneri olur (insan "
+                        "kararları uygulanır); docx/xlsx/düz metin/html metni değiştirilmez, desen başına öneri yazılır; "
+                        "üst veri temizliği yine yapılır")
     p.add_argument("--onbellek-yok", action="store_true",
                    help="çalışma alanı önbelleğini (.cache/maske.sqlite) kullanma (kanıt modu; --kaynak modunda "
                         "-w verildiyse)")
