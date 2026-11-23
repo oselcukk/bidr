@@ -234,7 +234,9 @@ def mask_pdf_pypdf(src: Path, dst: Path, rules: MaskRules) -> dict:
     counts: Counter = Counter()
     uyarilar = ["PyMuPDF yok: PDF maskeleme pypdf ile en iyi çaba (içerik akışı baytları); "
                 "gerçek kaldırma için pip install 'bidr[maske]'"]
-    for page in w.pages:
+    from . import suanki
+    for sn, page in enumerate(w.pages, 1):
+        suanki.sayfa(sn, len(w.pages))
         cs = page.get_contents()
         if cs is not None and _mask_ops(cs.operations, rules, counts):
             page.replace_contents(cs)
@@ -552,8 +554,10 @@ def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules, bolge=None) -> dict
     sayfalar: list = []
     olcum: dict[int, dict] = {}                   # sayfa → aşırı kapatma ölçümü
     flags = _redact_flags(fitz)
+    from . import suanki
     for page in doc:
         sn = page.number + 1
+        suanki.sayfa(sn, doc.page_count)
         cover = []
         for a in list(page.annots() or []):
             rects = _covering_annot_rects(fitz, a)
@@ -835,7 +839,9 @@ def _scan_pdf_raster(path: Path, rules: MaskRules, reader, page_counts, page_tex
         out["bolge_adaylari"] = []
         doc = fitz.open(str(path))
         try:
+            from . import suanki
             for i, page in enumerate(doc):
+                suanki.sayfa(i + 1, doc.page_count, "denetim")
                 ps = raster.scan_pdf_page(page, rules)
                 take(i, ps["bulgular"], ps["imza"], ps["taranamadi"])
                 for b in ps_bolgeleri(i + 1, ps, page.rect):
