@@ -78,6 +78,8 @@ def _c(c) -> dict:
 MODEL_KINDS = {"tc_no": "kimlik no", "telefon": "telefon", "eposta": "e-posta", "ogrenci_no": "öğrenci no",
                "iban": "IBAN"}
 EL_YAZISI_SORUN = "elle bakılmalı: el yazısı kişisel veri kapatılamadı"
+IMZA_IZI = "imza_izi"                 # güvenlik ağı önerisinin kaynağı (yalnız uyarı; kapatılamaz, çizilir)
+IMZA_IZI_NEDEN = "kişisel veri olabilir: imza benzeri iz, kontrol edin"
 IMZA_GERI_BASMA_SORUN = "imza: kutu kapatıldı, ad/unvan yalnız OCR'dan okundu: geri basma onayı bekliyor"
 
 
@@ -187,6 +189,22 @@ def mask_and_check(src: Path, dst: Path, rules: MaskRules, eng: str, model_text:
         if gaps:
             rec["el_yazisi_elle"] = gaps
             sorunlar.append(f"{EL_YAZISI_SORUN} ({'; '.join(gaps)})")
+    if bolgeli and not bg.bolgeler and kind in ("pdf", "gorsel"):
+        # güvenlik ağı: hiç bölge yokken taranmış sayfada imza benzeri iz → sayfa başına tek öneri (sessiz yayın yok)
+        try:
+            from .raster import imza_izi
+            izler = imza_izi(src, kind)
+        except Exception as e:                           # noqa: BLE001 — ağ tespiti düşürmesin: uyarı
+            izler = []
+            model_uyari.append(f"imza izi denetimi yapılamadı ({type(e).__name__})")
+        acik_iz = []
+        for sn, kutu in izler:
+            b = BG.yeni(sn, kutu, "kisisel_veri", BG.ONAY, IMZA_IZI_NEDEN, IMZA_IZI, 0.3)
+            bg.sayfa(sn, [b], ilk=False)
+            if b["karar"] == BG.ONAY:
+                acik_iz.append(b)
+        if acik_iz:
+            sorunlar.append(f"{IMZA_IZI_NEDEN} ({_sayfalar(acik_iz)})")
     if bolgeli:
         onay = BG.onay_bekleyen(bg.bolgeler)
         # m1 (yapi) bölgeleri: kutusu kapalı geri basma onayı / metinle örtüşen kapatılmamış / etiketsiz aday
@@ -353,7 +371,7 @@ def onay_cercevesi(dst: Path, kind: str, bolgeler: list[dict], eng: str) -> None
 
 # ---------------------------------------------------------------- önbellekli dosya işi
 
-KURAL_SURUM = 6            # tespit/kapatma kuralları elle sürümü (kod parmak izi ayrıca anahtara girer); 3: m4; 4: m5 en küçük yeterli maske; 5: m6 aşırı kapatma (zarf, kelime koruması, sayfa toplamı); 6: m7 yazı satırı yapısı, tablo kuralı, sessiz kaçak yok, paraf grubu
+KURAL_SURUM = 7            # tespit/kapatma kuralları elle sürümü (kod parmak izi ayrıca anahtara girer); 3: m4; 4: m5 en küçük yeterli maske; 5: m6 aşırı kapatma (zarf, kelime koruması, sayfa toplamı); 6: m7 yazı satırı yapısı, tablo kuralı, sessiz kaçak yok, paraf grubu; 7: m10 imza izi güvenlik ağı
 _KOD_MODULLERI = ("detect", "formats", "raster", "imza", "alan", "ocr", "bolge", "dogrula", "yapi", "sablon",
                   "run", "eski", "kaynak", "satir")
 
@@ -394,26 +412,32 @@ def sablon_parcasi(izler: list) -> str | None:
     return anahtar(SB.bagimlilik_ozeti(sb, izler))
 
 
+def model_sha(model_text: str | None) -> str | None:
+    from .onbellek import sha256
+    return sha256(model_text.encode("utf-8")) if model_text is not None else None
+
+
 def aday_anahtari(sha: str, rules: MaskRules, eng: str, kararlar: dict[str, dict], model_text: str | None,
-                  kind: str | None, sablon: str | None = None) -> str:
+                  kind: str | None, sablon: str | None = None, *, mt_sha: str | None = None) -> str:
     """Dosyanın `aday` anahtarı. `kararlar`: YALNIZ bu dosyanın kararları (`bolge.dosya_kararlari`); `sablon`:
-    `sablon_parcasi` (bu dosyanın şablon belleği bağımlılığı)."""
-    from .onbellek import anahtar, sha256
+    `sablon_parcasi` (bu dosyanın şablon belleği bağımlılığı). `mt_sha`: model metni yerine özeti (metin yoksa)."""
+    from .onbellek import anahtar
     from .ocr import tesseract_version
     kk = sorted((k, v.get("karar"), json.dumps(v.get("kutu")), v.get("kaynak")) for k, v in kararlar.items())
     ocr = raster_ocr_available()
     return anahtar("aday", sha, KURAL_SURUM, _kod_izi(), kural_izi(rules), eng, kind, kk,
-                   sha256(model_text.encode("utf-8")) if model_text is not None else None,
+                   model_sha(model_text) if model_text is not None else mt_sha,
                    ocr, tesseract_version() if ocr else None, sablon)
 
 
 def mask_cached(src: Path, dst: Path, rules: MaskRules, eng: str, model_text: str | None = None, *,
                 kararlar: dict[str, dict] | None = None, sha: str | None = None, kind: str | None = None,
-                temiz: Path | None = None) -> dict:
+                temiz: Path | None = None, cikti_kaydet: bool = False) -> dict:
     """`mask_and_check` + önbellek `aday` katmanı: değişmeyen dosya (aynı içerik, kural, BU dosyanın kararları,
     model metni, şablon belleğinin bu dosyaya katkısı) yeniden işlenmez; kayıt, maskeli kopya ve çerçevesiz hâli
     önbellekten gelir. Anahtar iki adımlıdır: temel anahtar (şablon dışı her şey) → `aday_iz` katmanında dosyanın
-    son işlenişinde belleğe danıştığı sayfa izleri → bu izlerin bugünkü bellek sonucu tam anahtara girer."""
+    son işlenişinde belleğe danıştığı sayfa izleri → bu izlerin bugünkü bellek sonucu tam anahtara girer.
+    `cikti_kaydet` (kaynak kip): maskeli kopyanın sha256'sı → bu sonuç (`kaynak_cikti`; bkz. `kaynak_sonucu`)."""
     from . import bolge as BG
     from . import onbellek
     from . import sablon as SB
@@ -439,6 +463,9 @@ def mask_cached(src: Path, dst: Path, rules: MaskRules, eng: str, model_text: st
                     temiz.parent.mkdir(parents=True, exist_ok=True)
                     temiz.write_bytes(tblob)
                 rec = hit["rec"]
+                if cikti_kaydet:
+                    _cikti_kaydet(ob, dst, temiz, rec, key, {"sha": sha, "kind": kind,
+                                                             "mt": model_sha(model_text), "izler": dep["izler"]})
                 rec["onbellek"] = True
                 return rec
     once = SB.iz_kaydi_baslat()
@@ -457,6 +484,74 @@ def mask_cached(src: Path, dst: Path, rules: MaskRules, eng: str, model_text: st
             ob.put("aday_temiz", key, temiz.read_bytes())
         ob.put_json("aday", key, {"rec": rec, "cikti": has, "temiz": has_t})
         ob.put_json("aday_iz", temel, {"izler": izler})
+        if cikti_kaydet:
+            _cikti_kaydet(ob, dst, temiz, rec, key, {"sha": sha, "kind": kind, "mt": model_sha(model_text),
+                                                     "izler": izler})
+    return rec
+
+
+# Kaynak kip (`--kaynak -w`) ile kanıt kipi (`-w`) arasında sonuç paylaşımı. Panel akışında bidr'in kaynağı kaynak
+# kipin maskeli ağacıdır; kanıt dosyası o ağaçtaki maskeli kopyanın bayt bayt aynısıdır (PDF parçası kesilmediyse).
+# Kanıt kipi bu dosyanın sha256'sıyla `kaynak_cikti`'ya bakar; kaynak kipteki sonuç bugün de geçerliyse (aynı
+# özgün içerik, kural/kod sürümü, motor, o belgenin kararları, şablon katkısı) yeniden maskelemez: kayıt (bölgeler,
+# kararlar), maskeli kopya (dosyanın kendisi) ve çerçevesiz hâli önbellekten gelir.
+
+def _acik_oneri(rec: dict) -> bool:
+    from . import bolge as BG
+    return any(not b.get("kapali") for b in BG.onay_bekleyen(rec.get("bolgeler")))
+
+
+def _cikti_kaydet(ob, dst: Path, temiz: Path | None, rec: dict, key: str, girdi: dict) -> None:
+    from . import onbellek
+    if rec.get("durum") == "hata" or not dst.is_file():
+        return
+    has_t = temiz is not None and temiz.is_file()
+    if _acik_oneri(rec) and not has_t:
+        return                     # çerçeveli kopyanın çerçevesiz hâli yok (eski önbellek kaydı): paylaşılmaz
+    ck = onbellek.anahtar("kaynak_cikti", onbellek.sha256_file(dst))
+    if has_t:
+        ob.put("kaynak_cikti_temiz", ck, temiz.read_bytes())
+    ob.put_json("kaynak_cikti", ck, {"key": key, "girdi": girdi, "temiz": has_t,
+                                     "rec": {k: v for k, v in rec.items() if k != "onbellek"}})
+
+
+def kaynak_sonucu(src: Path, sha: str, dst: Path, rules: MaskRules, eng: str, model_text: str | None, *,
+                  kararlar: dict[str, dict] | None = None, temiz: Path | None = None) -> dict | None:
+    """Kanıt dosyası (`src`, sha256 `sha`) kaynak kipin maskeli çıktısıysa ve o sonuç bugün de geçerliyse kaydı
+    (`dst`'ye dosyanın kopyası, `temiz`'e çerçevesiz hâli yazılır); değilse None (dosya normal işlenir). Modelin
+    okuma metni kaynak kipte denetlenmediyse ve metinde kişisel veri türü (`MODEL_KINDS`) görünüyorsa paylaşılmaz."""
+    from . import bolge as BG
+    from . import onbellek
+    from .detect import detect
+    ob = onbellek.aktif()
+    if ob is None:
+        return None
+    ck = onbellek.anahtar("kaynak_cikti", sha)
+    v = ob.get_json("kaynak_cikti", ck)
+    if not isinstance(v, dict) or not isinstance(v.get("girdi"), dict) or not isinstance(v.get("rec"), dict):
+        return None
+    g = v["girdi"]
+    try:
+        mine = BG.dosya_kararlari(kararlar or {}, g["sha"][:8])
+        temel = aday_anahtari(g["sha"], rules, eng, mine, None, g.get("kind"), mt_sha=g.get("mt"))
+        if onbellek.anahtar(temel, sablon_parcasi(g.get("izler") or [])) != v.get("key"):
+            return None
+    except (KeyError, TypeError):
+        return None
+    if model_text is not None and model_sha(model_text) != g.get("mt") and \
+            any(f.kind in MODEL_KINDS for f in detect(model_text, rules)):
+        return None
+    tblob = ob.get("kaynak_cikti_temiz", ck) if v.get("temiz") and temiz is not None else None
+    if v.get("temiz") and temiz is not None and tblob is None:
+        return None
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(src, dst)
+    if tblob is not None:
+        temiz.parent.mkdir(parents=True, exist_ok=True)
+        temiz.write_bytes(tblob)
+    rec = dict(v["rec"])
+    rec["onbellek"] = True
+    rec["kaynak_kipten"] = True
     return rec
 
 
@@ -596,7 +691,9 @@ def _isle(job: dict) -> dict:
     if mt is not None:
         rec["model_metni"] = True
     temiz = _temiz_yolu(job, dst)
-    rec.update(mask_cached(src, dst, rules, eng, model_text=mt, kararlar=job.get("kararlar"), sha=sha, kind=kind,
+    hit = kaynak_sonucu(src, sha, dst, rules, eng, mt, kararlar=job.get("kararlar"), temiz=temiz)
+    rec.update(hit if hit is not None else
+               mask_cached(src, dst, rules, eng, model_text=mt, kararlar=job.get("kararlar"), sha=sha, kind=kind,
                            temiz=temiz))
     _teslim_kopya(rec, job, temiz)
     return rec
@@ -738,6 +835,7 @@ def run(ws_root: Path, *, evidence: Path | None = None, out: Path | None = None,
                                    "siyah_altinda_kelime": sum((r.get("kapatma_olcumu") or {}).get("siyah_altinda", 0)
                                                                for r in kayitlar)},
                  "onbellekten": sum(1 for r in kayitlar if r.get("onbellek")),
+                 "kaynak_kipten": sum(1 for r in kayitlar if r.get("kaynak_kipten")),
                  "sure_sn": round(_time.monotonic() - t0, 2)},
         "ocr": raster_ocr_available(),
         "yayimlanamaz": yayimlanamaz, "uyarilar": uyarilar, "dosyalar": kayitlar,

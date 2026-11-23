@@ -1146,6 +1146,62 @@ def _imza_out(out: dict, page, bol, scale: float) -> None:
         out["bolgeler"].append(d)
 
 
+IZ_DPI = 300                    # güvenlik ağı: maskeleme hattının PDF sayfa çözünürlüğü (OCR önbelleği paylaşılır)
+
+
+def imza_izi(path, kind: str) -> list[tuple[int, tuple]]:
+    """Güvenlik ağı (m10): hiç bölge üretilmemiş dosyanın taranmış/görüntü sayfalarında imza benzeri mürekkep
+    kümesi var mı. Yalnız mevcut aday çözümlemesi (`imza.analyze`: basılı metin, çizgi, dolu blok ve kalın şekil
+    ayıklanmış mürekkepte `_signature_like` kümeleri; etiketli, etiketsiz ve metinle örtüşen adaylar) kullanılır.
+    Metin katmanlı (born-digital) sayfa, fotoğraf/afiş (renk çeşitliliği) ve sayfanın üst bandı (antet/logo)
+    bakılmaz. → [(sayfa, adayları kapsayan kutu)] (PDF: puan; görsel: bölge kutusu birimi)."""
+    def adaylar(img, words, ppi):
+        r = IM.analyze(img, words, ppi, flag_unlabeled=True)
+        bant = Y.ANTET_BANDI * img.height
+        return [b for b in list(r.kapat) + list(r.etiketsiz_kutu) + list(r.elle_kutu) if (b[1] + b[3]) / 2 > bant]
+
+    def birlesim(bs):
+        return (min(b[0] for b in bs), min(b[1] for b in bs), max(b[2] for b in bs), max(b[3] for b in bs))
+
+    out: list = []
+    if kind == "gorsel":
+        img = _open_image(path).convert("RGB")
+        if renk_cesitliligi(img) >= FOTO_RENK or not ocr_available():
+            return out
+        try:
+            bs = adaylar(img, ocr_words(img), _ppi(img))
+        except OcrFailed:
+            return out
+        if bs:
+            sc = image_scale(img)
+            out.append((1, tuple(v * sc for v in birlesim(bs))))
+        return out
+    if kind != "pdf":
+        return out
+    from .formats import _fitz
+    doc = _fitz().open(str(path))
+    try:
+        for page in doc:
+            need_ocr, has_text = page_needs_ocr(page)
+            if not need_ocr and not (has_text and _big_image(page)[1] >= 0.4):
+                continue                              # metin katmanlı sayfa (taranmış görüntü değil)
+            if not has_text and not ocr_available():
+                continue
+            img = render(page, IZ_DPI)
+            if renk_cesitliligi(img) >= FOTO_RENK:
+                continue
+            try:
+                words = text_words(page, IZ_DPI / 72.0) if has_text else ocr_words(img)
+            except OcrFailed:
+                continue
+            bs = adaylar(img, words, IZ_DPI)
+            if bs:
+                out.append((page.number + 1, tuple(to_page_rects(page, [birlesim(bs)], IZ_DPI / 72.0)[0])))
+    finally:
+        doc.close()
+    return out
+
+
 def image_imza_bolgeleri(r: "ImageScan", olcek: float) -> list[dict]:
     """Görsel taraması → m1 imza bölgeleri (kutu puan = piksel × `olcek`; `_px` piksel, `_yama` PIL)."""
     out = []

@@ -224,7 +224,13 @@ def _mask_one(src: Path, rel: str, hedef: str, dst: Path, ctx: _Ctx, kind: str) 
         return dst
     # önbellek (`-w` verildiyse `<ws>/.cache/maske.sqlite`, `aday` katmanı): değişmeyen dosya yeniden işlenmez; yarıda
     # kesilen koşunun bitmiş dosyaları yeniden denemede önbellekten gelir
-    rec.update(mask_cached(src, dst, ctx.rules, ctx.eng, model_text=mt, kararlar=ctx.kararlar, sha=sha, kind=kind))
+    # kanıt kipi bu sonucu maskeli kopyanın sha256'sıyla yeniden kullanır (`run.kaynak_sonucu`): çerçevesiz hâl de
+    # önbelleğe girsin diye geçici `temiz` verilir
+    from .onbellek import aktif
+    with tempfile.TemporaryDirectory(prefix="bidr-temiz-") as td:
+        temiz = Path(td) / f"temiz{dst.suffix}" if aktif() is not None else None
+        rec.update(mask_cached(src, dst, ctx.rules, ctx.eng, model_text=mt, kararlar=ctx.kararlar, sha=sha, kind=kind,
+                               temiz=temiz, cikti_kaydet=temiz is not None))
     if rec["durum"] == "hata":
         _copy_as_is(src, dst)
         rec["neden"] = rec["neden"] + " — özgün dosya olduğu gibi kopyalandı (kişisel veri içerebilir)"

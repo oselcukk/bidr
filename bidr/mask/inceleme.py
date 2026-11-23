@@ -194,6 +194,9 @@ def karar(ws: Path, bolge_id: str, karar_: str, kim: str | None = None) -> dict:
     if hit is None:
         raise IncelemeError(f"bölge bulunamadı: {bolge_id} (bidr maskele bolgeler -w {ws})")
     _, b = hit
+    if karar_ == "kapat" and b.get("kaynak") == "imza_izi":
+        raise IncelemeError("imza izi önerisi yalnız uyarıdır (sayfada imza benzeri iz): kapatmak için izin üstüne "
+                            "bölge çizin (`bidr maskele ciz`); kişisel veri değilse 'birak'")
     if karar_ == "kapat" and b.get("kaynak") == "model_metni":
         raise IncelemeError("model metni bölgesinin yeri bilinmiyor (yalnız sayfa): kapatmak için maskeli sürümü "
                             "elle hazırlayıp `bidr maskele yukle` kullanın; değer kişisel veri değilse 'birak'")
