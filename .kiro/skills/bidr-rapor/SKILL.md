@@ -159,8 +159,10 @@ kullanıcıya gerçekleşme belgesinin (tutanak, katılım listesi, rapor) eksik
    yazabilirsin (aşağıdaki (b) yolu; tek istisna yetki devri). `review.xlsx` son kullanıcı içindir; açılınca yalnız sade sayfalar görünür:
    - **İnceleme**: satır = bir öneri (Madde · Belge (klasördeki dosya) · Önerilen kanıt adı ·
      Belgede ne yazıyor · Neden bu maddeye · Dikkat · Önerimiz · **KARARINIZ** · Doğru madde · Not).
-     KARARINIZ: `Kabul` · `Kabul — etkinlik yapıldı` · `Ret` · `Başka maddeye taşı` (+ Doğru madde)
-     · `Başka maddeye taşı — etkinlik yapıldı`. Bölümler: 1) bakılması gerekenler (düşük güven,
+     KARARINIZ: `Kabul` · `Kabul — etkinlik yapıldı` · `Ret` · `Ret — başka maddenin konusu` (+ Doğru
+     madde; taşıma olarak uygulanır) · `Başka maddeye taşı` (+ Doğru madde)
+     · `Başka maddeye taşı — etkinlik yapıldı`. Ret nedeni başka bir maddeyse düz `Ret` verme: belge
+     rapordan düşer (`audit apply` "rapor dışına düştü" uyarısı verir). Bölümler: 1) bakılması gerekenler (düşük güven,
      işaretli, birim onayı, yeniden bakılacak), 2) sorunsuz görünenler (başlık satırındaki
      KARARINIZ hücresinde `Hepsini kabul` seçilirse boş satırlar kabul sayılır; seçilmezse boş satır
      karar bekler), 3) daha önce karar verilenler.
