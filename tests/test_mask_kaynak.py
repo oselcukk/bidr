@@ -6,6 +6,7 @@ import email
 import email.policy
 import io
 import json
+import os
 import tarfile
 import zipfile
 from email.message import EmailMessage
@@ -190,6 +191,95 @@ def test_output_rules(src, tmp_path):
     out = tmp_path / "m"
     K.run_source(src, out, rules=RULES, engine="pypdf")
     K.run_source(src, out, rules=RULES, engine="pypdf")       # kendi çıktısının üstüne yazabilir
+
+
+def _ob_temiz():
+    from bidr.mask import onbellek as OB
+    OB.ac(None)
+    OB._ACIK.clear()
+
+
+def test_kaynak_onbellek_ilerleme_ve_isaret(src, tmp_path, monkeypatch):
+    """-w ile kaynak kip çalışma alanı önbelleğini kullanır (ikinci koşu dosyaları yeniden işlemez), ilerlemeyi
+    `<ws>/maskeleme-ilerleme.json`'a yazar, işareti koşunun başında `yarim`, sonunda `tamam` yazar."""
+    _ob_temiz()
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    out = tmp_path / "maskeli"
+    goruldu = []
+    asil = K._work
+
+    def izle(args):
+        goruldu.append(K.marker_durumu(out))
+        return asil(args)
+    monkeypatch.setattr(K, "_work", izle)
+    rep = K.run_source(src, out, rules=RULES, engine="pypdf", ws=ws)
+    assert goruldu and set(goruldu) == {"yarim"}                 # koşu sürerken işaret var, "yarim"
+    assert K.marker_durumu(out) == "tamam"
+    assert (ws / ".cache" / "maske.sqlite").is_file()
+    il = json.loads((ws / K.ILERLEME).read_text(encoding="utf-8"))
+    n = rep["ozet"]["dosya"]
+    assert il["durum"] == "bitti" and il["toplam"] == il["biten"] == n == len(goruldu)
+    assert not any(NAME in v or OGR in v for v in map(str, il.values()))     # ilerlemede dosya adı yok
+    islenen = sum(1 for r in rep["dosyalar"] if r.get("sha256"))
+    assert islenen and rep["ozet"]["onbellekten"] == 0
+    def agac():   # işaret (zaman) ve yeniden paketlenen tar.gz (gzip zaman damgası) dışında
+        return {k: v for k, v in _tree_sha(out).items() if k != ".bidr-maskeleme.json" and not k.endswith(".gz")}
+    once = agac()
+    rep2 = K.run_source(src, out, rules=RULES, engine="pypdf", ws=ws)
+    assert rep2["ozet"]["onbellekten"] == islenen                 # bitmiş dosyalar baştan yapılmadı
+    assert agac() == once
+    assert os.environ.get("BIDR_MASKE_ONBELLEK") is None          # ortam geri alındı
+    rep3 = K.run_source(src, out, rules=RULES, engine="pypdf", ws=ws, onbellek_kullan=False)
+    assert rep3["ozet"]["onbellekten"] == 0
+    _ob_temiz()
+
+
+def test_kaynak_yarim_kosu_kaldigi_yerden(src, tmp_path):
+    """Zaman aşımıyla kesilen koşu: işaret `yarim`, klasörde yarım dosyalar. Yeniden koşu reddetmez; önbellekteki
+    bitmiş dosyalar yeniden işlenmez. İşaretsiz (bidr'in olmayan) dolu klasör yine reddedilir."""
+    _ob_temiz()
+    from bidr.mask.run import MARKER, MaskRunError
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    out = tmp_path / "maskeli"
+    rep = K.run_source(src, out, rules=RULES, engine="pypdf", ws=ws)
+    # kesilmiş koşunun izi: işaret "yarim", bir dosya eksik, bir dosya yarım yazılmış
+    (out / MARKER).write_text(json.dumps({"surum": 1, "mod": "kaynak", "durum": "yarim"}), encoding="utf-8")
+    (out / "eski.doc").unlink()
+    (out / "Kurul" / "karar.pdf").write_bytes(b"%PDF yarim")
+    assert K.marker_durumu(out) == "yarim"
+    rep2 = K.run_source(src, out, rules=RULES, engine="pypdf", ws=ws)
+    assert K.marker_durumu(out) == "tamam"
+    assert rep2["ozet"]["onbellekten"] == sum(1 for r in rep["dosyalar"] if r.get("sha256"))
+    assert (out / "Kurul" / "karar.pdf").read_bytes() != b"%PDF yarim" and (out / "eski.doc").is_file()
+    eski = tmp_path / "eski-surum"
+    eski.mkdir()
+    (eski / MARKER).write_text(json.dumps({"surum": 1, "mod": "kaynak"}), encoding="utf-8")
+    assert K.marker_durumu(eski) == "tamam"                       # eski işaret (durum alanı yok): bitmiş koşu
+    yabanci = tmp_path / "yabanci"
+    yabanci.mkdir()
+    (yabanci / "x.pdf").write_bytes(b"%PDF")
+    assert K.marker_durumu(yabanci) is None
+    with pytest.raises(MaskRunError):
+        K.run_source(src, yabanci, rules=RULES, engine="pypdf", ws=ws)
+    _ob_temiz()
+
+
+def test_kaynak_paralel_sira_ve_ilerleme(src, tmp_path):
+    """--is 2: rapor sırası iş sırasıdır (tamamlanma sırası değil); ilerleme her dosyada artar."""
+    _ob_temiz()
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    adimlar = []
+    r1 = K.run_source(src, tmp_path / "a", rules=RULES, engine="pypdf")
+    r2 = K.run_source(src, tmp_path / "b", rules=RULES, engine="pypdf", ws=ws, workers=2,
+                      progress=lambda i, n, rel: adimlar.append((i, n)))
+    assert [r["dosya"] for r in r1["dosyalar"]] == [r["dosya"] for r in r2["dosyalar"]]
+    n = r2["ozet"]["dosya"]
+    assert [i for i, _ in adimlar] == list(range(1, n + 1)) and {m for _, m in adimlar} == {n}
+    assert json.loads((ws / K.ILERLEME).read_text(encoding="utf-8"))["biten"] == n
+    _ob_temiz()
 
 
 def test_corrupt_archive_copied_and_flagged(tmp_path):

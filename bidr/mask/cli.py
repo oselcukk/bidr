@@ -3,6 +3,8 @@
 - teslim/yayın kopyası: `bidr maskele -w WS [--evidence DIR] [--out DIR] [--motor …] [--ad-listesi DOSYA]`
 - model öncesi kaynak maskeleme: `bidr maskele --kaynak BÖLÜM_KLASÖRÜ --out MASKELİ_KOPYA [-w WS]
   [--motor …] [--ad-listesi DOSYA] [--is N] [--rapor DOSYA] [--ayir]`
+  (`-w` ile: çalışma alanı önbelleği `.cache/maske.sqlite`, ilerleme `<ws>/maskeleme-ilerleme.json`; işaret
+  `.bidr-maskeleme.json` koşunun başında `durum: yarim`, sonunda `tamam`: kesilen koşu kaldığı yerden sürer)
 
 İnsan kontrolü (teslim kapısı; bkz. `inceleme`):
 
@@ -49,7 +51,7 @@ def _run_source(args) -> int:
     try:
         r = run_source(Path(args.kaynak), Path(args.out), rules=_rules(args, ws), engine=args.motor,
                        workers=max(1, args.is_ or 1), report=Path(args.rapor) if args.rapor else None,
-                       progress=progress, ayir=args.ayir, ws=ws)
+                       progress=progress, ayir=args.ayir, ws=ws, onbellek_kullan=not args.onbellek_yok)
     except (FileNotFoundError, MaskRunError, MaskError, ValueError) as e:
         print(f"HATA {e}", file=sys.stderr)
         return 2
@@ -256,10 +258,12 @@ def register(sub):
                    help="--kaynak modu: maskelemesi eksik kalan/maskelenemeyen dosyalar maskeli kopyaya girmez; "
                         "<out>.elle-bakilmali/ klasörüne ayrılır ve raporda listelenir (varsayılan: kopyada kalır)")
     p.add_argument("--is", dest="is_", type=int, default=None,
-                   help="paralel işçi sayısı (varsayılan: kanıt modunda 2, --kaynak modunda 1)")
+                   help="paralel işçi sayısı (varsayılan: kanıt modunda 2, --kaynak modunda 1; işleyici çekirdek "
+                        "sayısını verir)")
     p.add_argument("--ilerleme", action="store_true", help="dosya başına ilerleme yaz")
     p.add_argument("--onbellek-yok", action="store_true",
-                   help="kanıt modu: çalışma alanı önbelleğini (.cache/maske.sqlite) kullanma")
+                   help="çalışma alanı önbelleğini (.cache/maske.sqlite) kullanma (kanıt modu; --kaynak modunda "
+                        "-w verildiyse)")
     p.add_argument("--motor", choices=("auto", "pymupdf", "pypdf"), default="auto",
                    help="PDF motoru: pymupdf gerçek kaldırma; pypdf en iyi çaba (varsayılan: varsa pymupdf)")
     p.add_argument("--ad-listesi", default=None,

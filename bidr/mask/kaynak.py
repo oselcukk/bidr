@@ -40,7 +40,7 @@ import tarfile
 import tempfile
 import zipfile
 from collections import Counter
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
@@ -50,9 +50,10 @@ from .detect import MaskRules, detect, mask_text
 from .eski import LEGACY_EXT, ConvertError, convert as convert_legacy
 from .formats import kind_of as mask_kind, mask_html, pdf_engine
 from .ocr import ocr_available
-from .run import MARKER, MaskRunError, _c, _inside, _prepare_dir, mask_and_check
+from .run import MARKER, MaskRunError, _c, _inside, _prepare_dir, mask_cached
 
 SURUM = 1
+ILERLEME = "maskeleme-ilerleme.json"      # -w verilince çalışma alanına: {toplam, biten, durum, …} (dosya adı yok)
 REPORT_SUFFIX = ".maskeleme-raporu.json"
 SIKI_SUFFIX = ".elle-bakilmali"
 ADDR_HEADERS = {"from", "to", "cc", "bcc", "reply-to", "sender", "return-path", "delivered-to",
@@ -221,7 +222,9 @@ def _mask_one(src: Path, rel: str, hedef: str, dst: Path, ctx: _Ctx, kind: str) 
                    elle_yukleme={k: e.get(k) for k in ("kim", "zaman", "sha256")})
         _record(ctx, rel, hedef, **rec)
         return dst
-    rec.update(mask_and_check(src, dst, ctx.rules, ctx.eng, model_text=mt, kararlar=ctx.kararlar, sha=sha, kind=kind))
+    # önbellek (`-w` verildiyse `<ws>/.cache/maske.sqlite`, `aday` katmanı): değişmeyen dosya yeniden işlenmez; yarıda
+    # kesilen koşunun bitmiş dosyaları yeniden denemede önbellekten gelir
+    rec.update(mask_cached(src, dst, ctx.rules, ctx.eng, model_text=mt, kararlar=ctx.kararlar, sha=sha, kind=kind))
     if rec["durum"] == "hata":
         _copy_as_is(src, dst)
         rec["neden"] = rec["neden"] + " — özgün dosya olduğu gibi kopyalandı (kişisel veri içerebilir)"
@@ -628,7 +631,10 @@ def _files(src: Path) -> tuple[list[Path], list[str]]:
 
 
 def _work(args) -> list[dict]:
-    src, rel, hedef, dst, rules, eng, ayir, mtext, ws = args
+    src, rel, hedef, dst, rules, eng, ayir, mtext, ws, ob_yol = args
+    from . import onbellek
+    if ob_yol:                  # işçi süreç: etkin önbellek (ana süreç `onbellek.ac` ile ortama koydu; açıkça da verilir)
+        os.environ[onbellek.ENV] = ob_yol
     ctx = _Ctx(rules, eng, Path(ayir) if ayir else None, mtext, ws)
     once = os.environ.get("BIDR_MASKE_WS")
     if ws:                      # çalışma alanının form şablon belleği (kullanıcı çizimi önerileri; raster._sablonlar)
@@ -671,11 +677,44 @@ def ayir_path(out: Path) -> Path:
     return out.parent / (out.name + SIKI_SUFFIX)
 
 
+def _marker_yaz(d: Path, **alan) -> None:
+    (d / MARKER).write_text(json.dumps({"surum": SURUM, **alan}, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def marker_durumu(d: Path) -> str | None:
+    """Maskeli kopya klasörünün işareti: None (işaret yok: bidr'in değil ya da hiç koşmadı), "yarim" (koşu başladı,
+    bitmedi: kesildi ya da sürüyor) ya da "tamam". Eski işaret (durum alanı yok) bitmiş koşunundur."""
+    try:
+        j = json.loads((Path(d) / MARKER).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return str(j.get("durum") or "tamam") if isinstance(j, dict) else None
+
+
+def _ilerleme_yaz(p: Path | None, **alan) -> None:
+    if p is None:
+        return
+    try:
+        tmp = p.with_name(p.name + ".tmp")
+        tmp.write_text(json.dumps({"surum": SURUM, "mod": "kaynak", **alan,
+                                   "zaman": datetime.now().astimezone().isoformat(timespec="seconds")},
+                                  ensure_ascii=False), encoding="utf-8")
+        tmp.replace(p)
+    except OSError:
+        pass
+
+
 def run_source(source: Path, out: Path, *, rules: MaskRules | None = None, engine: str = "auto",
                workers: int = 1, report: Path | None = None, progress=None, ayir: bool = False,
-               ws: Path | None = None) -> dict:
+               ws: Path | None = None, onbellek_kullan: bool = True) -> dict:
     """`ws`: çalışma alanı verilirse ve kaynak daha önce okunmuşsa (`inventory.csv` + `text/<doc_id>.txt`)
-    modelin okuma metniyle el yazısı denetimi yapılır (bkz. `run.model_text_gaps`)."""
+    modelin okuma metniyle el yazısı denetimi yapılır (bkz. `run.model_text_gaps`); ayrıca çalışma alanının
+    önbelleği (`.cache/maske.sqlite`, `onbellek_kullan`) kullanılır ve ilerleme `<ws>/maskeleme-ilerleme.json`'a
+    yazılır (toplam, biten; dosya adı yazılmaz).
+
+    Yeniden başlatılabilir: maskeli kopyanın işareti (`.bidr-maskeleme.json`) koşunun BAŞINDA `durum: "yarim"`
+    olarak yazılır, sonunda `"tamam"` olur. Kesilen koşunun klasörü bidr'in kendi çıktısı olarak tanınır (yeniden
+    koşu "bidr'in üretmediği dosyalar" diye reddetmez); bitmiş dosyalar önbellekten gelir, kaldığı yerden sürer."""
     src = Path(source).expanduser().resolve()
     if not src.is_dir():
         raise FileNotFoundError(f"kaynak klasör yok: {src}")
@@ -691,8 +730,11 @@ def run_source(source: Path, out: Path, *, rules: MaskRules | None = None, engin
     rules = rules or MaskRules()
     eng = pdf_engine(engine)
     _prepare_dir(out)
+    bas = datetime.now().astimezone().isoformat(timespec="seconds")
+    _marker_yaz(out, mod="kaynak", durum="yarim", zaman=bas)
     if ayir_d is not None:
         _prepare_dir(ayir_d)
+        _marker_yaz(ayir_d, mod="kaynak-ayir", durum="yarim", zaman=bas)
     uyarilar = list(rules.warnings)
     if not ocr_available():
         uyarilar.append("OCR yok (tesseract + tur/eng dil verisi): taranmış sayfalar ve görseller taranamadı; "
@@ -702,28 +744,70 @@ def run_source(source: Path, out: Path, *, rules: MaskRules | None = None, engin
                         "sayfalardaki veri ve imzalar kapatılamaz (`pip install 'bidr[maske]'`)")
     files, skipped = _files(src)
     namer = _Namer(rules)
+    from . import onbellek
     from .run import source_model_texts
-    mtexts = source_model_texts(Path(ws).expanduser().resolve()) if ws else {}
+    wsr = Path(ws).expanduser().resolve() if ws else None
+    mtexts = source_model_texts(wsr) if wsr else {}
+    env_once = {k: os.environ.get(k) for k in (onbellek.ENV, "BIDR_MASKE_WS")}
+    ob_yol = None
+    if wsr is not None and onbellek_kullan:
+        onbellek.ac(wsr)
+        ob_yol = str((wsr / onbellek.DOSYA).resolve())
+    elif not onbellek_kullan:
+        os.environ.pop(onbellek.ENV, None)
+    ilerleme_p = wsr / ILERLEME if wsr is not None else None
+    if ilerleme_p is not None and (_inside(ilerleme_p, src) or _inside(ilerleme_p, out)):
+        ilerleme_p = None
+    try:
+        records = _run_jobs(src, out, files, namer, mtexts, rules, eng, ayir_d, wsr, ob_yol, workers, progress,
+                            ilerleme_p, bas)
+    finally:
+        for k, v in env_once.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+    return _finish(src, out, rep_p, ayir_d, ayir, rules, eng, uyarilar, files, skipped, records, ws, bas)
+
+
+def _run_jobs(src, out, files, namer, mtexts, rules, eng, ayir_d, wsr, ob_yol, workers, progress, ilerleme_p,
+              bas) -> list[dict]:
     jobs = []
     for p in files:
         rel = p.relative_to(src).as_posix()
         hedef = "/".join(namer.path(rel.split("/")))
         mt = mtexts.get(rel)
         jobs.append((str(p), rel, hedef, str(out / hedef), rules, eng, str(ayir_d) if ayir_d else None,
-                     str(mt) if mt else None, str(Path(ws).expanduser().resolve()) if ws else None))
-    records: list[dict] = []
-    if workers > 1 and len(jobs) > 1:
+                     str(mt) if mt else None, str(wsr) if wsr else None, ob_yol))
+    n = len(jobs)
+    _ilerleme_yaz(ilerleme_p, durum="suruyor", toplam=n, biten=0, baslangic=bas)
+    sonuc: list[list[dict] | None] = [None] * n
+
+    def bitti(i: int, k: int) -> None:
+        if progress:
+            recs = sonuc[k]
+            progress(i, n, recs[0]["dosya"] if recs else jobs[k][1])
+        _ilerleme_yaz(ilerleme_p, durum="suruyor", toplam=n, biten=i, baslangic=bas)
+    if workers > 1 and n > 1:
+        # tamamlanma sırasıyla ilerleme (yavaş bir dosya sayacı tutmasın); rapor sırası iş sırasıdır
         with ProcessPoolExecutor(max_workers=workers) as ex:
-            for i, recs in enumerate(ex.map(_work, jobs, chunksize=1), 1):
-                records += recs
-                if progress:
-                    progress(i, len(jobs), recs[0]["dosya"] if recs else "")
+            fut = {ex.submit(_work, j): k for k, j in enumerate(jobs)}
+            for i, f in enumerate(as_completed(fut), 1):
+                k = fut[f]
+                sonuc[k] = f.result()
+                bitti(i, k)
     else:
-        for i, j in enumerate(jobs, 1):
-            recs = _work(j)
-            records += recs
-            if progress:
-                progress(i, len(jobs), j[1])
+        for k, j in enumerate(jobs):
+            sonuc[k] = _work(j)
+            bitti(k + 1, k)
+    records: list[dict] = []
+    for recs in sonuc:
+        records += recs or []
+    _ilerleme_yaz(ilerleme_p, durum="bitti", toplam=n, biten=n, baslangic=bas)
+    return records
+
+
+def _finish(src, out, rep_p, ayir_d, ayir, rules, eng, uyarilar, files, skipped, records, ws, bas) -> dict:
     for r in records:
         r.setdefault("elle_bakilmali", False)
     durumlar = Counter(r["durum"] for r in records)
@@ -748,6 +832,7 @@ def run_source(source: Path, out: Path, *, rules: MaskRules | None = None, engin
                  "imza_ortusen_kelime": sum(r.get("imza_ortusen_kelime", 0) for r in records),
                  "imza_metinle_ortusen_elle": sum(r.get("imza_metin_elle", 0) for r in records),
                  "eski_bicim_cevrilen": sum(1 for r in records if r.get("donusum")),
+                 "onbellekten": sum(1 for r in records if r.get("onbellek")),
                  "model_metni_denetlenen": sum(1 for r in records if r.get("model_metni")),
                  "el_yazisi_elle_dosya": sum(1 for r in records if r.get("el_yazisi_elle")),
                  **({"ayrilan": len(ayrilan)} if ayir else {}),
@@ -758,8 +843,7 @@ def run_source(source: Path, out: Path, *, rules: MaskRules | None = None, engin
     if ayir_d is not None:
         rapor["ayrilan_klasor"] = str(ayir_d)
         rapor["ayrilan"] = ayrilan
-        (ayir_d / MARKER).write_text(json.dumps({"surum": SURUM, "mod": "kaynak-ayir", "rapor": str(rep_p)},
-                                                ensure_ascii=False, indent=1), encoding="utf-8")
+        _marker_yaz(ayir_d, mod="kaynak-ayir", durum="tamam", zaman=bas, rapor=str(rep_p))
     rep_p.parent.mkdir(parents=True, exist_ok=True)
     rep_p.write_text(json.dumps(rapor, ensure_ascii=False, indent=1), encoding="utf-8")
     if ws:
@@ -770,6 +854,5 @@ def run_source(source: Path, out: Path, *, rules: MaskRules | None = None, engin
             tmp.write_text(json.dumps(dict(rapor, rapor=str(rep_p)), ensure_ascii=False, indent=1), encoding="utf-8")
             tmp.replace(wr)
     rapor["rapor"] = str(rep_p)
-    marker = {"surum": SURUM, "mod": "kaynak", "zaman": rapor["zaman"], "rapor": str(rep_p)}
-    (out / MARKER).write_text(json.dumps(marker, ensure_ascii=False, indent=1), encoding="utf-8")
+    _marker_yaz(out, mod="kaynak", durum="tamam", zaman=rapor["zaman"], baslangic=bas, rapor=str(rep_p))
     return rapor
