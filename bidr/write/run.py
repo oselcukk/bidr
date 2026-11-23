@@ -239,6 +239,9 @@ def render_evidence(ev: list[dict], cs, donem: int | None = None) -> str:
                                      f"tarih: {e['tarih']}" if e["tarih"] else "") if x)
         if info:
             lines.append(f"  {info}")
+        # belge kimliği bağlamı (yalnız doğrulama paketi verir; bkz. bidr/verify/run.py `identity`)
+        for x in e.get("kimlik") or []:
+            lines.append(f"  kimlik — {x}")
         # önce bölümün kendi gösterge verisi, belgedeki dönem içi kayıtlar ve ölçütün sorduğu bilgi
         for i, x in enumerate(e.get("bolum_verisi") or [], 1):
             lines.append(f"  bölümün kendi verisi {i}: «{x}»")

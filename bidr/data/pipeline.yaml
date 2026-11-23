@@ -422,7 +422,7 @@ asamalar:
         Her metnin güncel doğrulama kaydı var (dogrulandi ya da reddedildi). Reddedilen ölçüt
         `bidr write prepare --reddedilenler` ile doğrulayıcının cümle bazlı gerekçesiyle yeniden yazılır ve
         yeniden doğrulanır; config.yaml rapor.yeniden_yazim_siniri (vars. 2) turdan sonra hâlâ reddedilen ölçüt
-        için kullanıcı karar verir (bidr verify karar: cikar | tekrar).
+        için kullanıcı karar verir (bidr verify karar: cikar | tekrar | kabul).
     onay: yok
     skill: bidr-rapor
     paralel:

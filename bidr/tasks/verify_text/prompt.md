@@ -1,12 +1,14 @@
 Görev: Bir kalite raporunun (BİDR) aşağıdaki açıklama metnini cümle cümle doğrulayacaksın. Metni sen yazmadın; yazarın niyetini bilmiyorsun. Tek ölçüt: cümlenin söylediği, atıf yaptığı kanıtın alıntısında ya da belge bağlamında açıkça görülüyor mu?
 
 Karar (her cümle için bir tane, yer kimliğiyle):
-- "destekleniyor": cümledeki her iddia (eylem, kurul/belge adı, sayı, tarih, kapsam, sıklık) atıf yapılan kanıtlarda açıkça var.
+- "destekleniyor": cümledeki her iddia (eylem, kurul/belge adı, sayı, tarih, kapsam, sıklık) atıf yapılan kanıtlarda açıkça var (belgenin hangi birime/programa ait olduğu ve ne olduğu kimlik satırlarından; bkz. kural 1).
 - "kismen": ana iddia kanıtta var ama cümle kanıtın ötesine geçen bir öğe ekliyor (ör. "düzenli olarak", "tüm dersler", "paydaşlarla birlikte", bir sayı/tarih, kanıtta olmayan bir sonuç). Gerekçede fazlalığı tam olarak yaz.
 - "desteklenmiyor": iddia kanıtta yok, kanıtla çelişiyor ya da kanıt başka bir şeyi gösteriyor.
 
 Kurallar:
-1. Yalnız aşağıdaki KANITLAR bölümündeki alıntı ve bağlama bak. Kanıtın adı tek başına iddiayı desteklemez (ad, içeriğin ne olduğunu kanıtlamaz). Genel bilgi ya da "böyle belgelerde genelde vardır" çıkarımı kullanma.
+1. Yalnız aşağıdaki KANITLAR bölümündeki alıntı, bağlam ve "kimlik —" satırlarına bak. Genel bilgi ya da "böyle belgelerde genelde vardır" çıkarımı kullanma.
+   Belge kimliği ile içerik ayrıdır. Belgenin KİMLİĞİ — hangi birime/programa ait olduğu (ör. Matematik lisans programı, Matematik yüksek lisans) ve ne olduğu (ör. "YL giriş sınavı sonuçları", "program çıktıları matrisi", "Erasmus anlaşmaları listesi") — kanıtın "kimlik —" satırlarından belirlenir: kanıt adı (insan düzeltmesi ya da inceleme tablosunda kabul edilmiş eşleşme), birim ilişkisi kararı (birimin kendi belgesi / insan kararı), kaynak klasör yolu ve bölümün belge notu. Cümledeki belge kimliği iddiası bu satırlarla uyuşuyorsa, alıntı bunu ayrıca yazmıyor diye (ör. "matrisin Matematik lisans programına ait olduğu alıntıda yazmıyor", "listenin YL giriş sınavı sonuçları olduğu alıntıda yazmıyor", "sütun başlıkları görünmüyor") "kismen" ya da "desteklenmiyor" deme. Kimlik satırlarıyla çelişen kimlik iddiası (başka birim, başka program, başka belge türü) yine "desteklenmiyor"dur.
+   Belgenin İÇERİĞİNE dair iddiaları — sayılar, tarihler, kişi/kurul kararları, ne yapıldığı, kapsam ve sıklık — alıntı ve bağlam desteklemelidir; kanıtın adı ya da notu tek başına içerik iddiasını desteklemez.
 2. Kurum geneli yönetmelik/yönerge yalnız kuralın varlığını destekler; bölümün uyguladığını desteklemez.
 3. Olgunluk dili: "izlenmekte", "iyileştirilmiştir", "sistematik", "önlem alınmış" gibi ifadeler, izleme/iyileştirme sonucunu gösteren kanıt yoksa desteklenmez.
 4. "o." ile başlayan cümleler önceki yılla karşılaştırmadır: "önceki yıl yoktu" kısmını ÖNCEKİ YIL METNİ'ne, bu yıla ait kısmını kanıta karşı denetle.

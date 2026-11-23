@@ -16,6 +16,8 @@ def _cmd(args) -> int:
             print(f"{r['olcut']}: {r['karar']} kaydedildi (tur {r['tur']}, sınır {r['sinir']})")
             if r["karar"] == "tekrar":
                 print("Sıradaki: bidr write prepare -w <ws> --reddedilenler")
+            elif r["karar"] == "kabul":
+                print(f"{r['olcut']}: metin insan onayıyla rapora girer (doğrulayıcı reddi kayıtta kalır)")
             return 0
         if args.action == "prepare":
             st = R.prepare(args.workspace, only=olcut_list(args.only), redo=args.redo, index=args.index,
@@ -23,6 +25,9 @@ def _cmd(args) -> int:
             print(f"{st['metin']} metin: {st['paket']} paket ({st['yeni']} yeni/değişen), "
                   f"zaten_tamam={st['zaten_tamam']}, kod denetiminde reddedilen={len(st['kod_reddi'])}, "
                   f"bekleyen {st['bekleyen']} → {st['klasor']}")
+            if st.get("yeni_surum"):
+                print(f"  görevin eski sürümüyle reddedilmiş metin (belge kimliği kuralıyla yeniden doğrulanır): "
+                      f"{', '.join(st['yeni_surum'])}")
             if st.get("yeni_kural"):
                 print(f"  doğrulanmış ama sonradan eklenen içerik kuralına takılan metin (tur sayacı sıfırlandı, "
                       f"yeniden yazıma gider): {', '.join(st['yeni_kural'])}")
@@ -86,10 +91,11 @@ def register(sub):
     a.add_argument("--notlar", help="komisyon bilgisi YAML'ı (vars. son write prepare'in kullandığı)")
     a.set_defaults(func=_cmd)
     a = act.add_parser("karar", help="KULLANICININ kararı, reddedilen metin için: cikar (rapora girmez) | "
-                                     "tekrar (bir yeniden yazım turu daha) → verify-insan.jsonl")
+                                     "tekrar (bir yeniden yazım turu daha) | kabul (doğrulayıcının "
+                                     "itirazı yerinde değil: metin olduğu gibi rapora girer) → verify-insan.jsonl")
     a.add_argument("--workspace", "-w", required=True)
     a.add_argument("olcut")
-    a.add_argument("karar", choices=["cikar", "tekrar"])
+    a.add_argument("karar", choices=["cikar", "tekrar", "kabul"])
     a.add_argument("--not", dest="note", default="", help="kullanıcının gerekçesi (kayda geçer)")
     a.set_defaults(func=_cmd)
     a = act.add_parser("apply", help="<ölçüt>.out.json kararlarını işle: dogrulandi / reddedildi")

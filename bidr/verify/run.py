@@ -26,7 +26,19 @@ yeniden yazıma gider (tur sayısı metnin `tur` alanı). `limit_for` turdan (co
 `rapor.yeniden_yazim_siniri`, vars. 2; kullanıcının her `tekrar` kararı bir tur ekler) sonra
 hâlâ reddedilen ölçüt "insan gerekli"dir. Kullanıcının kararı `bidr verify karar`:
 `cikar` (metin rapora girmez; render "rapora alınmamıştır" yazar, belge bu yüzden taslak
-sayılmaz) ya da `tekrar` (bir yeniden yazım turu daha) → `verify-insan.jsonl`.
+sayılmaz), `tekrar` (bir yeniden yazım turu daha) ya da `kabul` (doğrulayıcının itirazı yerinde
+değil: metin olduğu gibi rapora girer; `durum: dogrulandi`, `insan_karari: kabul`, kayıtta "insan
+onayıyla kabul (doğrulayıcı reddi: …)" izi ve doğrulayıcının gerekçesi kalır; yalnız ajan reddi —
+kod denetimi reddi atıf/alıntı/OD kusurudur, insan onayıyla geçilmez) → `verify-insan.jsonl`.
+İnsan onayı o metnin içeriğine (`metin_sha`) bağlıdır; `prepare` (`--redo` dahil) onu yeniden doğrulamaz.
+
+Belge kimliği (görev v4, 2026-11-23): doğrulayıcı kanıtın kimlik bağlamını da görür — kanıt adı ve
+kaynağı (insan düzeltmesi / inceleme kabulü), birim ilişkisi kararı (insan ya da model), kaynak klasör
+yolu ve bölümün belge notu (`kimlik_baglami`). Cümledeki belge kimliği iddiası (hangi birim/program,
+hangi belge türü: "Matematik YL giriş sınavı sonuçları") bu bağlamla uyuşuyorsa "kismen" sayılmaz;
+alıntının desteklemesi gereken içerik iddialarıdır (sayı, tarih, ne yapıldığı). Sürüm artışı
+doğrulanmış metinleri yeniden doğrulatmaz (sonuçlanmış kayıt sürüme bakmaz); yalnız eski sürümle
+ajan reddi almış metin bir kez yeniden doğrulanır (`stale_reject`), bekleyen paketler yenilenir.
 """
 from __future__ import annotations
 
@@ -43,7 +55,8 @@ TASK = "verify_text"
 STAGE = "verify"
 LOG = "verify.jsonl"
 HUMAN = "verify-insan.jsonl"
-HUMAN_KARARLAR = ("cikar", "tekrar")
+HUMAN_KARARLAR = ("cikar", "tekrar", "kabul")
+KABUL_IZI = "insan onayıyla kabul"
 FINAL = ("dogrulandi", "reddedildi")
 RULE = ("Her cümleyi yalnız atıf yaptığı kanıtın alıntısı ve bağlamıyla karşılaştır "
         "(destekleniyor / kismen / desteklenmiyor + gerekçe); listedeki her cümleye bir karar ver. "
@@ -87,6 +100,19 @@ def excluded(t: dict, human: list[dict]) -> bool:
     return any(r["olcut"] == t["olcut"] and r["karar"] == "cikar" and r.get("metin_sha") == sha for r in human)
 
 
+def accepted(t: dict, human: list[dict]) -> bool:
+    """Kullanıcı bu reddedilmiş metni (aynı içerik) olduğu gibi kabul etti mi."""
+    sha = W.text_sha(t)
+    return any(r["olcut"] == t["olcut"] and r["karar"] == "kabul" and r.get("metin_sha") == sha for r in human)
+
+
+def stale_reject(rec: dict | None) -> bool:
+    """Ajan reddi görevin eski sürümüyle mi verildi (v4 belge kimliği kuralından önce): bu metin
+    bir kez yeniden doğrulanır. Doğrulanmış ve kod reddi kayıtları etkilenmez."""
+    return bool(rec) and rec.get("durum") == "reddedildi" and rec.get("asama") == "model" \
+        and str(rec.get("gorev_surumu")) != W.task_version(TASK)
+
+
 def rejected(ws: Workspace, log: dict | None = None, only: list[str] | None = None) -> dict[str, dict]:
     """Doğrulamada (kod ya da ajan) reddedilmiş, kaydı güncel metinler: {ölçüt: metin}."""
     log = load_log(ws) if log is None else log
@@ -110,8 +136,14 @@ def decide(ws_root: Path, olcut: str, karar: str, note: str = "") -> dict:
     log = load_log(ws)
     if olcut not in rejected(ws, log, only=[olcut]):
         raise ValueError(f"{olcut} doğrulamada reddedilmiş (güncel kayıtlı) bir metin değil (durum: {t.get('durum')})")
+    prev = log[olcut]
+    if karar == "kabul" and prev.get("asama") != "model":
+        raise ValueError(f"{olcut} kod denetiminde reddedildi (atıf/alıntı/OD kusuru); insan onayıyla "
+                         "kabul edilemez: `tekrar` ya da `cikar`")
     rec = {"olcut": olcut, "karar": karar, "metin_sha": W.text_sha(t), "tur": int(t.get("tur") or 0),
            "not": note, "zaman": K.now()}
+    if karar == "kabul":
+        rec["dogrulayici_reddi"] = list(prev.get("gerekce") or [])
     with open(ws.root / HUMAN, "a", encoding="utf-8") as f:
         f.write(json.dumps(rec, ensure_ascii=False) + "\n")
     if karar == "cikar":
@@ -119,7 +151,35 @@ def decide(ws_root: Path, olcut: str, karar: str, note: str = "") -> dict:
         t["insan_karari"] = "cikar"
         (W.texts_dir(ws) / f"{olcut}.json").write_text(json.dumps(t, ensure_ascii=False, indent=1),
                                                          encoding="utf-8")
+    if karar == "kabul":
+        _accept(ws, t, prev, rec, log)
     return {**rec, "sinir": limit_for(ws, olcut)}
+
+
+def accept_trace(why: list[str]) -> str:
+    return f"{KABUL_IZI} (doğrulayıcı reddi: {'; '.join(why) or 'gerekçe yok'})"
+
+
+def _accept(ws: Workspace, t: dict, prev: dict, rec: dict, log: dict) -> None:
+    """`kabul`: metin `dogrulandi` olur (render/denetle/yonler geçerli sayar); doğrulayıcının reddi
+    kayıtta kalır (texts `dogrulama.dogrulayici_reddi`, verify.jsonl `dogrulayici_reddi`)."""
+    why = list(prev.get("gerekce") or [])
+    iz = accept_trace(why)
+    onay = {"karar": "kabul", "kayit": HUMAN, "not": rec["not"], "zaman": rec["zaman"]}
+    t = dict(t)
+    t["durum"] = "dogrulandi"
+    t["insan_karari"] = "kabul"
+    t["dogrulama"] = {"kayit": LOG, "model": prev.get("model"), "gerekce": [iz], "insan_onayi": onay,
+                      "dogrulayici_reddi": why, "zaman": rec["zaman"]}
+    (W.texts_dir(ws) / f"{t['olcut']}.json").write_text(json.dumps(t, ensure_ascii=False, indent=1),
+                                                         encoding="utf-8")
+    log[t["olcut"]] = {**prev, "durum": "dogrulandi", "asama": "insan", "gerekce": [iz],
+                       "insan_onayi": onay,
+                       "dogrulayici_reddi": {"asama": prev.get("asama"), "model": prev.get("model"),
+                                             "gorev_surumu": prev.get("gorev_surumu"), "gerekce": why,
+                                             "zaman": prev.get("zaman")}}
+    save_log(ws, log)
+    write_summary(ws, log)
 
 
 def _texts(ws: Workspace, only: list[str] | None) -> list[dict]:
@@ -184,12 +244,81 @@ def render_questions() -> str:
     return "\n".join(f"- {k}: {q}" for k, q in SORULAR)
 
 
+AD_KAYNAGI = {"insan": "insan düzeltmesi (onaylı)", "model": "model önerisi", "model_parca": "model önerisi (parça adı)",
+              "kural": "kural (belge türü ve tarihinden)"}
+ILISKI = {"kendi": "birimin kendi belgesi", "ust_birim_bu_birim_hakkinda": "üst birimin bu birim hakkındaki belgesi",
+          "fakulte_geneli": "fakülte geneli", "kurum_geneli": "kurum geneli", "baska_birim": "başka birimin belgesi",
+          "belirsiz": "belirsiz"}
+
+
+class Identity:
+    """Kanıtın belge kimliği bağlamı (salt okunur): onaylı kanıt adı, birim ilişkisi kararı, kaynak
+    klasör yolu, bölümün belge notu. Doğrulayıcı cümledeki belge kimliği iddiasını (hangi birim/program,
+    hangi belge türü) buna karşı denetler; içerik iddiaları yine alıntıya karşı."""
+
+    def __init__(self, ws: Workspace, birim: str | None):
+        from bidr import notlar as N
+        from bidr.decide.run import load_decisions, load_unit_pins, record_unit_relation
+        self.birim = birim
+        try:
+            self.notes = N.load(ws.root)
+        except ValueError:
+            self.notes = {}
+        self.pins = load_unit_pins(ws.root)
+        self.decisions = load_decisions(ws)
+        self._rel = record_unit_relation
+        self.paths: dict[str, list[str]] = {}
+        if ws.inventory.exists():
+            import csv
+            with open(ws.inventory, newline="", encoding="utf-8") as f:
+                for r in csv.DictReader(f):
+                    if r.get("doc_id") and r.get("rel_path"):
+                        self.paths.setdefault(r["doc_id"], []).append(r["rel_path"].replace("\\", "/"))
+
+    def lines(self, row: dict) -> list[str]:
+        did = row.get("doc_id") or ""
+        out = []
+        kay = row.get("ad_kaynagi") or ""
+        inc = {x.strip() for x in (row.get("inceleme") or "").split(",") if x.strip()}
+        if row.get("ad"):
+            out.append(f"kanıt adı: «{row['ad']}» (kaynak: {AD_KAYNAGI.get(kay, kay or 'belirtilmemiş')}"
+                       + ("; eşleşme inceleme tablosunda kabul edildi" if "kabul" in inc else "") + ")")
+        pin = self.pins.get(did)
+        if pin:
+            rel, who = pin["birim_iliskisi"], "insan kararı"
+        elif did in self.decisions:
+            rel, who = self._rel(self.decisions[did]), "model kararı"
+        else:
+            rel, who = "", ""
+        if rel:
+            out.append(f"birim ilişkisi: {ILISKI.get(rel, rel)} ({who})"
+                       + (f"; birim: {self.birim}" if self.birim else ""))
+        elif self.birim:
+            out.append(f"birim: {self.birim}")
+        for p in (self.paths.get(did) or [])[:3]:
+            out.append(f"kaynak klasör yolu: {p}")
+        from bidr import notlar as N
+        n = N.text_of(self.notes.get(did))
+        if n:
+            out.append("bölümün belge notu (kullanıcı beyanı): «" + " ".join(n.split())[:400] + "»")
+        return out
+
+
+def identity(src: W.Sources, c: str, ev: list[dict]) -> list[dict]:
+    """Kanıt bloklarına `kimlik` satırları (render_evidence basar)."""
+    idn = getattr(src, "_kimlik", None)
+    if idn is None:
+        idn = src._kimlik = Identity(src.ws, src.birim)
+    rows = {r["kanit_no"]: r for r in src.index.get(c, [])}
+    return [{**e, "kimlik": idn.lines(rows.get(e["no"]) or {})} for e in ev]
+
+
 def verify_inputs(src: W.Sources, t: dict) -> tuple[dict, dict]:
     c = t["olcut"]
     paras, onceki = _paras(t)
     rows = T.sentence_rows(paras, onceki)
     cited = set(W._cited(paras, onceki))
-    ev = src.evidence(c, only=cited)
+    ev = identity(src, c, src.evidence(c, only=cited))
     inputs = {"olcut": W.render_criterion(src.cs, c, od=t.get("od_onerisi")),
               "cumleler": render_sentences(rows),
               "kanitlar": W.render_evidence(ev, src.cs),
@@ -225,14 +354,24 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
     log = load_log(ws)
     d = W.work_dir(ws, STAGE)
     d.mkdir(parents=True, exist_ok=True)
-    st = {"paket": 0, "yeni": 0, "zaten_tamam": 0, "kod_reddi": {}, "metin": 0, "yeni_kural": []}
+    human = load_human(ws)
+    st = {"paket": 0, "yeni": 0, "zaten_tamam": 0, "kod_reddi": {}, "metin": 0, "yeni_kural": [],
+          "yeni_surum": [], "insan_kabulu": []}
     for t in _texts(ws, only):
         st["metin"] += 1
         c = t["olcut"]
         sha = W.text_sha(t)
         prev = log.get(c)
         renew = False
-        if (not redo and not only and prev and prev.get("metin_sha") == sha and prev.get("durum") in FINAL
+        if accepted(t, human) and t.get("durum") == "dogrulandi":
+            # insan onayı (`verify karar … kabul`) bu içeriğe bağlıdır; model yeniden sorulmaz
+            st["zaten_tamam"] += 1
+            st["insan_kabulu"].append(c)
+            continue
+        if (not only and t.get("durum") == "reddedildi" and prev and prev.get("metin_sha") == sha
+                and stale_reject(prev)):
+            st["yeni_surum"].append(c)      # eski sürüm reddi: yeni kuralla bir kez yeniden doğrulanır
+        elif (not redo and not only and prev and prev.get("metin_sha") == sha and prev.get("durum") in FINAL
                 and t.get("durum") == prev["durum"]):
             # doğrulanmış metin sonradan eklenen içerik kuralına takılıyorsa yeniden yazıma gider;
             # yeni kural reddi tur sayacını sıfırlar (eski turlar bu kurala göre yapılmadı)
@@ -381,6 +520,7 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", backend: W.Backen
     d = W.work_dir(ws, STAGE)
     st = {"dogrulandi": [], "reddedildi": {}, "bekleyen": [], "gecersiz": {}, "eski": [], "degismedi": 0}
     version = W.task_version(TASK)
+    human = load_human(ws)
     for p in K.pkg_paths(d):
         pkg = json.loads(p.read_text(encoding="utf-8"))
         c, meta = pkg["olcut"], pkg["meta"]
@@ -389,15 +529,17 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", backend: W.Backen
             st["bekleyen"].append(c)
             continue
         t = W.load_text(ws, c)
-        if str(pkg["surum"]) != version or not t or W.text_sha(t) != meta["metin_sha"]:
-            st["eski"].append(c)
-            continue
         raw = outp.read_text(encoding="utf-8")
         csha = K.sha(raw)
         prev = log.get(c)
-        if (prev and prev.get("cevap_sha") == csha and prev.get("metin_sha") == meta["metin_sha"]
-                and t.get("durum") == prev.get("durum")):
+        # işlenmiş cevap (görev sürümü sonradan artmış olsa da) ve insan onaylı metin yeniden işlenmez
+        if t and prev and prev.get("metin_sha") == meta["metin_sha"] == W.text_sha(t) and (
+                (prev.get("cevap_sha") == csha and t.get("durum") == prev.get("durum"))
+                or (accepted(t, human) and t.get("durum") == "dogrulandi")):
             st["degismedi"] += 1
+            continue
+        if str(pkg["surum"]) != version or not t or W.text_sha(t) != meta["metin_sha"]:
+            st["eski"].append(c)
             continue
         out, errs = backend.validate_output(TASK, raw)
         if out is None:

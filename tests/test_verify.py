@@ -6,6 +6,7 @@ import json
 
 from test_write import GOOD, answer, make_report_ws
 
+from bidr.common import Workspace
 from bidr.verify import run as V
 from bidr.write import run as W
 from bidr.write import sources as S
@@ -149,7 +150,7 @@ def test_questions_match_guide_and_prompt(tmp_path):
     ws = written(tmp_path)
     V.prepare(ws)
     pkg = json.loads((ws / "work/verify/B.1.1.json").read_text(encoding="utf-8"))
-    assert pkg["surum"] == "3" and all(f"- {k}: " in pkg["istem"] for k in SORU_IDS)
+    assert pkg["surum"] == "4" and all(f"- {k}: " in pkg["istem"] for k in SORU_IDS)
     assert pkg["sema"]["properties"]["sorular"]["minItems"] == 5
 
 
@@ -274,3 +275,137 @@ def test_verified_text_rechecked_with_new_content_rule(tmp_path):
     assert any("fakulte_degeri" in g for g in t["dogrulama"]["gerekce"])
     st = W.prepare_rejected(ws)
     assert st["tur"] == {"B.1.1": 1} and not st["insan_gerekli"]
+
+
+def _rejected_ws(tmp_path):
+    ws = written(tmp_path)
+    V.prepare(ws)
+    answer(ws, "B.1.1", verdicts(ws, {"p2.2": "kismen"}), stage="verify")
+    V.apply(ws, model="test:dogrulayici")
+    assert text(ws)["durum"] == "reddedildi"
+    return ws
+
+
+def test_human_accept_keeps_text_and_trace(tmp_path):
+    ws = _rejected_ws(tmp_path)
+    r = V.decide(ws, "B.1.1", "kabul", "Matematik bölümüne ait olduğu belli")
+    assert r["karar"] == "kabul" and r["dogrulayici_reddi"]
+    t = text(ws)
+    assert t["durum"] == "dogrulandi" and t["insan_karari"] == "kabul"
+    assert t["dogrulama"]["gerekce"][0].startswith("insan onayıyla kabul (doğrulayıcı reddi: p2.2 (kismen)")
+    assert t["dogrulama"]["dogrulayici_reddi"] and t["dogrulama"]["insan_onayi"]["not"]
+    rec = V.load_log(Workspace(ws))["B.1.1"]
+    assert rec["durum"] == "dogrulandi" and rec["asama"] == "insan"
+    assert rec["dogrulayici_reddi"]["gerekce"][0].startswith("p2.2 (kismen)")
+    assert not V.rejected(Workspace(ws))
+    # yeniden doğrulanmaz (--redo dahil); eski doğrulayıcı cevabı yeniden işlenmez
+    st = V.prepare(ws, redo=True)
+    assert st["insan_kabulu"] == ["B.1.1"] and st["paket"] == 0
+    assert V.apply(ws)["degismedi"] == 1 and text(ws)["durum"] == "dogrulandi"
+    # ikinci kez karar verilemez: artık reddedilmiş değil
+    import pytest
+    with pytest.raises(ValueError):
+        V.decide(ws, "B.1.1", "kabul")
+
+
+def test_human_accept_not_for_code_reject(tmp_path):
+    import pytest
+    ws = written(tmp_path)
+    make_report_ws(tmp_path, od=2)
+    assert "B.1.1" in V.prepare(ws)["kod_reddi"]
+    with pytest.raises(ValueError, match="kod denetiminde"):
+        V.decide(ws, "B.1.1", "kabul")
+
+
+def test_human_accept_cli_and_next(tmp_path, capsys):
+    from bidr.cli import main
+    ws = _rejected_ws(tmp_path)
+    assert main(["verify", "karar", "-w", str(ws), "B.1.1", "kabul", "--not", "kimlik belli"]) == 0
+    assert "insan onayıyla" in capsys.readouterr().out
+    assert text(ws)["durum"] == "dogrulandi"
+
+
+def test_human_accept_settles_verify_stage(tmp_path):
+    """`bidr next`: kabul edilen ölçüt için artık insan beklenmez (verify aşaması biter, uyarı kalır)."""
+    from bidr.pipeline import checks as C
+    from bidr.pipeline.state import formatter, load_spec
+    ws = _rejected_ws(tmp_path)
+    w = Workspace(ws)
+    spec = next(s for s in load_spec()["asamalar"] if s["id"] == "verify")
+    ck = lambda: C.verify_tamam(C.Ctx(w, {}, formatter(w, {}), spec))   # noqa: E731
+    assert not ck().bitti
+    V.decide(ws, "B.1.1", "kabul")
+    r = ck()
+    assert r.bitti and any("insan onayıyla kabul" in u for u in r.uyarilar)
+
+
+# -- belge kimliği bağlamı (görev v4) ------------------------------------------------------------
+
+def test_identity_context_in_verify_package_not_in_write(tmp_path):
+    import yaml
+    ws = written(tmp_path)
+    with open(ws / "inventory.csv", "w", encoding="utf-8", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=["doc_id", "sha256", "rel_path"])
+        w.writeheader()
+        w.writerow({"doc_id": "bbbb000000000002", "sha256": "", "rel_path": "Matematik YL/Giriş sınavı/sonuc.pdf"})
+    (ws / "belge-notlari.yaml").write_text(yaml.safe_dump(
+        {"notlar": [{"dosya": "Matematik YL/Giriş sınavı/sonuc.pdf", "metin": "2025 YL giriş sınavı sonuçları."}]},
+        allow_unicode=True), encoding="utf-8")
+    (ws / "birim-kararlari.jsonl").write_text(json.dumps({"doc_id": "bbbb000000000002", "birim_iliskisi": "kendi"})
+                                              + "\n", encoding="utf-8")
+    V.prepare(ws)
+    istem = json.loads((ws / "work/verify/B.1.1.json").read_text(encoding="utf-8"))["istem"]
+    assert "kimlik — kanıt adı: «Ders Bilgi Formu»" in istem
+    assert "kimlik — birim ilişkisi: birimin kendi belgesi (insan kararı)" in istem
+    assert "kimlik — kaynak klasör yolu: Matematik YL/Giriş sınavı/sonuc.pdf" in istem
+    assert "kimlik — bölümün belge notu (kullanıcı beyanı): «2025 YL giriş sınavı sonuçları.»" in istem
+    assert "Belge kimliği ile içerik ayrıdır" in istem
+    src = W.Sources(ws, verify=W.Backend().verify_quote)  # yazım paketi kimlik satırı almaz (yazım istemi değişmez)
+    assert "kimlik —" not in W.render_evidence(src.evidence("B.1.1"), src.cs)
+
+
+def _old_version(ws, durum):
+    log = V.load_log(Workspace(ws))
+    assert log["B.1.1"]["durum"] == durum
+    log["B.1.1"]["gorev_surumu"] = "3"
+    V.save_log(Workspace(ws), log)
+    p = ws / "work/verify/B.1.1.json"
+    pkg = json.loads(p.read_text(encoding="utf-8"))
+    pkg["surum"] = "3"
+    p.write_text(json.dumps(pkg, ensure_ascii=False), encoding="utf-8")
+
+
+def test_version_bump_keeps_verified_texts(tmp_path):
+    ws = written(tmp_path)
+    V.prepare(ws)
+    answer(ws, "B.1.1", verdicts(ws), stage="verify")
+    V.apply(ws)
+    _old_version(ws, "dogrulandi")
+    st = V.prepare(ws)
+    assert st["zaten_tamam"] == 1 and st["paket"] == 0 and not st["yeni_surum"]
+    a = V.apply(ws)
+    assert a["degismedi"] == 1 and not a["eski"] and text(ws)["durum"] == "dogrulandi"
+
+
+def test_version_bump_reverifies_old_model_rejection_once(tmp_path):
+    from bidr.pipeline import checks as C
+    from bidr.pipeline.state import formatter, load_spec
+    ws = _rejected_ws(tmp_path)
+    _old_version(ws, "reddedildi")
+    w = Workspace(ws)
+    spec = next(s for s in load_spec()["asamalar"] if s["id"] == "verify")
+    ck = C.verify_tamam(C.Ctx(w, {}, formatter(w, {}), spec))
+    assert ck.kim == "komut" and "prepare" in ck.komutlar[0]          # yeniden yazım değil, yeniden doğrulama
+    st = V.prepare(ws)
+    assert st["yeni_surum"] == ["B.1.1"] and st["paket"] == 1 and text(ws)["durum"] == "taslak"
+    pkg = json.loads((ws / "work/verify/B.1.1.json").read_text(encoding="utf-8"))
+    assert pkg["surum"] == W.task_version(V.TASK)
+    answer(ws, "B.1.1", verdicts(ws), stage="verify")
+    assert V.apply(ws)["dogrulandi"] == ["B.1.1"]
+    assert V.prepare(ws)["zaten_tamam"] == 1
+
+
+def test_current_version_rejection_not_reverified(tmp_path):
+    ws = _rejected_ws(tmp_path)
+    st = V.prepare(ws)
+    assert st["zaten_tamam"] == 1 and not st["yeni_surum"] and text(ws)["durum"] == "reddedildi"

@@ -1,4 +1,4 @@
-version: 3
+version: 4
 description: >-
   Bağımsız metin doğrulama. Açıklama metninin her cümlesi, atıf yaptığı kanıtın
   alıntısı ve belge bağlamıyla karşılaştırılır → cümle başına
@@ -7,10 +7,15 @@ description: >-
   cevapsiz | uydurma_suphesi + cümle yerleri).
   v3: kanıttaki sayılardan gösterilen basit hesap desteklenir; fakülte değerini bölümünmüş gibi
   veren cümle "kismen".
+  v4: belge kimliği bağlamı (onaylı kanıt adı, birim ilişkisi kararı, kaynak klasör yolu, bölümün
+  belge notu). Cümledeki belge kimliği iddiası (hangi birim/program, hangi belge türü) bu bağlamla
+  uyuşuyorsa "kismen/desteksiz" sayılmaz; alıntı içerik iddialarını (sayı, tarih, ne yapıldığı)
+  desteklemeli. Sürüm artışı doğrulanmış metinleri yeniden doğrulatmaz; yalnız eski sürümle ajan
+  reddi almış ve bekleyen metinler yeni kuralla doğrulanır (bidr/verify/run.py `stale_reject`).
 inputs:
   olcut: "ölçüt kimliği, başlığı, önerilen OD ve rubrik"
   cumleler: "denetlenecek cümleler: yer kimliği, metin, atıflar"
-  kanitlar: "atıf yapılan kanıtlar: no, ad, alıntılar ve belge bağlamı"
+  kanitlar: "atıf yapılan kanıtlar: no, ad, belge kimliği bağlamı (kimlik — satırları), alıntılar ve belge bağlamı"
   onceki_metin: "geçen yılın aynı ölçüt metni (yalnız 'o.' cümleleri için; yoksa 'yok')"
   komisyon_bilgisi: "komisyonun verdiği bilgi ([komisyon] cümleleri için; yoksa 'yok')"
   sorular: "FR-0833'ün beş zorunlu sorusu: kimlik ve soru metni"
