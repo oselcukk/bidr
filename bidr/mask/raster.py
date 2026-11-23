@@ -744,7 +744,7 @@ def mask_image(src: Path, dst: Path, rules: MaskRules, bolge=None) -> dict:
     from .formats import _hook_bolgeleri, _kararla
     regs = image_regions(r, img)
     sc = image_scale(img)
-    from .formats import YAMA_SIYAH_ORTUSME, YENIDEN_TARAMA_ICINDE, _icinde_payi, kapanir
+    from .formats import YAMA_SIYAH_ORTUSME, YENIDEN_TARAMA_ICINDE, _acik_oneriyle_ortusur, _icinde_payi, kapanir
     for h in _hook_bolgeleri("imza", 1, img, rules, r, sc):
         h.setdefault("_px", [v / sc for v in h["kutu"]])
         regs.append(h)
@@ -801,7 +801,8 @@ def mask_image(src: Path, dst: Path, rules: MaskRules, bolge=None) -> dict:
         kapali = [b["kutu"] for b in bg.bolgeler if kapanir(b)]
         regs = [b for b in image_regions(r, out) if b["karar"] == BG.KAPATILDI and b["tur"] != "okunamayan_sayfa"
                 and not any(o["karar"] == BG.BIRAKILDI and BG.ortusme(o["kutu"], b["kutu"]) >= 0.5 for o in bg.bolgeler)
-                and _icinde_payi(b["kutu"], kapali) < YENIDEN_TARAMA_ICINDE]
+                and _icinde_payi(b["kutu"], kapali) < YENIDEN_TARAMA_ICINDE
+                and not (bg.yalniz_oneri and _acik_oneriyle_ortusur(bg, 1, b))]
         if regs:
             _kararla(bg, 1, regs, ilk=False)
     out = draw_labels(out, labels)

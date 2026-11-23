@@ -45,7 +45,9 @@ from pathlib import Path
 
 KARARLAR = "maskeleme-kararlari.jsonl"
 KAPATILDI, ONAY, BIRAKILDI = "kapatildi", "onay_bekliyor", "birakildi"
-TURLER = ("imza", "el_yazisi_alan", "kisisel_veri", "okunamayan_sayfa", "kullanici")
+TURLER = ("imza", "el_yazisi_alan", "kisisel_veri", "okunamayan_sayfa", "kullanici", "metin")
+METIN = "metin"                     # bölgesiz biçimin (docx/xlsx/metin/html) desen önerisi: sayfa 0, kutusuz
+METIN_SAYFA = 0
 KULLANICI = "kullanici"
 ESLESME = 0.5                       # karar kutusu ↔ bölge kutusu örtüşmesi (küçüğün alanına oranla)
 
@@ -167,9 +169,10 @@ def dosya_kararlari(kararlar: dict[str, dict], sha8: str) -> dict[str, dict]:
 class Baglam:
     """Tek dosyanın bölgeleri: kimlik atama ve kararların uygulanması."""
 
-    def __init__(self, sha8: str, kararlar: dict[str, dict] | None = None):
+    def __init__(self, sha8: str, kararlar: dict[str, dict] | None = None, *, yalniz_oneri: bool = False):
         self.sha8 = sha8
         self.kararlar = kararlar or {}
+        self.yalniz_oneri = yalniz_oneri      # `--yalniz-oneri`: insan kararı olmayan hiçbir bölge kapatılmaz
         self.bolgeler: list[dict] = []
         self.uyarilar: list[str] = []
         self._sira: dict[int, int] = {}
@@ -196,7 +199,7 @@ class Baglam:
         d = self.kararlar.get(b["id"])
         if d is None:
             return
-        if (d.get("kutu") and ortusme(d["kutu"], b["kutu"]) < ESLESME) or \
+        if (d.get("kutu") and alan(d["kutu"]) > 0 and ortusme(d["kutu"], b["kutu"]) < ESLESME) or \
                 (d.get("tur") and d["tur"] != b["tur"]) or (d.get("kaynak") and d["kaynak"] != b["kaynak"]):
             self.uyarilar.append(f"{b['id']}: karar bu bölgeyle eşleşmiyor (kurallar değişmiş olabilir); "
                                  "karar uygulanmadı")
@@ -216,6 +219,14 @@ class Baglam:
                 b["id"] = self._id(sayfa)
             b.setdefault("geri_basilan", None)
             self._uygula(b)
+            if self.yalniz_oneri and not b.get("insan") and b.get("kaynak") != KULLANICI and not b.get("_uygulandi") \
+                    and b["karar"] in (KAPATILDI, ONAY):
+                # yalnız öneri: kendiliğinden kapatma yok; kapatılacak olan da kutusu kapalı tutulan onay da
+                # açık öneri olur (insan "kapat" derse sonraki koşu kapatır)
+                if b["karar"] == KAPATILDI:
+                    b["oneri"] = True
+                b["karar"] = ONAY
+                b["kapali"] = False
             b["kapali"] = b["karar"] == KAPATILDI or (b["karar"] == ONAY and bool(b.get("kapali")))
             self.bolgeler.append(b)
         return bolgeler

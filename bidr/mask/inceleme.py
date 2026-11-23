@@ -121,6 +121,9 @@ def bekleyenler(ws: Path) -> dict:
                  **{k: b.get(k) for k in ("id", "sayfa", "tur", "karar", "neden", "kaynak", "guven")},
                  "kutu": _gorunen(b["kutu"], _sayfa_bilgi(r, b.get("sayfa") or 1)),
                  "kapali": bool(b.get("kapali", b.get("karar") == BG.KAPATILDI))}
+            for k in ("konum", "desen", "adet", "oneri"):        # bölgesiz biçim önerisi / yalnız öneri kipi
+                if b.get(k) is not None:
+                    x[k] = b[k]
             ins = b.get("insan") or {}
             x["kim"], x["zaman"] = ins.get("kim"), ins.get("zaman")
             return x
@@ -200,7 +203,9 @@ def karar(ws: Path, bolge_id: str, karar_: str, kim: str | None = None) -> dict:
     if karar_ == "kapat" and b.get("kaynak") == "model_metni":
         raise IncelemeError("model metni bölgesinin yeri bilinmiyor (yalnız sayfa): kapatmak için maskeli sürümü "
                             "elle hazırlayıp `bidr maskele yukle` kullanın; değer kişisel veri değilse 'birak'")
-    if b.get("karar") == BG.KAPATILDI and karar_ == "birak" and b.get("tur") != "imza":
+    if b.get("karar") == BG.KAPATILDI and karar_ == "birak" and b.get("tur") != "imza" \
+            and not (b.get("insan") or {}).get("karar") == "kapat":   # insanın kapattığı yeniden açılabilir (yalnız
+        # öneri kipi uygular; normal kipte desen bulgusu yine kapanır)
         raise IncelemeError("desen/etiket alanı bulgusu 'birak' ile açılamaz (yalnız imza ve onay bekleyen bölgeler)")
     return BG.karar_yaz(ws, bolge_id, karar_, kim, kutu=b.get("kutu"), tur=b.get("tur"), kaynak=b.get("kaynak"))
 
