@@ -39,6 +39,16 @@ def load_spec(path: str | None = None) -> dict:
             raise ValueError(f"pipeline.yaml: {s['id']} istege_bagli true|false olmalı")
         if s.get("onay") not in ("yok", "insan"):
             raise ValueError(f"pipeline.yaml: {s['id']} onay yok|insan olmalı")
+        par = s.get("paralel")
+        if s.get("katman") == "M" and not isinstance(par, dict):
+            raise ValueError(f"pipeline.yaml: model aşaması {s['id']} için paralel (bolunebilir + gerekce) gerekli")
+        if par is not None:
+            if not isinstance(par.get("bolunebilir"), bool) or not str(par.get("gerekce") or "").strip():
+                raise ValueError(f"pipeline.yaml: {s['id']} paralel.bolunebilir true|false ve gerekce gerekli")
+            if par["bolunebilir"] and (not par.get("dizin") or par.get("duzen") not in ("dosya", "klasor")
+                                       or par.get("grup") not in (None, "alt_bolum")):
+                raise ValueError(f"pipeline.yaml: {s['id']} paralel: dizin ve duzen (dosya|klasor) gerekli; "
+                                 "grup yalnız alt_bolum")
         seen.add(s["id"])
     return raw
 
@@ -102,6 +112,8 @@ class StageState:
     skill: str | None
     ilerleme: dict = field(default_factory=dict)
     uyarilar: list[str] = field(default_factory=list)
+    paralel: dict = field(default_factory=dict)       # kim=ajan: bölünebilir mi, kaç parça (bidr parcala)
+    bekleyen: list[str] | None = field(default=None, repr=False)   # to_dict'e girmez (uzun olabilir)
 
 
 @dataclass
@@ -120,8 +132,14 @@ class Report:
     def to_dict(self) -> dict:
         n = self.sonraki
         return {"calisma_alani": self.calisma_alani, "yonetilen": self.yonetilen,
-                "asamalar": [asdict(s) for s in self.asamalar],
-                "sonraki": asdict(n) if n else None}
+                "asamalar": [_d(s) for s in self.asamalar],
+                "sonraki": _d(n) if n else None}
+
+
+def _d(s: StageState) -> dict:
+    d = asdict(s)
+    d.pop("bekleyen", None)
+    return d
 
 
 def evaluate(ws_root: Path, *, until: str | None = None) -> Report:
@@ -152,7 +170,11 @@ def evaluate(ws_root: Path, *, until: str | None = None) -> Report:
             durum = ATLANDI if ck.atlandi else BITTI if ck.bitti else BEKLIYOR
             cmds = [] if durum in DONE else (ck.komutlar if ck.komutlar is not None else default_cmds)
             st = StageState(**base, durum=durum, kim=None if durum in DONE else ck.kim,
-                            neden=ck.neden, komutlar=cmds, ilerleme=ck.ilerleme, uyarilar=ck.uyarilar)
+                            neden=ck.neden, komutlar=cmds, ilerleme=ck.ilerleme, uyarilar=ck.uyarilar,
+                            bekleyen=ck.bekleyen if durum == BEKLIYOR and ck.kim == "ajan" else None)
+            if st.bekleyen is not None and s.get("paralel"):
+                from .paralel import durum as paralel_durum
+                st.paralel = paralel_durum(ws.root, s["id"], len(st.bekleyen))
         states[s["id"]] = st
         if until and s["id"] == until:
             break

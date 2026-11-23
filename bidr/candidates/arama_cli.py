@@ -50,6 +50,8 @@ def _run(args) -> int:
               f"başka birim={st['baska_birim']} devralan={st['devralan']}")
         print(f"Ajan: {st['klasor']}/README.md")
         return 0
+    from bidr.pipeline.paralel import apply_oncesi
+    apply_oncesi(ws.root, "work/ikinci_arama")   # parça dışı yazılmış/ezilmiş cevap reddedilir
     st = A.apply(ws.root, model=args.model)
     print(f"işlenen={st['islenen']} değişmeyen={st['degismedi']} bekleyen={len(st['bekleyen'])} "
           f"geçersiz={len(st['gecersiz'])} eski paket={len(st['eski_paket'])} eski sürüm={len(st['eski_surum'])}; "

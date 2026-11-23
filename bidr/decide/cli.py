@@ -90,6 +90,8 @@ def _decide(args) -> int:
         print(f"Ajan: {st['klasor']}/README.md")
         return 0
     if args.action == "apply":
+        from bidr.pipeline.paralel import apply_oncesi
+        apply_oncesi(ws.root, f"work/{args.stage}")   # parça dışı yazılmış/ezilmiş cevap reddedilir
         st = R.apply(ws.root, args.stage, model=args.model)
         if st.get("paket_degil"):
             print(f"paket olmayan dosya atlandı: {', '.join(st['paket_degil'])}")

@@ -41,6 +41,24 @@ def _status(args) -> int:
     return 0
 
 
+def paralel_satirlari(p: dict) -> list[str]:
+    """`bidr next`: model aşamasının paralel bölünmesi (pipeline.yaml `paralel`, `bidr parcala`)."""
+    if not p:
+        return []
+    if not p.get("bolunebilir"):
+        return [f"Paralel: bölünmez — tek ajan yapar. Gerekçe: {p.get('gerekce', '')}"]
+    n, b = p.get("parca_sayisi") or 0, p.get("bekleyen") or 0
+    if n <= 1:
+        return [f"Paralel: gerekmez ({b} paket; eşik {p.get('ayar', {}).get('esik')}): tek ajan yapar."]
+    return [f"Paralel: bu aşama {n} ajanla paralel yapılabilir ({b} cevapsız paket).",
+            f"  a. {p['komut']}   # {n} ayrık parça listesi: work/…/_parca/<k>.txt",
+            "  b. Her ajana bir parça listesi verin (talimat tek ajanınkiyle aynı: README + paketin `istem`i); her "
+            "ajan YALNIZ kendi listesindeki paketlere cevap yazar, başka cevaba dokunmaz, apply çalıştırmaz, "
+            "alt ajan açmaz. Alt ajan yoksa parçaları sırayla kendin yap.",
+            f"  c. Hepsi bitince: {p['denetim']}   # liste dışı/ezilmiş cevabı reddeder; sonra yukarıdaki apply "
+            "(apply da aynı denetimi yapar)"]
+
+
 def _next(args) -> int:
     from .state import evaluate
     rep = evaluate(args.workspace)
@@ -67,6 +85,8 @@ def _next(args) -> int:
         print("Yap:")
         for i, k in enumerate(n.komutlar, 1):
             print(f"  {i}. {k}")
+    for satir in paralel_satirlari(n.paralel):
+        print(satir)
     print(f"Tamamlanma şartı (kod denetler): {n.sart}")
     print("İnsan onayı: " + ("GEREKLİ — kullanıcı karar vermeden bu aşama bitmez; dur ve sor."
                              if n.onay == "insan" else "gerekmez"))
@@ -77,8 +97,9 @@ def _next(args) -> int:
 
 
 def register(sub):
-    from . import hakem
+    from . import hakem, paralel
     hakem.register(sub)
+    paralel.register(sub)
     p = sub.add_parser("status", help="çalışma alanındaki aşamaların durumu (bitti/bekliyor/engelli + neden)")
     p.add_argument("--workspace", "-w", required=True)
     p.add_argument("--json", action="store_true")

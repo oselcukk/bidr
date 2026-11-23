@@ -46,6 +46,8 @@ def _cmd(args) -> int:
             print(f"  atlandı {did}: {why}")
         print(f"Ajan: {st['klasor']}/README.md")
         return 0
+    from bidr.pipeline.paralel import apply_oncesi
+    apply_oncesi(args.workspace, "work/transcribe")   # parça dışı yazılmış/ezilmiş cevap reddedilir
     st = R.apply(args.workspace, model=args.model, accept_suspicious=args.kabul_supheli,
                  only=_ids(args.only))
     print(f"işlenen={st['islenen']} değişmedi={st['degismedi']} bekleyen={len(st['bekleyen'])} "

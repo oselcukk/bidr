@@ -36,6 +36,8 @@ def _cmd(args) -> int:
                       + ", ".join(st["uygun_degil"]))
             print(f"Ajan: {st['klasor']}/README.md")
             return 0
+        from bidr.pipeline.paralel import apply_oncesi
+        apply_oncesi(ws.root, "work/name")   # parça dışı yazılmış/ezilmiş cevap reddedilir
         st = R.apply(ws.root, model=args.model, only=only)
     except FileNotFoundError as e:
         print(f"HATA {e}", file=sys.stderr)

@@ -30,6 +30,7 @@ class Check:
     komutlar: list[str] | None = None
     ilerleme: dict = field(default_factory=dict)
     uyarilar: list[str] = field(default_factory=list)
+    bekleyen: list[str] | None = None   # kim=ajan: cevap bekleyen paket anahtarları (`bidr parcala` böler)
 
 
 @dataclass
@@ -274,7 +275,7 @@ def karar_tamam(c: Ctx) -> Check:
         if bad:
             parts.append(f"{len(bad)} cevap geçersiz (work/{stage}/GECERSIZ.md)")
         rel = f"work/{stage}"
-        return Check(kim=AJAN, ilerleme=prog, uyarilar=uy,
+        return Check(kim=AJAN, ilerleme=prog, uyarilar=uy, bekleyen=sorted(set(no_out) | bad),
                      komutlar=[f"(ajan) {rel}/README.md'yi oku; cevapsız/geçersiz her <doc_id>.json için "
                                f"{rel}/<doc_id>.out.json yaz (yalnız JSON, şemaya uygun, alıntılar birebir)",
                                apply_],
@@ -484,7 +485,7 @@ def ikinci_arama_tamam(c: Ctx) -> Check:
     if no_out or gecersiz:
         parts = [x for x in (f"{len(no_out)} paket cevapsız" if no_out else "",
                              f"{len(gecersiz)} cevap geçersiz (work/ikinci_arama/GECERSIZ.md)" if gecersiz else "") if x]
-        return Check(kim=AJAN, ilerleme=prog,
+        return Check(kim=AJAN, ilerleme=prog, bekleyen=sorted(set(no_out) | set(gecersiz)),
                      komutlar=["(ajan) work/ikinci_arama/README.md'yi oku; cevapsız/geçersiz her <doc_id>.json için "
                                "<doc_id>.out.json yaz (ince karar kuralları; uymuyorsa olcut_yok/kanit_degil)", apply_],
                      neden=", ".join(parts) + ": model işi ajanda (work/ikinci_arama/)")
@@ -560,7 +561,7 @@ def name_tamam(c: Ctx) -> Check:
     bad = _invalid_keys(d / "GECERSIZ.md", r"^- `([^`]+)\.json`") & missing
     apply_ = c.fmt(c.stage["komut"][2])
     if no_out or bad:
-        return Check(kim=AJAN, ilerleme=prog,
+        return Check(kim=AJAN, ilerleme=prog, bekleyen=sorted(no_out | bad),
                      komutlar=["(ajan) work/name/README.md'yi oku; cevapsız/reddedilen her <doc_id>.json için "
                                "<doc_id>.out.json yaz (kişi adı/unvan/e-posta yok, 3-7 sözcük)", apply_],
                      neden=", ".join(x for x in (f"{len(no_out)} paket cevapsız" if no_out else "",
@@ -672,7 +673,7 @@ def write_tamam(c: Ctx) -> Check:
                                  f"{len(bad)} cevap geçersiz (work/write/GECERSIZ.md)" if bad else "") if x]
             who = ("metni ilk yazandan ve doğrulayıcıdan AYRI, taze bir ajan" if rounds
                    else "ajan (doğrulamayı sonra başka, taze bir ajan yapar)")
-            return Check(kim=AJAN, ilerleme=prog, uyarilar=uy,
+            return Check(kim=AJAN, ilerleme=prog, uyarilar=uy, bekleyen=sorted(no_out | bad),
                          komutlar=[f"({who}) work/write/README.md'yi oku; cevapsız/geçersiz her <ölçüt>.json için "
                                    "work/write/<ölçüt>.out.json yaz (her cümle [n_ODk] atıflı; yalnız kanıttaki)",
                                    apply_],
@@ -732,7 +733,7 @@ def verify_tamam(c: Ctx) -> Check:
             cmds = ["(metni YAZMAMIŞ, taze ve bağımsız bir ajan) work/verify/README.md'yi oku; her "
                     "<ölçüt>.json için work/verify/<ölçüt>.out.json yaz: her cümleye destekleniyor/"
                     "kismen/desteklenmiyor + gerekçe, yalnız atıf yapılan kanıtın alıntısına göre"]
-            return Check(kim=AJAN, ilerleme=prog, komutlar=cmds + [apply_],
+            return Check(kim=AJAN, ilerleme=prog, komutlar=cmds + [apply_], bekleyen=sorted(no_out | bad),
                          neden=", ".join(parts) + ": bağımsız doğrulama ajanda")
         return Check(kim=KOMUT, ilerleme=prog, komutlar=[apply_],
                      neden=f"{len(cur)} doğrulama cevabı işlenmemiş: apply")
@@ -867,7 +868,7 @@ def yonler_tamam(c: Ctx) -> Check:
             cmds.append("(alanlar birbirini beklemez: yukarıdaki işler herhangi bir sırayla yapılabilir; "
                         "yeniden yazımı ve doğrulamayı ayrı, taze ajanlara ver)")
         return Check(kim=AJAN if ajan else KOMUT, ilerleme=prog, uyarilar=uy, komutlar=cmds,
-                     neden="; ".join(why))
+                     neden="; ".join(why), bekleyen=sorted(no_out | bad | v_agent) if ajan else None)
     empty = sorted(a for a, t in texts.items() if a not in rej and not (t.get("guclu") and t.get("gelisme")))
     if empty:
         uy.append(f"dayanağı olmadığı için boş liste kalan alan ({', '.join(empty)}): o hücre şablon yönergesiyle "

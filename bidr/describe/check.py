@@ -57,7 +57,7 @@ def describe_tamam(c):
                      neden=f"{len(todo - pk)} görsel belgenin paketi yok ({_sample(todo - pk)})")
     no_out = {x for x in pk if not (d / x / f"{x}.out.json").exists()}
     if no_out:
-        return Check(kim=AJAN, ilerleme=prog, uyarilar=uy,
+        return Check(kim=AJAN, ilerleme=prog, uyarilar=uy, bekleyen=sorted(no_out),
                      komutlar=["(ajan) work/describe/README.md'yi oku; her <doc_id>/ için görüntülere bakıp "
                                "<doc_id>.out.json yaz", c.fmt(c.stage["komut"][2])],
                      neden=f"{len(no_out)} paket cevapsız: görsel betimleme ajanda")

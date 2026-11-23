@@ -31,7 +31,7 @@ def transcribe_tamam(c):
         return Check(kim=KOMUT, ilerleme=prog, neden=f"{len(todo - pk)} düşük kaliteli belgenin paketi yok")
     no_out = {x for x in pk if not (d / x / f"{x}.out.json").exists()}
     if no_out:
-        return Check(kim=AJAN, ilerleme=prog,
+        return Check(kim=AJAN, ilerleme=prog, bekleyen=sorted(no_out),
                      komutlar=["(ajan) work/transcribe/README.md'yi oku; her <doc_id>/ için görüntüleri "
                                "okuyup <doc_id>.out.json yaz"],
                      neden=f"{len(no_out)} paket cevapsız: görsel okuma ajanda")
@@ -81,7 +81,7 @@ def belirsiz_okuma_tamam(c):
                            "görsel okuma paketi yok")
     no_out = {x for x in pk if not (d / x / f"{x}.out.json").exists()}
     if no_out:
-        return Check(kim=AJAN, ilerleme=prog,
+        return Check(kim=AJAN, ilerleme=prog, bekleyen=sorted(no_out),
                      komutlar=["(ajan) work/transcribe/README.md'yi oku; cevapsız her <doc_id>/ için "
                                "görüntüleri okuyup <doc_id>.out.json yaz (hepsini bitirip bir kez apply)", apply_],
                      neden=f"{len(no_out)} paket cevapsız: görsel okuma ajanda")
