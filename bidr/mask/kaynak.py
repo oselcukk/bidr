@@ -53,7 +53,9 @@ from .ocr import ocr_available
 from .run import MARKER, MaskRunError, _c, _inside, _prepare_dir, mask_cached
 
 SURUM = 1
-ILERLEME = "maskeleme-ilerleme.json"      # -w verilince çalışma alanına: {toplam, biten, durum, …} (dosya adı yok)
+ILERLEME = "maskeleme-ilerleme.json"      # -w verilince çalışma alanına: {toplam, biten, durum, suanki, …}
+# `suanki`: o an işlenen belgeler [{dosya (kaynak köküne göre göreli yol), sayfa?, toplam_sayfa?, asama?}] (bkz.
+# `suanki.py`); bitince boş liste. Dosya adı yalnız bu alanda geçer (panel yalnız bölüm üyelerine gösterir).
 REPORT_SUFFIX = ".maskeleme-raporu.json"
 SIKI_SUFFIX = ".elle-bakilmali"
 ADDR_HEADERS = {"from", "to", "cc", "bcc", "reply-to", "sender", "return-path", "delivered-to",
@@ -642,6 +644,8 @@ def _work(args) -> list[dict]:
     if ob_yol:                  # işçi süreç: etkin önbellek (ana süreç `onbellek.ac` ile ortama koydu; açıkça da verilir)
         os.environ[onbellek.ENV] = ob_yol
     ctx = _Ctx(rules, eng, Path(ayir) if ayir else None, mtext, ws)
+    from . import suanki
+    suanki.basla(rel)
     once = os.environ.get("BIDR_MASKE_WS")
     if ws:                      # çalışma alanının form şablon belleği (kullanıcı çizimi önerileri; raster._sablonlar)
         os.environ["BIDR_MASKE_WS"] = str(ws)
@@ -655,6 +659,7 @@ def _work(args) -> list[dict]:
                                      "olduğu gibi kopyalandı"})
         ctx.last = ctx.records[-1]
     finally:
+        suanki.bitir()
         if ws:
             if once is None:
                 os.environ.pop("BIDR_MASKE_WS", None)
@@ -716,7 +721,7 @@ def run_source(source: Path, out: Path, *, rules: MaskRules | None = None, engin
     """`ws`: çalışma alanı verilirse ve kaynak daha önce okunmuşsa (`inventory.csv` + `text/<doc_id>.txt`)
     modelin okuma metniyle el yazısı denetimi yapılır (bkz. `run.model_text_gaps`); ayrıca çalışma alanının
     önbelleği (`.cache/maske.sqlite`, `onbellek_kullan`) kullanılır ve ilerleme `<ws>/maskeleme-ilerleme.json`'a
-    yazılır (toplam, biten; dosya adı yazılmaz).
+    yazılır (toplam, biten ve `suanki`: o an işlenen belgelerin kaynak köküne göre göreli yolları, sayfası).
 
     Yeniden başlatılabilir: maskeli kopyanın işareti (`.bidr-maskeleme.json`) koşunun BAŞINDA `durum: "yarim"`
     olarak yazılır, sonunda `"tamam"` olur. Kesilen koşunun klasörü bidr'in kendi çıktısı olarak tanınır (yeniden
@@ -754,7 +759,8 @@ def run_source(source: Path, out: Path, *, rules: MaskRules | None = None, engin
     from .run import source_model_texts
     wsr = Path(ws).expanduser().resolve() if ws else None
     mtexts = source_model_texts(wsr) if wsr else {}
-    env_once = {k: os.environ.get(k) for k in (onbellek.ENV, "BIDR_MASKE_WS")}
+    from . import suanki
+    env_once = {k: os.environ.get(k) for k in (onbellek.ENV, "BIDR_MASKE_WS", suanki.ENV)}
     ob_yol = None
     if wsr is not None and onbellek_kullan:
         onbellek.ac(wsr)
@@ -786,14 +792,29 @@ def _run_jobs(src, out, files, namer, mtexts, rules, eng, ayir_d, wsr, ob_yol, w
         jobs.append((str(p), rel, hedef, str(out / hedef), rules, eng, str(ayir_d) if ayir_d else None,
                      str(mt) if mt else None, str(wsr) if wsr else None, ob_yol))
     n = len(jobs)
-    _ilerleme_yaz(ilerleme_p, durum="suruyor", toplam=n, biten=0, baslangic=bas)
+    if ilerleme_p is None:
+        return _jobs_loop(jobs, workers, progress, lambda i: None)
+    from . import suanki
+    with tempfile.TemporaryDirectory(prefix="bidr-suanki-") as td:
+        os.environ[suanki.ENV] = td          # işçi süreçler ortamı devralır (geri alma: run_source)
+        with suanki.Izleyici(Path(td), lambda **a: _ilerleme_yaz(ilerleme_p, **a)) as iz:
+            iz.yaz(durum="suruyor", toplam=n, biten=0, baslangic=bas)
+            records = _jobs_loop(jobs, workers, progress,
+                                 lambda i: iz.yaz(durum="suruyor", toplam=n, biten=i, baslangic=bas))
+        os.environ.pop(suanki.ENV, None)
+    _ilerleme_yaz(ilerleme_p, durum="bitti", toplam=n, biten=n, baslangic=bas, suanki=[])
+    return records
+
+
+def _jobs_loop(jobs, workers, progress, ilerle) -> list[dict]:
+    n = len(jobs)
     sonuc: list[list[dict] | None] = [None] * n
 
     def bitti(i: int, k: int) -> None:
         if progress:
             recs = sonuc[k]
             progress(i, n, recs[0]["dosya"] if recs else jobs[k][1])
-        _ilerleme_yaz(ilerleme_p, durum="suruyor", toplam=n, biten=i, baslangic=bas)
+        ilerle(i)
     if workers > 1 and n > 1:
         # tamamlanma sırasıyla ilerleme (yavaş bir dosya sayacı tutmasın); rapor sırası iş sırasıdır
         with ProcessPoolExecutor(max_workers=workers) as ex:
@@ -809,7 +830,6 @@ def _run_jobs(src, out, files, namer, mtexts, rules, eng, ayir_d, wsr, ob_yol, w
     records: list[dict] = []
     for recs in sonuc:
         records += recs or []
-    _ilerleme_yaz(ilerleme_p, durum="bitti", toplam=n, biten=n, baslangic=bas)
     return records
 
 
