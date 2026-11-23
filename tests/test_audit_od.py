@@ -18,6 +18,10 @@ def _m(olcut, yuva, asama, alinti, gerekce="g", guven="orta"):
             "gerekce": gerekce, "guven": guven, "denetim": {"red": [], "isaret": []}, "od_kabul": od, "kabul": True}
 
 
+# Sentetik kurumun bilinen birim adları: başka birim adı yalnız bu listeden tanınır (config `birim_adlari`).
+BIRIM_ADLARI = ["Örnek Bölümü", "Kıyas Bölümü", "Deneme Bölümü"]
+
+
 def _ws(tmp_path, docs: dict, *, birim="Örnek Bölümü", faaliyet=None):
     """docs: {doc_id: (tür, tarih, metin, [eşleşmeler], birim_iliskisi)}."""
     w = tmp_path / "ws"
@@ -35,7 +39,8 @@ def _ws(tmp_path, docs: dict, *, birim="Örnek Bölümü", faaliyet=None):
     for did, (_, _, text, _, *_r) in docs.items():
         (w / "text" / f"{did}.txt").write_text(text, encoding="utf-8")
     if birim:
-        (w / "config.yaml").write_text(yaml.safe_dump({"bidr": {"birim": birim}}, allow_unicode=True), encoding="utf-8")
+        (w / "config.yaml").write_text(yaml.safe_dump({"bidr": {"birim": birim, "birim_adlari": BIRIM_ADLARI}},
+                                                        allow_unicode=True), encoding="utf-8")
     if faaliyet is not None:
         (w / "faaliyetler.json").write_text(json.dumps(faaliyet, ensure_ascii=False), encoding="utf-8")
     return w

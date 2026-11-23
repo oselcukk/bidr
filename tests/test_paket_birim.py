@@ -13,14 +13,14 @@ from __future__ import annotations
 
 from bidr.audit.run import build
 
-from test_audit_od import _m, _ws
+from test_audit_od import BIRIM_ADLARI, _m, _ws
 from test_kopya import BASKA, CEVRE, YAZI, _item, _ocr
 
 import yaml
 
 
 def _cfg(w, **extra):
-    sec = {"birim": "Örnek Bölümü", **extra}
+    sec = {"birim": "Örnek Bölümü", "birim_adlari": BIRIM_ADLARI, **extra}
     (w / "config.yaml").write_text(yaml.safe_dump({"bidr": sec}, allow_unicode=True), encoding="utf-8")
     return w
 

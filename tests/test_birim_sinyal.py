@@ -9,11 +9,11 @@ import yaml
 from bidr.audit.run import build
 from bidr.decide import prompt as P
 
-from test_audit_od import _m, _ws
+from test_audit_od import BIRIM_ADLARI, _m, _ws
 
 
 def _cfg(w, **extra):
-    sec = {"birim": "Örnek Bölümü", **extra}
+    sec = {"birim": "Örnek Bölümü", "birim_adlari": BIRIM_ADLARI, **extra}
     (w / "config.yaml").write_text(yaml.safe_dump({"bidr": sec}, allow_unicode=True), encoding="utf-8")
     return w
 
@@ -127,15 +127,17 @@ def test_unit_profile_sources(tmp_path, monkeypatch):
     monkeypatch.setenv("BIDR_INSTITUTIONS_DIR", str(inst))
     w = tmp_path / "w"
     w.mkdir()
-    _cfg(w, kurum="ornek")
+    _cfg(w, kurum="ornek", birim_adlari=["Kıyas Bölümü"])
     assert P.unit_profile(w) == {"birim": "Örnek Bölümü", "fakulte": "Örnek Fakültesi",
-                                 "ders_kodlari": ["ORN", "ÖRN"]}
+                                 "ders_kodlari": ["ORN", "ÖRN"],
+                                 "birim_adlari": ["Kıyas Bölümü", "ÖRNEK BÖLÜMÜ"]}   # config + kurum profili
     info = P.unit_info(w)
     assert P.render_unit(info) == "Birim: Örnek Bölümü\nFakülte: Örnek Fakültesi\nKurum: Örnek Üniversitesi"
     _cfg(w, kurum="ornek", fakulte="Başka Fakülte", ders_kodlari=["XYZ"])    # config kurum profilini aşar
     assert P.unit_profile(w)["fakulte"] == "Başka Fakülte" and P.unit_profile(w)["ders_kodlari"] == ["XYZ"]
-    _cfg(w, kurum="ornek", birim="Kıyas Bölümü")                             # profilde kaydı yok: boş
-    assert P.unit_profile(w) == {"birim": "Kıyas Bölümü", "fakulte": "", "ders_kodlari": []}
+    _cfg(w, kurum="ornek", birim="Kıyas Bölümü", birim_adlari=[])            # profilde kaydı yok: boş
+    assert P.unit_profile(w) == {"birim": "Kıyas Bölümü", "fakulte": "", "ders_kodlari": [],
+                                 "birim_adlari": ["ÖRNEK BÖLÜMÜ"]}
 
 
 def test_config_accepts_unit_signals(tmp_path):
@@ -159,3 +161,65 @@ def test_rules_in_prompt_and_skill():
     skill = (Path(__file__).resolve().parents[1] / ".claude/skills/bidr-rapor/SKILL.md").read_text(encoding="utf-8")
     assert "emin olmadığın satır `ret`" not in skill                 # yetki devrinde bölüm belgesi atılmaz
     assert "işaretsiz satır\n     `kabul`" in skill and "\"birim doğrulanamıyor\"" in skill
+
+
+# -- başka birim adı yalnız bilinen birim listesinden (kurum profili gtu `birimler:`) ----------
+
+def _gtu(w):
+    (w / "config.yaml").write_text(yaml.safe_dump({"bidr": {"birim": "Matematik Bölümü", "kurum": "gtu"}},
+                                                  allow_unicode=True), encoding="utf-8")
+    return w
+
+
+# imzalı tutanak: kişi adı + soyad (büyük harf) + "Bölüm Başkanı"; sıradan sözcük + "Bölüm Kurulu"
+TUTANAK = ("TOPLANTI TUTANAĞI\nToplantı Tarihi: 12.03.2025\nDeğerlendirme Turu Bölüm Kurulunda görüşüldü.\n"
+           "Ders planındaki güncellemeler kabul edilmiştir.\n\n"
+           "Prof. Dr. Deneme KİŞİOĞLU  Bölüm Başkanı\nDoç. Dr. Örnek SOYADLI  Bölüm Sekreteri\n"
+           "Dr. Öğr. Üyesi Kişi ADSIZ  Bölüm Kurulu Üyesi\n")
+
+
+def test_signed_minutes_not_other_unit(tmp_path):
+    q = "Ders planındaki güncellemeler kabul edilmiştir."
+    docs = {"tut": ("toplanti_tutanagi", "2025-03-12", TUTANAK, [_m("B.1.3", "B.1.3/2", "uygula", q)])}
+    w = _gtu(_ws(tmp_path, docs))
+    a = build(w)
+    r = a.by_key["tut|B.1.3/2"]
+    assert r["birim_iliskisi"] == "kendi" and not r["birim_onay_bekliyor"] and r["sayilir"]
+    assert not a.birim["belirsiz"]
+
+
+def test_known_other_unit_detected_unknown_ignored(tmp_path):
+    q = "Ders planındaki güncellemeler kabul edilmiştir."
+    docs = {
+        "fiz": ("resmi_yazi", "2025-03-12", "Fizik Bölümü Başkanlığı\n" + q, [_m("B.1.3", "B.1.3/2", "uygula", q)]),
+        "uyd": ("resmi_yazi", "2025-03-12", "Xyzabc Bölümü Başkanlığı\n" + q, [_m("B.1.3", "B.1.3/2", "uygula", q)]),
+    }
+    a = build(_gtu(_ws(tmp_path, docs)))
+    f_ = a.by_key["fiz|B.1.3/2"]
+    assert f_["birim_iliskisi"] == "belirsiz" and f_["birim_onay_bekliyor"]
+    assert "(fizik)" in str([x for x in a.birim["belirsiz"] if x["doc_id"] == "fiz"])
+    u = a.by_key["uyd|B.1.3/2"]
+    assert u["birim_iliskisi"] == "kendi" and not u["birim_onay_bekliyor"]      # uydurma ad birim sayılmaz
+
+
+def test_other_units_matcher():
+    from bidr.audit.savunma import other_units, unit_names
+    from bidr.decide.prompt import unit_profile
+    names = unit_names(["Matematik Bölümü", "Kimya Bölümü", "Kimya Mühendisliği Bölümü",
+                        "Moleküler Biyoloji ve Genetik Bölümü"])
+    raw = ("Kimya Mühendisliği Bölümünün önerisi\nMoleküler Biyoloji ve Genetik Bölüm Başkanlığına\n"
+           "Matematik Bölümü\nAd KİMYA Bölüm Okuması\nProf. Dr. Ad SOYAD Bölüm Başkanı\n")
+    assert other_units(raw, names, "matematik") == {"kimya muhendisligi", "moleküler biyoloji ve genetik"
+                                                    .replace("ü", "u")}
+    assert other_units("KİMYA BÖLÜMÜ BAŞKANLIĞI", names, "matematik") == {"kimya"}
+    assert other_units("Xyz Bölümü", names, "matematik") == set()
+    assert other_units("Kimya Bölümü", (), "matematik") == set()                # liste yoksa tanı yok
+
+
+def test_gtu_profile_lists_departments(tmp_path):
+    from bidr.decide.prompt import unit_profile
+    w = _gtu(tmp_path)
+    adlar = unit_profile(w)["birim_adlari"]
+    for ad in ("Matematik Bölümü", "Fizik Bölümü", "Kimya Bölümü", "Moleküler Biyoloji ve Genetik Bölümü",
+               "Veri Bilimi ve Analitiği Bölümü", "Bilgisayar Mühendisliği Bölümü", "İşletme Bölümü"):
+        assert ad in adlar
