@@ -363,19 +363,81 @@ def test_sade_one_row_per_criterion_plain_language(ref_ws, tgt_ws, tmp_path):
 def test_sade_xlsx_layout(ref_ws, tgt_ws, tmp_path):
     res = _run(ref_ws, tgt_ws, tmp_path)
     wb = load_workbook(res["paths"]["sade"])
-    assert wb.sheetnames == list(S.SHEETS)
+    assert wb.sheetnames == list(S.SHEETS) == ["İstenen kanıtlar"]              # tek sayfa
     sh = wb[S.SHEETS[0]]
-    head = [c.value for c in sh[1]]
+    H = S.BASLIK_SATIRI
+    head = [c.value for c in sh[H]]
     assert head == [h for _, h, _ in S.COLS]
+    assert head[:6] == ["Madde", "Bulundu", "Durum", "Eksik / istenen belge", "Kimden", "Var olan kanıt (dosyada)"]
     for bad in ("Puan", "Kaynak", "Belge türü", "Kılavuz yuvaları", "Ölçüt açıklamasından (kılavuz)"):
         assert bad not in head
-    assert sh.freeze_panes == "A2" and sh.page_setup.orientation == "landscape"
-    assert sh.print_title_rows.replace("$", "") == "1:1"
-    assert sh.cell(row=2, column=head.index("İstenen belgeler") + 1).alignment.wrap_text
-    assert sh.max_row == len(res["sade"]) + 1
-    k = wb[S.SHEETS[1]]
-    assert [c.value for c in k[1]][:2] == ["Kimden", "Madde"] and k.max_row > 1
-    assert 3 <= wb[S.SHEETS[2]].max_row <= 8
+    # üstte renk açıklaması ve formüllü özet
+    assert sh["A1"].value == "Renkler:" and {S.HIC, S.EKSIK, S.AZ, S.KISMEN, S.TAMAM} <= {c.value for c in sh[1]}
+    assert sh["H1"].fill.fgColor.rgb.endswith("9DC3E6")
+    assert sh["A2"].value.startswith('="Toplam istek: "') and "Tamamlanan madde" in sh["A2"].value
+    # başlık + Madde + Bulundu sabit; filtre; katlanabilir ayrıntı sütunları, genişlikler korunur
+    assert sh.freeze_panes == f"C{H + 1}" and sh.auto_filter.ref.startswith(f"A{H}:L")
+    for i, (_, _, w) in enumerate(S.COLS, 1):
+        d = sh.column_dimensions[chr(64 + i)]
+        assert d.width == w and d.outline_level == (1 if i > S.N_ANA else 0)
+    assert sh.page_setup.orientation == "landscape" and sh.print_title_rows.replace("$", "") == f"{H}:{H}"
+    # her istenen belge ayrı satır; madde ilk satırda koyu, sonrakilerde soluk tekrar; ☐ veri doğrulaması
+    rows = sorted(res["sade"], key=lambda x: S._guvenli_key(x["olcut"]))
+    x = next(r for r in rows if len(r["maddeler"]) > 1)
+    ad = S._madde_kisa(x["madde"])
+    blok = [row for row in sh.iter_rows(min_row=H + 1) if row[0].value == ad]
+    assert [row[3].value for row in blok] == [m["metin"] for m in x["maddeler"]]
+    assert [row[4].value for row in blok] == [m["kimden"] or None for m in x["maddeler"]]
+    assert all(row[1].value == S.BOS for row in blok)
+    assert blok[0][0].font.b and not blok[1][0].font.b and blok[1][0].font.color.rgb.endswith("A6A6A6")
+    assert blok[0][2].value.startswith("=IF(") and "bulundu" in blok[0][2].value and S.TAMAM in blok[0][2].value
+    assert blok[0][0].fill.fgColor.rgb.endswith(S.DURUM_RENK[x["durum"]]) and blok[1][2].value is None
+    dvs = sh.data_validations.dataValidation
+    assert len(dvs) == 1 and S.BOS in dvs[0].formula1 and S.DOLU in dvs[0].formula1
+    assert str(dvs[0].sqref).count(":") or str(dvs[0].sqref).count(" ")
+    # ayraç satırları ve altta okuma notu
+    vals = [row[0].value for row in sh.iter_rows(min_row=H + 1)]
+    assert S.BOLUM["A"] in vals and S.BOLUM["B"] in vals
+    n_istek = sum(len(S.belge_satirlari(r)) for r in res["sade"])
+    assert f"Toplam {len(res['sade'])} madde, {n_istek} istek" in vals and S.NASIL[0] in vals
+    # koşullu biçim: ☑ → yeşil + üstü çizili; Tamamlandı / Kısmen
+    kurallar = [(str(k.sqref), r.formula[0], r.dxf) for k in sh.conditional_formatting for r in k.rules]
+    assert any(f[0].startswith("D") and S.DOLU in f[1] and f[2].font.strike for f in kurallar)
+    assert any(S.TAMAM in f[1] for f in kurallar) and any("Kısmen" in f[1] for f in kurallar)
+
+
+def test_sade_durum_veriden(ref_ws, tgt_ws, tmp_path):
+    """Durum, gerekçe metninden değil veriden: kanıtsız → Hiç belge yok; Yüksek → Eksiği var; diğerleri Az eksik."""
+    res = _run(ref_ws, tgt_ws, tmp_path)
+    s = {x["olcut"]: x for x in res["satirlar"]}
+    for r in res["sade"]:
+        kanitsiz = r["olcut"] in s and s[r["olcut"]]["kanit_sayisi"] == 0
+        assert r["durum"] == (S.HIC if kanitsiz else S.EKSIK if r["oncelik"] == S.YUKSEK else S.AZ)
+    assert {r["durum"] for r in res["sade"]} >= {S.HIC}
+    r = {x["olcut"]: x for x in res["sade"]}["B.1.1"]
+    assert r["dosyada"] and "Bolum Kurulu Karari 2025" in r["dosyada"] and not r["dosyada"].startswith("Dosyada")
+
+
+def test_sade_bilgi_kaybi_yok(ref_ws, tgt_ws, tmp_path):
+    """Eski biçimin her hücre bilgisi (madde, istek, kimden, öncelik, gerekçe, geçen yıl, kılavuz, sıra, dosyada
+    olanlar, kişi sayfası, nasıl okunur) yeni dosyada; denetleyici kaybı yakalar."""
+    md = tmp_path / "ist.md"
+    md.write_text("- B.3.2 — Sentetik elle istek [yüksek] (kimden: Sentetik birim)\n- Madde kodu olmayan istek\n",
+                  encoding="utf-8")
+    res = R.run(tgt_ws, referans=build_reference(ref_ws), out=tmp_path / "o", istekler=S.istekler_oku(md))
+    rows, p = res["sade"], res["paths"]["sade"]
+    assert any(r["dosyada"] for r in rows) and any(r["kilavuz"] for r in rows)
+    assert any(r["olcut"] == "Genel" for r in rows)
+    assert S.bilgi_denetimi(rows, p) == []
+    # denetleyici boş değil: bir istek ve bir kimden silinince yakalanır
+    wb = load_workbook(p)
+    sh = wb[S.SHEETS[0]]
+    x = next(r for r in rows if r["maddeler"])
+    hedef = next(row for row in sh.iter_rows(min_row=S.BASLIK_SATIRI + 1) if row[3].value == x["maddeler"][0]["metin"])
+    hedef[3].value = "değişti"
+    wb.save(p)
+    assert any(e.startswith(f"{S._madde_kisa(x['madde'])} istek:") for e in S.bilgi_denetimi(rows, p))
+    assert any(e.startswith("kişi:") for e in S.bilgi_denetimi(rows, p))
 
 
 def test_sade_manual_requests(tgt_ws, tmp_path):
