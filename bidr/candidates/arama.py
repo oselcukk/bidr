@@ -7,7 +7,10 @@ denetiminden (`decide.run.check_matches`: aday dışı ölçüt, yuva, birebir a
 geçirip decisions.jsonl'deki kayda EKLER. İlk geçişin eşleşmeleri ve `ince` bölümü değişmez.
 
 İşaret: ikinci aramanın eklediği her eşleşme `ikinci_arama: true` ve `denetim.isaret`te
-`ikinci_arama` taşır (review.xlsx "işaretler" sütununda görünür); kayıtta `ikinci_arama`
+`ikinci_arama` taşır. Alıntısı (normalize) kayıtta başka bir ölçütte kabul edilmiş eşleşmeninkiyle
+aynıysa ayrıca `ayni_alinti_kabul` işareti ve `ayni_alinti_olcut` (o ölçütler) alır; inceleme
+kartında "aynı alıntı X ölçütünde kabul" dikkat notu çıkar (`mark_same_quote`). Pakette belge başka
+ölçütte kabul edilmişse istem bu kabulleri ve "aynı içeriği taşıma" kuralını taşır (`accepted_note`) (review.xlsx "işaretler" sütununda görünür); kayıtta `ikinci_arama`
 bölümü hangi ölçütlerin hangi puanla bakıldığını tutar. Ölçüm: `bidr arama olcum`.
 
 İlk geçiş yeniden karara bağlanırsa (`decide apply`) ikinci aramanın eşleşmeleri düşmez:
@@ -20,15 +23,19 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
+import re
 from pathlib import Path
 
 from bidr.common import Workspace
 from bidr.criteria.model import id_key
 
 from . import ikinci as I
+from .text import fold
 
 WORK = "ikinci_arama"
 ISARET = "ikinci_arama"
+AYNI_ALINTI = "ayni_alinti_kabul"
+AYNI_ALINTI_MIN = 30        # kapsama (biri ötekinin içinde) yalnız bu uzunluktan sonra aynı sayılır
 REVIEW = "review-decisions.jsonl"
 
 README = """# bidr ikinci arama paketleri: classify_fine (sürüm {version})
@@ -37,8 +44,10 @@ Bu klasördeki her `<doc_id>.json` bir ince karar paketidir; `bidr decide`'ın i
 paketleriyle aynı görev ve aynı kurallar. Fark: aday ölçütler kanıtsız ya da zayıf kalmış
 ölçütlerdir (ikinci arama): ya ilk geçişte bu belge için aday olmamışlardır ya da belge başka
 bir ölçütte kanıt olarak kabul edilmiştir ve aynı belgenin bu ölçüte de kanıt olup olmadığı
-sorulur. Belgenin öteki ölçütteki kabulü bu ölçüt için kanıt değildir; yalnız metne bak. Uymuyorsa
-"olcut_yok" ya da "kanit_degil" geçerli ve beklenen cevaptır; zorlama.
+sorulur. Belgenin öteki ölçütteki kabulü bu ölçüt için kanıt değildir; yalnız metne bak. Belge
+başka ölçütte kabul edilmişse eşleşme yalnız alıntı bu ölçütün yuvasına AYRI ve özgül bir içerikle
+karşılık veriyorsa verilir; aynı alıntıyı ya da aynı içeriği iki ölçüte taşımak "olcut_yok"tur.
+Uymuyorsa "olcut_yok" ya da "kanit_degil" geçerli ve beklenen cevaptır; zorlama.
 
 1. Paketi oku; `istem` görevin tamamı, `sema` cevabın JSON şeması.
 2. Cevabı YALNIZ JSON olarak aynı klasörde `<doc_id>.out.json` dosyasına yaz.
@@ -50,6 +59,58 @@ Bekleyen paket: {n}
 
 def _sha(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()[:16]
+
+
+def norm_quote(s: str | None) -> str:
+    """Alıntı karşılaştırması için: aksan/büyük harf katlanmış, yalnız sözcükler."""
+    return " ".join(re.findall(r"[a-z0-9]+", fold(s or "")))
+
+
+def _same_quote(a: str, b: str) -> bool:
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    short, long_ = sorted((a, b), key=len)
+    return len(short) >= AYNI_ALINTI_MIN and short in long_
+
+
+def mark_same_quote(did: str, matches: list[dict], review: dict[str, dict] | None = None) -> list[dict]:
+    """İkinci arama eşleşmelerinden alıntısı başka ölçütte kabul edilmiş (insan reddetmemiş) bir
+    eşleşmeninkiyle aynı olanlara `ayni_alinti_kabul` işareti ve `ayni_alinti_olcut` koyar (yerinde;
+    eski işaret önce kalkar). Eşleşme reddedilmez: karar incelemede, kartta dikkat notuyla."""
+    review = review or {}
+    acc = [(norm_quote(m.get("alinti")), m.get("olcut")) for m in matches
+           if m.get("kabul") and not I.human_rejected(review, did, m.get("yuva"))]
+    for m in matches:
+        if not m.get("ikinci_arama"):
+            continue
+        den = m.setdefault("denetim", {})
+        den["isaret"] = [x for x in den.get("isaret") or [] if x != AYNI_ALINTI]
+        m.pop("ayni_alinti_olcut", None)
+        q = norm_quote(m.get("alinti"))
+        hits = sorted({c for nq, c in acc if c and c != m.get("olcut") and _same_quote(q, nq)}, key=id_key)
+        if hits:
+            den["isaret"].append(AYNI_ALINTI)
+            m["ayni_alinti_olcut"] = hits
+    return matches
+
+
+def accepted_note(did: str, view: dict, crits: list[str], review: dict[str, dict]) -> str:
+    """İkinci arama paketine: belgenin başka ölçütlerde kabul edilmiş alıntıları ve kural."""
+    rows = [m for m in view.get("eslesmeler") or []
+            if m.get("kabul") and m.get("olcut") not in crits
+            and not I.human_rejected(review, did, m.get("yuva"))]
+    if not rows:
+        return ""
+    lines = ["İKİNCİ ARAMA — BU BELGE BAŞKA ÖLÇÜTLERDE KABUL EDİLDİ:"]
+    for m in sorted(rows, key=lambda m: (id_key(m["olcut"]), str(m.get("yuva"))))[:8]:
+        q = " ".join(str(m.get("alinti") or "").split())
+        lines.append(f"- {m.get('yuva') or m['olcut']}: \"{q[:300]}{'…' if len(q) > 300 else ''}\"")
+    lines.append("Aday ölçütlere eşleşmeyi yalnız alıntı o ölçütün yuvasına AYRI ve özgül bir içerikle "
+                 "karşılık veriyorsa ver. Yukarıdaki alıntıyı ya da aynı içeriği (aynı bilgi, başka "
+                 "sözcüklerle) benzer bir ölçüte taşımak eşleşme değildir: o durumda \"olcut_yok\".")
+    return "\n".join(lines)
 
 
 def first_pass_print(rec: dict) -> str:
@@ -248,6 +309,8 @@ def prepare(ws_root: Path, *, profile: str | None = "akademik_bolum", n: int = I
           "secim_capraz": secim_capraz, "capraz_havuz": len(pool), "capraz_paket": len(cross),
           "capraz_cift": sum(len(v) for v in cross.values()), "tasinan": [], **est}
     stale = set(stale_pkgs(d, recs))
+    from bidr.decide.run import unit_view
+    review = load_review(ctx.ws.root)
     for did in sorted(by_doc):
         rows = sorted(by_doc[did].values(), key=lambda r: (-r["puan"], id_key(r["olcut"])))
         st["kesilen"] += max(0, len(rows) - max_aday)
@@ -258,6 +321,10 @@ def prepare(ws_root: Path, *, profile: str | None = "akademik_bolum", n: int = I
         inputs, meta = fine_inputs(sub, did, {"kaba": {"secilen": crits},
                                               "belge_bilgisi": rec.get("belge_bilgisi") or {}},
                                    komisyon=False)
+        note = accepted_note(did, unit_view(rec, ctx.pins, ctx.tags), crits, review)
+        if note:                            # yalnız bekleyen/yeni paketin istemi değişir (bakılmış çift paketlenmez)
+            inputs["belge_bilgisi"] = (inputs["belge_bilgisi"].rstrip() + "\n\n" + note).strip()
+            meta["ikinci_arama_kabul_notu"] = True
         meta["ikinci_arama"] = {"olcutler": rows, "ince_parmak": first_pass_print(rec)}
         st["paket"] += 1
         # ilk geçiş değişmişse istem aynı kalsa da paket (ve parmak izi) yenilenir, eski cevap `.eski` olur
@@ -271,7 +338,8 @@ def prepare(ws_root: Path, *, profile: str | None = "akademik_bolum", n: int = I
     return st
 
 
-def merge(ctx, did: str, rec: dict, out: dict, pkg: dict, model: str, verify, cevap_sha: str | None = None) -> dict:
+def merge(ctx, did: str, rec: dict, out: dict, pkg: dict, model: str, verify, cevap_sha: str | None = None,
+          review: dict[str, dict] | None = None) -> dict:
     """İkinci aramanın cevabını kayda ekler. Paketteki ölçütlerin önceki ikinci arama
     eşleşmeleri yenisiyle değişir; ilk geçişin eşleşmeleri ve `ince` bölümü değişmez.
     Birim ilişkisi kayıttan (insan kararı öncelikli): ilk geçişte verilmiş karar esastır."""
@@ -296,7 +364,7 @@ def merge(ctx, did: str, rec: dict, out: dict, pkg: dict, model: str, verify, ce
             if not (m.get("ikinci_arama") and (m.get("olcut") in cset
                                                 or m.get("ikinci_arama_paket") == pkg["istem_sha"]))]
     rec = dict(rec)
-    rec["eslesmeler"] = keep + new
+    rec["eslesmeler"] = mark_same_quote(did, keep + new, review)
     rec["olcutler"] = summarize(rec["eslesmeler"])
     if rec["olcutler"]:
         rec["karar"] = "olcut_var"
@@ -332,6 +400,7 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", backend=None, ctx
     if ctx is None:
         ctx = Context.load(ws_root, profile=None)
     recs = load_decisions(ctx.ws)
+    review = load_review(ctx.ws.root)
     d = work_dir(ctx.ws, WORK)
     st = {"islenen": 0, "degismedi": 0, "bekleyen": [], "gecersiz": {}, "eski_surum": [],
           "eski_paket": [], "eklenen_kabul": 0, "eklenen_red": 0}
@@ -361,7 +430,7 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", backend=None, ctx
         if out is None:
             st["gecersiz"][did] = errs[:5]
             continue
-        rec, new = merge(ctx, did, rec, out, pkg, model, backend.verify_quote, cevap)
+        rec, new = merge(ctx, did, rec, out, pkg, model, backend.verify_quote, cevap, review=review)
         recs[did] = rec
         for m in new:
             st["eklenen_kabul" if m["kabul"] else "eklenen_red"] += 1

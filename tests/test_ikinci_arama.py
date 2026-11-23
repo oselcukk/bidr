@@ -426,3 +426,70 @@ def test_prepare_archives_dropped_and_keeps_merged(ws):
     assert (d / f"{keep}.json").exists() and (d / f"{keep}.out.json").exists()   # merged korunur
     ck = _check(root)
     assert ck.ilerleme["eski"] == 0 and ck.bitti
+
+
+# -- aynı alıntının başka ölçüte taşınması ------------------------------------------------
+
+def test_cross_package_prompt_lists_accepted_quotes_and_rule(cws):
+    root, ids = cws
+    A.prepare(root, profile=None, olcutler=["D.1.2"])
+    pkg = json.loads((root / "work" / A.WORK / f"{ids['etk']}.json").read_text(encoding="utf-8"))
+    assert "BAŞKA ÖLÇÜTLERDE KABUL EDİLDİ" in pkg["istem"] and "D.2.1/1" in pkg["istem"]
+    assert "AYRI ve özgül" in pkg["istem"] and pkg["meta"]["ikinci_arama_kabul_notu"] is True
+    # insanın reddettiği kabul notta yer almaz (etk_ret havuzda değil; arşiv yolunda da not yok)
+    p = root / "work" / A.WORK / f"{ids['etk_ret']}.json"
+    if p.exists():
+        assert "BAŞKA ÖLÇÜTLERDE" not in json.loads(p.read_text(encoding="utf-8"))["istem"]
+    assert "AYRI ve özgül" in (root / "work" / A.WORK / "README.md").read_text(encoding="utf-8")
+
+
+def _answer_etk(root, ids, alinti):
+    for p in (root / "work" / A.WORK).glob("*.json"):
+        if p.stem != ids["etk"] and not p.name.endswith(".out.json"):
+            _answer(root, p.stem, {"karar": "olcut_yok", "gerekce": "g", "birim_iliskisi": "kendi",
+                                   "eslesmeler": []})
+    _answer(root, ids["etk"], {"karar": "olcut_var", "gerekce": "g", "birim_iliskisi": "kendi",
+                               "eslesmeler": [{"olcut": "D.1.2", "yuva": "D.1.2/1", "asama": "uygula",
+                                               "od_onerisi": 2, "alinti": alinti, "gerekce": "g",
+                                               "guven": "yuksek"}]})
+
+
+def test_same_quote_accepted_elsewhere_is_flagged(cws):
+    root, ids = cws
+    A.prepare(root, profile=None, olcutler=["D.1.2"])
+    _answer_etk(root, ids, Q_D21.upper())           # D.2.1'de kabul edilen alıntının aynısı (normalize)
+    A.apply(root, model="m")
+    m = next(x for x in _recs(root)[ids["etk"]]["eslesmeler"] if x.get("ikinci_arama"))
+    assert A.AYNI_ALINTI in m["denetim"]["isaret"] and m["ayni_alinti_olcut"] == ["D.2.1"]
+    assert m["kabul"]                                 # reddedilmez; karar incelemede
+    from bidr.audit.sade import dikkat
+    uy, bak = dikkat({"flags": m["denetim"]["isaret"], "ayni_alinti_olcut": m["ayni_alinti_olcut"],
+                      "sayilir": True}, 2025)
+    assert bak and any("Aynı alıntı D.2.1 ölçütünde zaten kabul" in x for x in uy)
+
+
+def test_distinct_quote_not_flagged_and_merged_package_not_rewritten(cws):
+    root, ids = cws
+    A.prepare(root, profile=None, olcutler=["D.1.2"])
+    _answer_etk(root, ids, Q_D12)
+    A.apply(root, model="m")
+    m = next(x for x in _recs(root)[ids["etk"]]["eslesmeler"] if x.get("ikinci_arama"))
+    assert A.AYNI_ALINTI not in m["denetim"]["isaret"] and "ayni_alinti_olcut" not in m
+    p = root / "work" / A.WORK / f"{ids['etk']}.json"
+    before = p.read_text(encoding="utf-8")
+    A.prepare(root, profile=None, olcutler=["D.1.2"])
+    assert p.read_text(encoding="utf-8") == before                    # işlenmiş paket yerinde
+    assert (root / "work" / A.WORK / f"{ids['etk']}.out.json").exists()
+
+
+def test_mark_same_quote_ignores_human_rejected_and_short_containment():
+    did = "d"
+    first = {**_match("D.2.1", "D.2.1/1", Q_D21)}
+    sec = {**_match("D.1.2", "D.1.2/1", Q_D21), "ikinci_arama": True}
+    A.mark_same_quote(did, [first, sec], {f"{did}|D.2.1/1": {"karar": "ret"}})
+    assert A.AYNI_ALINTI not in sec["denetim"]["isaret"]
+    A.mark_same_quote(did, [first, sec])
+    assert sec["ayni_alinti_olcut"] == ["D.2.1"]
+    short = {**_match("D.1.2", "D.1.2/1", "katılmıştır"), "ikinci_arama": True}
+    A.mark_same_quote(did, [first, short])
+    assert "ayni_alinti_olcut" not in short

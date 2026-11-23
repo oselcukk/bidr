@@ -57,6 +57,8 @@ ORDER = {"planla": 1, "uygula": 2, "kontrol_et": 3, "onlem_al": 4, "ozgun": 5}
 # -- işaretlerin düz Türkçe karşılığı -------------------------------------------------------------
 # (metin, bakılmalı mı). {yil}: rapor yılı, {byil}: belgenin yılı. Bakılmalı olmayanlar yalnız bilgi.
 DIKKAT = {
+    "ayni_alinti_kabul": ("Aynı alıntı {ayni} ölçütünde zaten kabul edildi (ikinci arama). Alıntı bu maddeye "
+                          "AYRI ve özgül bir içerikle karşılık vermiyorsa Ret; başka maddeye aitse Düzelt.", True),
     "birim_onay_bekliyor": ("Bu belgenin bölümünüze ait olduğundan emin değiliz; onaylanana dek kanıt "
                             "sayılmıyor. Bölümünüzün belgesiyse Kabul, değilse Ret seçin.", True),
     "birim_iliskisi_kod": ("Bölüme ait olduğu belgedeki bir ifadeden çıkarıldı. Doğruysa Kabul.", True),
@@ -338,7 +340,7 @@ def dikkat(r: dict, yil: int | None) -> tuple[list[str], bool]:
     for f in fl:
         if f in DIKKAT:
             t, b = DIKKAT[f]
-            out.append(t.format(yil=ys, byil=byil))
+            out.append(t.format(yil=ys, byil=byil, ayni=", ".join(r.get("ayni_alinti_olcut") or []) or "başka bir"))
             bak = bak or b
         elif f not in BILGI:
             bak = True

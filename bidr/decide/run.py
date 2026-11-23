@@ -633,6 +633,9 @@ def apply_fine(ctx: Context, did: str, rec: dict, out: dict, meta: dict, model_i
                    "metin": meta["metin"], "istem_token_tahmini": meta["istem_token_tahmini"],
                    "denetim_surumu": DENETIM_SURUMU, **note_fields(meta, out), **(extra or {})}
     rec["eslesmeler"] = matches + carry_second_search(ctx, did, prev_second, matches, kg["karar"], rel, verify)
+    if prev_second:                         # ilk geçiş değişti: "aynı alıntı" işareti yeniden hesaplanır
+        from bidr.candidates.arama import load_review, mark_same_quote
+        mark_same_quote(did, rec["eslesmeler"], load_review(ctx.ws.root))
     matches = rec["eslesmeler"]
     rec["olcutler"] = summarize(matches)
     if rec["olcutler"]:

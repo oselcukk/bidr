@@ -334,6 +334,7 @@ def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | 
         "vurgu": "; ".join(vurgu), "guven": m.get("guven") or "",
         "isaretler": ", ".join(dict.fromkeys(flags)), "flags": list(dict.fromkeys(flags)),
         "alinti": m.get("alinti") or "", "gerekce": m.get("gerekce") or "",
+        "ayni_alinti_olcut": list(m.get("ayni_alinti_olcut") or []),
         "yeniden_bak": "", "bakildi": "",
         **_decision_cells(dec),
     }
