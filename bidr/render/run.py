@@ -553,6 +553,14 @@ def render(template: Path, out: Path, *, texts_dir: Path, audit_path: Path | Non
     filed = load_index_rows(index_path)
     if index_path is not None and not Path(index_path).exists():
         res.uyarilar.append(f"evidence-index.csv yok ({index_path}); kanıt adları bağlantısız")
+    elif index_path is not None:
+        # ölçütün kanıtı kalmadı (belge kaynaktan çıkarıldı ya da incelemede reddedildi): eski metin ve
+        # atıfları rapora girmez; ölçüt kanıtsız ölçüt gibi boş ifadeyle doldurulur (TASLAK sayılmaz)
+        yetim = sorted(c for c in texts if c not in filed)
+        for cid in yetim:
+            del texts[cid]
+        if yetim:
+            res.uyarilar.append(f"{len(yetim)} metnin ölçütünde artık kanıt yok; rapora alınmadı: {', '.join(yetim)}")
     doc = docx.Document(str(template))
     blocks, uy = find_blocks(doc)
     res.uyarilar += uy

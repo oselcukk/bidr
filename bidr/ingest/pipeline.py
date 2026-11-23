@@ -11,6 +11,7 @@ kapsayıcı satırı `kapsayici` sütununda. Sayfa yapısından parça grubu ve 
 from __future__ import annotations
 
 import csv
+import json
 import os
 import stat
 import sys
@@ -20,7 +21,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from bidr.common import Workspace, doc_id_from_sha, sha256_file
+from bidr.common import Workspace, doc_id_from_sha, read_jsonl, sha256_file, write_jsonl
 
 from . import containers as C
 from . import extract as ex
@@ -265,8 +266,67 @@ def run(source: Path, workspace: Path, *, force: bool = False, use_ocr: bool = T
         w.writerows(rows)
     tmp.replace(ws.inventory)
     _update_gaps(ws, rows)
+    _prune_removed(ws, rows, log)
     log(f"bitti: {len(rows)} satır, {time.time() - t0:.1f} sn -> {ws.inventory}")
     return rows
+
+
+# Belgeye bağlı türetilmiş kayıtlar (doc_id anahtarlı; makine çıktısı). Kaynaktan çıkan belgenin bunları
+# kalırsa sonraki aşamalar onu hâlâ setin parçası sayar: kararı, inceleme satırı, kanıt dizini ve rapor
+# atfı düşmez. İnsan girdileri (etiketler, hakem cevapları, review-decisions.jsonl) dokunulmadan kalır;
+# doc_id'si artık kararlarda olmadığı için kullanılmaz.
+DERIVED_JSONL = ("documents.jsonl", "candidates.jsonl", "decisions.jsonl")
+DERIVED_WORK = ("coarse", "fine")
+REMOVED_DIR = "kaynaktan-cikarilan"
+
+
+def _prune_removed(ws: Workspace, rows: list[dict], log: Callable[[str], None]) -> list[str]:
+    """Kaynakta artık olmayan (envanterde doc_id'si kalmayan) belgelerin türetilmiş kayıtlarını
+    kaldırır: `text/<doc_id>.txt`, documents/candidates/decisions.jsonl satırları, decide iş
+    paketleri (`work/coarse|fine/<doc_id>.json` ve cevapları). Silinmez: `kaynaktan-cikarilan/`
+    altına taşınır (kayıtlar `kayitlar.jsonl`'e eklenir). decisions.jsonl değiştiği için audit,
+    file ve write kendi parmak izleriyle eskir ve yeniden koşar (review.xlsx satırı, kanıt
+    dizini, ölçüt metni). Bir dosya okunamadıysa ya da iCloud'da duruyorsa (doc_id'si bilinemiyor)
+    hiçbir şey kaldırılmaz. Döner: kaldırılan doc_id'ler."""
+    if any(not r.get("doc_id") and r.get("status") in (NOT_DOWNLOADED, ERROR) for r in rows):
+        return []
+    known = {r["doc_id"] for r in rows if r.get("doc_id")}
+    have: set[str] = {p.stem for p in ws.text_dir.glob("*.txt")} if ws.text_dir.exists() else set()
+    recs: dict[str, list[dict]] = {}
+    for name in DERIVED_JSONL:
+        p = ws.root / name
+        recs[name] = list(read_jsonl(p)) if p.exists() else []
+        have |= {r["doc_id"] for r in recs[name] if r.get("doc_id")}
+    gone = sorted(have - known)
+    if not gone:
+        return []
+    arch = ws.root / REMOVED_DIR
+    arch.mkdir(exist_ok=True)
+    when = time.strftime("%Y-%m-%dT%H:%M:%S")
+    g = set(gone)
+    with open(arch / "kayitlar.jsonl", "a", encoding="utf-8") as f:
+        for name in DERIVED_JSONL:
+            keep, drop = [], []
+            for r in recs[name]:
+                (drop if r.get("doc_id") in g else keep).append(r)
+            for r in drop:
+                f.write(json.dumps({"zaman": when, "dosya": name, "kayit": r}, ensure_ascii=False) + "\n")
+            if drop:
+                write_jsonl(ws.root / name, keep)
+    for did in gone:
+        src = ws.text_path(did)
+        if src.exists():
+            (arch / "text").mkdir(exist_ok=True)
+            src.replace(arch / "text" / src.name)
+        for stage in DERIVED_WORK:
+            d = ws.root / "work" / stage
+            for p in (d / f"{did}.json", d / f"{did}.out.json"):
+                if p.exists():
+                    (arch / "work" / stage).mkdir(parents=True, exist_ok=True)
+                    p.replace(arch / "work" / stage / p.name)
+    log(f"kaynaktan çıkan {len(gone)} belgenin türetilmiş kayıtları kaldırıldı ({REMOVED_DIR}/): "
+        + ", ".join(gone[:5]) + (" …" if len(gone) > 5 else ""))
+    return gone
 
 
 def _materialize(ws: Workspace, e: Entry) -> str:

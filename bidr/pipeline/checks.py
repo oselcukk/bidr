@@ -646,7 +646,7 @@ def write_tamam(c: Ctx) -> Check:
     uy = []
     extra = sorted(p.stem for p in td.glob("*.json") if p.stem not in need) if td.exists() else []
     if extra:
-        uy.append(f"{len(extra)} metnin ölçütünde artık kanıt yok ({_sample(extra)}); doğrulama bu metinleri reddeder")
+        uy.append(f"{len(extra)} metnin ölçütünde artık kanıt yok ({_sample(extra)}); rapora alınmaz (ölçüt kanıtsız yazılır)")
     eski_surum = [k for k in W.old_rule_texts(ws, index, audit, ver) if k not in pending]
     if eski_surum:
         prog["eski_kural"] = len(eski_surum)
