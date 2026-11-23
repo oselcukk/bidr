@@ -367,3 +367,62 @@ def test_cross_route_apply_merges_without_double_count(cws):
     # bakılmış çift yeniden paketlenmez; ikinci aramanın kabulü havuz nedeni sayılmaz
     st = A.prepare(root, profile=None, olcutler=["D.1.2"])
     assert ids["etk"] not in st["secim_capraz"].get("D.1.2", [])
+
+
+def _save(root, recs):
+    with open(root / "decisions.jsonl", "w", encoding="utf-8") as f:
+        for k in sorted(recs):
+            f.write(json.dumps(recs[k], ensure_ascii=False) + "\n")
+
+
+def _check(root):
+    from bidr.pipeline.checks import Ctx, ikinci_arama_tamam
+    from bidr.common import Workspace
+    stage = {"komut": ["bidr arama prepare", "(ajan)", "bidr arama apply"]}
+    return ikinci_arama_tamam(Ctx(Workspace(root), {}, lambda s: s, stage))
+
+
+def test_prepare_refreshes_stale_after_first_pass_change(ws):
+    """İlk geçiş değişti, istem aynı: prepare paketi yeniler (parmak izi), eski cevap `.eski` olur;
+    check'te eski paket kalmaz (canlıda prepare → check döngüsü takılıyordu)."""
+    root, ids = ws
+    A.prepare(root, profile=None, olcutler=["B.2.3"])
+    d = root / "work" / A.WORK
+    _answer(root, ids["rpl"], {"karar": "olcut_yok", "gerekce": "g", "birim_iliskisi": "kendi", "eslesmeler": []})
+    recs = _recs(root)
+    recs[ids["rpl"]]["ince"]["cevap_sha"] = "c2"          # ilk geçiş yeniden karara bağlandı
+    _save(root, recs)
+    assert ids["rpl"] in A.stale_pkgs(d, _recs(root))
+    st = A.prepare(root, profile=None, olcutler=["B.2.3"])
+    assert st["eski_kalan"] == 0 and A.stale_pkgs(d, _recs(root)) == []
+    assert (d / f"{ids['rpl']}.out.json.eski").exists() and not (d / f"{ids['rpl']}.out.json").exists()
+    pkg = json.loads((d / f"{ids['rpl']}.json").read_text(encoding="utf-8"))
+    assert pkg["meta"]["ikinci_arama"]["ince_parmak"] == A.first_pass_print(_recs(root)[ids["rpl"]])
+    assert _check(root).ilerleme["eski"] == 0
+
+
+def test_prepare_archives_dropped_and_keeps_merged(ws):
+    """Adaylıktan düşen belgenin eski paketi ve cevabı `_eski/`'ye taşınır (silinmez); cevabı
+    kayıtta olan (merged) paket yerinde kalır."""
+    root, ids = ws
+    A.prepare(root, profile=None, olcutler=["B.2.3"])
+    d = root / "work" / A.WORK
+    others = [p.stem for p in d.glob("*.json") if not p.name.endswith(".out.json") and p.stem != ids["rpl"]]
+    assert others
+    for did in [ids["rpl"], *others]:
+        _answer(root, did, {"karar": "olcut_yok", "gerekce": "g", "birim_iliskisi": "kendi", "eslesmeler": []})
+    A.apply(root)
+    keep = others[0]
+    drop = ids["rpl"]
+    recs = _recs(root)
+    # düşen belge: ilk geçiş B.2.3'ü artık aday sayıyor (paket eskidi, belge ikinci aramaya açık değil)
+    recs[drop]["adaylar"] = [*recs[drop]["adaylar"], "B.2.3"]
+    _save(root, recs)
+    assert A.stale_pkgs(d, _recs(root)) == [drop]
+    st = A.prepare(root, profile=None, olcutler=["B.2.3"])
+    assert drop in st["tasinan"] and st["eski_kalan"] == 0
+    assert (d / "_eski" / f"{drop}.json").exists() and (d / "_eski" / f"{drop}.out.json").exists()
+    assert not (d / f"{drop}.json").exists()
+    assert (d / f"{keep}.json").exists() and (d / f"{keep}.out.json").exists()   # merged korunur
+    ck = _check(root)
+    assert ck.ilerleme["eski"] == 0 and ck.bitti

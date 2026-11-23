@@ -83,6 +83,49 @@ def merged(rec: dict | None, pkg: dict, cevap: str) -> bool:
         for c in adaylar)
 
 
+def pkg_status(d: Path, pkg: dict, rec: dict | None, ver: str) -> str:
+    """Paketin durumu: "merged" (cevabı kayıtta), "eski" (görev sürümü değişmiş, kayıt ince değil
+    ya da ilk geçişin parmak izi pakettekinden farklı) ya da "guncel". `prepare` ile
+    `ikinci_arama_tamam` aynı tanımı kullanır: prepare'den sonra eski paket kalmaz."""
+    outp = d / pkg["cikti_dosyasi"]
+    ok_rec = bool(rec) and rec.get("asama") == "ince"
+    if (str(pkg.get("surum")) == ver and ok_rec and outp.exists()
+            and merged(rec, pkg, _sha(outp.read_text(encoding="utf-8")))):
+        return "merged"
+    if (str(pkg.get("surum")) != ver or not ok_rec
+            or first_pass_print(rec) != ((pkg.get("meta") or {}).get("ikinci_arama") or {}).get("ince_parmak")):
+        return "eski"
+    return "guncel"
+
+
+def stale_pkgs(d: Path, recs: dict[str, dict]) -> list[str]:
+    """Klasördeki eski paketlerin doc_id'leri (`pkg_status` == "eski")."""
+    from bidr.decide.run import FINE, _load_pkg, _pkg_paths, task_version
+    if not d.exists():
+        return []
+    ver = task_version(FINE)
+    return [pkg["doc_id"] for p in _pkg_paths(d) if (pkg := _load_pkg(p)) is not None
+            and pkg_status(d, pkg, recs.get(pkg["doc_id"]), ver) == "eski"]
+
+
+def _archive(d: Path, did: str) -> list[str]:
+    """Adaylıktan düşen eski paketi ve cevaplarını `_eski/` altına taşır (silmez; ad çakışırsa
+    sonuna sayı eklenir)."""
+    arc = d / "_eski"
+    arc.mkdir(exist_ok=True)
+    moved = []
+    for name in (f"{did}.json", f"{did}.out.json", f"{did}.out.json.eski"):
+        src = d / name
+        if not src.exists():
+            continue
+        dst, i = arc / name, 1
+        while dst.exists():
+            dst, i = arc / f"{name}.{i}", i + 1
+        src.replace(dst)
+        moved.append(name)
+    return moved
+
+
 def eligible_map(ctx, recs: dict[str, dict], weak: set[str], *, redo: bool = False) -> tuple[dict, dict]:
     """({doc_id: ikinci aramaya açık zayıf ölçütler}, sayaçlar)."""
     from bidr.decide.run import BIRIM_DISI, record_unit_relation, unit_view
@@ -162,7 +205,8 @@ def prepare(ws_root: Path, *, profile: str | None = "akademik_bolum", n: int = I
     """Zayıf ölçütleri bulur, arşivde arar, belge başına bir ince karar paketi yazar.
     `olcutler` verilirse zayıflık hesaplanmaz, yalnız bu ölçütler aranır. `capraz`: başka
     ölçütte kabul edilmiş birim belgeleri de zayıf ölçütlere aday olur (çapraz yol)."""
-    from bidr.decide.run import FINE, Backend, Context, _write_pkg, fine_inputs, load_decisions, work_dir
+    from bidr.decide.run import (FINE, Backend, Context, _write_pkg, fine_inputs, load_decisions,
+                                 task_version, work_dir)
 
     backend = backend or Backend()
     if ctx is None:
@@ -202,7 +246,8 @@ def prepare(ws_root: Path, *, profile: str | None = "akademik_bolum", n: int = I
     st = {"zayif": weak, "audit": audit is not None, "paket": 0, "yeni": 0, "kesilen": 0,
           "secim": {c: [r["doc_id"] for r in rows] for c, rows in picks.items()},
           "secim_capraz": secim_capraz, "capraz_havuz": len(pool), "capraz_paket": len(cross),
-          "capraz_cift": sum(len(v) for v in cross.values()), **est}
+          "capraz_cift": sum(len(v) for v in cross.values()), "tasinan": [], **est}
+    stale = set(stale_pkgs(d, recs))
     for did in sorted(by_doc):
         rows = sorted(by_doc[did].values(), key=lambda r: (-r["puan"], id_key(r["olcut"])))
         st["kesilen"] += max(0, len(rows) - max_aday)
@@ -215,7 +260,12 @@ def prepare(ws_root: Path, *, profile: str | None = "akademik_bolum", n: int = I
                                    komisyon=False)
         meta["ikinci_arama"] = {"olcutler": rows, "ince_parmak": first_pass_print(rec)}
         st["paket"] += 1
-        st["yeni"] += _write_pkg(d, did, FINE, inputs, meta, backend, force=redo)
+        # ilk geçiş değişmişse istem aynı kalsa da paket (ve parmak izi) yenilenir, eski cevap `.eski` olur
+        st["yeni"] += _write_pkg(d, did, FINE, inputs, meta, backend, force=redo or did in stale)
+    for did in sorted(stale - set(by_doc)):      # artık aday değil: eski paket `_eski/`'ye
+        if _archive(d, did):
+            st["tasinan"].append(did)
+    st["eski_kalan"] = len(stale_pkgs(d, recs))
     st["bekleyen"] = _write_readme(d)
     st["klasor"] = str(d)
     return st

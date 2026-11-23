@@ -456,11 +456,10 @@ def ikinci_arama_tamam(c: Ctx) -> Check:
         did = pkg.get("doc_id")
         rec = recs.get(did)
         outp = d / pkg["cikti_dosyasi"]
-        if (str(pkg.get("surum")) == ver and rec and rec.get("asama") == "ince" and outp.exists()
-                and A.merged(rec, pkg, A._sha(outp.read_text(encoding="utf-8")))):
+        durum = A.pkg_status(d, pkg, rec, ver)   # prepare ile ortak "eski" tanımı
+        if durum == "merged":
             continue                         # cevap kayıtta (ilk geçiş sonradan yeniden uygulanmış olsa da)
-        if (str(pkg.get("surum")) != ver or not rec or rec.get("asama") != "ince"
-                or A.first_pass_print(rec) != ((pkg.get("meta") or {}).get("ikinci_arama") or {}).get("ince_parmak")):
+        if durum == "eski":
             eski.append(did)
             continue
         if not outp.exists():
