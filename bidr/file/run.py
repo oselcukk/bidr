@@ -254,7 +254,8 @@ def plan(ws_root: Path, *, review_dir: Path | None = None, profile: str | None =
         groups.setdefault(key, []).append(row)
     items: list[Item] = []
     for (olcut, root), rows in groups.items():
-        ids = sorted({r["doc_id"] for r in rows})
+        # kopya grubu inceleme tablosunda tek satırdır (audit `kopyalar`): satır kararı bütün gruba
+        ids = sorted({r["doc_id"] for r in rows} | {k for r in rows for k in (r.get("kopyalar") or "").split("; ") if k})
         rep = root if root in ids else ids[0]
         counted = [r for r in rows if r["sayilir"] and r["od"] and not _weak(r)]
         weak = [r for r in rows if r["sayilir"] and r["od"] and _weak(r)]

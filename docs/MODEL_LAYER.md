@@ -148,6 +148,15 @@ ok, score, span = verify_quote(quote, text)   # Türkçe katlama, boşluk, OCR t
   (`bidr next` prepare'i ister). Betimleme (`describe.jsonl` `belge_notu`, `settled`) ve model kanıt adı
   (`kanit-adlari.jsonl` `belge_notu`, `name.note_stale`, `checks.name_tamam`) de notu değişen belgeyi yeniden
   paketler. Notlu belge mükerrer metin grubuna girmez (kararı kendi notuyla verilir).
+- **Kopya grubu (decide'dan önce).** Metni aynı/çok yakın belgeler (`dedup.find_groups`) ve aynı kâğıdın
+  ayrı taramaları (`dedup.scan_copy_pairs`, yöntem `tarama_kopyasi`: OCR metninde iki yönlü kapsama
+  ≥ `SCAN_TEXT_MIN` 0,8 + tarih/tür/kimlik uyumu, VE sayfa görüntüsü pHash'i eşit sayfa sayısında sayfa başına
+  ≤ `imghash.MAX_BITS` 32/143 bit) tek gruptur: kaba ve ince kararda yalnız temsilci paketlenir, üyeler
+  `mukerrer.durum: devralindi` + `kopyasi: <temsilci>` ile kararı devralır. Tarama kopyasında OCR farkı
+  temsilcinin alıntısını üyede bozsa da grup bölünmez (`mukerrer.alinti_tutmayan`). Tarihi/revizyonu farklı
+  sürüm kopya değildir. Görüntü karmaları `work/_durum/goruntu-karma.json`'da (yalnız karma; görüntü
+  saklanmaz). İnceleme tablosunda grup tek satırdır (temsilci; "kopyaları" sütunu ve sade "Belge" hücresinde
+  "Kopyaları: …"); satır kararı dosyalamada bütün gruba uygulanır (tek kanıt numarası).
 - `bidr decide -w WS [--profile P] [--only-labeled] [--limit N]` →
   `decisions.jsonl`.
 - `bidr compare-labels -w WS` → geçmiş etiketle karşılaştırma: aynı / ekliyor /

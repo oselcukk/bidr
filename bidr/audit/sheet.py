@@ -47,6 +47,7 @@ COLS = [
     ("satir", "satır kimliği", 24, False),
     ("belge", "belge (çalışma adı)", 42, False),
     ("kaynak_dosya", "kaynak dosya (özgün ad)", 40, False),
+    ("kopyalar", "kopyaları (aynı belgenin kararı devralan kopyaları; karar hepsine uygulanır)", 24, False),
     ("kanit_adi", "kanıt adı (düzeltilebilir)", 36, True),
     ("belge_turu", "belge türü", 18, False),
     ("birim_iliskisi", "birim ilişkisi", 14, False),

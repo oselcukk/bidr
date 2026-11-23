@@ -146,8 +146,9 @@ INC_COLS = [
     ("satir", "satır kimliği", 10, False),       # gizli
     ("bolum", "bölüm", 4, False),                # gizli
     ("yazilan", "yazılan", 10, False),           # gizli
+    ("kopyalar", "kopyaları", 10, False),        # gizli: kopyaların belge kimlikleri ("; ")
 ]
-INC_GIZLI = ("satir", "bolum", "yazilan")
+INC_GIZLI = ("satir", "bolum", "yazilan", "kopyalar")
 BIR_COLS = [
     ("sira", "Sıra", 5, False),
     ("belge", "Belge (klasördeki dosya)", 34, False),
@@ -262,7 +263,7 @@ def _row(sh, cols, vals: dict, fill: PatternFill | None = None) -> int:
     row = [vals.get(k, "") for k, _, _, _ in cols]
     sh.append(row)
     n = sh.max_row
-    widths = [w if k not in ("satir", "bolum", "yazilan", "doc_id", "olcut") else 0 for k, _, w, _ in cols]
+    widths = [w if k not in ("satir", "bolum", "yazilan", "doc_id", "olcut", "kopyalar") else 0 for k, _, w, _ in cols]
     sh.row_dimensions[n].height = _yukseklik(row, widths)
     for i, (k, _, _, user) in enumerate(cols, 1):
         c = sh.cell(row=n, column=i)
@@ -369,6 +370,9 @@ def inceleme_satirlari(a, cs) -> list[dict]:
         dosya = r.get("kaynak_dosya") or ""
         belge = (dosya.replace("\\", "/").rsplit("/", 1)[-1] + (f"\n(klasör: {dosya.rsplit('/', 1)[0]})"
                                                                if "/" in dosya else "")) if dosya else r.get("belge") or ""
+        if r.get("kopya_dosyalari"):
+            kd = "; ".join(x.replace("\\", "/").rsplit("/", 1)[-1] for x in r["kopya_dosyalari"].split("; "))
+            belge += f"\nKopyaları: {kd} (aynı belge; kararınız hepsine uygulanır)"
         asama = r.get("asama") or ""
         neden = (f"Maddenin \"{ASAMA_KISA[asama]}\" kısmı için. " if asama in ASAMA_KISA else "") + (r.get("gerekce") or "")
         if "belge_notu" in (r.get("flags") or []):
@@ -380,7 +384,7 @@ def inceleme_satirlari(a, cs) -> list[dict]:
             "alinti": f"“{_kisalt(alinti, 600)}”" if alinti else "",
             "neden": neden.strip(), "dikkat": "\n".join(f"• {x}" for x in uy) if len(uy) > 1 else "".join(uy),
             "oneri": "Bakın" if bak or rb else "Kabul",
-            "karar": lab, "dogru": dog, "not": r.get("not") or "",
+            "karar": lab, "dogru": dog, "not": r.get("not") or "", "kopyalar": r.get("kopyalar") or "",
         })
     from bidr.criteria.model import id_key
     out.sort(key=lambda x: (x["bolum"], not x["_rb"], not x["_birim"], id_key(x["_olcut"]), x["satir"]))
