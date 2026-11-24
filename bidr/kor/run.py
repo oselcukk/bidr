@@ -57,6 +57,7 @@ ACIKLAMA = ("Puan iç ölçümdür: denetçi metni yazandan bağımsızdır ama 
             "değildir. Metin bulguları kendiliğinden düzeltilir ve yeniden doğrulanır; OD ve kanıt önerileri "
             "bölümün kararına gelir.")
 KARAR = ("kabul", "ret")
+DKU = {"D": "kaynakla doğru", "K": "kısmen doğru ya da abartılı", "U": "kaynakla uyuşmuyor"}
 EV_MAX = 20000        # pakette kanıt başına en çok karakter (alıntı denetimi bütün metinde yapılır)
 REL_MAX = 3000        # ilgili belge başına
 ATIF = re.compile(r"\s*\[(?:\d+_OD[1-5]\*?|komisyon)\](?:\s*,\s*\[(?:\d+_OD[1-5]\*?|komisyon)\])*")
@@ -721,6 +722,8 @@ def view_dict(ws: Workspace, js: dict) -> dict:
         fs.append({**f, "durum": d, "durum_notu": note,
                    "karar": {"karar": k["karar"], "not": k.get("not") or "", "zaman": k.get("zaman")} if k else None})
     out["bulgular"] = fs
+    out["dku"] = DKU
+    out["tur_adlari"] = TUR_ADLARI
     return out
 
 

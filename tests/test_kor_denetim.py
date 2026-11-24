@@ -275,6 +275,7 @@ def test_stage_contract_and_duzelt_cycle(ws, capsys):
     f = {x["id"]: x for x in v["bulgular"]}
     assert f["B.1.1-od"]["durum"] == "kabul" and f["B.1.1-od"]["karar"]["not"] == "bölüm kurulu"
     assert f["B.1.1-1"]["durum"] == "duzeltildi" and "cumleler" not in v["olcutler"][0]
+    assert v["dku"]["U"] == "kaynakla uyuşmuyor" and v["tur_adlari"]["sayi"] == "sayı hatası"
 
 
 def test_od_decision_blocked_by_committee_approval(ws):
