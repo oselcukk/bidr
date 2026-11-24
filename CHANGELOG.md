@@ -15,6 +15,15 @@ bu dosyanın yeni satırlarını gösterir. Bu dosyadan önceki geçmiş için `
   kanıtlı etkinliğin duyurusu uygulama sayılır. `bidr ihtiyac` etkinliği adıyla ister (gerçekleşme, OD3 ölçütte değerlendirme) ve bağlamsız
   fotoğraf için belge notu ister. BİR KEZ: `bidr faaliyet` yeniden ister (yeni alanlar); ipucu alan fotoğraflar
   onaysız yeniden karara gider; öteki ince kararlar "kural değişti" bilgisiyle geçerli kalır.
+- 2026-11-24: Yön hücresi için bölüm kararı (d3b): güçlü/gelişmeye açık yön alanı yeniden yazımlardan sonra
+  doğrulamada hâlâ reddedilirse `bidr next` yonler aşamasında `kim: insan` + `karar_bekleyen` verir (önceden yalnız
+  desteklenen maddeler basılıp rapor TASLAK oluyordu). `bidr yonler karar -w WS <alan> tekrar|kabul|cikar`
+  (`yonler-insan.jsonl`); `kabul` yalnız bütün reddedilen maddeler "kısmen" ise; `kabul`/`cikar` o alanın TASLAK
+  nedenini kaldırır.
+- 2026-11-24: Elle eşleşme (d3b): bölüm modelin önermediği belge–ölçüt eşleşmesini ekleyebilir (`elle-eslesmeler.json`;
+  `bidr audit elle esitle|ekle|geri|liste -w WS`). Eşleşme review-decisions.jsonl'e insan kaynaklı kabul olarak girer
+  (`kaynak: insan`, `elle`), OD/PUKÖ, kanıt dosyalama ve yazımda olağan kabul gibi sayılır; alıntısızsa ikinci aramayla
+  belgeden aranır. Yinelenen ekleme kayıt açmaz, geri alma önceki kararı geri getirir (docs/AUDIT.md "Elle eşleşme").
 - 2026-11-24: Raporun kör denetimi ve düzeltmesi (d2, isteğe bağlı aşamalar `kor_denetim`, `duzelt`): `bidr denetim
   prepare|apply|karar|ozet`, `bidr duzelt prepare`. İstenmezse hat eskisi gibi biter. Metin bulguları kendiliğinden
   düzeltilir ve yeniden doğrulanır; OD/kanıt önerilerinin bölüm kararı hattı tutmaz (rapor tamamlandı sayılır, `bidr

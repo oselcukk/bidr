@@ -142,3 +142,89 @@ def test_cli_and_code_reject(ws, capsys):
     assert main(["yonler", "prepare", "-w", str(ws), "--reddedilenler"]) == 0
     pkg = json.loads((ws / "work/yonler/B.json").read_text(encoding="utf-8"))
     assert pkg["meta"]["tur"] == 1 and "yasak_ifade" in pkg["istem"]
+
+
+# -- yön hücresi için bölüm kararı (bidr/write/yon_karar.py) -------------------------------------------
+
+def _gate(root):
+    from bidr.common import Workspace
+    from bidr.pipeline.checks import CHECKS, Ctx
+    from bidr.pipeline.state import formatter, stage
+    return CHECKS["yonler_tamam"](Ctx(Workspace(root), {}, formatter(Workspace(root), {}), stage("yonler")))
+
+
+def _rejected_after_limit(ws, hukum: dict[str, str]):
+    """B alanı yazılır, doğrulayıcı `hukum`'a göre reddeder; tur sınıra (2) çekilir."""
+    from bidr.verify import run as V
+    Y.prepare(ws, only=["B"])
+    _answer(ws, "B", ["Bölümümüzde ders bilgi paketleri güncellenmektedir (B.1.1)."],
+            ["Ölçüme ilişkin izleme kanıtı bulunmamaktadır (B.1.1).",
+             "Yalnız kurum geneli düzenleme bulunmaktadır (B.1.2)."])
+    assert Y.apply(ws, model="test")["islenen"] == 1
+    V.prepare(ws)
+    (ws / "work/verify/yonler/B.out.json").write_text(json.dumps({"maddeler": [
+        {"yer": y, "karar": hukum.get(y, "destekleniyor"), "gerekce": "kısmen dayanak"} for y in ("g1", "a1", "a2")],
+        "genel": ""}), encoding="utf-8")
+    V.apply(ws, model="dogrulayici")
+    p = ws / "yonler/B.json"
+    t = json.loads(p.read_text(encoding="utf-8"))
+    assert t["durum"] == "reddedildi"
+    t["tur"] = 2
+    p.write_text(json.dumps(t, ensure_ascii=False), encoding="utf-8")
+
+
+def _yalniz_b(monkeypatch):
+    asil = Y.Inputs.criteria
+    monkeypatch.setattr(Y.Inputs, "criteria", lambda self, alan: asil(self, alan) if alan == "B" else [])
+
+
+def test_yon_gate_and_accept(ws, capsys, monkeypatch):
+    from bidr.write import yon_karar as YK
+    _rejected_after_limit(ws, {"g1": "kismen", "a2": "kismen"})
+    c = _gate(ws)                       # öteki alanların işi sürerken karar bekleyen yine listelenir (write gibi)
+    assert c.kim == "komut" and [x["alan"] for x in c.karar_bekleyen] == ["B"]
+    _yalniz_b(monkeypatch)
+    c = _gate(ws)
+    assert c.kim == "insan" and "insan gerekli (B)" in c.neden
+    kb = c.karar_bekleyen
+    assert [x["alan"] for x in kb] == ["B"] and kb[0]["kabul_edilebilir"] and kb[0]["sinir"] == 2
+    assert {m["yer"]: m["hukum"] for m in kb[0]["maddeler"]} == {"g1": "kismen", "a2": "kismen"}
+    assert kb[0]["maddeler"][0]["yon"] == "guclu" and kb[0]["metin_sha"]
+    assert main(["yonler", "karar", "-w", str(ws), "B", "kabul", "--not", "bölüm onayı"]) == 0
+    t = Y.load(Y.Workspace(ws), "B")
+    assert t["durum"] == "dogrulandi" and t["insan_karari"] == "kabul" and t["dogrulama"]["dogrulayici_reddi"]
+    assert Y.load_log(Y.Workspace(ws))["B"]["asama"] == "insan"
+    assert _gate(ws).bitti and not YK.bekleyen(Y.Workspace(ws))
+    # ikinci karar: artık bekleyen değil
+    assert main(["yonler", "karar", "-w", str(ws), "B", "cikar"]) == 2
+
+
+def test_yon_accept_refused_when_unsupported_then_remove(ws, capsys, monkeypatch):
+    from bidr.write import yon_karar as YK
+    _rejected_after_limit(ws, {"g1": "kismen", "a2": "desteklenmiyor"})
+    _yalniz_b(monkeypatch)
+    kb = _gate(ws).karar_bekleyen
+    assert not kb[0]["kabul_edilebilir"]
+    assert main(["yonler", "karar", "-w", str(ws), "B", "kabul"]) == 2
+    assert "kısmen" in capsys.readouterr().out
+    assert main(["yonler", "karar", "-w", str(ws), "B", "cikar"]) == 0
+    w = Y.Workspace(ws)
+    t = Y.load(w, "B")
+    assert t["durum"] == "reddedildi" and YK.cikarildi(t, YK.load_human(w))
+    assert _gate(ws).bitti
+    # metin değişirse karar geçmez (metin_sha)
+    t["guclu"][0]["metin"] = "Bölümümüzde ders bilgi paketleri yayımlanmaktadır (B.1.1)."
+    assert not YK.kararli(t, YK.load_human(w))
+
+
+def test_yon_repeat_adds_round(ws, monkeypatch):
+    from bidr.write import yon_karar as YK
+    _rejected_after_limit(ws, {"a1": "desteklenmiyor"})
+    _yalniz_b(monkeypatch)
+    assert main(["yonler", "karar", "-w", str(ws), "B", "tekrar"]) == 0
+    w = Y.Workspace(ws)
+    assert YK.sinir(w, "B") == 3 and not YK.bekleyen(w)
+    c = _gate(ws)
+    assert c.kim == "komut" and any("--reddedilenler" in k for k in c.komutlar)
+    st = Y.prepare(ws, rejected_only=True)
+    assert st["tur"] == {"B": 3}

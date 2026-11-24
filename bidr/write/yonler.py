@@ -27,9 +27,11 @@ Bağımsız doğrulama `bidr verify prepare|apply` akışına katılır (`work/v
 görev `verify_yonler`, kayıt `verify-yonler.jsonl`): her madde atıf yaptığı ölçütün metni ya
 da bulgusuyla karşılaştırılır; hepsi "destekleniyor" ise `dogrulandi`. Reddedilen alan
 `bidr yonler prepare --reddedilenler` ile gerekçeli yeniden yazıma gider (sınır
-`rapor.yeniden_yazim_siniri`); render reddedilmiş alanda doğrulayıcının desteklediği maddeleri
-basar, desteklenmeyenleri çıkarır; madde kalmazsa hücreye açık ifade yazar; çıkarılan madde bir
-ölçütü bütün yön hücrelerinden düşürürse rapor TASLAK olur (`yon_kapsam_kaybi`, bidr/render/run.py).
+`rapor.yeniden_yazim_siniri`; kullanıcının her `tekrar`ı bir tur ekler). Sınırdan sonra hâlâ reddedilen
+alan bölüm kararı bekler (`bidr yonler karar <alan> tekrar|kabul|cikar`, bidr/write/yon_karar.py). Render
+reddedilmiş alanda doğrulayıcının desteklediği maddeleri basar, desteklenmeyenleri çıkarır; madde kalmazsa
+hücreye açık ifade yazar; reddedilmiş alan ve çıkarılan maddenin bir ölçütü bütün yön hücrelerinden düşürmesi
+raporu TASLAK yapar (`yon_kapsam_kaybi`, bidr/render/run.py) — bölüm `cikar` ya da `kabul` dediyse yapmaz.
 """
 from __future__ import annotations
 
@@ -732,7 +734,8 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
     d.mkdir(parents=True, exist_ok=True)
     log = load_log(ws)
     rej = rejected(ws, log)
-    lim = _limit(ws)
+    from . import yon_karar as YK
+    human = YK.load_human(ws)
     st = {"paket": 0, "yeni": 0, "zaten_tamam": 0, "bos_alan": [], "insan_gerekli": [], "tur": {},
           "uyarilar": list(src.uyarilar)}
     for alan in only or ALANLAR:
@@ -750,8 +753,9 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
         if dz:
             meta["duzeltme"] = dz
         if rejected_only:
-            if alan not in rej or not cur:
-                continue
+            if alan not in rej or not cur or YK.kararli(t, human):
+                continue                    # bölüm kabul/çıkar dedi: yeniden yazılmaz
+            lim = YK.sinir(ws, alan, human)
             tur = int(t.get("tur") or 0)
             if tur >= lim:
                 st["insan_gerekli"].append(alan)

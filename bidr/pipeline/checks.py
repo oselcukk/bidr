@@ -456,6 +456,9 @@ def ikinci_arama_tamam(c: Ctx) -> Check:
     # kör denetimde bölümün kabul ettiği kullanılmamış belge önerisi: ikinci aramayla bakılmadıysa bekler
     # (rapor.ikinci_arama: false olsa da; yalnız o çiftler paketlenir)
     den = kanit_ciftleri(ws.root) if (ws.root / "kor-denetim-kararlar.jsonl").exists() else []
+    # bölümün elle eklediği alıntısız eşleşme (bidr/audit/elle.py): alıntı ikinci aramayla belgeden aranır
+    from bidr.audit.elle import ciftler as elle_ciftleri
+    den = den + [{**x, "bulgu_id": f"elle {x['anahtar']}", "kaynak": "elle"} for x in elle_ciftleri(ws.root)]
     if rapor_section(ws.root).get("ikinci_arama") is False and not den:
         return Check(atlandi=True, neden="atlandı: config.yaml rapor.ikinci_arama: false (kanıtsız/zayıf ölçütler "
                                          "için ikinci arama yapılmadı)")
@@ -466,14 +469,14 @@ def ikinci_arama_tamam(c: Ctx) -> Check:
         for p in (_pkg_paths(d) if d.exists() else []):
             pkg = _load_pkg(p)
             for r in ((pkg or {}).get("meta") or {}).get("ikinci_arama", {}).get("olcutler") or []:
-                if "denetim" in (r.get("kaynak") or []):
-                    packed.add((pkg.get("doc_id"), r.get("olcut")))
-        yeni = [x for x in den if (x["doc_id"], x["olcut"]) not in packed]
+                for kay in {"denetim", "elle"} & set(r.get("kaynak") or []):
+                    packed.add((pkg.get("doc_id"), r.get("olcut"), kay))
+        yeni = [x for x in den if (x["doc_id"], x["olcut"], x.get("kaynak", "denetim")) not in packed]
         if yeni:
             return Check(kim=KOMUT, komutlar=[prep + " --yalniz-denetim"],
-                         neden=f"kör denetimde bölümün kabul ettiği {len(yeni)} belge önerisi ikinci aramaya girecek "
-                               "(eşleşirse inceleme tablosunda aday olur): "
-                               + ", ".join(f"{x['bulgu_id']}" for x in yeni[:6]))
+                         neden=f"bölümün kabul ettiği/elle eklediği {len(yeni)} belge–madde çifti ikinci aramaya "
+                               "girecek (kör denetim önerisi eşleşirse inceleme tablosunda aday olur; elle eşleşmede "
+                               "alıntı belgeden aranır): " + ", ".join(f"{x['bulgu_id']}" for x in yeni[:6]))
     if not (d / "README.md").exists():
         return Check(kim=KOMUT, komutlar=[prep],
                      neden="ikinci arama yapılmadı (isteğe bağlı): kanıtsız/zayıf ölçütler için arşivde ters arama. "
@@ -863,8 +866,11 @@ def yonler_tamam(c: Ctx) -> Check:
     stale = {a for a, t in texts.items() if t.get("girdi_sha") != cur_sha[a]}
     todo = (set(need) - set(texts) - pending) | (stale - pending) | bad_pkg
     log = Y.load_log(ws)
-    rej = Y.rejected(ws, log)
-    lim = W.rewrite_limit(ws.root)
+    from bidr.write import yon_karar as YK
+    human = YK.load_human(ws)
+    # bölümün kabul/çıkar dediği alan (aynı metin) yeniden yazılmaz, karar beklemez (bidr/write/yon_karar.py)
+    rej = {a: t for a, t in Y.rejected(ws, log).items() if not YK.kararli(t, human)}
+    lims = {a: YK.sinir(ws, a, human) for a in rej}
     prog = {"alan": len(need), "metin": len(set(texts) - stale), "bekleyen_paket": len(pending),
             "dogrulandi": sum(1 for a, t in texts.items() if a not in stale and t.get("durum") == "dogrulandi")}
     uy = list(src.uyarilar)
@@ -878,12 +884,13 @@ def yonler_tamam(c: Ctx) -> Check:
     v_todo = (yp["bekleyen"] - yp["paketli"]) - todo - pending
     v_agent = (yp["cevapsiz"] | yp["gecersiz"]) - todo - pending
     v_apply = yp["paketli"] - v_agent - todo - pending
-    under = sorted(a for a, t in rej.items() if int(t.get("tur") or 0) < lim and a not in pending | todo)
-    over = sorted(a for a in rej if int(rej[a].get("tur") or 0) >= lim and a not in pending | todo)
-    if over:
-        uy.append(f"{len(over)} alanın maddeleri {lim} yeniden yazım turundan sonra hâlâ reddedildi ({', '.join(over)}): "
-                  "render yalnız doğrulanan maddeleri basar (desteklenmeyenler çıkarılır), reddedilmiş alan raporu her durumda TASLAK damgalı yapar; gerekçeyi (verify-yonler.jsonl) "
-                  "kullanıcıya göster")
+    under = sorted(a for a, t in rej.items() if int(t.get("tur") or 0) < lims[a] and a not in pending | todo)
+    over = sorted(a for a in rej if int(rej[a].get("tur") or 0) >= lims[a] and a not in pending | todo)
+    kb = [x for x in YK.bekleyen(ws, log) if x["alan"] in over]
+    if kb:
+        prog["insan_karari_bekleyen"] = len(kb)
+        uy.append(f"{len(kb)} alanın maddeleri yeniden yazımlardan sonra doğrulamada hâlâ reddedildi, KULLANICI "
+                  f"kararı bekliyor: {', '.join(x['alan'] for x in kb)}")
     why: list[str] = []
     komut: list[str] = []
     ajan: list[str] = []
@@ -893,7 +900,7 @@ def yonler_tamam(c: Ctx) -> Check:
         komut.append(prep)
     if under:
         why.append(f"{', '.join(under)}: doğrulamada reddedildi, yeniden yazım turu "
-                   + ", ".join(f"{a} tur {int(rej[a].get('tur') or 0) + 1}/{lim}" for a in under))
+                   + ", ".join(f"{a} tur {int(rej[a].get('tur') or 0) + 1}/{lims[a]}" for a in under))
         komut.append(c.fmt("bidr yonler prepare -w {ws} --reddedilenler"))
     if v_todo:
         why.append(f"{', '.join(sorted(v_todo))}: maddeler doğrulanmadı (paket yok)")
@@ -927,7 +934,19 @@ def yonler_tamam(c: Ctx) -> Check:
             cmds.append("(alanlar birbirini beklemez: yukarıdaki işler herhangi bir sırayla yapılabilir; "
                         "yeniden yazımı ve doğrulamayı ayrı, taze ajanlara ver)")
         return Check(kim=AJAN if ajan else KOMUT, ilerleme=prog, uyarilar=uy, komutlar=cmds,
-                     neden="; ".join(why), bekleyen=sorted(no_out | bad | v_agent) if ajan else None)
+                     neden="; ".join(why), bekleyen=sorted(no_out | bad | v_agent) if ajan else None,
+                     karar_bekleyen=kb)
+    if kb:
+        karar = c.fmt("bidr yonler karar -w {ws}")
+        return Check(kim=INSAN, ilerleme=prog, uyarilar=uy, karar_bekleyen=kb,
+                     komutlar=["(insan) reddedilen maddeleri ve doğrulayıcının gerekçesini (verify-yonler.jsonl) "
+                               "kullanıcıya göster; karar kullanıcınındır",
+                               f"{karar} <alan> tekrar  # KULLANICI derse: bir yeniden yazım turu daha",
+                               f"{karar} <alan> kabul   # KULLANICI derse; yalnız bütün reddedilen maddeler 'kismen' "
+                               "ise: maddeler yazıldığı gibi rapora girer",
+                               f"{karar} <alan> cikar   # KULLANICI derse: desteklenmeyen maddeler çıkarılmış kalır"],
+                     neden=f"{len(kb)} alanın güçlü/gelişmeye açık yön maddeleri yeniden yazımlardan sonra "
+                           "doğrulamada hâlâ reddedildi: insan gerekli (" + ", ".join(x["alan"] for x in kb) + ")")
     for a, t in sorted(texts.items()):
         uy += [f"{a} alanı: {x}" for x in Y.tutarlilik_satirlari(t)]
     empty = sorted(a for a, t in texts.items() if a not in rej and not (t.get("guclu") and t.get("gelisme")))

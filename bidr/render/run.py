@@ -664,6 +664,10 @@ def render(template: Path, out: Path, *, texts_dir: Path, audit_path: Path | Non
     if yonler_log is None and yonler_dir is not None:
         yonler_log = Path(yonler_dir).parent / YONLER_LOG
     fill_yonler(doc, load_yonler(yonler_dir), res, load_yonler_log(yonler_log))
+    # bölümün yön hücresi kararı (bidr/write/yon_karar.py): `cikar` dediği alan raporu TASLAK yapmaz
+    from bidr.write import yon_karar as YK
+    yon_insan = YK.load_human_path(Path(yonler_log).parent / YK.HUMAN) if yonler_log else []
+    yon_onay = {a for a, t in load_yonler(yonler_dir).items() if YK.cikarildi(t, yon_insan)}
     res.kapak = fill_cover(doc, birim, yil)
     if birim and "birim" not in res.kapak:
         res.uyarilar.append("kapakta '[Birim Adı]' yer tutucusu bulunamadı")
@@ -688,13 +692,18 @@ def render(template: Path, out: Path, *, texts_dir: Path, audit_path: Path | Non
     # Doğrulamada reddedilmiş (son turdan sonra hâlâ) alan: desteklenen maddeler basılsa da alanın
     # yönleri doğrulanmış değildir; rapor her durumda TASLAK (kullanıcı kararı 2026-11-20)
     rej_y = sorted(a for a, t in load_yonler(yonler_dir).items()
-                   if t.get("durum") == "reddedildi" and any(f"{a} {x}" in res.yonler for x in (GUCLU, GELISME)))
+                   if t.get("durum") == "reddedildi" and a not in yon_onay
+                   and any(f"{a} {x}" in res.yonler for x in (GUCLU, GELISME)))
     if rej_y:
         N.append("doğrulamada reddedilen güçlü/gelişmeye açık yön alanı: " + ", ".join(rej_y)
                  + " (yalnız desteklenen maddeler basıldı; gerekçe verify-yonler.jsonl)")
-    if res.yon_kapsam_kaybi:
+    kayip = {a: cs for a, cs in res.yon_kapsam_kaybi.items() if a not in yon_onay}
+    if yon_onay:
+        res.uyarilar.append("bölüm kararıyla desteklenmeyen yön maddeleri çıkarılmış kaldı (TASLAK nedeni değil): "
+                            + ", ".join(sorted(yon_onay)))
+    if kayip:
         N.append("doğrulamada reddedilen yön maddesi çıkarıldı, ölçüt hiçbir yön hücresinde kalmadı: "
-                 + "; ".join(f"{a}: {', '.join(cs)}" for a, cs in sorted(res.yon_kapsam_kaybi.items()))
+                 + "; ".join(f"{a}: {', '.join(cs)}" for a, cs in sorted(kayip.items()))
                  + " (gerekçe verify-yonler.jsonl; madde düzeltilip yeniden doğrulanır)")
     empty = [k for k, v in res.yonler.items() if v != "dolu"]
     if empty:
@@ -728,6 +737,9 @@ def inputs_sha(template: Path, texts_dir: Path, audit_path: Path | None, index_p
     named += [(f"yonler/{p.name}", p) for p in files(yonler_dir)]
     if yonler_dir is not None and (Path(yonler_dir).parent / YONLER_LOG).exists():
         named.append((YONLER_LOG, Path(yonler_dir).parent / YONLER_LOG))
+    from bidr.write.yon_karar import HUMAN as YON_INSAN
+    if yonler_dir is not None and (Path(yonler_dir).parent / YON_INSAN).exists():
+        named.append((YON_INSAN, Path(yonler_dir).parent / YON_INSAN))
     for name, p in named:
         h.update(name.encode())
         h.update(p.read_bytes() if p.exists() else b"-")

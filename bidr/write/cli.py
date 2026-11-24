@@ -135,6 +135,17 @@ def _yonler_cmd(args) -> int:
     from . import yonler as Y
     only = [x.strip().upper() for x in re.split(r"[,\s]+", args.only) if x.strip()] if getattr(args, "only", None) else None
     try:
+        if args.action == "karar":
+            from . import yon_karar as YK
+            r = YK.karar(args.workspace, args.alan, args.karar, args.note or "")
+            print(f"{r['alan']}: {r['karar']} kaydedildi (tur {r['tur']}, sınır {r['sinir']}) → {YK.HUMAN}")
+            if r["karar"] == "tekrar":
+                print(f"Sıradaki: bidr yonler prepare -w {args.workspace} --reddedilenler (taze ajan)")
+            elif r["karar"] == "kabul":
+                print(f"{r['alan']}: maddeler yazıldığı gibi rapora girer (bölüm onayı; doğrulayıcı reddi kayıtta kalır)")
+            else:
+                print(f"{r['alan']}: desteklenmeyen maddeler çıkarılmış kalır (bölüm onayı; rapor bu yüzden TASLAK olmaz)")
+            return 0
         if args.action == "prepare":
             st = Y.prepare(args.workspace, only=only, redo=args.redo, rejected_only=args.reddedilenler,
                            hitap=args.hitap, index=args.index, audit=args.audit)
@@ -154,7 +165,7 @@ def _yonler_cmd(args) -> int:
             print(f"Ajan ({who}): {st['klasor']}/README.md")
             return 0
         st = Y.apply(args.workspace, model=args.model, index=args.index, audit=args.audit)
-    except (FileNotFoundError, KeyError) as e:
+    except (FileNotFoundError, KeyError, ValueError) as e:
         print(f"HATA {e}")
         return 2
     print(f"işlenen={st['islenen']} değişmedi={st['degismedi']} bekleyen={len(st['bekleyen'])} "
@@ -181,6 +192,15 @@ def register_yonler(sub):
                    help="yeniden yazım turu: doğrulamada reddedilen alanlar için gerekçeli yeni paket "
                         "(sınır: config.yaml rapor.yeniden_yazim_siniri, vars. 2)")
     a.add_argument("--hitap", help="kurumsal özne (vars. profile göre 'Bölümümüzde' / 'Birimimizde')")
+    a.set_defaults(func=_yonler_cmd)
+    a = act.add_parser("karar", help="KULLANICININ kararı, yeniden yazımlardan sonra doğrulamada hâlâ reddedilen "
+                                     "yön hücresi için: tekrar (bir tur daha) | kabul (yalnız bütün reddedilen maddeler "
+                                     "'kısmen' ise; yazıldığı gibi) | cikar (desteklenmeyen maddeler çıkarılmış kalır) "
+                                     "→ yonler-insan.jsonl")
+    a.add_argument("--workspace", "-w", required=True)
+    a.add_argument("alan", choices=["A", "B", "C", "D", "a", "b", "c", "d"])
+    a.add_argument("karar", choices=["cikar", "tekrar", "kabul"])
+    a.add_argument("--not", dest="note", default="", help="kullanıcının gerekçesi (kayda geçer)")
     a.set_defaults(func=_yonler_cmd)
     a = act.add_parser("apply", help="<alan>.out.json cevaplarını denetle ve yonler/'e yaz")
     _src_args(a)

@@ -267,7 +267,8 @@ def prepare(ws_root: Path, *, profile: str | None = "akademik_bolum", n: int = I
     `olcutler` verilirse zayıflık hesaplanmaz, yalnız bu ölçütler aranır. `capraz`: başka
     ölçütte kabul edilmiş birim belgeleri de zayıf ölçütlere aday olur (çapraz yol).
     Kör denetimin bölümce kabul edilen kullanılmamış belge önerileri (bidr/kor/run.py `kanit_ciftleri`)
-    her zaman pakete girer (kaynak `denetim`; ilk geçişin adayı olsa da). `yalniz_denetim`: yalnız onlar
+    her zaman pakete girer (kaynak `denetim`; ilk geçişin adayı olsa da); bölümün elle eklediği alıntısız
+    eşleşmeler de (bidr/audit/elle.py `ciftler`, kaynak `elle`). `yalniz_denetim`: yalnız bu zorunlu adaylar
     (zayıflık hesaplanmaz, arşiv ve çapraz yol çalışmaz)."""
     from bidr.decide.run import (FINE, Backend, Context, _write_pkg, fine_inputs, load_decisions,
                                  task_version, work_dir)
@@ -311,6 +312,13 @@ def prepare(ws_root: Path, *, profile: str | None = "akademik_bolum", n: int = I
             "olcut": x["olcut"], "puan": 0.0, "sira": 0, "sinyaller": {}, "nedenler": [], "kaynak": []})
         row["kaynak"].append("denetim")
         row["nedenler"].append(f"kör denetim önerisi, bölüm kabul etti ({x['bulgu_id']})")
+    from bidr.audit.elle import ciftler as elle_ciftleri
+    elle = elle_ciftleri(ctx.ws.root, recs)
+    for x in elle:                          # bölümün elle eklediği alıntısız eşleşme: alıntı belgeden aranır
+        row = by_doc.setdefault(x["doc_id"], {}).setdefault(x["olcut"], {
+            "olcut": x["olcut"], "puan": 0.0, "sira": 0, "sinyaller": {}, "nedenler": [], "kaynak": []})
+        row["kaynak"].append("elle")
+        row["nedenler"].append(f"bölüm bu belgeyi elle bu maddeye ekledi ({x['anahtar']}); belgeden alıntıyı bul")
     d = work_dir(ctx.ws, WORK)
     d.mkdir(parents=True, exist_ok=True)
     secim_capraz: dict[str, list[str]] = {}
@@ -321,13 +329,14 @@ def prepare(ws_root: Path, *, profile: str | None = "akademik_bolum", n: int = I
           "secim": {c: [r["doc_id"] for r in rows] for c, rows in picks.items()},
           "secim_capraz": secim_capraz, "capraz_havuz": len(pool), "capraz_paket": len(cross),
           "capraz_cift": sum(len(v) for v in cross.values()), "tasinan": [],
-          "denetim": [f"{x['doc_id']}:{x['olcut']}" for x in denetim], **est}
+          "denetim": [f"{x['doc_id']}:{x['olcut']}" for x in denetim],
+          "elle": [f"{x['doc_id']}:{x['olcut']}" for x in elle], **est}
     stale = set(stale_pkgs(d, recs))
     from bidr.decide.run import unit_view
     review = load_review(ctx.ws.root)
     for did in sorted(by_doc):
-        rows = sorted(by_doc[did].values(),          # denetim önerisi kesilmez
-                      key=lambda r: ("denetim" not in r["kaynak"], -r["puan"], id_key(r["olcut"])))
+        rows = sorted(by_doc[did].values(),          # denetim önerisi ve elle eşleşme kesilmez
+                      key=lambda r: (not ({"denetim", "elle"} & set(r["kaynak"])), -r["puan"], id_key(r["olcut"])))
         st["kesilen"] += max(0, len(rows) - max_aday)
         rows = rows[:max_aday]
         crits = [r["olcut"] for r in rows]

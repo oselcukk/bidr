@@ -635,3 +635,36 @@ def test_every_in_scope_criterion_marked(ws, tmp_path):
             for r in tc.iter(W + "r"):
                 if r.find(W + "t") is not None:
                     assert r.find(W + "rPr/" + qn("w:b")).get(qn("w:val")) == "0"
+
+
+def test_department_decision_clears_rejected_area_draft(ws, tmp_path):
+    """Bölüm yön hücresine 'çıkarılan maddeler çıkarılmış kalsın' dedi: alan ve kapsam kaybı TASLAK nedeni olmaz;
+    metin değişince karar geçmez."""
+    from bidr.write.yon_karar import HUMAN
+    from bidr.write.yonler import text_sha
+    make_template(tmp_path / "sablon.docx", full=True)
+    write_text(ws / "texts", "A.1.1")
+    yd = ws / "yonler"
+    for a in "ABD":
+        _yon(yd, a)
+    g = ["Bölümümüzde sentetik uygulama yürütülmektedir (C.1.1).", "Sentetik proje listesi vardır (C.1.2)."]
+    a = ["Sentetik izleme kanıtı bulunmamaktadır (C.1.2)."]
+    _yon(yd, "C", durum="reddedildi", guclu=g, gelisme=a)
+    t = json.loads((yd / "C.json").read_text(encoding="utf-8"))
+    rows = [{"yer": y, "metin": m, "karar": k, "gerekce": "-"}
+            for y, m, k in [("g1", g[0], "destekleniyor"), ("g2", g[1], "kismen"), ("a1", a[0], "desteklenmiyor")]]
+    (ws / "verify-yonler.jsonl").write_text(json.dumps({"alan": "C", "durum": "reddedildi", "asama": "model",
+                                                        "metin_sha": text_sha(t), "maddeler": rows},
+                                                       ensure_ascii=False) + "\n", encoding="utf-8")
+    res, _, _ = _run(ws, tmp_path, yonler_dir=yd, hazirlayanlar=PEOPLE)
+    assert res.taslak and res.yon_kapsam_kaybi == {"C": ["C.1.2"]}
+    (ws / HUMAN).write_text(json.dumps({"alan": "C", "karar": "cikar", "metin_sha": text_sha(t), "tur": 2,
+                                        "not": "", "zaman": "2026-11-24T10:00:00"}) + "\n", encoding="utf-8")
+    res, d, _ = _run(ws, tmp_path, yonler_dir=yd, hazirlayanlar=PEOPLE)
+    assert not res.taslak, res.taslak_nedenleri
+    assert _yon_cells(d)["C g"] == ["• " + g[0]]                       # çıkarılan maddeler çıkarılmış kalır
+    assert any("bölüm kararıyla" in u for u in res.uyarilar)
+    (ws / HUMAN).write_text(json.dumps({"alan": "C", "karar": "cikar", "metin_sha": "eski", "tur": 2}) + "\n",
+                            encoding="utf-8")
+    res, _, _ = _run(ws, tmp_path, yonler_dir=yd, hazirlayanlar=PEOPLE)
+    assert res.taslak
