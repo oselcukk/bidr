@@ -23,7 +23,8 @@ kabul gibi sayılır.
   kayıtta (`onceki`) saklanır; ekleme geri alınınca geri gelir. Aşama verildiyse ve satırınkinden farklıysa kayıt
   aşama düzeltmeli kabuldür (`duzelt`, yalnız `asama`).
 - Satır yoksa audit belgeye o ölçütte yeni (yapay) bir satır açar (`yapay: true`; yuva verilmediyse aşamaya uyan
-  yuva seçilir; aşama verilmediyse yuvanın tek kesin aşaması, o da yoksa en temkinlisi `planla` sayılır ve satırda
+  ve ölçütte henüz kimsenin doldurmadığı yuva seçilir, `yuva_kaynagi: otomatik`; ikinci arama belgede o ölçütte
+  alıntı bulunca kayıt modelin içeriğe göre seçtiği yuvanın satırına geçer, `yuva_kaynagi: model`; aşama verilmediyse yuvanın tek kesin aşaması, o da yoksa en temkinlisi `planla` sayılır ve satırda
   söylenir). Alıntı: belgenin o ölçütte modelin bulduğu eşleşmenin alıntısı (ikinci arama dahil); yoksa satır
   alıntısızdır ve çift ikinci aramaya zorunlu aday olarak girer (kör denetimin kabul edilen belge önerisiyle aynı
   yol, kaynak `elle`): model belgeden alıntıyı bulur, kod birebir denetler, yazım o alıntıyı kullanır. Modelin o
@@ -168,10 +169,16 @@ def _tek_asama(tags, yuva: str | None) -> str | None:
     return None
 
 
-def _yuva_sec(cs, tags, olcut: str, asama: str, dolu: set[str]) -> str | None:
+def _yuva_sec(cs, tags, olcut: str, asama: str, dolu: set[str], bos_degil: set[str] = frozenset()) -> str | None:
+    """Yuva verilmemiş elle eşleşmenin yuvası: aşamaya uyan ve ölçütte hiçbir belgenin doldurmadığı yuva
+    (OD/yuva kapsamı artsın), yoksa aşamaya uyan, yoksa herhangi bir yuva; `dolu`: bu belgenin kararı olan
+    yuvalar (atlanır), `bos_degil`: ölçütte kabul edilmiş ya da karar bekleyen satırı olan yuvalar. Geçici
+    seçimdir: ikinci arama belgede bu ölçütte alıntı bulursa kayıt modelin içeriğe göre seçtiği yuvanın
+    satırına geçer (`esitle`, `aday`)."""
     slots = [s for s in cs.get(olcut).slots if not s.footnote]
     uy = [s for s in slots if (t := tags.get(s.id)) is not None and not t.uncertain and asama in t.stages]
-    for s in [*uy, *slots]:
+    sira = [*(s for s in uy if s.id not in bos_degil), *uy, *(s for s in slots if s.id not in bos_degil), *slots]
+    for s in sira:
         if s.id not in dolu:
             return s.id
     return None
@@ -257,7 +264,10 @@ def esitle(ws_root: Path | str, *, out: Path | None = None) -> dict:
                 asama = e["asama"] or _tek_asama(tags, yuva) or VARSAYILAN_ASAMA
                 y = yuva
                 if y is None:
-                    y = _yuva_sec(cs, tags, olcut, asama, {s.split("|", 1)[1] for s in dolu if s.startswith(did + "|")})
+                    bos_degil = {r["yuva"] for r in rows if r["olcut"] == olcut and r["karar"] != "ret"
+                                 and r.get("sayilir", True)} | {x["yuva"] for x in yeni.values() if x["olcut"] == olcut}
+                    y = _yuva_sec(cs, tags, olcut, asama, {s.split("|", 1)[1] for s in dolu if s.startswith(did + "|")},
+                                  bos_degil)
                     if y is None:
                         st["bulunamayan"].append({"anahtar": k, "neden": f"{olcut} ölçütünde boş yuva yok"})
                         continue
@@ -268,19 +278,23 @@ def esitle(ws_root: Path | str, *, out: Path | None = None) -> dict:
                     continue
                 rec |= {"satir": sid, "yuva": y, "asama": asama, "yapay": True,
                         "asama_varsayilan": not e["asama"] and _tek_asama(tags, yuva) is None}
+            if yuva is None:                  # yuva seçilmedi: modelin içeriğe göre seçtiği ya da boş yuva
+                rec["yuva_kaynagi"] = "model" if aday else "otomatik"
             if base.get(rec["satir"]):
                 rec["onceki"] = base[rec["satir"]]
             dolu.add(rec["satir"])
             alinan.add((did, olcut, yuva))
             yeni[k] = {key: rec[key] for key in ("satir", "doc_id", "olcut", "yuva", "karar", "duzelt", "etiket",
                                                  "not", "kaynak", "elle", "elle_kim", "elle_tarih", "asama",
-                                                 "yapay", "asama_varsayilan", "onceki") if key in rec}
+                                                 "yapay", "asama_varsayilan", "yuva_kaynagi", "onceki")
+                     if key in rec}
     for b in st["bulunamayan"]:
         durum[b["anahtar"]] = {"durum": "bulunamadi", "neden": b["neden"], "doc_id": "", "yuva": "", "satir": ""}
     for b in st["bekleyen"]:
         durum[b["anahtar"]] = {"durum": "bekliyor", "neden": b["neden"], "doc_id": "", "yuva": "", "satir": ""}
     for k, r in yeni.items():
-        durum[k] = {"durum": "uygulandi", "neden": "", "doc_id": r["doc_id"], "yuva": r["yuva"], "satir": r["satir"]}
+        durum[k] = {"durum": "uygulandi", "neden": "", "doc_id": r["doc_id"], "yuva": r["yuva"], "satir": r["satir"],
+                    **({"yuva_kaynagi": r["yuva_kaynagi"]} if r.get("yuva_kaynagi") else {})}
     _durum_yaz(ws_root, durum)
     for k, r in yeni.items():
         if k not in eski:

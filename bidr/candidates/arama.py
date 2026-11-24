@@ -187,6 +187,42 @@ def _archive(d: Path, did: str) -> list[str]:
     return moved
 
 
+ZORUNLU = ("denetim", "elle")      # zorunlu aday kaynakları: kör denetim önerisi, bölümün elle eşleşmesi
+
+
+def zorunlu_ciftler(ws_root: Path, recs: dict[str, dict]) -> tuple[list[dict], list[dict]]:
+    """İkinci aramaya zorunlu aday olarak girecek çiftler: (kör denetim önerileri, elle eşleşmeler);
+    yalnız ince kararı olan belgeler, ikinci aramayla o kaynakla henüz bakılmamış olanlar."""
+    from bidr.audit.elle import ciftler as elle_ciftleri
+    from bidr.kor.run import kanit_ciftleri
+    den = [x for x in kanit_ciftleri(ws_root, recs=recs) if (recs.get(x["doc_id"]) or {}).get("asama") == "ince"]
+    return den, elle_ciftleri(ws_root, recs)
+
+
+def gerekli_set(den: list[dict], elle: list[dict]) -> set[tuple[str, str, str]]:
+    return {(x["doc_id"], x["olcut"], "denetim") for x in den} | {(x["doc_id"], x["olcut"], "elle") for x in elle}
+
+
+def dusen_zorunlu(pkg: dict, gerekli: set[tuple[str, str, str]]) -> list[tuple[str, str]]:
+    """Paketteki artık gerekmeyen zorunlu adaylar [(ölçüt, kaynak)]: elle eşleşme geri alındı, öneri
+    karardan düştü ya da çift başka yoldan alıntı buldu. Cevapsız böyle bir paket yetimdir: ajan
+    boşuna cevaplamasın, hat beklemesin (`prepare` yeniden yazar ya da `_eski/`'ye taşır)."""
+    did = pkg.get("doc_id")
+    return [(r.get("olcut"), k) for r in ((pkg.get("meta") or {}).get("ikinci_arama") or {}).get("olcutler") or []
+            for k in ZORUNLU if k in (r.get("kaynak") or []) and (did, r.get("olcut"), k) not in gerekli]
+
+
+def _kalan_satirlar(pkg: dict, gerekli: set[tuple[str, str, str]]) -> list[dict]:
+    """Paketin satırları, artık gerekmeyen zorunlu kaynaklar çıkarılmış (kaynağı kalmayan satır düşer)."""
+    did = pkg.get("doc_id")
+    out = []
+    for r in ((pkg.get("meta") or {}).get("ikinci_arama") or {}).get("olcutler") or []:
+        k = [x for x in r.get("kaynak") or [] if not (x in ZORUNLU and (did, r.get("olcut"), x) not in gerekli)]
+        if k:
+            out.append({**r, "kaynak": k})
+    return out
+
+
 def eligible_map(ctx, recs: dict[str, dict], weak: set[str], *, redo: bool = False) -> tuple[dict, dict]:
     """({doc_id: ikinci aramaya açık zayıf ölçütler}, sayaçlar)."""
     from bidr.decide.run import BIRIM_DISI, record_unit_relation, unit_view
@@ -270,8 +306,8 @@ def prepare(ws_root: Path, *, profile: str | None = "akademik_bolum", n: int = I
     her zaman pakete girer (kaynak `denetim`; ilk geçişin adayı olsa da); bölümün elle eklediği alıntısız
     eşleşmeler de (bidr/audit/elle.py `ciftler`, kaynak `elle`). `yalniz_denetim`: yalnız bu zorunlu adaylar
     (zayıflık hesaplanmaz, arşiv ve çapraz yol çalışmaz)."""
-    from bidr.decide.run import (FINE, Backend, Context, _write_pkg, fine_inputs, load_decisions,
-                                 task_version, work_dir)
+    from bidr.decide.run import (FINE, Backend, Context, _load_pkg, _pkg_paths, _write_pkg, fine_inputs,
+                                 load_decisions, task_version, work_dir)
 
     backend = backend or Backend()
     if ctx is None:
@@ -304,16 +340,12 @@ def prepare(ws_root: Path, *, profile: str | None = "akademik_bolum", n: int = I
                 "nedenler": weak[r["olcut"]]["nedenler"], "kaynak": []})
             row["kaynak"].append("capraz")
             row["kabul_olcutler"] = pool[did]["kabul"]
-    from bidr.kor.run import kanit_ciftleri
-    denetim = [x for x in kanit_ciftleri(ctx.ws.root, recs=recs)
-               if (recs.get(x["doc_id"]) or {}).get("asama") == "ince"]
+    denetim, elle = zorunlu_ciftler(ctx.ws.root, recs)
     for x in denetim:                       # bölümün kabul ettiği kör denetim önerisi: zorunlu aday
         row = by_doc.setdefault(x["doc_id"], {}).setdefault(x["olcut"], {
             "olcut": x["olcut"], "puan": 0.0, "sira": 0, "sinyaller": {}, "nedenler": [], "kaynak": []})
         row["kaynak"].append("denetim")
         row["nedenler"].append(f"kör denetim önerisi, bölüm kabul etti ({x['bulgu_id']})")
-    from bidr.audit.elle import ciftler as elle_ciftleri
-    elle = elle_ciftleri(ctx.ws.root, recs)
     for x in elle:                          # bölümün elle eklediği alıntısız eşleşme: alıntı belgeden aranır
         row = by_doc.setdefault(x["doc_id"], {}).setdefault(x["olcut"], {
             "olcut": x["olcut"], "puan": 0.0, "sira": 0, "sinyaller": {}, "nedenler": [], "kaynak": []})
@@ -330,8 +362,34 @@ def prepare(ws_root: Path, *, profile: str | None = "akademik_bolum", n: int = I
           "secim_capraz": secim_capraz, "capraz_havuz": len(pool), "capraz_paket": len(cross),
           "capraz_cift": sum(len(v) for v in cross.values()), "tasinan": [],
           "denetim": [f"{x['doc_id']}:{x['olcut']}" for x in denetim],
-          "elle": [f"{x['doc_id']}:{x['olcut']}" for x in elle], **est}
+          "elle": [f"{x['doc_id']}:{x['olcut']}" for x in elle], "tasinan_cevapli": [], **est}
     stale = set(stale_pkgs(d, recs))
+    # cevapsız paketlerin artık gerekmeyen zorunlu adayları (elle eşleşme geri alındı, öneri düştü): paket bu
+    # adaylar olmadan yeniden yazılır, başka adayı kalmadıysa `_eski/`'ye taşınır (yetim). `yalniz_denetim`
+    # bu belgeye yeni paket yazarsa cevapsız paketin olağan (arşiv/çapraz) adayları korunur.
+    gerekli = gerekli_set(denetim, elle)
+    st["yetim"] = []
+    zorla: set[str] = set()                    # cevapsız, adayı değişen paket: istem aynı kalsa da meta yenilenir
+    for p in _pkg_paths(d):
+        pkg = _load_pkg(p)
+        did = (pkg or {}).get("doc_id")
+        if pkg is None or did in stale or (d / pkg["cikti_dosyasi"]).exists():
+            continue
+        dus = dusen_zorunlu(pkg, gerekli)
+        if not dus and not (yalniz_denetim and did in by_doc):
+            continue
+        done = done_criteria(recs.get(did) or {})
+        kalan = [r for r in _kalan_satirlar(pkg, gerekli) if r["olcut"] not in done]
+        if dus:
+            zorla.add(did)
+        if did in by_doc:
+            if yalniz_denetim:
+                for r in kalan:
+                    by_doc[did].setdefault(r["olcut"], r)
+        elif kalan:
+            by_doc[did] = {r["olcut"]: r for r in kalan}
+        elif _archive(d, did):
+            st["yetim"].append(did)
     from bidr.decide.run import unit_view
     review = load_review(ctx.ws.root)
     for did in sorted(by_doc):
@@ -351,8 +409,15 @@ def prepare(ws_root: Path, *, profile: str | None = "akademik_bolum", n: int = I
             meta["ikinci_arama_kabul_notu"] = True
         meta["ikinci_arama"] = {"olcutler": rows, "ince_parmak": first_pass_print(rec)}
         st["paket"] += 1
+        old = _load_pkg(d / f"{did}.json") if (d / f"{did}.json").exists() else None
+        if (old is not None and (d / old["cikti_dosyasi"]).exists()
+                and pkg_status(d, old, rec, task_version(FINE)) == "merged"
+                and (redo or old.get("istem_sha") != _sha(backend.render_task(FINE, inputs)["prompt"]))):
+            # cevabı kayıtta olan paket yeni adaylarla (ör. elle eşleşme) yeniden yazılacak: ezilmez, `_eski/`'ye
+            if _archive(d, did):
+                st["tasinan_cevapli"].append(did)
         # ilk geçiş değişmişse istem aynı kalsa da paket (ve parmak izi) yenilenir, eski cevap `.eski` olur
-        st["yeni"] += _write_pkg(d, did, FINE, inputs, meta, backend, force=redo or did in stale)
+        st["yeni"] += _write_pkg(d, did, FINE, inputs, meta, backend, force=redo or did in stale or did in zorla)
     for did in sorted(stale - set(by_doc)):      # artık aday değil: eski paket `_eski/`'ye
         if _archive(d, did):
             st["tasinan"].append(did)

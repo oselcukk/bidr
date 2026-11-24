@@ -257,3 +257,37 @@ def test_pipeline_consumes_file_without_explicit_sync(ws):
     a, _ = audit(ws)
     assert not any(r.get("karar") and "elle_eslesme" in r["flags"] for r in a.rows)
     assert review_state(ws)["guncel"]
+
+
+def test_auto_slot_prefers_empty_slot_then_model_slot(ws):
+    """Yuva verilmezse aşamaya uyan ve ölçütte boş kalmış yuva seçilir (dolu /1'e düşmez); ikinci arama alıntıyı
+    başka yuvada bulursa kayıt modelin seçtiği yuvaya geçer. Durum dosyası yuvanın kaynağını söyler."""
+    recs = [r for r in read_jsonl(ws / "decisions.jsonl")]
+    for r in recs:
+        if r["doc_id"] == "d_karar":
+            r["eslesmeler"].append(_m("A.1.3", "A.1.3/1", "planla", 2))
+    with open(ws / "decisions.jsonl", "w", encoding="utf-8") as f:
+        for r in recs:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    _girdi(ws, _e("panel-1", "kurul/eylem-plani.pdf", "A.1.3"))
+    E.esitle(ws)
+    rec = next(r for r in _review(ws).values() if r.get("elle"))
+    assert rec["yuva"] == "A.1.3/2" and rec["yuva_kaynagi"] == "otomatik"
+    d = json.loads((ws / E.DURUM).read_text(encoding="utf-8"))["eslesmeler"]["panel-1"]
+    assert d["yuva"] == "A.1.3/2" and d["yuva_kaynagi"] == "otomatik"
+    assert len({r["yuva"] for r in build(ws).rows if r["olcut"] == "A.1.3" and r["sayilir"]}) == 2
+    # ikinci arama A.1.3/4'te alıntı buldu
+    recs = [r for r in read_jsonl(ws / "decisions.jsonl")]
+    for r in recs:
+        if r["doc_id"] == "d_plan":
+            m = _m("A.1.3", "A.1.3/4", "planla", 2, alinti="Gelecek senaryoları bu planda yer alır.")
+            m["ikinci_arama"] = True
+            r["eslesmeler"].append(m)
+    with open(ws / "decisions.jsonl", "w", encoding="utf-8") as f:
+        for r in recs:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    assert E.esitle(ws)["guncellenen"] == ["panel-1"]
+    rec = next(r for r in _review(ws).values() if r.get("elle"))
+    assert rec["satir"] == "d_plan|A.1.3/4" and rec["yuva_kaynagi"] == "model" and not rec.get("yapay")
+    rs = [r for r in build(ws).rows if r["doc_id"] == "d_plan" and r["olcut"] == "A.1.3"]
+    assert [r["satir"] for r in rs] == ["d_plan|A.1.3/4"] and rs[0]["sayilir"]

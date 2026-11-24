@@ -477,6 +477,19 @@ def ikinci_arama_tamam(c: Ctx) -> Check:
                          neden=f"bölümün kabul ettiği/elle eklediği {len(yeni)} belge–madde çifti ikinci aramaya "
                                "girecek (kör denetim önerisi eşleşirse inceleme tablosunda aday olur; elle eşleşmede "
                                "alıntı belgeden aranır): " + ", ".join(f"{x['bulgu_id']}" for x in yeni[:6]))
+    # cevapsız paketin artık gerekmeyen zorunlu adayı (elle eşleşme geri alındı, öneri düştü): ajan beklenmez,
+    # prepare paketi o aday olmadan yeniden yazar ya da `_eski/`'ye taşır
+    gerekli = {(x["doc_id"], x["olcut"], x.get("kaynak", "denetim")) for x in den}
+    yetim = []
+    for p in (_pkg_paths(d) if d.exists() else []):
+        pkg = _load_pkg(p)
+        if pkg is not None and not (d / pkg["cikti_dosyasi"]).exists() and A.dusen_zorunlu(pkg, gerekli):
+            yetim.append(pkg["doc_id"])
+    if yetim:
+        return Check(kim=KOMUT, komutlar=[prep + " --yalniz-denetim"],
+                     neden=f"{len(yetim)} cevapsız paket artık gerekmeyen aday taşıyor (elle eşleşme geri alındı ya da "
+                           "öneri karardan düştü): prepare bu adayları çıkarır, adayı kalmayan paketi "
+                           "work/ikinci_arama/_eski/'ye taşır")
     if not (d / "README.md").exists():
         return Check(kim=KOMUT, komutlar=[prep],
                      neden="ikinci arama yapılmadı (isteğe bağlı): kanıtsız/zayıf ölçütler için arşivde ters arama. "

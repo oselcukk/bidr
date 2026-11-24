@@ -564,3 +564,75 @@ def test_elle_pair_is_packaged_and_quote_found_by_second_search(ws):
     rows = [r for r in build(root).rows if r["doc_id"] == did and r["olcut"] == "B.2.3"]
     # model başka yuvada buldu: ayrı satır sorulmaz, alıntı elle satırına geçer
     assert [r["satir"] for r in rows] == [f"{did}|B.2.3/2"] and rows[0]["alinti"] == Q_B23 and rows[0]["sayilir"]
+
+
+def _elle(root, *es):
+    from bidr.audit import elle as E
+    (root / E.DOSYA).write_text(json.dumps({"surum": 1, "eslesmeler": [
+        {"anahtar": k, "dosya": did, "olcut": c, "yuva": None, "asama": None} for k, did, c in es]}), encoding="utf-8")
+    return E.esitle(root)
+
+
+def test_withdrawn_elle_pair_orphan_package_archived(ws):
+    """Elle eşleşme geri alındı, paketi cevapsız: hat ajan beklemez; prepare paketi `_eski/`'ye taşır."""
+    root, ids = ws
+    did = ids["rpl_aday"]
+    _elle(root, ("panel-1", did, "B.2.3"))
+    A.prepare(root, profile=None, yalniz_denetim=True)
+    d = root / "work" / A.WORK
+    assert (d / f"{did}.json").exists() and _ia_check(root).kim == "ajan"
+    _elle(root)                                              # geri alındı
+    c = _ia_check(root)
+    assert c.kim == "komut" and c.komutlar[0].endswith("--yalniz-denetim") and "gerekmeyen" in c.neden
+    st = A.prepare(root, profile=None, yalniz_denetim=True)
+    assert st["yetim"] == [did] and not (d / f"{did}.json").exists() and (d / "_eski" / f"{did}.json").exists()
+    assert _ia_check(root).kim != "ajan"
+    assert "Bekleyen paket: 0" in (d / "README.md").read_text(encoding="utf-8")
+
+
+def test_withdrawn_elle_keeps_other_candidates_of_unanswered_package(ws):
+    """Cevapsız paketin olağan (arşiv) adayı da varsa paket yalnız elle adayı çıkarılarak yeniden yazılır;
+    `yalniz_denetim` yeni elle paketi yazarken cevapsız paketin arşiv adaylarını düşürmez."""
+    root, ids = ws
+    did = ids["rpl"]
+    A.prepare(root, profile=None, olcutler=["B.2.3"])
+    d = root / "work" / A.WORK
+    pkg = json.loads((d / f"{did}.json").read_text(encoding="utf-8"))
+    assert pkg["meta"]["adaylar"] == ["B.2.3"]
+    _elle(root, ("panel-1", did, "A.1.3"))
+    A.prepare(root, profile=None, yalniz_denetim=True)
+    pkg = json.loads((d / f"{did}.json").read_text(encoding="utf-8"))
+    assert sorted(pkg["meta"]["adaylar"]) == ["A.1.3", "B.2.3"]
+    _elle(root)
+    assert _ia_check(root).kim == "komut"
+    st = A.prepare(root, profile=None, yalniz_denetim=True)
+    assert st["yetim"] == []
+    pkg = json.loads((d / f"{did}.json").read_text(encoding="utf-8"))
+    assert pkg["meta"]["adaylar"] == ["B.2.3"]
+    assert [r["kaynak"] for r in pkg["meta"]["ikinci_arama"]["olcutler"]] == [["arsiv"]]
+    assert _ia_check(root).kim == "ajan"                     # arşiv adayı hâlâ bekliyor (yetim değil)
+
+
+def test_elle_package_does_not_overwrite_answered_package(ws):
+    """Belgenin cevabı kayda işlenmiş önceki ikinci arama paketi elle eşleşme paketiyle ezilmez: `_eski/`'ye taşınır,
+    önceki ikinci arama sonucu kayıtta kalır."""
+    root, ids = ws
+    did = ids["rpl"]
+    A.prepare(root, profile=None, olcutler=["B.2.3"])
+    d = root / "work" / A.WORK
+    _answer(root, did, {"karar": "olcut_var", "gerekce": "g", "birim_iliskisi": "kendi", "eslesmeler": [
+        {"olcut": "B.2.3", "yuva": "B.2.3/2", "asama": "uygula", "od_onerisi": 3, "alinti": Q_B23,
+         "gerekce": "AKTS", "guven": "yuksek"}]})
+    A.apply(root, model="test-ajan")
+    eski_out = (d / f"{did}.out.json").read_text(encoding="utf-8")
+    _elle(root, ("panel-1", did, "A.1.3"))
+    st = A.prepare(root, profile=None, yalniz_denetim=True)
+    assert st["tasinan_cevapli"] == [did]
+    assert (d / "_eski" / f"{did}.out.json").read_text(encoding="utf-8") == eski_out
+    assert not (d / f"{did}.out.json").exists() and not (d / f"{did}.out.json.eski").exists()
+    pkg = json.loads((d / f"{did}.json").read_text(encoding="utf-8"))
+    assert pkg["meta"]["adaylar"] == ["A.1.3"]
+    assert any(m.get("ikinci_arama") and m["olcut"] == "B.2.3" for m in _recs(root)[did]["eslesmeler"])
+    # yeniden prepare: aynı paket, taşınan yok (idempotent)
+    st = A.prepare(root, profile=None, yalniz_denetim=True)
+    assert st["tasinan_cevapli"] == [] and st["yeni"] == 0
