@@ -96,6 +96,8 @@ B11 = {"puan": 2, "puan_gerekce": "sayı hatası var", "denetci_od": 2, "od_gere
             "kanit_alintisi": "anket sonuçları kurulda görüşülmüş"},
            {"doc_id": "aaaa000000000001", "neden": "x", "kanit_alintisi": "Ders planı değişikliği Bölüm Kurulunda"}],
        "genel": ""}
+for _x in B11["cumleler"] + B11["bulgular"]:
+    _x.setdefault("iddia", "diger")
 YON = {"hucreler": [{"hucre": "guclu", "puan": 4, "sorun": ""}, {"hucre": "gelisme", "puan": 2, "sorun": "çelişki"}],
        "bulgular": [{"tur": "olcut_metniyle_celiski", "yer": "a1", "alinti": "izlenmesine ilişkin belge bulunmamaktadır",
                      "olcut": "B.1.1", "aciklama": "metin izlemeyi anlatıyor", "oneri": "madde çıkarılmalı"}],
@@ -519,3 +521,58 @@ def test_human_excluded_text_is_not_corrected(ws):
     assert KD.notes(Workspace(ws), "B.1.1") == []
     crit, areas = D.targets(Workspace(ws))
     assert crit == [] and areas == ["B"]
+
+
+FILL = "Bu paragraf yalnız dolgu metnidir ve denetimle ilgisi olmayan sıradan sözcükler içerir. "
+
+
+def test_absence_claim_checked_in_full_text_of_truncated_document(ws):
+    # kanıt belgesi pakette kısaltılır; denetçinin "yok" dediği bilgi görmediği ortada
+    full = ("Toplam iş yükü: 150\n" + FILL * 220 + "Diploma eki bütün mezunlara Türkçe ve İngilizce verilir. "
+            + "Ders planı değişiklikleri için süreç tanımlanmıştır; her değişiklik Bölüm Kurulunda görüşülür. " + FILL * 220
+            + "\nAKTS kredisi, toplam iş yükünün 25'e bölümüdür")
+    assert len(full) > KD.EV_MAX
+    (ws / "text/bbbb000000000002.txt").write_text(full, encoding="utf-8")
+    KD.prepare(ws)
+    pkg = json.loads((ws / "work" / KD.WORK / "B.1.1.json").read_text(encoding="utf-8"))
+    assert f"metin kısaltıldı ({KD.EV_MAX}/{len(full)} karakter)" in pkg["istem"]
+    assert "Diploma eki" not in pkg["istem"] and pkg["meta"]["kisaltilan"] == ["bbbb000000000002"]
+    assert "Kısaltılmış belgede yokluk iddiası kurma" in pkg["istem"]
+    out = {**B11, "cumleler": [
+        {"alinti": "değişiklik Bölüm Kurulunda görüşülür", "etiket": "U", "doc_id": "bbbb000000000002",
+         "kanit_alintisi": "", "gerekce": "süreç tanımı kaynakta bulunamadı", "iddia": "yok"}],
+        "bulgular": [
+        {"tur": "diger", "alinti": "AKTS kredisinin toplam iş yükünün 25'e bölümü", "doc_id": "bbbb000000000002",
+         "kanit_alintisi": "", "aciklama": "«diploma eki» verilen metinde bulunamadı", "oneri": "", "iddia": "yok"},
+        {"tur": "diger", "alinti": "AKTS kredisinin toplam iş yükünün 25'e bölümü", "doc_id": "bbbb000000000002",
+         "kanit_alintisi": "", "aciklama": "«yatay geçiş kontenjanı» belgede yok", "oneri": "", "iddia": "yok"},
+        {"tur": "sayi", "alinti": "AKTS kredisinin toplam iş yükünün 25'e bölümü", "doc_id": "bbbb000000000002",
+         "kanit_alintisi": "AKTS kredisi, toplam iş yükünün 25'e bölümüdür",
+         "aciklama": "«diploma eki» ile ilgisiz biçim farkı", "oneri": "", "iddia": "diger"}],
+        "kullanilmayan": []}
+    answer_all(ws, {"B.1.1": out, "yon_B": YON})
+    assert KD.apply(ws)["yazildi"]
+    js = KD.load(Workspace(ws))
+    f = {x["id"]: x for x in js["bulgular"]}
+    # tırnaklı ifade tam metinde var → doğrulanamadı, düzeltmeye girmez
+    assert f["B.1.1-1"]["dogrulama"] == "dogrulanamadi" and "tam metinde var" in f["B.1.1-1"]["dogrulama_nedeni"]
+    assert f["B.1.1-1"]["tam_metinde"]["doc_id"] == "bbbb000000000002"
+    # tam metinde de yok → bulgu geçerli; yokluk iddiası olmayan bulgu aranmaz
+    assert f["B.1.1-2"]["dogrulama"] == "dogrulandi" and f["B.1.1-3"]["dogrulama"] == "dogrulandi"
+    # U cümlesi: rapor alıntısının içeriği tam metinde → cümle bulguya dönüşmez, sayılmaz
+    row = next(r for r in js["olcutler"] if r["olcut"] == "B.1.1")
+    assert row["U"] == 0 and row["cumleler"][0]["dogrulama"] == "dogrulanamadi"
+    assert not any(x["tur"] == "cumle_U" for x in js["bulgular"])
+    st = KD.statuses(Workspace(ws), js)
+    assert st["B.1.1-1"][0] == "dogrulanamadi" and st["B.1.1-2"][0] == "duzeltilecek"
+    pkg_notes = {x["id"] for x in KD.notes(Workspace(ws), "B.1.1")}
+    assert "B.1.1-1" not in pkg_notes and "B.1.1-2" in pkg_notes
+
+
+def test_absence_claim_detection():
+    assert KD.absence_claim({"iddia": "yok"}) and not KD.absence_claim({"iddia": "diger", "aciklama": "bulunamadı"})
+    # eski cevap (alan yok): açıklamadan
+    assert KD.absence_claim({"aciklama": "Bu bilgi verilen metinde bulunamadı."})
+    assert KD.absence_claim({"gerekce": "Kaynakta yok."})
+    assert not KD.absence_claim({"aciklama": "Kaynakta 3, metinde 1 yazıyor."})
+    assert not KD.absence_claim({"tur": "kanit_yok_denmis", "aciklama": "rapor 'bulunmamaktadır' diyor"})

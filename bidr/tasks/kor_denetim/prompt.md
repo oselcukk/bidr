@@ -14,6 +14,8 @@ Alıntı kuralları (kod denetler; tutmayan bulgu "doğrulanamadı" sayılır ve
 - "alinti": rapor metninden BİREBİR parça (atıf işaretlerini dahil etmesen de olur), en az 8 karakter. Metin yoksa ilgili bulguyu yazma.
 - "kanit_alintisi": belgeden BİREBİR kısa parça; "doc_id" o belgenin kimliği. Sayı/olgu hatası ve U/K etiketi için doğru bilgiyi gösteren kanıt alıntısı ver. Alıntı yoksa ikisini de boş dize ("") bırak.
 - Uydurma, tahmin, genel bilgi ("böyle bölümlerde genelde vardır") kullanma.
+- "iddia": bulgunun ya da U/K etiketinin dayanağı "kaynak bunu içermiyor / belgede bulunamadı / gösterilmiyor" ise "yok"; kaynakta görünen bir bilgiyle çelişki, abartı, genelleme ve benzeri ise "diger".
+- Kısaltılmış belge: belge başlığında "metin kısaltıldı (N/M karakter)" yazıyorsa ve metinde "[… belge kısaltıldı …]" işareti varsa belgenin ortası sana gösterilmemiştir. Kısaltılmış belgede yokluk iddiası kurma: rapordaki bilgi görmediğin kısımda olabilir; "belgede yok / bulunamadı" deme, yalnız gördüğün metinle çelişen ya da gördüğün metnin ötesine geçen cümleyi işaretle. Kod, yokluk iddiasını belgenin tam metninde arar; bilgi orada varsa bulgu işlenmez.
 
 Bulgular ("bulgular" listesi, en çok 20): her biri bir düzeltilecek sorun. "tur": sayi | yanlis_ozet | gundem_gerceklesmis | sablon_arac | od_kanit_onunde | genelleme | kanit_yok_denmis | celiski | kurum_geneli | abarti | diger. "aciklama": sorun tek-iki cümle; "oneri": kanıtın gösterdiği doğru ifade (kanıtta olmayanı önerme; cümle çıkmalıysa "cümle çıkarılmalı" de).
 
@@ -32,4 +34,4 @@ KANITLAR (metnin atıf yaptığı belgeler)
 {{ilgili}}
 
 Yalnız şu biçimde tek bir JSON nesnesi döndür:
-{"puan": 3, "puan_gerekce": "…", "denetci_od": 2, "od_gerekce": "…", "cumleler": [{"alinti": "…", "etiket": "D", "doc_id": "…", "kanit_alintisi": "…", "gerekce": "…"}], "bulgular": [{"tur": "sayi", "alinti": "…", "doc_id": "…", "kanit_alintisi": "…", "aciklama": "…", "oneri": "…"}], "kullanilmayan": [{"doc_id": "…", "neden": "…", "kanit_alintisi": "…"}], "genel": "…"}
+{"puan": 3, "puan_gerekce": "…", "denetci_od": 2, "od_gerekce": "…", "cumleler": [{"alinti": "…", "etiket": "D", "doc_id": "…", "kanit_alintisi": "…", "gerekce": "…", "iddia": "diger"}], "bulgular": [{"tur": "sayi", "alinti": "…", "doc_id": "…", "kanit_alintisi": "…", "aciklama": "…", "oneri": "…", "iddia": "diger"}], "kullanilmayan": [{"doc_id": "…", "neden": "…", "kanit_alintisi": "…"}], "genel": "…"}

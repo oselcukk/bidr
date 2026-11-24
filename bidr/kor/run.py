@@ -200,7 +200,14 @@ def _cut(s: str, n: int) -> str:
     if len(s) <= n:
         return s
     h = n * 2 // 3
-    return s[:h] + "\n[… belge kısaltıldı …]\n" + s[-(n - h):]
+    return (s[:h] + f"\n[… belge kısaltıldı: ortadaki {len(s) - n} karakter gösterilmiyor …]\n"
+            + s[-(n - h):])
+
+
+def cut_note(txt: str | None, n: int) -> str:
+    """Paket başlığına: belge kısaltıldıysa "metin kısaltıldı (N/M karakter)"."""
+    m = len(txt or "")
+    return f"metin kısaltıldı ({n}/{m} karakter)" if m > n else ""
 
 
 def criterion_inputs(v: View, c: str) -> tuple[dict, dict]:
@@ -224,25 +231,29 @@ def criterion_inputs(v: View, c: str) -> tuple[dict, dict]:
             if e["tekrar"]:
                 continue
             doc = v.related_src.docs.get(e["doc_id"]) or {}
+            txt = v.doc_text(e["doc_id"])
             info = ", ".join(x for x in (f"doc_id: {e['doc_id']}",
                                          f"tür: {doc.get('doc_type_etiket') or doc.get('doc_type')}"
                                          if doc.get("doc_type") else "",
-                                         f"tarih: {doc.get('tarih')}" if doc.get("tarih") else "") if x)
-            txt = v.doc_text(e["doc_id"])
+                                         f"tarih: {doc.get('tarih')}" if doc.get("tarih") else "",
+                                         cut_note(txt, EV_MAX)) if x)
             nos = ", ".join(f"[{x['no']}]" for x in ev if x["doc_id"] == e["doc_id"])
             kan.append(f"{nos} {e['ad']} ({info})\n<<<\n{_cut(txt or '(metin yok)', EV_MAX)}\n>>>")
     rel = v.related(c)
     rl = []
     for r in rel:
+        rtxt = v.doc_text(r["doc_id"])
         info = ", ".join(x for x in (f"doc_id: {r['doc_id']}", f"tür: {r['tur']}" if r["tur"] else "",
-                                     f"tarih: {r['tarih']}" if r["tarih"] else "") if x)
-        rl.append(f"{r['ad']} ({info})\n<<<\n{_cut(v.doc_text(r['doc_id']) or '(metin yok)', REL_MAX)}\n>>>")
+                                     f"tarih: {r['tarih']}" if r["tarih"] else "", cut_note(rtxt, REL_MAX)) if x)
+        rl.append(f"{r['ad']} ({info})\n<<<\n{_cut(rtxt or '(metin yok)', REL_MAX)}\n>>>")
     from bidr.write.run import period_of
     inputs = {"olcut": render_criterion(v.cs, c), "donem": str(period_of(v.ws.root) or "belirtilmemiş"),
               "rapor": "\n".join(L), "kanitlar": "\n\n".join(kan) or "yok", "ilgili": "\n\n".join(rl) or "yok"}
     meta = {"anahtar": c, "olcut": c, "metin_sha": v.metin_sha(c), "rapor_od": od, "metin_var": bool(t),
             "kanit_docs": sorted({e["doc_id"] for e in ev if e["doc_id"]}) if t else [],
-            "kanit_sayisi": len(ev) if t else 0, "ilgili": [r["doc_id"] for r in rel]}
+            "kanit_sayisi": len(ev) if t else 0, "ilgili": [r["doc_id"] for r in rel],
+            "kisaltilan": sorted({e["doc_id"] for e in ev if e["doc_id"] and len(v.doc_text(e["doc_id"]) or "") > EV_MAX})
+            if t else []}
     return inputs, meta
 
 
@@ -386,6 +397,92 @@ def _norm(s: str) -> str:
     return norm_quote(strip_cit(s))
 
 
+# Yokluk iddiası ("kaynakta yok / bulunamadı"): pakette kısaltılmış belgede denetçi görmediği kısım için
+# yanlış "yok" diyebilir (prova 2026-11-24: 23 bulgu). Kod iddiayı kısaltılmış belgelerin TAM metninde arar.
+YOKLUK = re.compile(r"bulunama|bulunmuyor|bulunmamakta|yer al(?:miyor|mamakta|madigi)|gecmiyor|gecmemekte|"
+                    r"gorunmuyor|gorulmuyor|(?:belge|kanit|kaynak|metin)\w{0,4} (?:hic )?yok\b|dogrulanama|"
+                    r"rastlanma|izine rastlan")
+TIRNAK = re.compile(r"[«“\"]([^»”\"]{4,160})[»”\"]")
+DURAK = {"olarak", "ile", "icin", "gibi", "olan", "olup", "veya", "daha", "kadar", "sonra", "once", "uzere",
+         "tarafindan", "ayrica", "bunun", "bu", "her", "tum", "bolum", "bolumu", "bolumde", "bolumumuz",
+         "bolumumuzde", "yapilmaktadir", "edilmektedir", "bulunmaktadir", "verilmektedir", "olmaktadir"}
+
+
+def absence_claim(x: dict, *, text: str = "") -> bool:
+    """Bulgu/cümle bir yokluk iddiası mı: şemanın `iddia: "yok"` alanı; alan yoksa (eski cevap) açıklama /
+    gerekçe metninden. "Kanıt yok denmiş" türü tersidir (denetçi VARLIK söyler)."""
+    if x.get("tur") == "kanit_yok_denmis":
+        return False
+    if x.get("iddia"):
+        return x["iddia"] == "yok"
+    from bidr.candidates.text import fold
+    return bool(YOKLUK.search(fold(text or x.get("aciklama") or x.get("gerekce") or "")))
+
+
+def hidden_part(full: str, n: int = EV_MAX, pay: int = 300) -> str:
+    """Kısaltılmış belgenin pakette gösterilmeyen ortası (`_cut` ile aynı bölme; kenarlarda küçük pay)."""
+    if len(full) <= n:
+        return ""
+    h = n * 2 // 3
+    return full[max(0, h - pay):len(full) - (n - h) + pay]
+
+
+def _claim_in(phrases: list[str], alinti: str, full: str) -> str | None:
+    """Yokluğu iddia edilen ifade tam metinde var mı. Açıklama ifadeyi tırnakla veriyorsa yalnız o ifade
+    (normalize, birebir) tam metinde aranır. Tırnak yoksa rapor alıntısının içerik sözcüklerinin en az %80'i
+    ve bütün sayıları aynı yakın pencerede aranır — yalnız denetçinin GÖRMEDİĞİ ortada (gördüğü kısımdaki
+    yokluk hükmü bir değerlendirmedir, korunur)."""
+    from bidr.candidates.arama import norm_quote
+    if phrases:
+        padded = f" {norm_quote(full)} "
+        for ph in phrases:
+            n = norm_quote(ph)
+            if len(n) >= 6 and f" {n} " in padded:
+                return ph
+        return None
+    T = norm_quote(hidden_part(full))
+    if not T:
+        return None
+    words = norm_quote(strip_cit(alinti)).split()
+    nums = {w for w in words if w.isdigit()}
+    cw = {w[:5] for w in words if len(w) >= 4 and not w.isdigit() and w not in DURAK}
+    if len(cw) < 3:
+        return None
+    need = -(-len(cw) * 4 // 5)
+    toks = T.split()
+    win = max(15, 3 * len(words))
+    for i in range(0, max(1, len(toks) - win // 2), max(1, win // 2)):
+        seg = toks[i:i + win]
+        if nums - set(seg):
+            continue
+        if len(cw & {w[:5] for w in seg}) >= need:
+            return strip_cit(alinti)
+    return None
+
+
+def full_text_hit(v: View, meta: dict, x: dict, why_text: str) -> dict | None:
+    """Yokluk iddiası kısaltılmış bir belgenin tam metninde çürüyorsa {doc_id, ifade}; değilse None.
+    Bakılan belgeler: bulgunun belgesi ve ölçütün kanıtları, yalnız pakette kısaltılmış olanlar
+    (kısaltılmamış belgeyi denetçi bütünüyle gördü; onun hükmü korunur)."""
+    if not absence_claim(x, text=why_text):
+        return None
+    docs = [d for d in dict.fromkeys([(x.get("doc_id") or "").strip(), *(meta.get("kanit_docs") or [])]) if d]
+    phrases = TIRNAK.findall(why_text or "")
+    for did in docs:
+        full = v.doc_text(did)
+        if not full or len(full) <= EV_MAX:
+            continue
+        hit = _claim_in(phrases, x.get("alinti") or "", full)
+        if hit:
+            return {"doc_id": did, "ifade": hit}
+    return None
+
+
+def _tam_metinde(hit: dict) -> str:
+    return (f"doğrulanamadı — tam metinde var: yokluk iddiası («{hit['ifade'][:120]}») pakette kısaltılan belgenin "
+            f"tam metninde bulundu ({hit['doc_id']})")
+
+
 def judge_criterion(v: View, c: str, meta: dict, out: dict) -> tuple[dict, list[dict], list[str]]:
     """(ölçüt satırı, bulgular, geçersizlik hataları)."""
     text = v.metin(c)
@@ -396,16 +493,24 @@ def judge_criterion(v: View, c: str, meta: dict, out: dict) -> tuple[dict, list[
     for x in out["bulgular"]:
         n += 1
         why = _check_quotes(v, text, x)
+        hit = None if why else full_text_hit(v, meta, x, x.get("aciklama") or "")
+        if hit:
+            why = [_tam_metinde(hit)]
         finds.append(_finding({"id": f"{c}-{n}", "olcut": c, "tur": x["tur"], "alinti": x["alinti"],
                                "doc_id": x["doc_id"], "kanit_alintisi": x["kanit_alintisi"],
-                               "aciklama": x["aciklama"], "oneri": x["oneri"],
+                               "aciklama": x["aciklama"], "oneri": x["oneri"], "iddia": x.get("iddia") or "",
                                "belge_adi": v.related_src.name(x["doc_id"]) if x["doc_id"] else ""},
-                              dogrulama="dogrulanamadi" if why else "dogrulandi", dogrulama_nedeni="; ".join(why)))
+                              dogrulama="dogrulanamadi" if why else "dogrulandi", dogrulama_nedeni="; ".join(why),
+                              **({"tam_metinde": hit} if hit else {})))
         if not why:
             seen_q.add(_norm(x["alinti"]))
     cum = []
     for x in out["cumleler"]:
         why = _check_quotes(v, text, x)
+        if not why and x["etiket"] in ("K", "U"):
+            hit = full_text_hit(v, meta, x, x.get("gerekce") or "")
+            if hit:
+                why = [_tam_metinde(hit)]
         ok = not why
         cum.append({**x, "dogrulama": "dogrulandi" if ok else "dogrulanamadi", "dogrulama_nedeni": "; ".join(why)})
         if not ok:

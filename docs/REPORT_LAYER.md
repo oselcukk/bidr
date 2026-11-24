@@ -592,7 +592,12 @@ denetimi ister; istenmezse `kor_denetim` ve `duzelt` `atlandi`, hat eskisi gibi 
   belgeden alıntı); yön paketi: hücre puanları ve madde bulguları.
 - **apply (kod):** rapor alıntısı raporun o bölümünde, kanıt alıntısı belirtilen belgede normalize
   aranır (`verify_quote`, atıf işaretleri atılır); tutmayan bulgu `dogrulama: dogrulanamadi` (gösterilir,
-  işlenmez). Sınıf: `metin` (bulgular + doğrulanmış K/U cümleleri; kendiliğinden düzeltilir), `od`
+  işlenmez). **Yokluk iddiası** (görev v2 `iddia: "yok"`; alan yoksa açıklama/gerekçe metninden): pakette
+  kanıt 20 000 karaktere kısaltılır (başlıkta "metin kısaltıldı (N/M karakter)"; denetçiye "kısaltılmış
+  belgede yokluk iddiası kurma" kuralı); kod, bulgunun belgesi ve ölçütün kanıtlarından kısaltılmış
+  olanların tam metninde açıklamadaki tırnaklı ifadeyi (yoksa rapor alıntısının içeriğini, yalnız
+  gösterilmeyen ortada) arar; bulursa bulgu/cümle "doğrulanamadı — tam metinde var" (`tam_metinde`),
+  düzeltmeye girmez. Sınıf: `metin` (bulgular + doğrulanmış K/U cümleleri; kendiliğinden düzeltilir), `od`
   (denetçi OD'si ≠ raporun OD'si; `<ölçüt>-od`), `kanit` (kullanılmayan belge; `<ölçüt>-k<n>`; belge
   kanıt listesindeyse doğrulanamadı). Şemaya uymayan cevap `GECERSIZ.md`; bütün paketler geçerliyse
   `kor-denetim.json` (`ic_olcum: true`, `olcutler`, `yonler`, `bulgular`, `ozet`, `karsilastirma`) ve

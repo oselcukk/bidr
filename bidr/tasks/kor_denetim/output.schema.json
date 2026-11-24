@@ -14,14 +14,15 @@
       "maxItems": 40,
       "items": {
         "type": "object",
-        "required": ["alinti", "etiket", "doc_id", "kanit_alintisi", "gerekce"],
+        "required": ["alinti", "etiket", "doc_id", "kanit_alintisi", "gerekce", "iddia"],
         "additionalProperties": false,
         "properties": {
           "alinti": {"type": "string", "minLength": 8, "maxLength": 500},
           "etiket": {"enum": ["D", "K", "U"]},
           "doc_id": {"type": "string", "maxLength": 64},
           "kanit_alintisi": {"type": "string", "maxLength": 500},
-          "gerekce": {"type": "string", "maxLength": 400}
+          "gerekce": {"type": "string", "maxLength": 400},
+          "iddia": {"enum": ["yok", "diger"]}
         }
       }
     },
@@ -30,7 +31,7 @@
       "maxItems": 20,
       "items": {
         "type": "object",
-        "required": ["tur", "alinti", "doc_id", "kanit_alintisi", "aciklama", "oneri"],
+        "required": ["tur", "alinti", "doc_id", "kanit_alintisi", "aciklama", "oneri", "iddia"],
         "additionalProperties": false,
         "properties": {
           "tur": {"enum": ["sayi", "yanlis_ozet", "gundem_gerceklesmis", "sablon_arac", "od_kanit_onunde",
@@ -39,7 +40,8 @@
           "doc_id": {"type": "string", "maxLength": 64},
           "kanit_alintisi": {"type": "string", "maxLength": 500},
           "aciklama": {"type": "string", "minLength": 1, "maxLength": 600},
-          "oneri": {"type": "string", "maxLength": 600}
+          "oneri": {"type": "string", "maxLength": 600},
+          "iddia": {"enum": ["yok", "diger"]}
         }
       }
     },
