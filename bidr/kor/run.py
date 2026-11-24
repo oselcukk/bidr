@@ -672,15 +672,15 @@ def statuses(ws: Workspace, js: dict, key: str | None = None) -> dict[str, tuple
             out[fid] = ("bilgi", "ikinci denetim ölçümdür: bulgular kendiliğinden düzeltilmez")
             continue
         if f["sinif"] == "metin":
-            key = target(f)
-            if key not in recs:
-                recs[key] = _record(ws, key)
-            t = recs[key]
+            hedef = target(f)   # `key` (süzgeç) ezilmesin: yoksa ilk hedeften sonrakiler atlanır
+            if hedef not in recs:
+                recs[hedef] = _record(ws, hedef)
+            t = recs[hedef]
             if fid in consumed(js, t):
                 out[fid] = ("duzeltildi", "")
             elif not t:
                 out[fid] = ("bilgi", "düzeltilecek metin yok")
-            elif not _q(f["alinti"], _record_text(key, t)):
+            elif not _q(f["alinti"], _record_text(hedef, t)):
                 out[fid] = ("bilgi", "metin denetimden sonra değişti; alıntı artık metinde yok")
             else:
                 out[fid] = ("duzeltilecek", "")

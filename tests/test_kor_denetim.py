@@ -215,6 +215,12 @@ def test_stage_contract_and_duzelt_cycle(ws, capsys):
     d = _check(ws, "duzelt")
     assert d.kim == "komut" and "duzelt prepare" in d.komutlar[0] and "B.1.1" in d.neden and "B" in d.neden
     assert any("bölüm kararı" in u for u in d.uyarilar)
+    # birden çok hedef (ölçüt + yon_B): her hedefin metin bulgusu kendi durumunu alır (süzgeç değişkeni ezilmez)
+    js0 = KD.load(Workspace(ws))
+    st0 = KD.statuses(Workspace(ws), js0)
+    yb = [f["id"] for f in js0["bulgular"] if KD.target(f) == "yon_B" and f["dogrulama"] == "dogrulandi"]
+    assert yb and all(st0[x][0] == "duzeltilecek" for x in yb)
+    assert d.ilerleme["duzeltilecek"] == sum(1 for v in st0.values() if v[0] == "duzeltilecek") > len(yb)
     st = D.prepare(ws)
     assert st["olcut"] == ["B.1.1"] and st["alan"] == ["B"]
     pkg = json.loads((ws / "work/write/B.1.1.json").read_text(encoding="utf-8"))
