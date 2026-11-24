@@ -559,3 +559,11 @@ def test_package_lists_period_evidence_and_unit_values(tmp_path):
     answer(ws, "B.1.1", bad)
     st = W.apply(ws)
     assert st["islenen"] == 0 and any("donem_ici_atlandi" in x for x in st["gecersiz"]["B.1.1"])
+
+
+def test_yapay_zeka_program_adi_yasak_ifade_degil():
+    from bidr.write.text import _YASAK
+    ok = "Bölümün Yapay Zekâ ve Veri Bilimi yüksek lisans programı YÖK tarafından kabul edilmiştir [1_OD3]."
+    assert not any(p.search(ok.lower()) for p, t in _YASAK if t == "meta")
+    bad = "Bu metin yapay zekâ ile hazırlanmıştır."
+    assert any(p.search(bad.lower()) for p, t in _YASAK if t == "meta")
