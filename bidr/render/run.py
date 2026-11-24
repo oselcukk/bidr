@@ -145,8 +145,9 @@ def load_texts(d: Path) -> tuple[dict[str, dict], list[str]]:
 def load_audit(p: Path | None) -> tuple[dict[str, dict], list[str]]:
     if p is None or not p.exists():
         return {}, [f"audit-olcutler.json yok ({p}); OD önerisi yalnız metinlerden, eksik notu yok"]
+    from bidr.kor.od import apply_overrides
     js = json.loads(p.read_text(encoding="utf-8"))
-    return {c["olcut"]: c for c in js.get("olcutler") or []}, []
+    return apply_overrides({c["olcut"]: c for c in js.get("olcutler") or []}, p.parent), []
 
 
 def kanit_parts(k: dict, bicim: str) -> tuple[str, str]:
@@ -766,10 +767,24 @@ def workspace_sha(ws: Path, template: Path, texts_dir: Path, audit_path: Path | 
     extra = {"hazirlayanlar": people or [], "kapsam": kapsam}
     if teslim != "baglanti":            # bağlantı modunda özet eskisiyle aynı kalır
         extra["teslim"] = teslim
+    kor_od = _kor_od(audit_path)
+    if kor_od:                          # kör denetimde kabul edilen OD (yoksa özet eskisiyle aynı)
+        extra["kor_od"] = kor_od
     return inputs_sha(template, texts_dir, audit_path, index_path, Path(ws) / YONLER_DIR, extra)
 
 
 YONLER_DIR = "yonler"
+
+
+def _kor_od(audit_path: Path | None) -> dict[str, int]:
+    """Kör denetimde kabul edilip audit'e yansıyan OD kararları {ölçüt: od} (bidr/kor/od.py)."""
+    if audit_path is None or not Path(audit_path).exists():
+        return {}
+    try:
+        rows, _ = load_audit(Path(audit_path))
+    except (OSError, ValueError):
+        return {}
+    return {c: r["od"] for c, r in sorted(rows.items()) if r.get("od_denetim")}
 
 
 # -- gaps.md: kapsam kararı soruları -------------------------------------------------------------------

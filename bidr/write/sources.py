@@ -65,9 +65,12 @@ def load_index(path: Path) -> dict[str, list[dict]]:
 
 
 def load_audit(path: Path) -> dict[str, dict]:
+    """{ölçüt: audit satırı}. Bölümün kör denetimde kabul ettiği OD kararı (`kor-denetim-kararlar.jsonl`,
+    aynı klasörde) ölçütün `od`'sine yansır (bidr/kor/od.py)."""
+    from bidr.kor.od import apply_overrides
     d = json.loads(Path(path).read_text(encoding="utf-8"))
     rows = d.get("olcutler", d) if isinstance(d, dict) else d
-    return {r["olcut"]: r for r in rows}
+    return apply_overrides({r["olcut"]: r for r in rows}, Path(path).parent)
 
 
 def load_notes(path: Path) -> dict[str, list[str]]:
