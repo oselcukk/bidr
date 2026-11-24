@@ -234,3 +234,39 @@ def test_etkinlik_gerceklesmisse_istek_yok_ve_gruba_bagli_fotograf_sorulmaz(tmp_
     res = IR.run(ws, out=tmp_path / "o")
     assert not any("gerçekleştiğini" in m for m in _metinler(res, "B.3.5"))
     assert not _metinler(res, "Genel")
+
+
+def test_etkinlik_mi_yalniz_gercek_etkinlik_turleri():
+    from bidr.ihtiyac.etkinlik import etkinlik_mi
+    for ad in ("Iraksak Seriler Semineri", "Ulusal Staj Programı 2026", "Bilim Şenliği", "Matematik Kulübü Söyleşisi",
+               "Tercih Günü Tanıtım Standı", "COVER Çalıştayı", "Kültür Konuşmaları I", "Temel Bilimler Festivali"):
+        assert etkinlik_mi(ad), ad
+    for ad in ("Bölüm Kurulu Toplantısı 2026-3", "Kalite Komisyonu Toplantısı", "Lise İş Birliği Protokolü İmzası",
+               "Erasmus Anlaşması", "Öğrenci Temsilcisi Seçimleri", "Lisansüstü Giriş Mülakatları",
+               "Uluslararası Kongre Katılımı", "Yönetimin Gözden Geçirmesi Toplantısı"):
+        assert not etkinlik_mi(ad), ad
+
+
+def test_etkinlik_istekleri_daralir_ve_madde_basina_birlesir(tmp_path):
+    """Gerçekleşme isteği yalnız bölümün gerçek etkinliklerine; aynı maddedeki etkinlikler tek satırda."""
+    def d(ad):
+        return ("etkinlik_duyurusu", True, "2026-03-01", ad, T1, [_m("B.3.5", "B.3.5/1", "planla", 2)], "kabul")
+    ws = _hedef(tmp_path, {"s1": d("Seminer A Afisi"), "s2": d("Seminer B Afisi"), "pr": d("Protokol Imza Duyurusu"),
+                           "ku": d("Kurum Bilim Senligi Duyurusu")})
+    fa = {"s1": ("Sayılar Kuramı Semineri", "2026-03-12", "kendi"), "s2": ("Topoloji Semineri", "2026-04-02", "kendi"),
+          "pr": ("Lise İş Birliği Protokolü İmzası", "2026-03-20", "kendi"),
+          "ku": ("Kampüs Bilim Şenliği", "2026-05-05", "kurum_geneli")}
+    recs = [json.loads(x) for x in (ws / "decisions.jsonl").read_text(encoding="utf-8").splitlines()]
+    for r in recs:
+        ad, t, bi = fa[r["doc_id"]]
+        r["ince"].update({"birim_iliskisi": bi, "faaliyet": {"ad": ad, "tarih": t, "asama": "duyuru"}})
+    (ws / "decisions.jsonl").write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in recs),
+                                        encoding="utf-8")
+    res = IR.run(ws, out=tmp_path / "o")
+    e = [m for m in _sade(res, "B.3.5")["maddeler"] if m["tur"] == "etkinlik"]
+    assert [m["metin"] for m in e] == [
+        "Şu etkinliklerin gerçekleştiğini gösteren fotoğraf, haber, sosyal medya paylaşımı ya da katılım listesi: "
+        "«Sayılar Kuramı Semineri (2026-03-12)», «Topoloji Semineri (2026-04-02)»"]
+    assert e[0]["dosyada"] == ("planlama: Sayılar Kuramı Semineri (2026-03-12): Seminer A Afisi · "
+                               "Topoloji Semineri (2026-04-02): Seminer B Afisi")
+    assert not any("Protokol" in m["metin"] or "Şenliği" in m["metin"] for r in res["sade"] for m in r["maddeler"])

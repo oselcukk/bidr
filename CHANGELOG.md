@@ -4,6 +4,10 @@ Her birleştirmede (main'e giren her değişiklik) buraya en üste bir satır ek
 açıklama ve kullanıcıyı ilgilendiriyorsa ne yapması gerektiği. `bidr guncelle` güncellemeden sonra
 bu dosyanın yeni satırlarını gösterir. Bu dosyadan önceki geçmiş için `git log`.
 
+- 2026-11-24: Eksik listesinde etkinlik istekleri daraldı (prova düzeltmesi): yalnız gerçek etkinlik türleri (seminer,
+  konferans, çalıştay, staj programı, tanıtım/tercih günü, kulüp, şenlik, söyleşi…; toplantı, kurul, protokol,
+  anlaşma, seçim, başvuru, sınav ve dış etkinliğe katılım değil) ve yalnız bölümün etkinlikleri; madde başına en çok
+  bir gerçekleşme ve bir değerlendirme satırı (birden çok etkinlik tek satırda). Model yok.
 - 2026-11-24: Eksik listesinde tek anket maddesi kısmen sayılır (prova düzeltmesi): anket belgesinden tek cümlelik
   alıntı, ana metni anket/geri bildirim istemeyen yuvayı (B.1.4/7 "AKTS hesaplama tabloları…") yalnız kısmen
   doldurur; "En az bir ders için ders bazında AKTS iş yükü hesap tablosu" istenir. Model yok.

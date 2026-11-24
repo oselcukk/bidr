@@ -261,7 +261,12 @@ kodsuz satır "Genel" satırı olarak eklenir. CSV: `madde,istek` zorunlu, `once
 ### 5.2 Etkinlik adıyla istekler
 
 `bidr/ihtiyac/etkinlik.py`, faaliyet kayıtlarından (`bidr faaliyet` ile aynı kurulum; etkinlik dosyası,
-`bidr/faaliyet/dosya.py`) elle isteklerden sonra yazılır (öncelik Orta, kimden: etkinliği düzenleyen):
+`bidr/faaliyet/dosya.py`) elle isteklerden sonra yazılır (öncelik Orta, kimden: etkinliği düzenleyen).
+Yalnız **gerçek etkinlikler** (`etkinlik_mi`: seminer, konferans/kongre/sempozyum, çalıştay, staj programı,
+tanıtım/tercih günü, kulüp etkinliği, şenlik/festival, söyleşi, konuşma/buluşma dizisi, panel…; toplantı,
+kurul, komisyon, protokol, anlaşma, imza, seçim, başvuru, sınav/mülakat ve dış etkinliğe katılım değil) ve
+yalnız **bölümün** etkinlikleri (bir belgesi `birim_iliskisi: kendi`). Madde başına en çok bir gerçekleşme
+ve bir değerlendirme satırı; birden çok etkinlik tek satırda ("Şu etkinliklerin …: «A», «B»"):
 
 - planlaması kanıtlı (afiş/duyuru/plan) ama gerçekleşmesi kanıtlanmamış etkinlik: "«<ad> (<tarih>)»
   etkinliğinin gerçekleştiğini gösteren fotoğraf, haber, sosyal medya paylaşımı ya da katılım listesi";
