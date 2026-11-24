@@ -9,7 +9,9 @@ metin sezgileri uygulanmaz (insan kararı kuralı aşar; tür ve birim kurallar�
 Satır düzeyi (`row`): hariç tür, bilgisiz ekran, yürürlükten kaldırılmış düzenleme, madde
 ilkesi, boş form, duyuru/gelecek zaman, kurum geneli ifade, faaliyet aşaması, aşama
 sözcük denetimleri (katılım ≠ izleme; niyet, bilgilendirme, sürüm notu ve yönlendirme/talep —
-"Başkanlığa iletilmesine karar" — ≠ iyileştirme).
+"Başkanlığa iletilmesine karar" — ≠ iyileştirme). Etkinlik dosyası: gerçekleşmesi kanıtlı faaliyetin
+duyurusu/afişi, gerçekleşme belgesi aynı ölçütte kabul edilmişse ve yuva uygulamayı kabul ediyorsa `uygula`
+sayılır (`etkinlik_gerceklesti`); gerçekleşme başka ölçütteyse afiş planlama kalır.
 Belge düzeyi (`unit_relation`): metinde birimin açık sinyali (adı, program adı, bölüm sayfası
 yolu, ders kodu öneki) hiç yokken başka birim adı geçen belge `belirsiz`, bütün birimleri kapsayan
 belge kurum/fakülte geneli sayılır; model `belirsiz` dediyse ve metinde birimin sinyali varsa
@@ -488,6 +490,38 @@ class Savunma:
         return out
 
     # -- satır düzeyi ------------------------------------------------------------------------
+    def _ayni_olcutte_gerceklesme(self, k: dict, olcut: str | None) -> bool:
+        """Faaliyetin gerçekleşme belgesi (gerçekleşme/katılım aşaması) AYNI ölçütte kabul edilmiş mi: kod
+        denetiminden geçmiş eşleşme ve incelemede reddedilmemiş. Başka ölçütteki fotoğraf afişi kendi ölçütünde
+        uygulama yapmaz (OD şişmesin; şef kararı 2026-11-24)."""
+        if getattr(self, "_ret", None) is None:
+            self._ret = set()
+            p = Path(self.ws_root) / "review-decisions.jsonl"
+            if p.exists():
+                for x in p.read_text(encoding="utf-8").splitlines():
+                    try:
+                        r = json.loads(x)
+                    except ValueError:
+                        continue
+                    if r.get("karar") == "ret":
+                        self._ret.add(r.get("satir") or f"{r.get('doc_id')}|{r.get('yuva')}")
+        for b in k.get("belgeler") or []:
+            if b.get("asama") not in ("gerceklesme", "katilim"):
+                continue
+            for e in b.get("eslesmeler") or []:
+                if e.get("olcut") == olcut and f"{b.get('doc_id')}|{e.get('yuva')}" not in self._ret:
+                    return True
+        return False
+
+    def _uygula_yuvasi(self, yuva: str | None) -> bool:
+        """Yuvanın PUKÖ etiketi uygulamayı kabul ediyor mu (belirsiz etiket: içeriğe bağlı, kabul)."""
+        if getattr(self, "_tags", None) is None:
+            from bidr.criteria.loader import load_criteria
+            from bidr.criteria.slots import load_tags
+            self._tags = load_tags(load_criteria())
+        t = self._tags.get(yuva or "")
+        return t is not None and (t.uncertain or "uygula" in t.stages)
+
     def row(self, rec: dict, m: dict, dtype: str, etkin: str | None, human: bool) -> dict:
         """{"etkin", "sayilir" (None: değişmez), "flags", "vurgu", "rel"}."""
         did = rec["doc_id"]
@@ -535,21 +569,30 @@ class Savunma:
 
         if dtype in FORM_TURLER and e != "planla" and not SONUC_VAR.search(f(self.text(did))):
             down("planla", "bos_form", "boş form/şablon: uygulama değil, mekanizma tanımı (planla)")
-        if dtype in DUYURU_TURLER and e != "planla":
-            down("planla", "gerceklesme_kaniti_yok", "duyuru: gerçekleşmenin kanıtı değil (planla)")
-        if e != "planla" and GELECEK.search(q):
-            down("planla", "gerceklesme_kaniti_yok", "gelecek zamanlı ifade: gerçekleşme kanıtı değil (planla)")
         fa = self.fmap.get(did)
+        # Etkinlik dosyası (kanıt ilkesi `etkinlik_dosyasi`): bölümün etkinliğinin afişi/duyurusu planlama
+        # kanıtıdır; aynı faaliyet kaydında gerçekleşme belgesi (fotoğraf, haber, tutanak) varsa uygulama.
+        gerceklesti = bool(fa) and fa[0].get("durum") == "gerceklesme_kanitli" and fa[1] in ("duyuru", "plan")
+        if dtype in DUYURU_TURLER and e != "planla" and not gerceklesti:
+            down("planla", "gerceklesme_kaniti_yok", "duyuru: gerçekleşmenin kanıtı değil (planla)")
+        if e != "planla" and GELECEK.search(q) and not gerceklesti:
+            down("planla", "gerceklesme_kaniti_yok", "gelecek zamanlı ifade: gerçekleşme kanıtı değil (planla)")
         if fa:
             k, asama = fa
             from bidr.faaliyet.group import PUKO
             h = PUKO.get(asama)
             if (k.get("yalniz_duyuru") or k.get("durum") == "gerceklesme_kanitsiz") and e != "planla":
                 down("planla", "gerceklesme_kaniti_yok", f"faaliyetin ({k.get('id')}) gerçekleşme kaydı yok")
-            if h and ORDER.get(h, 0) < ORDER[e]:
+            if h and ORDER.get(h, 0) < ORDER[e] and not gerceklesti:
                 down(h, "faaliyet_asamasi_uyusmuyor", f"faaliyet kaydında aşama '{asama}' ({k.get('id')})")
             if k.get("durum") == "gerceklesme_dolayli" and e == "uygula":
                 vu.append(f"gerçekleşme belgesi önerilir ({k.get('id')}: yalnız katılım/değerlendirme kaydı)")
+            if gerceklesti and e == "planla" and self._uygula_yuvasi(m.get("yuva")) \
+                    and self._ayni_olcutte_gerceklesme(k, m.get("olcut")):
+                e = "uygula"
+                fl.append("etkinlik_gerceklesti")
+                vu.append(f"etkinlik dosyasında gerçekleşme belgesi var ({k.get('id')} {k.get('ad') or ''}): "
+                          "duyuru uygulama sayıldı")
         if e != "planla" and GENEL_IFADE.search(q):
             down("planla", "uygulama_kaniti_eksik", "alıntı bütün birimleri kapsıyor (kurum/fakülte geneli)")
             fl.append("kurum_geneli")

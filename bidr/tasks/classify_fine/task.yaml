@@ -47,6 +47,12 @@ description: >-
   komisyon görevlerinin ölçütleriyle genişler, en çok 8 (bidr/candidates/komisyon.py).
   v10 açıklama (sürüm değişmedi, şema aynı; 2026-11-20): "guven" tanımı istemde yazılı: yüksek =
   alıntı yuvayı doğrudan karşılar, belge birime ait ve dönem içi; orta = ilgili ama dolaylı; düşük = zayıf bağ.
+  v10 açıklama (sürüm değişmedi, şema aynı; 2026-11-24): etkinlik dosyası. Bölümün düzenlediği etkinliğin
+  afişi/duyurusu planlama kanıtıdır ("yalnız duyuru" diye kanit_degil denmez; planla, OD2); kanıt ilkesi
+  `etkinlik_dosyasi`. Aynı klasör / ad serisindeki belgelerin etkinlik adı BELGE BİLGİSİ'ne "etkinlik
+  dosyası adayı" ipucu olarak girer (yalnız fotoğraf türünde; bidr/faaliyet/dosya.py): model içerikle
+  çelişmiyorsa faaliyet adını oradan alır. Sürüm artmadı: var olan kararlar geçerli kalır ("kural
+  değişti" bilgisi); yalnız ipucu satırı eklenen fotoğrafların paketi değişir ve onaysız yeniden sorulur.
 inputs:
   adaylar: "aday alt ölçütler: başlık, rubrik 1-5, yuvalar `[aşama → OD]` etiketiyle"
   belge_bilgisi: "documents.jsonl içerik alanları (tür tahmini, tarih, sayfa); yol/ad yok"

@@ -11,6 +11,8 @@ Bir belge girdisi: `{doc_id, ad, tarih, asama, ...}`. İki belge aynı faaliyett
      → yıl; hiçbiri yoksa tarihsiz). Çapa aşamalar (`gerceklesme`, `katilim`) birbirine
      ±`CAPA_GUN` içinde birleşir; öteki aşamalar faaliyetin olay tarihine göre aşamaya özgü
      pencerede (`PENCERE`: duyuru önce, değerlendirme sonra) en yakın faaliyete bağlanır.
+     Aynı klasörde aynı dosya serisinden ("… 2026-1.jpg" … "-5.jpg") gelen belgeler ad sayısı farklı
+     olsa da adı benzer sayılır (`Kume.name_ok`, `ek["seri"]`).
   3. **Tarihsiz belge** adı benzer tek faaliyete bağlanır; birden çok aday varsa ayrı kayıt
      olur ve işaretlenir (yanlış birleştirmektense eksik birleştirmek: temkinli taraf).
 
@@ -158,7 +160,10 @@ class Kume:
         return c[0].aralik if c else None
 
     def name_ok(self, g: Girdi) -> bool:
-        return any(similar(g.adk, m.adk) for m in self.uyeler)
+        """Ad benzer ya da aynı dosya serisinden (`ek["seri"]`: klasör + sıra numarasız dosya adı;
+        bidr/faaliyet/dosya.py): "Ulusal Staj 2026-1" … "-5" fotoğrafları aynı etkinliktir."""
+        s = g.ek.get("seri")
+        return any(similar(g.adk, m.adk) or (s and m.ek.get("seri") == s) for m in self.uyeler)
 
 
 def make_entry(doc_id: str, f: dict, ek: dict | None = None) -> Girdi:
@@ -265,7 +270,8 @@ def summarize(k: Kume) -> dict:
         "halkalar": sorted({PUKO[a] for a in asamalar if a in PUKO},
                            key=("planla", "uygula", "kontrol_et", "onlem_al").index),
         "eksik": eksik,
-        "belgeler": [{"doc_id": g.doc_id, "asama": g.asama, "ad": g.ad, "tarih": g.tarih, **g.ek}
+        "belgeler": [{"doc_id": g.doc_id, "asama": g.asama, "ad": g.ad, "tarih": g.tarih,
+                      **{k: v for k, v in g.ek.items() if k != "seri"}}
                      for g in sorted(k.uyeler, key=lambda g: (ASAMALAR.index(g.asama), g.doc_id))],
         "notlar": notlar,
     }

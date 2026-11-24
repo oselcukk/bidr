@@ -35,7 +35,7 @@ def test_schema_faaliyet_optional_and_validated():
 
 def test_prompt_and_version():
     txt = (R.TASKS_DIR / R.FINE / "prompt.md").read_text(encoding="utf-8")
-    assert '"faaliyet"' in txt and "duyuru gerçekleşmenin kanıtı değildir" in txt
+    assert '"faaliyet"' in txt and "planlama kanıtıdır (kanit_degil değil), gerçekleşmenin kanıtı değildir" in txt
     for a in G.ASAMALAR:
         assert a in txt
     sch = json.loads((R.TASKS_DIR / R.FINE / "output.schema.json").read_text(encoding="utf-8"))

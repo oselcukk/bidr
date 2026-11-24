@@ -78,6 +78,17 @@ Durum (dönem: audit'in `doc_time` / `yapi_time` kuralı):
 Her satırda eşleştirme gerekçesi ve karşılığın bu ölçüte eşleşip eşleşmediği yazılır. "Belge var
 ama bu ölçüte eşleşmemiş" satırı karar/inceleme için ipucudur (karar değiştirilmez).
 
+**Kabul edilmiş inceleme kararlarıyla kapanış** (`bidr/ihtiyac/karsilama.py`): benzerlikle `yok`/`eski`
+çıkan öğe, kabul edilmiş (yuvayı karşılayan: sayılan, reddedilmemiş, güveni orta/yüksek ya da incelemede
+kabul/düzelt) bir kanıtla karşılanıyorsa `var` olur ve istenmez; `karsilama` alanı karşılayan belgeyi,
+ölçütünü ve nedenini taşır. Sıra: (1) eşleştirmenin bulduğu karşılık herhangi bir ölçütte kabul edilmiş;
+(2) derse özgü belge tür düzeyinde istenir, aynı türden kabul edilmiş herhangi bir belge (herhangi bir
+ölçütte) kapatır; (3) aynı ölçütte yuva tam dolu ya da aynı türden/aynı adlı belge kabul edilmiş ("başka
+belgeyle"); (4) kurum düzeyi belge (yönetmelik, yönerge, iş akışı, form; kurum/fakülte geneli satır) adıyla
+başka ölçütün kanıtı ("dosyada var (X ölçütünde)"). Kurum kataloğundan gelen satırlar da (5. bölüm) dosyada
+kabul edilmiş karşılığı varsa istenmez. Kapanan istekler sade listenin "Var olan kanıt" sütununda
+"İstenmedi (dosyada var): …" satırıyla görünür.
+
 ## 3. Ölçüt satırı ve öncelik
 
 Her ölçüt için: mevcut (sayılan) kanıtlar, önerilen OD, PUKÖ zinciri, bir üst düzey için eksik
@@ -109,6 +120,10 @@ yuva, satır sayılıyor, reddedilmemiş ve güveni orta/yüksek ya da incelemed
 halkanın sorumlusu), puan ve gerekçe (halka + hedef düzeyin rubrik tanımı; kanıtı olan halkanın
 boş yuvasında rubrik yazılmaz).
 
+- **Kısmen dolu yuva**: yuvayı karşılayan satırların hepsi zayıfsa (alıntı tek soru ya da en çok 6
+  sözcük; ör. tek anket sorusuyla "iş yükü") yuva karşılanmamış sayılır: öneri somut belgesiyle
+  (`ihtiyac_somut.yaml`) kalır, gerekçe "kısmen karşılanmış (yalnız zayıf kanıt: «…»)" diye başlar, sade
+  listede o isteğin "Var olan kanıt" hücresinde "Bu istek için: kısmen: «…»" yazar. OD hesabı değişmez.
 - **Birleştirme**: yuva zaten bir talebin yuvalarında geçiyorsa (kanıtsız / tek belge / çok halka
   talebinin halka yuvaları ya da geçen yılın iyi kanıtının yuvası) ayrı satır açılmaz; o satırın
   `kaynak`ına "kılavuz" eklenir, puanı ikisinin büyüğü olur. Bu yüzden bir üst düzeyin eksik
@@ -229,6 +244,21 @@ Markdown: yalnız madde işaretli satırlar okunur, `- B.3.2 — 2026 ders izlen
 (ayırıcı `—`, `–`, `:` ya da ` - `; `**B.3.2**` da olur). Satırda `[yüksek]`/`[orta]`/`[düşük]` ve
 `(kimden: …)` isteğe bağlı. `B.1.x` ya da `B.1` ana madde satırı olarak ("alt madde belirtilmedi"),
 kodsuz satır "Genel" satırı olarak eklenir. CSV: `madde,istek` zorunlu, `oncelik`, `kimden` isteğe bağlı.
+
+### 5.2 Etkinlik adıyla istekler
+
+`bidr/ihtiyac/etkinlik.py`, faaliyet kayıtlarından (`bidr faaliyet` ile aynı kurulum; etkinlik dosyası,
+`bidr/faaliyet/dosya.py`) elle isteklerden sonra yazılır (öncelik Orta, kimden: etkinliği düzenleyen):
+
+- planlaması kanıtlı (afiş/duyuru/plan) ama gerçekleşmesi kanıtlanmamış etkinlik: "«<ad> (<tarih>)»
+  etkinliğinin gerçekleştiğini gösteren fotoğraf, haber, sosyal medya paylaşımı ya da katılım listesi";
+- gerçekleşmiş, değerlendirmesi olmayan etkinlik, ölçütü OD3'teyse (OD4'e aday): değerlendirme / geri
+  bildirim / sonraki dönem için alınan karar;
+- bağlamsız fotoğraf (faaliyet adı yok, aynı klasör/ad serisinde etkinlik belgesi yok, sahnesi mekân
+  değil): "Bu fotoğraf hangi etkinliğe ait? Belgeler sayfasında belge notu yazın: <yol>" ("Genel"
+  maddesinde; en çok 15, kalanı tek satır).
+
+İstek etkinliğin belgelerinin (incelemede reddedilmemiş) ilk ölçütüne yazılır; yoksa "Genel".
 
 ## 6. Kurum belge kataloğu (`bidr kurum-katalog`)
 

@@ -63,3 +63,13 @@ ilkeler:
       "ozgun" (OD5) birden çok dönemde sürdürülen ve bağımsızca (üst birim, dış kurum, ödül)
       örnek gösterilen uygulamadır. Bölümün kendi övgü cümlesi ya da tanıtım/web metni ozgun
       değildir. Bölüm kurulu kararı bölüm uygulamasıdır; fotoğraf yalnız destekleyicidir.
+  - kimlik: etkinlik_dosyasi
+    metin: >-
+      Bölümün düzenlediği etkinliğin afişi, duyurusu ya da davetiyesi etkinliğin planlandığının
+      kanıtıdır: "yalnız duyuru" diye "kanit_degil" deme; aşama "planla" (OD2), "faaliyet" alanına
+      etkinliğin adını ve tarihini (yayım değil etkinlik tarihi) yaz. Gerçekleştiği (fotoğraf,
+      haber, katılım listesi) aynı etkinliğin başka belgeleriyle gösterilir; ölçütü etkinliğin
+      içeriğine göre seç. BELGE BİLGİSİ'nde "etkinlik dosyası adayı" satırı varsa (aynı klasör ya da
+      ad serisindeki belgelerin etkinlik adı) bu yalnız ipucudur: belge içeriği o etkinlikle
+      çelişmiyorsa (ör. adsız etkinlik fotoğrafı) "faaliyet" adını oradan aynen al; çelişiyorsa ya
+      da emin değilsen alma. Alıntı yine yalnız bu belgeden.
