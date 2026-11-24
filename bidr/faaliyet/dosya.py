@@ -15,7 +15,11 @@ Bağlam kaynağı: grubun faaliyet adı taşıyan ve bu adı **kendi içeriğind
 dosyası ipucu olmadan) almış üyeleri. İpucuyla karar verilmiş belge kaynak olmaz: ipucu zincirlenmez,
 sonuç kararlıdır (bir fotoğrafın kararı başka fotoğrafın paketini değiştirmez, döngü yok).
 
-İpucu yalnız fotoğraf türündeki belgeye verilir ve yalnız şu durumda: belge henüz ince karar
+**Fotoğraf** (`fotograf_mi`) = türü `fotograf` VE dosyası gerçek bir görsel (uzantı `GORSEL_UZANTI`: jpg, jpeg,
+png, heic, heif, webp). `fotograf` diye sınıflanmış PDF (giriş ekranı, kılavuz, karar belgesi) fotoğraf
+sayılmaz: ne yakın-tarih sinyaline girer, ne ipucu alır, ne de "bu fotoğraf hangi etkinliğe ait?" diye sorulur.
+
+İpucu yalnız fotoğrafa verilir ve yalnız şu durumda: belge henüz ince karar
 almadı, ya da kararında faaliyet adı yok, ya da kararı zaten ipucuyla verildi. Kendi içeriğinden
 faaliyet adı almış fotoğrafın paketi değişmez (gereksiz yeniden karar yok).
 """
@@ -32,6 +36,7 @@ from bidr.common import Workspace, read_jsonl
 from .group import fold
 
 FOTOGRAF_TURLER = frozenset({"fotograf"})
+GORSEL_UZANTI = frozenset({".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp"})
 YAKIN_GUN = 7
 BAGLAM_EN_COK = 3
 ALAN = "etkinlik_baglami"          # ince kayıtta: kararın verildiği ipucunun kaynak belgeleri
@@ -46,6 +51,16 @@ def seri_koku(rel_path: str) -> str | None:
         return None
     kok = re.sub(r"[\s_\-.]+", " ", m.group(1)).strip()
     return kok if len(re.sub(r"[^a-z]", "", kok)) >= 3 else None
+
+
+def gorsel_mi(rel_path: str | None) -> bool:
+    """Dosya uzantısı gerçek bir görsel mi (PDF değil)."""
+    return PurePosixPath((rel_path or "").replace("\\", "/")).suffix.lower() in GORSEL_UZANTI
+
+
+def fotograf_mi(doc_id: str, paths: dict[str, str], docs: dict[str, dict]) -> bool:
+    """Türü fotoğraf ve dosyası görsel (bkz. modül belgesi)."""
+    return (docs.get(doc_id) or {}).get("doc_type") in FOTOGRAF_TURLER and gorsel_mi(paths.get(doc_id))
 
 
 def klasor(rel_path: str) -> str:
@@ -105,7 +120,7 @@ def gruplar(paths: dict[str, str], docs: dict[str, dict], recs: dict[str, dict])
             else:
                 seri[(k, s)] = d
     for xs in by_dir.values():
-        foto = [d for d in xs if (docs.get(d) or {}).get("doc_type") in FOTOGRAF_TURLER and _gun((docs.get(d) or {}).get("tarih"))]
+        foto = [d for d in xs if fotograf_mi(d, paths, docs) and _gun((docs.get(d) or {}).get("tarih"))]
         olay = [d for d in xs if kaynak_faaliyet(recs.get(d))]
         for f in foto:
             tf = _gun(docs[f].get("tarih"))
@@ -132,7 +147,7 @@ def baglamlar(paths: dict[str, str], docs: dict[str, dict], recs: dict[str, dict
                 src.append({"ad": " ".join(str(f["ad"]).split()), "tarih": f.get("tarih"),
                             "asama": f.get("asama"), "doc_id": d})
         for d in g:
-            if (docs.get(d) or {}).get("doc_type") not in FOTOGRAF_TURLER:
+            if not fotograf_mi(d, paths, docs):
                 continue
             seen, xs = set(), []
             for s in src:

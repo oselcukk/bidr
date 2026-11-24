@@ -4,6 +4,9 @@ Her birleştirmede (main'e giren her değişiklik) buraya en üste bir satır ek
 açıklama ve kullanıcıyı ilgilendiriyorsa ne yapması gerektiği. `bidr guncelle` güncellemeden sonra
 bu dosyanın yeni satırlarını gösterir. Bu dosyadan önceki geçmiş için `git log`.
 
+- 2026-11-24: `fotograf` sanılan PDF fotoğraf sayılmaz (prova düzeltmesi): etkinlik dosyası ipucu, yakın-tarih sinyali
+  ve "bu fotoğraf hangi etkinliğe ait?" isteği yalnız gerçek görsel dosyalara (jpg, jpeg, png, heic, heif, webp).
+  Provada açılan tek yanlış ince karar paketi (giriş ekranı PDF'i) artık açılmaz. Model yok.
 - 2026-11-24: Eksik listesinde etkinlik istekleri daraldı (prova düzeltmesi): yalnız gerçek etkinlik türleri (seminer,
   konferans, çalıştay, staj programı, tanıtım/tercih günü, kulüp, şenlik, söyleşi…; toplantı, kurul, protokol,
   anlaşma, seçim, başvuru, sınav ve dış etkinliğe katılım değil) ve yalnız bölümün etkinlikleri; madde başına en çok

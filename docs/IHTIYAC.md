@@ -272,7 +272,8 @@ ve bir değerlendirme satırı; birden çok etkinlik tek satırda ("Şu etkinlik
   etkinliğinin gerçekleştiğini gösteren fotoğraf, haber, sosyal medya paylaşımı ya da katılım listesi";
 - gerçekleşmiş, değerlendirmesi olmayan etkinlik, ölçütü OD3'teyse (OD4'e aday): değerlendirme / geri
   bildirim / sonraki dönem için alınan karar;
-- bağlamsız fotoğraf (faaliyet adı yok, aynı klasör/ad serisinde etkinlik belgesi yok, sahnesi mekân
+- bağlamsız fotoğraf (yalnız gerçek görsel dosya: jpg/jpeg/png/heic/heif/webp; `fotograf` sınıflı PDF sorulmaz;
+  faaliyet adı yok, aynı klasör/ad serisinde etkinlik belgesi yok, sahnesi mekân
   değil): "Bu fotoğraf hangi etkinliğe ait? Belgeler sayfasında belge notu yazın: <yol>" ("Genel"
   maddesinde; en çok 15, kalanı tek satır).
 

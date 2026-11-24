@@ -270,3 +270,32 @@ def test_etkinlik_istekleri_daralir_ve_madde_basina_birlesir(tmp_path):
     assert e[0]["dosyada"] == ("planlama: Sayılar Kuramı Semineri (2026-03-12): Seminer A Afisi · "
                                "Topoloji Semineri (2026-04-02): Seminer B Afisi")
     assert not any("Protokol" in m["metin"] or "Şenliği" in m["metin"] for r in res["sade"] for m in r["maddeler"])
+
+
+def test_fotograf_sanilan_pdf_ipucu_almaz_ve_sorulmaz(tmp_path):
+    """`fotograf` diye sınıflanmış PDF (giriş ekranı, kılavuz) fotoğraf değildir: aynı klasör/seri grubunda olsa da
+    ipucu almaz, bağlamsız fotoğraf listesine (ve "bu fotoğraf hangi etkinliğe ait?" isteğine) girmez."""
+    def recs_fn(recs):
+        return recs + [_kaba("ekran"), _kaba("kilavuz")]
+    root = _ws(tmp_path, recs_fn)
+    inv = (root / "inventory.csv").read_text(encoding="utf-8")
+    cols = inv.splitlines()[0].split(",")
+    satir = {c: "" for c in cols}
+    ek = []
+    for did, yol in (("ekran", "Etkinlikler/Ulusal Staj/ulusal staj 2026-3.pdf"), ("kilavuz", "Diger/kilavuz.pdf")):
+        ek.append(",".join({**satir, "doc_id": did, "rel_path": yol}[c] for c in cols))
+        (root / "text" / f"{did}.txt").write_text(FOTO, encoding="utf-8")
+    (root / "inventory.csv").write_text(inv.rstrip("\n") + "\n" + "\n".join(ek) + "\n", encoding="utf-8")
+    with open(root / "documents.jsonl", "a", encoding="utf-8") as f:
+        for did in ("ekran", "kilavuz"):
+            f.write(json.dumps({"doc_id": did, "doc_type": "fotograf", "tarih": "2026-07-03"}) + "\n")
+    assert D.gorsel_mi("a/b.JPG") and D.gorsel_mi("x.heic") and not D.gorsel_mi("a/b.pdf")
+    h = D.yukle(root)
+    assert "foto1" in h and "ekran" not in h                     # aynı seride ama PDF: ipucu yok
+    ctx = R.Context.load(root, profile=None)
+    recs = R.load_decisions(ctx.ws)
+    i, m = R.fine_inputs(ctx, "ekran", recs["ekran"])
+    assert "etkinlik dosyası" not in i["belge_bilgisi"] and D.ALAN not in m
+    data = F.build_ws(R.Workspace(root))
+    assert "kilavuz" not in {x["doc_id"] for x in data["baglamsiz_fotograflar"]}
+    assert {"yalniz", "lab", "kok"} <= {x["doc_id"] for x in data["baglamsiz_fotograflar"]}

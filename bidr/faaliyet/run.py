@@ -56,7 +56,7 @@ def build(recs: list[dict], paths: dict[str, str] | None = None, docs: dict[str,
     """Faaliyet kayıtları. `paths`/`docs` (inventory, documents.jsonl) verilirse etkinlik dosyası
     (bidr/faaliyet/dosya.py) da kurulur: her kayda `dosya` (aynı klasör/ad serisinden, kayda girmemiş
     aday belgeler) ve üstte `baglamsiz_fotograflar` (faaliyet adı yok, hiçbir etkinlik grubuna bağlı
-    değil: bölümden belge notu istenir)."""
+    değil: bölümden belge notu istenir; yalnız gerçek görsel dosyalar, `dosya.fotograf_mi`)."""
     entries, st = entries_of(recs, paths)
     kayitlar = [G.summarize(k) for k in G.group(entries)]
     kayitlar.sort(key=lambda x: ((x["tarih_araligi"] or ["9999"])[0], x["ad"], x["belgeler"][0]["doc_id"]))
@@ -79,7 +79,7 @@ def build(recs: list[dict], paths: dict[str, str] | None = None, docs: dict[str,
         bagli = kayitli | {d for k in kayitlar for d in (x["doc_id"] for x in k["dosya"])}
         out["baglamsiz_fotograflar"] = [
             {"doc_id": d, "yol": paths.get(d, "")} for d in sorted(paths)
-            if (docs.get(d) or {}).get("doc_type") in D.FOTOGRAF_TURLER and d not in bagli
+            if D.fotograf_mi(d, paths, docs) and d not in bagli
             and (by_doc.get(d) or {}).get("durum") == "ok"
             and ((by_doc.get(d) or {}).get("ince") or {}).get("birim_iliskisi") != "baska_birim"]
         st["baglamsiz_fotograf"] = len(out["baglamsiz_fotograflar"])
