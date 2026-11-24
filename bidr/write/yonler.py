@@ -633,6 +633,38 @@ def cross_check(t: dict, meta: dict) -> list[dict]:
     return out
 
 
+def tutarlilik(t: dict) -> list[dict]:
+    """Basit tutarlılık uyarısı (kör denetim 2026-11-24): aynı ölçüt kodu hem bir güçlü yön maddesinde
+    hem yokluk hükmü kuran ("bulunmamaktadır", "yer almamaktadır", "eksik" …) bir gelişmeye açık yön
+    maddesinde geçiyorsa → [{olcut, guclu: [yer], gelisme: yer, metin}]. Engel değildir (eksik halkayı
+    adıyla söyleyen madde doğrudur); `cross_check`'in `ic_celiski`'si dar kalıplara bakar, bu uyarı
+    geniş: yonler_tamam uyarı olarak gösterir, doğrulama paketine "DİKKAT" satırı olarak girer."""
+    strong: dict[str, list[str]] = {}
+    rows = items(t)
+    for r in rows:
+        if r["liste"] == "guclu":
+            for c in dict.fromkeys(KOD.findall(r["metin"])):
+                strong.setdefault(c, []).append(r["yer"])
+    out = []
+    for r in rows:
+        if r["liste"] != "gelisme":
+            continue
+        for s in T.split_sentences(r["metin"]):
+            low = _f(KOD.sub(" ", s))
+            if not YOK.search(low) or NEDENLI.search(low):
+                continue
+            for c in dict.fromkeys(KOD.findall(s)):
+                if c in strong and not any(x["olcut"] == c and x["gelisme"] == r["yer"] for x in out):
+                    out.append({"olcut": c, "guclu": strong[c], "gelisme": r["yer"], "metin": s})
+    return out
+
+
+def tutarlilik_satirlari(t: dict) -> list[str]:
+    return [f"{x['olcut']}: güçlü yön ({', '.join(x['guclu'])}) ile gelişmeye açık yön ({x['gelisme']}) aynı "
+            "ölçütte; gelişmeye açık madde yokluk hükmü kuruyor, güçlü yönle ya da ölçüt metniyle çelişmediğini "
+            "denetleyin" for x in tutarlilik(t)]
+
+
 def check(t: dict, meta: dict) -> list[dict]:
     """Bütün maddelerin denetimi → [{yer, metin, kod, ayrinti}]."""
     out = []
@@ -827,8 +859,13 @@ def verify_prepare(ws_root: Path, *, redo: bool = False, backend: W.Backend | No
             continue
         cited = sorted({c for r in rows for c in KOD.findall(r["metin"]) if c in src.criteria(alan)},
                        key=lambda x: [int(n) for n in x.split(".")[1:]])
-        inputs = {"alan": src.alan_title(alan), "maddeler": "\n".join(f"{r['yer']}: {r['metin']}" for r in rows),
-                  "olcutler": src.render_criteria(cited)}
+        maddeler = "\n".join(f"{r['yer']}: {r['metin']}" for r in rows)
+        dikkat = tutarlilik(t)
+        if dikkat:      # kodun basit tutarlılık uyarısı: doğrulayıcı kural 5'e göre bakar (karar onun)
+            maddeler += "\n\nDİKKAT (kod uyarısı; karar senin): " + "; ".join(
+                f"{x['gelisme']} ile {', '.join(x['guclu'])} aynı ölçüte ({x['olcut']}) atıf yapıyor ve {x['gelisme']} "
+                "yokluk hükmü kuruyor — kural 4 ve 5'e göre çelişip çelişmediğine bak" for x in dikkat)
+        inputs = {"alan": src.alan_title(alan), "maddeler": maddeler, "olcutler": src.render_criteria(cited)}
         vmeta = {"alan": alan, "metin_sha": sha, "maddeler": [{"yer": r["yer"], "metin": r["metin"]} for r in rows]}
         r = backend.render_task(VTASK, inputs)
         st["paket"] += 1
