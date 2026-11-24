@@ -430,6 +430,28 @@ tablo sorunsuz okunur (birim kararları değişmez). Paket verisi (`bidr/data/cr
 işlemek kullanıcı onayıyla ayrı bir adımdır. gaps.md yeniden yazılırken `bidr file`/`render`'ın
 "Bağlantısı olmayan kanıtlar" ve `bidr file`'ın "Kanıt seçimi" bölümleri korunur.
 
+## Elle eşleşme (bölümün eklediği belge–ölçüt eşleşmesi)
+
+İncelemede bölüm modelin önermediği bir eşleşmeyi ekleyebilir ("bu eylem planı A.1.3'ün kanıtıdır"). Kaynak
+`elle-eslesmeler.json` (panel işleyicisi `panel-<id>` anahtarlarıyla yazar; komut satırında `bidr audit elle ekle -w
+WS <belge yolu|doc_id> <ölçüt> [--yuva] [--asama] [--not]`, `geri <anahtar>`, `liste [--json]`). `bidr audit elle esitle
+-w WS [--json]` dosyayı `review-decisions.jsonl`'e işler; her eşleşme insan kaynaklı kabuldür (`kaynak: insan`, `elle:
+<anahtar>`) ve OD, PUKÖ, kanıt dosyalama ve yazımda olağan kabul gibi sayılır (satırda `elle_eslesme` işareti).
+- Belge notlarındaki gibi `sha256` ya da `dosya` → inventory.csv → doc_id; mükerrer kopyası temsilcisine gider.
+- Aynı ölçütte (yuva verildiyse aynı yuvada) zaten kabul edilmiş satır ya da aynı dosyada ikinci kez verilen
+  eşleşme: kayıt açılmaz (`zaten_kabul`).
+- Modelin o ölçütte karar bekleyen ya da insanın reddettiği satırı varsa kayıt o satıra yazılır: elle ekleme sonraki
+  ve açık bir insan eylemidir, önceki reddi aşar; önceki karar `onceki`'de saklanır, geri alınınca döner. Aşama
+  verilmişse aşama düzeltmeli kabul (`duzelt`, yalnız `asama`).
+- Satır yoksa audit yapay satır açar (`yapay: true`): yuva verilmediyse aşamaya uyan yuva; aşama verilmediyse yuvanın
+  tek kesin aşaması, yoksa `planla` (OD2; satırda söylenir). Alıntı: belgenin o ölçütteki model eşleşmesinin alıntısı
+  (o satır ayrıca sorulmaz). Yoksa satır alıntısızdır ve çift ikinci aramaya zorunlu aday girer (kör denetimin kabul
+  edilen belge önerisiyle aynı yol, kaynak `elle`, `--yalniz-denetim`): alıntıyı model belgeden bulur, kod birebir
+  denetler, yazım onu kullanır. Bulunamazsa satır sayılır ama yazım belgeyi alıntısız görür.
+- Dosyadan çıkan eşleşmenin kaydı kalkar (yalnız `elle` anahtarı eşleşenler). Tablodaki karar elle kaydı
+  değiştirmez (`apply` korur); geri alma dosyadan. Elle kayıtları değişince `review.xlsx` eskir (meta `elle_sha`),
+  `bidr audit` tabloyu yeniden üretir; file ve sonraki aşamalar `review-decisions.jsonl` özetinden eskir.
+
 ## Tamamlanma şartı (`audit_tamam`)
 
 review.xlsx var ve güncel `decisions.jsonl`'den üretilmiş (`_meta.kararlar_sha`); her satırın

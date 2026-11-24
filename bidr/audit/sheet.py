@@ -273,7 +273,8 @@ def write_review(a, path: Path) -> None:
     for k, v in (("surum", 1), ("kararlar_sha", a.decisions_sha), ("profil", a.profile or ""),
                  ("calisma_alani", str(a.ws.root)), ("satir", len(a.rows)),
                  ("birim_sha", getattr(a, "birim_sha", "") or ""),
-                 ("faaliyet_sha", getattr(a, "faaliyet_sha", "") or "")):
+                 ("faaliyet_sha", getattr(a, "faaliyet_sha", "") or ""),
+                 ("elle_sha", getattr(a, "elle_sha", "") or "")):
         m.append([k, v])
     m.sheet_state = "hidden"
     from . import sade

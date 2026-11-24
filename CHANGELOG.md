@@ -4,6 +4,10 @@ Her birleştirmede (main'e giren her değişiklik) buraya en üste bir satır ek
 açıklama ve kullanıcıyı ilgilendiriyorsa ne yapması gerektiği. `bidr guncelle` güncellemeden sonra
 bu dosyanın yeni satırlarını gösterir. Bu dosyadan önceki geçmiş için `git log`.
 
+- 2026-11-24: Elle eşleşme (d3b): bölüm modelin önermediği belge–ölçüt eşleşmesini ekleyebilir (`elle-eslesmeler.json`;
+  `bidr audit elle esitle|ekle|geri|liste -w WS`). Eşleşme review-decisions.jsonl'e insan kaynaklı kabul olarak girer
+  (`kaynak: insan`, `elle`), OD/PUKÖ, kanıt dosyalama ve yazımda olağan kabul gibi sayılır; alıntısızsa ikinci aramayla
+  belgeden aranır. Yinelenen ekleme kayıt açmaz, geri alma önceki kararı geri getirir (docs/AUDIT.md "Elle eşleşme").
 - 2026-11-24: Raporun kör denetimi ve düzeltmesi (d2, isteğe bağlı aşamalar `kor_denetim`, `duzelt`): `bidr denetim
   prepare|apply|karar|ozet`, `bidr duzelt prepare`. İstenmezse hat eskisi gibi biter. Metin bulguları kendiliğinden
   düzeltilir ve yeniden doğrulanır; OD/kanıt önerilerinin bölüm kararı hattı tutmaz (rapor tamamlandı sayılır, `bidr

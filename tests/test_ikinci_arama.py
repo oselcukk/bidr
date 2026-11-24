@@ -535,3 +535,32 @@ def test_accepted_audit_suggestion_is_packaged_even_if_first_pass_candidate(ws):
     assert kanit_ciftleri(root) == []                  # bakıldı: inceleme adayı (audit tablosunda) olur
     assert _ia_check(root).atlandi                     # config false ve bekleyen öneri yok: eskisi gibi
     assert kanit_ciftleri(root, bekleyen=False)        # karar kayıtta kalır
+
+
+# -- bölümün elle eklediği alıntısız eşleşme (bidr/audit/elle.py `ciftler`) -------------------------------
+
+def test_elle_pair_is_packaged_and_quote_found_by_second_search(ws):
+    from bidr.audit import elle as E
+    from bidr.audit.run import build
+    root, ids = ws
+    did = ids["rpl_aday"]
+    (root / E.DOSYA).write_text(json.dumps({"surum": 1, "eslesmeler": [
+        {"anahtar": "panel-5", "dosya": did, "olcut": "B.2.3", "yuva": "B.2.3/2", "asama": "uygula"}]}),
+        encoding="utf-8")
+    assert E.esitle(root)["eklenen"] == ["panel-5"]
+    assert E.ciftler(root) == [{"doc_id": did, "olcut": "B.2.3", "anahtar": "panel-5"}]
+    (root / "config.yaml").write_text("rapor:\n  ikinci_arama: false\n", encoding="utf-8")
+    c = _ia_check(root)
+    assert c.kim == "komut" and c.komutlar[0].endswith("--yalniz-denetim") and "panel-5" in c.neden
+    st = A.prepare(root, profile=None, yalniz_denetim=True)
+    assert st["elle"] == [f"{did}:B.2.3"] and st["paket"] == 1
+    pkg = json.loads((root / "work" / A.WORK / f"{did}.json").read_text(encoding="utf-8"))
+    assert pkg["meta"]["ikinci_arama"]["olcutler"][0]["kaynak"] == ["elle"]
+    _answer(root, did, {"karar": "olcut_var", "gerekce": "g", "birim_iliskisi": "kendi", "eslesmeler": [
+        {"olcut": "B.2.3", "yuva": "B.2.3/1", "asama": "uygula", "od_onerisi": 3, "alinti": Q_B23,
+         "gerekce": "AKTS", "guven": "yuksek"}]})
+    assert A.apply(root, model="test-ajan")["eklenen_kabul"] == 1
+    assert E.ciftler(root) == [] and _ia_check(root).atlandi
+    rows = [r for r in build(root).rows if r["doc_id"] == did and r["olcut"] == "B.2.3"]
+    # model başka yuvada buldu: ayrı satır sorulmaz, alıntı elle satırına geçer
+    assert [r["satir"] for r in rows] == [f"{did}|B.2.3/2"] and rows[0]["alinti"] == Q_B23 and rows[0]["sayilir"]

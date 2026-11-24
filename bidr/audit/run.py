@@ -62,7 +62,7 @@ def load_review_decisions(out: Path) -> dict[str, dict]:
 # kararı/notu değiştirir): `audit apply` görülen durumu günceller.
 # Kararın kendisinden doğan işaretler (insan ret/düzelt, birim onayı) karşılaştırmaya girmez.
 KARAR_ISARETLERI = frozenset({"insan_reddetti", "insan_duzeltti", "birim_aitligi_onaylandi",
-                              "birim_onay_bekliyor", "birim_aitligi_dogrulanmali"})
+                              "birim_onay_bekliyor", "birim_aitligi_dogrulanmali", "elle_eslesme"})
 # Yalnız bilgi veren işaretler: eklenmeleri verilmiş kararı "yeniden bak"a düşürmez. `belge_notu`: karar
 # yükleyenin notu görülerek verildi (not çelişkisi `not_uyusmuyor` ise yeniden baktırır).
 BILGI_ISARETLERI = frozenset({"belge_notu", "ret_hedefsiz_dustu"})
@@ -184,6 +184,7 @@ class Audit:
     # gerçekleşmesi kanıtlanmamış faaliyetler (faaliyetler.json; yalnız duyurulu/kanıtsız)
     faaliyetler: list = field(default_factory=list)
     od_sha: str = ""                            # olcut-od-kararlari.jsonl özeti
+    elle_sha: str = ""                          # elle eşleşme kayıtlarının özeti (bidr/audit/elle.py)
 
     @property
     def by_key(self) -> dict[str, dict]:
@@ -242,6 +243,9 @@ def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | 
         flags.append("birim_iliskisi_kod")
     if dec:
         karar = dec["karar"]
+    if dec and dec.get("elle"):
+        # bölümün elle eklediği eşleşme (bidr/audit/elle.py): insan kaynaklı kabul
+        flags.append("elle_eslesme")
     if karar == "ret":
         sayilir = False
         flags.append("insan_reddetti")
@@ -338,6 +342,12 @@ def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | 
         vurgu.append("alıntı birleşik belgede birimin kendi sayfasından: tür (kurum geneli) tavanı uygulanmadı")
     if sv_out:
         vurgu.extend(sv_out["vurgu"])
+    if dec and dec.get("elle"):
+        vurgu.insert(0, "bölümün elle eklediği eşleşme")
+        if dec.get("asama_varsayilan"):
+            vurgu.append("aşama verilmedi: planlama (OD2) sayıldı")
+        if not m.get("alinti"):
+            vurgu.append("alıntı yok: ikinci aramada belgeden aranır")
     if betimleme:
         flags.append("betimleme_alintisi")
         vurgu.append("alıntı görsel betimlemeden")
@@ -750,6 +760,11 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
     own: dict[str, dict] = {}                   # birime ait ince kayıtlar (PUKÖ zinciri)
     kopya = copy_members(recs, pins)            # temsilci → kararı devralan kopyaları (tek satır)
     uye = {m for ms in kopya.values() for m in ms}
+    # bölümün elle eklediği yapay satırlar (bidr/audit/elle.py): o belge–ölçütte modelin karar bekleyen satırı
+    # elle satırına katılır (alıntısı kullanılır), ayrı satır olarak sorulmaz
+    elle_yapay = [r for r in review.values() if r.get("elle") and r.get("yapay")]
+    elle_cift = {(r["doc_id"], r["olcut"]) for r in elle_yapay}
+    gorunum: dict[str, dict] = {}
     for orig in recs:
         if orig.get("durum") != "ok" or orig.get("asama") != "ince":
             continue
@@ -786,11 +801,33 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
                 "gerekce": ince.get("gerekce") or "",
                 **({"insan": True} if pin else {}),
                 "eslesme": sum(bool(m.get("kabul")) for m in rec.get("eslesmeler") or [])})
+        gorunum[rec["doc_id"]] = rec
         for m in rec.get("eslesmeler") or []:
+            if m.get("kabul") and (rec["doc_id"], m["olcut"]) in elle_cift \
+                    and review.get(f"{rec['doc_id']}|{m['yuva']}") is None:
+                continue
             if m.get("kabul"):
                 rows.append(_row(cs, tags, docs, rec, m, review.get(f"{rec['doc_id']}|{m['yuva']}"), rule,
                                  names(rec["doc_id"]), links(rec["doc_id"]),
                                  desc(rec["doc_id"], m.get("alinti") or ""), inv.get(rec["doc_id"]), surum, sv))
+    var = {r["satir"] for r in rows}
+    for e in elle_yapay:
+        if e["satir"] in var:
+            continue                            # model aynı yuvada eşleşme buldu: karar o satıra uygulandı
+        did = e["doc_id"]
+        rec = gorunum.get(did) or {"doc_id": did}
+        kaynak = sorted((m for m in rec.get("eslesmeler") or [] if m.get("kabul") and m.get("olcut") == e["olcut"]
+                         and m.get("alinti")), key=lambda m: m.get("yuva") != e["yuva"])
+        asama = e.get("asama") or "planla"
+        od = STAGE_OD.get(asama)
+        m = {"olcut": e["olcut"], "yuva": e["yuva"], "asama": asama, "od_onerisi": od, "od_kabul": od,
+             "alinti": kaynak[0]["alinti"] if kaynak else "", "gerekce": "Bölümün elle eklediği eşleşme",
+             "guven": "", "kabul": True, "denetim": {"red": [], "isaret": [],
+                                                     "alinti_konum": (kaynak[0].get("denetim") or {}).get("alinti_konum")
+                                                     if kaynak else None}}
+        rows.append(_row(cs, tags, docs, rec, m, e, rule, names(did), links(did), desc(did, m["alinti"]),
+                         inv.get(did), surum, sv))
+        var.add(e["satir"])
     for r in rows:
         ks = kopya.get(r["doc_id"])
         r["kopyalar"] = "; ".join(ks) if ks else ""
@@ -819,9 +856,10 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
         x["kaynak_dosya"] = inv.get(x.get("doc_id") or "", "")
     crits = [_criterion(cs, tags, c, by_c.get(c, []), allowed, rule, cyc[c], ek[c], od_kar.get(c)) for c in ids]
     sayfa.sort(key=lambda x: x["belge"])
+    from .elle import elle_sha
     return Audit(ws, out, profile, cs, tags, rows, crits, file_sha(dpath), uy, period, birim, sayfa,
                  file_sha(out / FILES["birim"]), sv.faaliyet_sha, sv.unrealized(),
-                 file_sha(out / FILES["od"]))
+                 file_sha(out / FILES["od"]), elle_sha(review))
 
 
 def _puko(cs, tags, ws, docs, own, sv, by_c, ek, review, rule, names, links, inv, surum, uy) -> list[dict]:
@@ -902,9 +940,10 @@ def audit(ws_root: Path, *, out: Path | None = None, profile: str | None = None)
         except Exception as e:   # bozuk/eski tablo: kararları taşıyamayız, üzerine yazmayız
             raise RuntimeError(f"var olan {old.name} okunamadı ({e}); taşıyın ya da silin") from e
         cs = load_criteria()
+        from .elle import korunur
         for xr in xrows:
             dec, err = parse_decision(xr, cs)
-            if dec and applied.get(dec["satir"]) != dec:
+            if dec and applied.get(dec["satir"]) != dec and not korunur(applied.get(dec["satir"])):
                 carry[dec["satir"]] = dec
         carry_names = {sid: v for sid, v, _ in _name_edits(xrows)}
         carry_links = {str(xr.get("satir")): str(xr.get("baglanti")).strip() for xr in xrows
@@ -1219,10 +1258,13 @@ def review_state(out: Path, ws_root: Path | None = None) -> dict:
     dsha = file_sha(Path(ws_root or out) / "decisions.jsonl")
     # birim kararları değişince tablo da değişir (geri alınan eşleşmeler satır olur)
     # faaliyetler.json değişince sayılan aşamalar değişebilir (faaliyet → audit)
+    applied = load_review_decisions(out)
+    from .elle import elle_sha, korunur
+    # elle eşleşme kayıtları değişince (bidr audit elle esitle) tablo yeniden üretilir: yeni/kalkan satırlar
     st["guncel"] = (meta.get("kararlar_sha") == dsha
                     and (meta.get("birim_sha") or "") == file_sha(out / FILES["birim"])
-                    and (meta.get("faaliyet_sha") or "") == file_sha(Path(ws_root or out) / "faaliyetler.json"))
-    applied = load_review_decisions(out)
+                    and (meta.get("faaliyet_sha") or "") == file_sha(Path(ws_root or out) / "faaliyetler.json")
+                    and (meta.get("elle_sha") or "") == elle_sha(applied))
     cs = load_criteria()
     st["satir"] = len(xrows)
     for xr in xrows:
@@ -1231,7 +1273,7 @@ def review_state(out: Path, ws_root: Path | None = None) -> dict:
             st["gecersiz"] += 1
         elif dec:
             st["kararli"] += 1
-            if applied.get(dec["satir"]) != dec:
+            if applied.get(dec["satir"]) != dec and not korunur(applied.get(dec["satir"])):
                 st["uygulanmamis"] += 1
     # kanıt adı / bağlantı düzeltmeleri: tabloda var ama `apply` ile kayda geçmemiş
     from bidr.file.links import load_links
@@ -1285,9 +1327,12 @@ def apply(ws_root: Path, *, out: Path | None = None, profile: str | None = None)
     _, xrows = sheet.read_review(x)
     cs = load_criteria()
     prev = load_review_decisions(outp)
+    from .elle import korunur
     hatalar, yeni = {}, {}
     bos = 0
     for xr in xrows:
+        if korunur(prev.get(str(xr.get("satir") or ""))):
+            continue        # bölümün elle eklediği eşleşme: tablodaki karar onu değiştirmez (geri alma dosyadan)
         dec, err = parse_decision(xr, cs)
         if err:
             hatalar[xr.get("satir") or "?"] = err

@@ -453,6 +453,9 @@ def ikinci_arama_tamam(c: Ctx) -> Check:
     # kör denetimde bölümün kabul ettiği kullanılmamış belge önerisi: ikinci aramayla bakılmadıysa bekler
     # (rapor.ikinci_arama: false olsa da; yalnız o çiftler paketlenir)
     den = kanit_ciftleri(ws.root) if (ws.root / "kor-denetim-kararlar.jsonl").exists() else []
+    # bölümün elle eklediği alıntısız eşleşme (bidr/audit/elle.py): alıntı ikinci aramayla belgeden aranır
+    from bidr.audit.elle import ciftler as elle_ciftleri
+    den = den + [{**x, "bulgu_id": f"elle {x['anahtar']}", "kaynak": "elle"} for x in elle_ciftleri(ws.root)]
     if rapor_section(ws.root).get("ikinci_arama") is False and not den:
         return Check(atlandi=True, neden="atlandı: config.yaml rapor.ikinci_arama: false (kanıtsız/zayıf ölçütler "
                                          "için ikinci arama yapılmadı)")
@@ -463,14 +466,14 @@ def ikinci_arama_tamam(c: Ctx) -> Check:
         for p in (_pkg_paths(d) if d.exists() else []):
             pkg = _load_pkg(p)
             for r in ((pkg or {}).get("meta") or {}).get("ikinci_arama", {}).get("olcutler") or []:
-                if "denetim" in (r.get("kaynak") or []):
-                    packed.add((pkg.get("doc_id"), r.get("olcut")))
-        yeni = [x for x in den if (x["doc_id"], x["olcut"]) not in packed]
+                for kay in {"denetim", "elle"} & set(r.get("kaynak") or []):
+                    packed.add((pkg.get("doc_id"), r.get("olcut"), kay))
+        yeni = [x for x in den if (x["doc_id"], x["olcut"], x.get("kaynak", "denetim")) not in packed]
         if yeni:
             return Check(kim=KOMUT, komutlar=[prep + " --yalniz-denetim"],
-                         neden=f"kör denetimde bölümün kabul ettiği {len(yeni)} belge önerisi ikinci aramaya girecek "
-                               "(eşleşirse inceleme tablosunda aday olur): "
-                               + ", ".join(f"{x['bulgu_id']}" for x in yeni[:6]))
+                         neden=f"bölümün kabul ettiği/elle eklediği {len(yeni)} belge–madde çifti ikinci aramaya "
+                               "girecek (kör denetim önerisi eşleşirse inceleme tablosunda aday olur; elle eşleşmede "
+                               "alıntı belgeden aranır): " + ", ".join(f"{x['bulgu_id']}" for x in yeni[:6]))
     if not (d / "README.md").exists():
         return Check(kim=KOMUT, komutlar=[prep],
                      neden="ikinci arama yapılmadı (isteğe bağlı): kanıtsız/zayıf ölçütler için arşivde ters arama. "
