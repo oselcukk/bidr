@@ -251,8 +251,9 @@ doğrulanmış eski metinlere de uygulanır: `verify prepare` sonuçlanmış `do
 geçirir, takılan metin `reddedildi` (kod) olur ve tur sayacı sıfırlanır (`yeni_kural`), yani
 `--eski-kurallar` beklemeden yeni kuralla yeniden yazıma gider; temiz eski metin dokunulmaz.
 **Eski yazım kuralıyla yazılmış metinler (isteğe bağlı yenileme).** `write_tamam` bunları sayar
-(`ilerleme.eski_kural`; uyarı: "N metin eski yazım kuralıyla yazıldı … `bidr write prepare -w WS
---eski-kurallar`"); aşama bitmiş sayılır, yenileme zorunlu değildir. `--eski-kurallar` yalnız görev
+(`ilerleme.eski_kural`; uyarı DEĞİL, bilgi: aşamanın `bilgi` alanı / `status`'ta "bilgi:", `next`'te "Bilgi:"
+satırı — "N metin eski yazım kuralıyla yazıldı … `bidr write prepare -w WS --eski-kurallar`"; panel Durum'da
+gösterilmez, ajan istemine girmez); aşama bitmiş sayılır, yenileme zorunlu değildir. `--eski-kurallar` yalnız görev
 sürümü eski, `girdi_sha`'sı güncel ve reddedilmemiş metinleri yeni kuralla paketler (`write.run.old_rule_texts`);
 yeni metin taslak olur ve yeniden doğrulanır.
 **Paket artığı:** `write apply`, cevabı zaten metne dönüşmüş paketi (metnin `istem_sha` ve

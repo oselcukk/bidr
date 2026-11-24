@@ -299,7 +299,8 @@ def test_old_version_text_stays_valid(tmp_path):
     st = W.prepare(ws)
     assert st["eski_surum"] == ["B.1.1"] and st["paket"] == 0 and not (ws / "work/write/B.1.1.json").exists()
     ck = _check(ws, "write")
-    assert ck.bitti and any("eski yazım kuralıyla" in u and "--eski-kurallar" in u for u in ck.uyarilar)
+    assert ck.bitti and any("eski yazım kuralıyla" in u and "--eski-kurallar" in u for u in ck.bilgi)
+    assert not any("eski yazım kuralıyla" in u for u in ck.uyarilar)    # bilgi, kullanıcı uyarısı değil
     # yeni kuralla yeniden yazmak isteğe bağlı
     assert W.prepare(ws, only=["B.1.1"])["paket"] == 1
     # kanıt listesi/OD değişirse eski metin de yeniden yazılır

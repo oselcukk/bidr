@@ -35,6 +35,9 @@ class Check:
     # hattı tutmayan, bölüm kararını bekleyen öneriler (kör denetimin OD/kanıt önerileri): aşama bitmiş olsa da
     # `next`/`status` bilgi olarak gösterir; karar sonradan gelirse ilgili düzeltme küçük bir tur olarak koşar
     oneri_bekleyen: list[dict] = field(default_factory=list)
+    # kullanıcı uyarısı OLMAYAN, yalnız bilgi düzeyindeki notlar (ör. eski yazım kuralıyla yazılmış ama geçerli
+    # metinler): `status`/`next` "bilgi:" satırında, JSON'da aşamanın `bilgi` alanında; panel Durum'da göstermez
+    bilgi: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -677,9 +680,10 @@ def write_tamam(c: Ctx) -> Check:
     if extra:
         uy.append(f"{len(extra)} metnin ölçütünde artık kanıt yok ({_sample(extra)}); rapora alınmaz (ölçüt kanıtsız yazılır)")
     eski_surum = [k for k in W.old_rule_texts(ws, index, audit, ver) if k not in pending]
+    bil = []
     if eski_surum:
         prog["eski_kural"] = len(eski_surum)
-        uy.append(f"{len(eski_surum)} metin eski yazım kuralıyla yazıldı ({_sample(eski_surum)}): geçerli kalır; "
+        bil.append(f"{len(eski_surum)} metin eski yazım kuralıyla yazıldı ({_sample(eski_surum)}): geçerli kalır; "
                   f"isteğe bağlı yenileme (yalnız bunlar, sonra yeniden doğrulanır): `{prep} --eski-kurallar`")
     if todo:
         yok = need - set(texts) - pending
@@ -689,7 +693,7 @@ def write_tamam(c: Ctx) -> Check:
                              "değişti, yalnız numara kayması `bidr file` sırasında kodla düzeltilir; "
                              "belge/OD değiştiyse yeniden yazılır" if eski else "",
                              f"{len(old_pkg)} paket eski görev sürümünde" if old_pkg else "") if x]
-        return Check(kim=KOMUT, ilerleme=prog, uyarilar=uy, komutlar=[prep],
+        return Check(kim=KOMUT, ilerleme=prog, uyarilar=uy, bilgi=bil, komutlar=[prep],
                      neden="; ".join(parts) + ": prepare")
     if pending:
         from bidr.write import karar as KR
@@ -709,7 +713,7 @@ def write_tamam(c: Ctx) -> Check:
                                  f"{len(bad)} cevap geçersiz (work/write/GECERSIZ.md)" if bad else "") if x]
             who = ("metni ilk yazandan ve doğrulayıcıdan AYRI, taze bir ajan" if rounds
                    else "ajan (doğrulamayı sonra başka, taze bir ajan yapar)")
-            return Check(kim=AJAN, ilerleme=prog, uyarilar=uy, bekleyen=sorted(no_out | bad), karar_bekleyen=kb,
+            return Check(kim=AJAN, ilerleme=prog, uyarilar=uy, bilgi=bil, bekleyen=sorted(no_out | bad), karar_bekleyen=kb,
                          komutlar=[f"({who}) work/write/README.md'yi oku; cevapsız/geçersiz her <ölçüt>.json için "
                                    "work/write/<ölçüt>.out.json yaz (her cümle [n_ODk] atıflı; yalnız kanıttaki)"
                                    + (f"; insan kararı bekleyenlere ({', '.join(sorted(kbset))}) yazma" if kb else ""),
@@ -717,7 +721,7 @@ def write_tamam(c: Ctx) -> Check:
                          neden=", ".join(parts) + ": model işi ajanda" + tur)
         if kb:
             karar = c.fmt("bidr write karar -w {ws}")
-            return Check(kim=INSAN, ilerleme=prog, uyarilar=uy, karar_bekleyen=kb,
+            return Check(kim=INSAN, ilerleme=prog, uyarilar=uy, bilgi=bil, karar_bekleyen=kb,
                          komutlar=["(insan) reddedilen son cevabı ve kod denetiminin bulgularını (work/write/GECERSIZ.md, "
                                    "work/write/<ölçüt>.out.json) kullanıcıya göster; karar kullanıcınındır",
                                    f"{karar} <ölçüt> cikar   # KULLANICI derse: metin rapora girmez",
@@ -728,9 +732,9 @@ def write_tamam(c: Ctx) -> Check:
                                "insan kararı gerekli (" + ", ".join(
                                    f"{x['olcut']}: deneme {x['deneme']}/{x['sinir'] + 1}"
                                    + (", kabul edilebilir" if x["kabul_edilebilir"] else "") for x in kb) + ")")
-        return Check(kim=KOMUT, ilerleme=prog, uyarilar=uy, komutlar=[apply_],
+        return Check(kim=KOMUT, ilerleme=prog, uyarilar=uy, bilgi=bil, komutlar=[apply_],
                      neden=f"{len(pending)} cevap yazılmış ama işlenmemiş: apply" + tur)
-    return Check(bitti=True, ilerleme=prog, uyarilar=uy, neden=f"{len(need)} ölçütün metni yazıldı")
+    return Check(bitti=True, ilerleme=prog, uyarilar=uy, bilgi=bil, neden=f"{len(need)} ölçütün metni yazıldı")
 
 
 # -- verify -------------------------------------------------------------------------------------------

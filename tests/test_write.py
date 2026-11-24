@@ -508,7 +508,30 @@ def test_status_counts_old_rule_texts(tmp_path):
     _old_version(ws)
     ck = write_tamam(ctx)
     assert ck.bitti and ck.ilerleme["eski_kural"] == 1          # zorunlu değil: aşama bitti
-    assert any("1 metin eski yazım kuralıyla yazıldı" in u and "--eski-kurallar" in u for u in ck.uyarilar)
+    # prova 2026-11-24: "metinler eskidi" diye okunmasın — kullanıcı uyarısı değil, bilgi düzeyi
+    assert not ck.uyarilar
+    assert any("1 metin eski yazım kuralıyla yazıldı" in u and "--eski-kurallar" in u for u in ck.bilgi)
+
+
+def test_old_rule_texts_are_info_in_status(tmp_path, capsys, monkeypatch):
+    """`status --json`: eski yazım kuralı bilgisi aşamanın `bilgi` alanında, `uyarilar`da değil; metin
+    çıktısında "bilgi:" satırı ("uyarı:" değil)."""
+    from bidr.pipeline import cli as PC
+    from bidr.pipeline import state as PS
+    msg = "1 metin eski yazım kuralıyla yazıldı (B.1.1): geçerli kalır"
+    s = PS.StageState(id="write", ad="Yaz", durum="bitti", kim=None, neden="yazıldı", komutlar=[], sart="",
+                      onay="", katman="", skill=None, bilgi=[msg])
+    monkeypatch.setattr(PS, "evaluate", lambda ws, **k: PS.Report(str(tmp_path), True, [s]))
+
+    class A:
+        workspace, json, kisa = str(tmp_path), True, False
+    PC._status(A())
+    js = json.loads(capsys.readouterr().out)["asamalar"][0]
+    assert js["bilgi"] == [msg] and js["uyarilar"] == []
+    A.json = False
+    PC._status(A())
+    out = capsys.readouterr().out
+    assert f"bilgi: {msg}" in out and "uyarı:" not in out
 
 
 # -- içerik denetimleri: dönem içi kayıt, fakülte değeri (kör test 2026-11-20 güncelleme) ------------

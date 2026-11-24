@@ -37,6 +37,8 @@ def _status(args) -> int:
         print(f"  {MARK[s.durum]} {s.id:<{w}}  {s.durum:<8}{extra}  {s.neden}")
         for u in s.uyarilar:
             print(f"      uyarı: {u}")
+        for u in s.bilgi:
+            print(f"      bilgi: {u}")
     print(f"Sıradaki adım: {bidr_command()} next -w {rep.calisma_alani}")
     return 0
 
@@ -101,6 +103,8 @@ def _next(args) -> int:
         print("İlerleme: " + ", ".join(f"{k}={v}" for k, v in n.ilerleme.items()))
     for u in n.uyarilar:
         print(f"Uyarı: {u}")
+    for u in n.bilgi:
+        print(f"Bilgi: {u}")
     if n.karar_bekleyen:
         print("Karar bekleyen:")
         for x in n.karar_bekleyen:

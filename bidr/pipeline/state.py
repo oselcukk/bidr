@@ -115,6 +115,7 @@ class StageState:
     paralel: dict = field(default_factory=dict)       # kim=ajan: bölünebilir mi, kaç parça (bidr parcala)
     karar_bekleyen: list[dict] = field(default_factory=list)   # kim=insan: karar bekleyen öğeler (panel)
     oneri_bekleyen: list[dict] = field(default_factory=list)   # hattı tutmayan, karar bekleyen öneriler (bilgi)
+    bilgi: list[str] = field(default_factory=list)   # uyarı değil, bilgi düzeyinde notlar (panel Durum göstermez)
     bekleyen: list[str] | None = field(default=None, repr=False)   # to_dict'e girmez (uzun olabilir)
 
 
@@ -186,7 +187,7 @@ def evaluate(ws_root: Path, *, until: str | None = None) -> Report:
                             neden=ck.neden, komutlar=cmds, ilerleme=ck.ilerleme, uyarilar=ck.uyarilar,
                             bekleyen=ck.bekleyen if durum == BEKLIYOR and ck.kim == "ajan" else None,
                             karar_bekleyen=ck.karar_bekleyen if durum == BEKLIYOR else [],
-                            oneri_bekleyen=ck.oneri_bekleyen)
+                            oneri_bekleyen=ck.oneri_bekleyen, bilgi=ck.bilgi)
             if st.bekleyen is not None and s.get("paralel"):
                 from .paralel import durum as paralel_durum
                 st.paralel = paralel_durum(ws.root, s["id"], len(st.bekleyen))
