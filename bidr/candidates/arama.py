@@ -262,10 +262,13 @@ def _write_readme(d: Path) -> int:
 def prepare(ws_root: Path, *, profile: str | None = "akademik_bolum", n: int = I.N_BELGE,
             max_aday: int = 6, od_esik: int = I.OD_ESIK, olcutler: list[str] | None = None,
             synonyms: bool = True, redo: bool = False, capraz: bool = True, backend=None,
-            ctx=None) -> dict:
+            ctx=None, yalniz_denetim: bool = False) -> dict:
     """Zayıf ölçütleri bulur, arşivde arar, belge başına bir ince karar paketi yazar.
     `olcutler` verilirse zayıflık hesaplanmaz, yalnız bu ölçütler aranır. `capraz`: başka
-    ölçütte kabul edilmiş birim belgeleri de zayıf ölçütlere aday olur (çapraz yol)."""
+    ölçütte kabul edilmiş birim belgeleri de zayıf ölçütlere aday olur (çapraz yol).
+    Kör denetimin bölümce kabul edilen kullanılmamış belge önerileri (bidr/kor/run.py `kanit_ciftleri`)
+    her zaman pakete girer (kaynak `denetim`; ilk geçişin adayı olsa da). `yalniz_denetim`: yalnız onlar
+    (zayıflık hesaplanmaz, arşiv ve çapraz yol çalışmaz)."""
     from bidr.decide.run import (FINE, Backend, Context, _write_pkg, fine_inputs, load_decisions,
                                  task_version, work_dir)
 
@@ -274,7 +277,9 @@ def prepare(ws_root: Path, *, profile: str | None = "akademik_bolum", n: int = I
         ctx = Context.load(ws_root, profile=profile, max_aday=max_aday)
     recs = load_decisions(ctx.ws)
     audit = I.load_audit(ctx.ws.root / I.AUDIT_JSON)
-    if olcutler:
+    if yalniz_denetim:
+        weak, capraz = {}, False
+    elif olcutler:
         weak = {c: {"olcut": c, "nedenler": ["elle"], "kaynak": "elle"} for c in olcutler}
     else:
         weak = I.weak_criteria(ctx.allowed, recs, audit=audit, pins=ctx.pins, tags=ctx.tags,
@@ -298,6 +303,14 @@ def prepare(ws_root: Path, *, profile: str | None = "akademik_bolum", n: int = I
                 "nedenler": weak[r["olcut"]]["nedenler"], "kaynak": []})
             row["kaynak"].append("capraz")
             row["kabul_olcutler"] = pool[did]["kabul"]
+    from bidr.kor.run import kanit_ciftleri
+    denetim = [x for x in kanit_ciftleri(ctx.ws.root, recs=recs)
+               if (recs.get(x["doc_id"]) or {}).get("asama") == "ince"]
+    for x in denetim:                       # bölümün kabul ettiği kör denetim önerisi: zorunlu aday
+        row = by_doc.setdefault(x["doc_id"], {}).setdefault(x["olcut"], {
+            "olcut": x["olcut"], "puan": 0.0, "sira": 0, "sinyaller": {}, "nedenler": [], "kaynak": []})
+        row["kaynak"].append("denetim")
+        row["nedenler"].append(f"kör denetim önerisi, bölüm kabul etti ({x['bulgu_id']})")
     d = work_dir(ctx.ws, WORK)
     d.mkdir(parents=True, exist_ok=True)
     secim_capraz: dict[str, list[str]] = {}
@@ -307,12 +320,14 @@ def prepare(ws_root: Path, *, profile: str | None = "akademik_bolum", n: int = I
     st = {"zayif": weak, "audit": audit is not None, "paket": 0, "yeni": 0, "kesilen": 0,
           "secim": {c: [r["doc_id"] for r in rows] for c, rows in picks.items()},
           "secim_capraz": secim_capraz, "capraz_havuz": len(pool), "capraz_paket": len(cross),
-          "capraz_cift": sum(len(v) for v in cross.values()), "tasinan": [], **est}
+          "capraz_cift": sum(len(v) for v in cross.values()), "tasinan": [],
+          "denetim": [f"{x['doc_id']}:{x['olcut']}" for x in denetim], **est}
     stale = set(stale_pkgs(d, recs))
     from bidr.decide.run import unit_view
     review = load_review(ctx.ws.root)
     for did in sorted(by_doc):
-        rows = sorted(by_doc[did].values(), key=lambda r: (-r["puan"], id_key(r["olcut"])))
+        rows = sorted(by_doc[did].values(),          # denetim önerisi kesilmez
+                      key=lambda r: ("denetim" not in r["kaynak"], -r["puan"], id_key(r["olcut"])))
         st["kesilen"] += max(0, len(rows) - max_aday)
         rows = rows[:max_aday]
         crits = [r["olcut"] for r in rows]

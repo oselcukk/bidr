@@ -34,8 +34,10 @@ def _run(args) -> int:
         olc = [x for x in (args.olcut or "").replace(" ", ",").split(",") if x] or None
         st = A.prepare(ws.root, profile=args.profile or None, n=args.n, max_aday=args.max_aday,
                        od_esik=args.od_esik, olcutler=olc, synonyms=not args.no_esanlam, redo=args.redo,
-                       capraz=not args.no_capraz)
+                       capraz=not args.no_capraz, yalniz_denetim=args.yalniz_denetim)
         z = st["zayif"]
+        if st.get("denetim"):
+            print(f"kör denetim önerisi (bölüm kabul etti): {', '.join(st['denetim'])}")
         print(f"zayıf ölçüt: {len(z)} (kaynak: {'audit-olcutler.json' if st['audit'] else 'decisions.jsonl, yaklaşık'})")
         for c, info in z.items():
             sec = st["secim"].get(c) or []
@@ -77,6 +79,8 @@ def register(sub):
     a.add_argument("--redo", action="store_true", help="ikinci aramayla bakılmış (belge, ölçüt) çiftlerini de paketle")
     a.add_argument("--no-capraz", action="store_true",
                    help="çapraz yolu kapat (başka ölçütte kabul edilmiş birim belgelerini zayıf ölçütlere sorma)")
+    a.add_argument("--yalniz-denetim", action="store_true",
+                   help="yalnız kör denetimde bölümün kabul ettiği belge önerilerini paketle (bidr denetim karar)")
     a.set_defaults(func=_run)
     a = act.add_parser("apply", help="<doc_id>.out.json cevaplarını denetle, işaretli eşleşme olarak ekle")
     a.add_argument("--workspace", "-w", required=True)

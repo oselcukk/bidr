@@ -493,3 +493,45 @@ def test_mark_same_quote_ignores_human_rejected_and_short_containment():
     short = {**_match("D.1.2", "D.1.2/1", "katılmıştır"), "ikinci_arama": True}
     A.mark_same_quote(did, [first, short])
     assert "ayni_alinti_olcut" not in short
+
+
+# -- kör denetimin kabul edilen belge önerisi (bidr/kor/run.py `kanit_ciftleri`) -------------------
+
+def _kor_kabul(root, did, olcut="B.2.3"):
+    js = {"id": "KD1", "tur": 1, "bulgular": [{"id": f"{olcut}-k1", "sinif": "kanit", "olcut": olcut, "doc_id": did,
+                                               "dogrulama": "dogrulandi"}]}
+    (root / "kor-denetim.json").write_text(json.dumps(js), encoding="utf-8")
+    rec = {"bulgu_id": f"{olcut}-k1", "denetim": "KD1", "tur": 1, "sinif": "kanit", "olcut": olcut, "karar": "kabul",
+           "doc_id": did}
+    (root / "kor-denetim-kararlar.jsonl").write_text(json.dumps(rec) + "\n", encoding="utf-8")
+
+
+def _ia_check(root):
+    from bidr.common import Workspace
+    from bidr.pipeline.checks import CHECKS, Ctx
+    from bidr.pipeline.state import formatter, stage
+    return CHECKS["ikinci_arama_tamam"](Ctx(Workspace(root), {}, formatter(Workspace(root), {}), stage("ikinci_arama")))
+
+
+def test_accepted_audit_suggestion_is_packaged_even_if_first_pass_candidate(ws):
+    from bidr.kor.run import kanit_ciftleri
+    root, ids = ws
+    _kor_kabul(root, ids["rpl_aday"])                 # ilk geçişte B.2.3 adayıydı: olağan aramada seçilmez
+    assert kanit_ciftleri(root) == [{"doc_id": ids["rpl_aday"], "olcut": "B.2.3", "bulgu_id": "B.2.3-k1"}]
+    # aşama: rapor.ikinci_arama: false olsa da bekler, yalnız bu çiftleri paketleyen komutu verir
+    (root / "config.yaml").write_text("rapor:\n  ikinci_arama: false\n", encoding="utf-8")
+    c = _ia_check(root)
+    assert c.kim == "komut" and c.komutlar[0].endswith("--yalniz-denetim") and "B.2.3-k1" in c.neden
+    st = A.prepare(root, profile=None, yalniz_denetim=True)
+    assert _ia_check(root).kim == "ajan"
+    assert st["zayif"] == {} and st["denetim"] == [f"{ids['rpl_aday']}:B.2.3"] and st["paket"] == 1
+    pkg = json.loads((root / "work" / A.WORK / f"{ids['rpl_aday']}.json").read_text(encoding="utf-8"))
+    row = pkg["meta"]["ikinci_arama"]["olcutler"][0]
+    assert pkg["meta"]["adaylar"] == ["B.2.3"] and row["kaynak"] == ["denetim"] and "B.2.3-k1" in row["nedenler"][0]
+    _answer(root, ids["rpl_aday"], {"karar": "olcut_var", "gerekce": "g", "birim_iliskisi": "kendi", "eslesmeler": [
+        {"olcut": "B.2.3", "yuva": "B.2.3/2", "asama": "uygula", "od_onerisi": 3, "alinti": Q_B23,
+         "gerekce": "AKTS", "guven": "yuksek"}]})
+    assert A.apply(root, model="test-ajan")["eklenen_kabul"] == 1
+    assert kanit_ciftleri(root) == []                  # bakıldı: inceleme adayı (audit tablosunda) olur
+    assert _ia_check(root).atlandi                     # config false ve bekleyen öneri yok: eskisi gibi
+    assert kanit_ciftleri(root, bekleyen=False)        # karar kayıtta kalır

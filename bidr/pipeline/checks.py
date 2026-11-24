@@ -445,12 +445,29 @@ def ikinci_arama_tamam(c: Ctx) -> Check:
     from bidr.candidates import arama as A
     from bidr.decide.run import FINE, _load_pkg, _pkg_paths, load_decisions, task_version
     from bidr.write.sources import rapor_section
+    from bidr.kor.run import kanit_ciftleri
     ws = c.ws
-    if rapor_section(ws.root).get("ikinci_arama") is False:
+    # kör denetimde bölümün kabul ettiği kullanılmamış belge önerisi: ikinci aramayla bakılmadıysa bekler
+    # (rapor.ikinci_arama: false olsa da; yalnız o çiftler paketlenir)
+    den = kanit_ciftleri(ws.root) if (ws.root / "kor-denetim-kararlar.jsonl").exists() else []
+    if rapor_section(ws.root).get("ikinci_arama") is False and not den:
         return Check(atlandi=True, neden="atlandı: config.yaml rapor.ikinci_arama: false (kanıtsız/zayıf ölçütler "
                                          "için ikinci arama yapılmadı)")
     prep, apply_ = c.fmt(c.stage["komut"][0]), c.fmt(c.stage["komut"][2])
     d = ws.root / "work" / A.WORK
+    if den:
+        packed = set()
+        for p in (_pkg_paths(d) if d.exists() else []):
+            pkg = _load_pkg(p)
+            for r in ((pkg or {}).get("meta") or {}).get("ikinci_arama", {}).get("olcutler") or []:
+                if "denetim" in (r.get("kaynak") or []):
+                    packed.add((pkg.get("doc_id"), r.get("olcut")))
+        yeni = [x for x in den if (x["doc_id"], x["olcut"]) not in packed]
+        if yeni:
+            return Check(kim=KOMUT, komutlar=[prep + " --yalniz-denetim"],
+                         neden=f"kör denetimde bölümün kabul ettiği {len(yeni)} belge önerisi ikinci aramaya girecek "
+                               "(eşleşirse inceleme tablosunda aday olur): "
+                               + ", ".join(f"{x['bulgu_id']}" for x in yeni[:6]))
     if not (d / "README.md").exists():
         return Check(kim=KOMUT, komutlar=[prep],
                      neden="ikinci arama yapılmadı (isteğe bağlı): kanıtsız/zayıf ölçütler için arşivde ters arama. "
