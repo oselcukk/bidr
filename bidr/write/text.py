@@ -109,7 +109,8 @@ YASAK: list[tuple[str, str]] = [
     (r"\bmuhtemelen\b", "tahmin"), (r"\bbüyük olasılıkla\b", "tahmin"), (r"\btahminen\b", "tahmin"),
     # "Yapay Zekâ" bir program/ders adı olabilir (ör. Yapay Zekâ YL programı); yalnız metnin yapay zekâyla
     # yazıldığını söyleyen meta ifade yasak
-    (r"\byapay zek\w*\s+(tarafından|ile|kullanılarak|desteğiyle)\s+\w*(yazıl|üretil|oluştur|hazırlan)", "meta"),
+    (r"\byapay zek\w*\s+(tarafından|ile|kullanılarak|desteğiyle|araçlarıyla|aracıyla|araçları ile|aracı ile)"
+     r"(\s+\w+){0,2}?\s+\w*(yazıl|üretil|oluştur|hazırlan)", "meta"),
 ]
 _YASAK = [(re.compile(p), t) for p, t in YASAK]
 
