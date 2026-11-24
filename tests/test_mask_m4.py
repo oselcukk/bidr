@@ -497,7 +497,8 @@ def test_kural_surumu_onbellek_anahtarinda(monkeypatch):
     a = R.aday_anahtari("0" * 64, MaskRules(), "pymupdf", {}, None, "pdf")
     monkeypatch.setattr(R, "KURAL_SURUM", R.KURAL_SURUM + 1)
     assert R.aday_anahtari("0" * 64, MaskRules(), "pymupdf", {}, None, "pdf") != a
-    assert R.KURAL_SURUM >= 3 and "kaynak" in R._KOD_MODULLERI
+    # kaynak kip yönetimi sonucu belirlemez (d1: kod izi daraltıldı; bkz. tests/test_mask_kod_izi.py)
+    assert R.KURAL_SURUM >= 3 and "kaynak" in R._KOD_DISI and "formats" in R._KOD_MODULLERI
 
 
 # ---------------------------------------------------------------- arayüz komutları

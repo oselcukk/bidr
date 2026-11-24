@@ -4,6 +4,12 @@ Her birleştirmede (main'e giren her değişiklik) buraya en üste bir satır ek
 açıklama ve kullanıcıyı ilgilendiriyorsa ne yapması gerektiği. `bidr guncelle` güncellemeden sonra
 bu dosyanın yeni satırlarını gösterir. Bu dosyadan önceki geçmiş için `git log`.
 
+- 2026-11-24: Maskeleme önbelleğinin kod izi daraltıldı (d1-kod-izi): yalnız sonucu belirleyen kod (tespit/kapatma/
+  biçim modülleri, run.py'nin sonuç fonksiyonları) sözdizimi ağacından izlenir; ilerleme göstergesi (`suanki`)
+  çağrıları, belge dizgeleri/yorumlar, komut satırı, kaynak kip yönetimi (`kaynak.py`) ve run.py'nin klasör/rapor
+  fonksiyonları belgeleri yeniden maskeletmez. BİR KEZ: güncellemeden sonraki ilk `bidr maskele` (kaynak ve kanıt
+  kipi) bütün belgeleri yeniden maskeler (kod izinin biçimi değişti; önceki satırın bayt değişikliği de bu
+  geçişe biner); OCR katmanı önbellekten gelir. Sonrasında sonucu değiştirmeyen değişiklik yeniden maskeletmez.
 - 2026-11-24: Maskeleme çıktısı belirlenimci (d1-belirlenimci): aynı girdi + aynı kurallar → bayt bayt aynı maskeli
   dosya. PDF kaydında rastgele `/ID` üretilmez (özgününki korunur), docx/xlsx yeniden yazımında zip girdi zamanları
   sabit (1980-01-01) ve `docProps/core.xml`'de yalnız `created`/`modified` (özgünün değerleri) kalır; yeniden

@@ -22,6 +22,7 @@ doğru olan dosya pakete o anki maskeli hâliyle (`teslim_kopya`/`kopya`; maskel
 from __future__ import annotations
 
 import csv
+import functools
 import json
 import shutil
 from collections import Counter
@@ -485,18 +486,77 @@ def onay_cercevesi(dst: Path, kind: str, bolgeler: list[dict], eng: str) -> None
 # ---------------------------------------------------------------- önbellekli dosya işi
 
 KURAL_SURUM = 7            # tespit/kapatma kuralları elle sürümü (kod parmak izi ayrıca anahtara girer); 3: m4; 4: m5 en küçük yeterli maske; 5: m6 aşırı kapatma (zarf, kelime koruması, sayfa toplamı); 6: m7 yazı satırı yapısı, tablo kuralı, sessiz kaçak yok, paraf grubu; 7: m10 imza izi güvenlik ağı
+
+# Kod izi (önbellek `aday` anahtarı): maskeleme SONUCUNU belirleyen kod değişince belgeler yeniden maskelenir;
+# sonucu etkilemeyen değişiklik (ilerleme göstergesi, belge dizgesi/yorum, komut satırı, kaynak kip yönetimi,
+# run.py'nin klasör/rapor yönetimi) yeniden maskeletmez. Seçim: elle artırılan bir sonuç sürümü yerine daraltılmış
+# kod izi — maskeleme kişisel veriyi kapatır; unutulan bir sürüm artırımı eski (eksik maskeli) sonucu önbellekten
+# verirdi. Güvenli taraf: sınıflandırılmamış kod izde kalır; dışarıda bırakılan her şey adıyla ve gerekçesiyle
+# aşağıda; testler (tests/test_mask_kod_izi.py) yeni modülün sınıflandırılmasını ve sonuç kodunun dışarıdaki
+# koda bağlanmamasını zorlar.
 _KOD_MODULLERI = ("detect", "formats", "raster", "imza", "alan", "ocr", "bolge", "dogrula", "yapi", "sablon",
-                  "run", "eski", "kaynak", "satir")
+                  "run", "eski", "satir", "belirlenimci")
+_KOD_DISI = {                     # bidr/mask'in sonucu belirlemeyen modülleri → gerekçe
+    "__init__": "paket girişi (yeniden dışa aktarım)",
+    "cli": "komut satırı",
+    "kaynak": "kaynak kip yönetimi (ağaç, arşiv/e-posta paketleme, adlandırma); dosyanın maskesi mask_cached'te",
+    "suanki": "ilerleme göstergesi (o an işlenen belge/sayfa)",
+    "onbellek": "önbellek deposu (anahtarın kendisi; içerik adresli)",
+    "inceleme": "inceleme görüntüleri ve listesi (maskelemeden sonra)",
+    "model": "model öncesi metin maskeleme (ayrı yol, aday önbelleğine girmez)",
+}
+_YAN_MODULLER = frozenset({"suanki"})      # yalnız yan etkili çağrılar: çağrı ve içe aktarım izden çıkarılır
+# run.py'nin sonuca girmeyen (klasör, iş dağıtımı, rapor, model metni yolu) üst düzey fonksiyonları
+_RUN_DISI = frozenset({"_inside", "_prepare_dir", "_files", "read_model_text", "_doc_texts", "evidence_model_texts",
+                       "source_model_texts", "elle_kayit", "_isle", "_temiz_yolu", "_teslim_kopya", "run",
+                       "yaz_rapor", "bekliyor", "_mask_index", "_kod_izi", "modul_izi"})
 
 
+def modul_izi(ad: str, kaynak: str) -> str:
+    """Modül kaynağının sonuçla ilgili izi: belge dizgeleri, yorumlar, biçim, `_YAN_MODULLER` çağrıları ve
+    (run.py'de) `_RUN_DISI` fonksiyonları çıkarılmış sözdizimi ağacının metni (`ast.unparse`)."""
+    import ast
+    tree = ast.parse(kaynak)
+
+    def yan(st) -> bool:
+        if isinstance(st, ast.Expr) and isinstance(st.value, ast.Constant) and isinstance(st.value.value, str):
+            return True                                    # belge dizgesi / çıplak dizge
+        if isinstance(st, ast.Expr) and isinstance(st.value, ast.Call):
+            f = st.value.func
+            return isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) and f.value.id in _YAN_MODULLER
+        if isinstance(st, ast.ImportFrom) and st.level == 1 and not st.module:
+            st.names = [a for a in st.names if a.name not in _YAN_MODULLER]
+            return not st.names
+        if isinstance(st, ast.ImportFrom) and st.level == 1 and st.module in _YAN_MODULLER:
+            return True
+        return False
+
+    for node in ast.walk(tree):
+        for alan in ("body", "orelse", "finalbody"):
+            gov = getattr(node, alan, None)
+            if not isinstance(gov, list) or not gov or not isinstance(gov[0], ast.stmt):
+                continue
+            yeni = [st for st in gov if not yan(st)]
+            if ad == "run" and node is tree:
+                yeni = [st for st in yeni if not (isinstance(st, (ast.FunctionDef, ast.AsyncFunctionDef))
+                                                  and st.name in _RUN_DISI)]
+            if not yeni and alan == "body":
+                yeni = [ast.Pass()]
+            setattr(node, alan, yeni)
+    import hashlib
+    return hashlib.sha256(f"{ad}\n{ast.unparse(tree)}".encode("utf-8")).hexdigest()
+
+
+@functools.lru_cache(maxsize=1)
 def _kod_izi() -> str:
+    """Sonucu belirleyen kodun izi (süreç başına bir kez hesaplanır; dosya baytı değil sözdizimi)."""
     import hashlib
     h = hashlib.sha256()
     base = Path(__file__).parent
     for m in _KOD_MODULLERI:
         f = base / f"{m}.py"
         if f.is_file():
-            h.update(f.read_bytes())
+            h.update(modul_izi(m, f.read_text(encoding="utf-8")).encode())
     return h.hexdigest()[:16]
 
 
