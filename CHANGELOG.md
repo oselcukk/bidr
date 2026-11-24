@@ -11,8 +11,8 @@ bu dosyanın yeni satırlarını gösterir. Bu dosyadan önceki geçmiş için `
   somut istek kalır. Model yok; yeniden çalıştırmak yeter.
 - 2026-11-24: Etkinlik dosyası ve planlama kanıtı (d3a): afiş/duyuru planlama kanıtıdır (ince karar istemi, kanıt
   ilkesi `etkinlik_dosyasi`, doğrulama istemi; görev sürümleri artmadı). Aynı klasör/dosya serisindeki fotoğrafa
-  grubun etkinlik adı ipucu olarak verilir (model karar verir); gerçekleşmesi kanıtlı etkinliğin duyurusu
-  uygulama sayılır. `bidr ihtiyac` etkinliği adıyla ister (gerçekleşme, OD3 ölçütte değerlendirme) ve bağlamsız
+  grubun etkinlik adı ipucu olarak verilir (model karar verir); gerçekleşmesi aynı ölçütte
+  kanıtlı etkinliğin duyurusu uygulama sayılır. `bidr ihtiyac` etkinliği adıyla ister (gerçekleşme, OD3 ölçütte değerlendirme) ve bağlamsız
   fotoğraf için belge notu ister. BİR KEZ: `bidr faaliyet` yeniden ister (yeni alanlar); ipucu alan fotoğraflar
   onaysız yeniden karara gider; öteki ince kararlar "kural değişti" bilgisiyle geçerli kalır.
 - 2026-11-24: Raporun kör denetimi ve düzeltmesi (d2, isteğe bağlı aşamalar `kor_denetim`, `duzelt`): `bidr denetim

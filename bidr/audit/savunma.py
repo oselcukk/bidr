@@ -10,7 +10,8 @@ Satır düzeyi (`row`): hariç tür, bilgisiz ekran, yürürlükten kaldırılm�
 ilkesi, boş form, duyuru/gelecek zaman, kurum geneli ifade, faaliyet aşaması, aşama
 sözcük denetimleri (katılım ≠ izleme; niyet, bilgilendirme, sürüm notu ve yönlendirme/talep —
 "Başkanlığa iletilmesine karar" — ≠ iyileştirme). Etkinlik dosyası: gerçekleşmesi kanıtlı faaliyetin
-duyurusu/afişi uygulamayı kabul eden yuvada `uygula` sayılır (`etkinlik_gerceklesti`).
+duyurusu/afişi, gerçekleşme belgesi aynı ölçütte kabul edilmişse ve yuva uygulamayı kabul ediyorsa `uygula`
+sayılır (`etkinlik_gerceklesti`); gerçekleşme başka ölçütteyse afiş planlama kalır.
 Belge düzeyi (`unit_relation`): metinde birimin açık sinyali (adı, program adı, bölüm sayfası
 yolu, ders kodu öneki) hiç yokken başka birim adı geçen belge `belirsiz`, bütün birimleri kapsayan
 belge kurum/fakülte geneli sayılır; model `belirsiz` dediyse ve metinde birimin sinyali varsa
@@ -489,6 +490,29 @@ class Savunma:
         return out
 
     # -- satır düzeyi ------------------------------------------------------------------------
+    def _ayni_olcutte_gerceklesme(self, k: dict, olcut: str | None) -> bool:
+        """Faaliyetin gerçekleşme belgesi (gerçekleşme/katılım aşaması) AYNI ölçütte kabul edilmiş mi: kod
+        denetiminden geçmiş eşleşme ve incelemede reddedilmemiş. Başka ölçütteki fotoğraf afişi kendi ölçütünde
+        uygulama yapmaz (OD şişmesin; şef kararı 2026-11-24)."""
+        if getattr(self, "_ret", None) is None:
+            self._ret = set()
+            p = Path(self.ws_root) / "review-decisions.jsonl"
+            if p.exists():
+                for x in p.read_text(encoding="utf-8").splitlines():
+                    try:
+                        r = json.loads(x)
+                    except ValueError:
+                        continue
+                    if r.get("karar") == "ret":
+                        self._ret.add(r.get("satir") or f"{r.get('doc_id')}|{r.get('yuva')}")
+        for b in k.get("belgeler") or []:
+            if b.get("asama") not in ("gerceklesme", "katilim"):
+                continue
+            for e in b.get("eslesmeler") or []:
+                if e.get("olcut") == olcut and f"{b.get('doc_id')}|{e.get('yuva')}" not in self._ret:
+                    return True
+        return False
+
     def _uygula_yuvasi(self, yuva: str | None) -> bool:
         """Yuvanın PUKÖ etiketi uygulamayı kabul ediyor mu (belirsiz etiket: içeriğe bağlı, kabul)."""
         if getattr(self, "_tags", None) is None:
@@ -563,7 +587,8 @@ class Savunma:
                 down(h, "faaliyet_asamasi_uyusmuyor", f"faaliyet kaydında aşama '{asama}' ({k.get('id')})")
             if k.get("durum") == "gerceklesme_dolayli" and e == "uygula":
                 vu.append(f"gerçekleşme belgesi önerilir ({k.get('id')}: yalnız katılım/değerlendirme kaydı)")
-            if gerceklesti and e == "planla" and self._uygula_yuvasi(m.get("yuva")):
+            if gerceklesti and e == "planla" and self._uygula_yuvasi(m.get("yuva")) \
+                    and self._ayni_olcutte_gerceklesme(k, m.get("olcut")):
                 e = "uygula"
                 fl.append("etkinlik_gerceklesti")
                 vu.append(f"etkinlik dosyasında gerçekleşme belgesi var ({k.get('id')} {k.get('ad') or ''}): "

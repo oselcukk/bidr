@@ -97,8 +97,8 @@ ok, score, span = verify_quote(quote, text)   # Türkçe katlama, boşluk, OCR t
   ipucuyla karar almış fotoğrafa verilir; ipuçlu karar kaynak olmaz (zincir ve yeniden karar döngüsü yok).
   Eskime: sürüm artmadı, mevcut kararlar geçerli ("kural değişti" bilgisi); yalnız ipucu eklenen
   fotoğrafların girdisi değişir ve onaysız yeniden paketlenir. Faaliyet kaydında aynı dosya serisi ad sayısı
-  farklı olsa da birleşir; audit'te gerçekleşmesi kanıtlı faaliyetin duyurusu uygulamayı kabul eden yuvada
-  `uygula` sayılır (`etkinlik_gerceklesti`).
+  farklı olsa da birleşir; audit'te gerçekleşmesi kanıtlı faaliyetin duyurusu, gerçekleşme belgesi AYNI ölçütte kabul
+  edilmişse ve yuva uygulamayı kabul ediyorsa `uygula` sayılır (`etkinlik_gerceklesti`); başka ölçütteyse planlama kalır.
 
   `bidr faaliyet -w WS [--out DOSYA] [--json]` (`bidr/faaliyet/`, belirleyici, model yok):
   `decisions.jsonl`'deki faaliyet alanlarını faaliyet kayıtlarında toplar → `faaliyetler.json`

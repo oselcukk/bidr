@@ -132,7 +132,9 @@ def test_activity_file_series_merge_and_contextless_photos(tmp_path):
 
 def test_poster_is_planning_and_realised_event_counts_as_implementation(tmp_path):
     from bidr.audit.savunma import Savunma
-    fk = {"id": "F001", "ad": "Ulusal Staj Programı", "durum": "gerceklesme_kanitli", "yalniz_duyuru": False}
+    foto = {"doc_id": "foto1", "asama": "gerceklesme", "eslesmeler": [{"olcut": "D.1.1", "yuva": "D.1.1/3"}]}
+    fk = {"id": "F001", "ad": "Ulusal Staj Programı", "durum": "gerceklesme_kanitli", "yalniz_duyuru": False,
+          "belgeler": [{"doc_id": "afis", "asama": "duyuru", "eslesmeler": []}, foto]}
     m = {"olcut": "D.1.1", "yuva": "D.1.1/3", "alinti": "Ulusal Staj Programi Acilis: 1 Temmuz 2026"}
     root = _ws(tmp_path)
     sv = Savunma.load(root, {}, None)
@@ -146,6 +148,17 @@ def test_poster_is_planning_and_realised_event_counts_as_implementation(tmp_path
     sv.fmap = {"afis": (fk, "duyuru")}
     out = sv.row(rec, {**m, "yuva": "D.1.1/2"}, "etkinlik_duyurusu", "planla", human=False)
     assert out["etkin"] == "planla"                                          # yuva yalnız planlama
+    # gerçekleşme kanıtı başka ölçütte: afiş kendi ölçütünde planlama kalır (OD şişmez)
+    sv.fmap = {"afis": ({**fk, "belgeler": [{**foto, "eslesmeler": [{"olcut": "B.3.5", "yuva": "B.3.5/2"}]}]},
+                        "duyuru")}
+    out = sv.row(rec, m, "etkinlik_duyurusu", "planla", human=False)
+    assert out["etkin"] == "planla" and "etkinlik_gerceklesti" not in out["flags"]
+    # aynı ölçütteki gerçekleşme eşleşmesi incelemede reddedildiyse de planlama
+    (root / "review-decisions.jsonl").write_text(json.dumps({"satir": "foto1|D.1.1/3", "karar": "ret"}) + "\n",
+                                                 encoding="utf-8")
+    sv = Savunma.load(root, {}, None)
+    sv.fmap = {"afis": (fk, "duyuru")}
+    assert sv.row(rec, m, "etkinlik_duyurusu", "planla", human=False)["etkin"] == "planla"
 
 
 def test_prompt_and_principle_accept_posters():
