@@ -4,6 +4,11 @@ Her birleştirmede (main'e giren her değişiklik) buraya en üste bir satır ek
 açıklama ve kullanıcıyı ilgilendiriyorsa ne yapması gerektiği. `bidr guncelle` güncellemeden sonra
 bu dosyanın yeni satırlarını gösterir. Bu dosyadan önceki geçmiş için `git log`.
 
+- 2026-11-24: Eksik listesi inceleme kararlarına göre (d3a): `bidr ihtiyac` geçen yılın belgesini kabul edilmiş
+  inceleme kararlarıyla da arar: aynı belge başka ölçütte, derse özgü istekte aynı türden herhangi bir belge, aynı
+  ölçütte dolu yuva/aynı tür ("başka belgeyle"), başka ölçütte kanıt olan kurum belgesi → istenmez, "Var olan
+  kanıt" sütununda "İstenmedi (dosyada var): …". Yalnız tek soru/çok kısa alıntıyla dolu yuva "kısmen" sayılır,
+  somut istek kalır. Model yok; yeniden çalıştırmak yeter.
 - 2026-11-24: Etkinlik dosyası ve planlama kanıtı (d3a): afiş/duyuru planlama kanıtıdır (ince karar istemi, kanıt
   ilkesi `etkinlik_dosyasi`, doğrulama istemi; görev sürümleri artmadı). Aynı klasör/dosya serisindeki fotoğrafa
   grubun etkinlik adı ipucu olarak verilir (model karar verir); gerçekleşmesi kanıtlı etkinliğin duyurusu

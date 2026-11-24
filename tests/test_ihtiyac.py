@@ -32,8 +32,11 @@ SEMINER = _metin("BOLUM SEMINER PROGRAMI", "brenta", "sikor", "palvu", "derom", 
 PLAN = _metin("BOLUM KURULU KARARI", "gonsur", "lepra", "vaskit", "mordel", "tunik")
 
 
+ALINTI = "Bölüm kurulu bu konudaki uygulamayı görüşmüş ve dönem boyunca sürdürülmesine karar vermiştir."
+
+
 def _m(olcut, yuva, asama, od, guven="orta"):
-    return {"olcut": olcut, "yuva": yuva, "asama": asama, "od_onerisi": od, "alinti": "x" * 30, "gerekce": "g",
+    return {"olcut": olcut, "yuva": yuva, "asama": asama, "od_onerisi": od, "alinti": ALINTI, "gerekce": "g",
             "guven": guven, "denetim": {"red": [], "isaret": []}, "od_kabul": od, "kabul": True}
 
 

@@ -124,9 +124,13 @@ def _yuva_idleri(yuvalar: str) -> set[str]:
 
 
 def kilavuz_onerileri(cs, tags, cid: str, rows: list[dict], od: int, present: set[str],
-                      eksik_next: list[str], nxt: int | None, sor: Sorumlular) -> list[dict]:
-    """Kabul edilmiş hiçbir kanıtın karşılamadığı "Örnek Kanıtlar" yuvaları (dipnotlar hariç)."""
-    dolu = {r["yuva"] for r in rows if r.get("olcut") == cid and karsilar(r)}
+                      eksik_next: list[str], nxt: int | None, sor: Sorumlular, karsilama=None) -> list[dict]:
+    """Kabul edilmiş hiçbir kanıtın (tam) karşılamadığı "Örnek Kanıtlar" yuvaları (dipnotlar hariç). Yalnız
+    zayıf kanıtla (tek soru / çok kısa alıntı) dolu yuva "kısmen"dir: öneri kalır, `kismen` zayıf kanıtın adları."""
+    from .karsilama import Karsilama
+    K = karsilama or Karsilama(rows)
+    dolu = K.dolu(cid)
+    kismen = K.kismen(cid)
     out = []
     for s in _yuvalar(cs, cid):
         if s.id in dolu:
@@ -149,11 +153,15 @@ def kilavuz_onerileri(cs, tags, cid: str, rows: list[dict], od: int, present: se
         else:
             neden = ("karşılanmamış kılavuz yuvası; halkada kanıt var, yuva boş"
                      if st else "karşılanmamış kılavuz yuvası (PUKÖ etiketi yok)")
+        kn = ("kısmen karşılanmış (yalnız zayıf kanıt: " + ", ".join(f"«{x}»" for x in kismen[s.id])
+              + " — tek soru ya da kısa alıntı)") if s.id in kismen else ""
+        if kn:
+            neden = f"{kn}; {neden}"
         out.append({"puan": puan, "halka": ",".join(st), "hedef_od": hedef, "istenecek": s.text,
                     "yuvalar": s.id, "belge_turu": "",
                     "kimden": sor.kim(asama=h0 or None, olcut=cid), "ornek": "",
                     "gerekce": neden + (_rubrik_ek(cs, cid, duzey) if puan != P_KLV_MEVCUT else ""),
-                    "kaynak": K_KLV})
+                    "kaynak": K_KLV, **({"kismen": kismen[s.id], "kismen_not": kn} if kn else {})})
     return out
 
 
@@ -177,6 +185,8 @@ def olcut_satirlari(criteria: list[dict], rows: list[dict], kapsam: dict[str, st
                     ref_items: list[dict], matches: dict[str, dict], sor: Sorumlular
                     ) -> tuple[list[dict], list[dict]]:
     """(ölçüt satırları, talepler). `matches`: referans öğe id → eşleştirme sonucu."""
+    from .karsilama import Karsilama
+    K = Karsilama(rows)
     mev = _mevcut(rows)
     ref_by: dict[str, list[dict]] = {}
     for it in ref_items:
@@ -254,7 +264,7 @@ def olcut_satirlari(criteria: list[dict], rows: list[dict], kapsam: dict[str, st
                                     f"({', '.join(HALKA_AD[h] for h in eksik_next)})" + _rubrik_ek(cs, cid, nxt),
                          "kaynak": K_OD})
         # kılavuz önerileri: aynı yuva zaten bir talepte istenmişse o satıra kaynak olarak birleşir
-        klv = kilavuz_onerileri(cs, tags, cid, rows, od, present, eksik_next, nxt, sor)
+        klv = kilavuz_onerileri(cs, tags, cid, rows, od, present, eksik_next, nxt, sor, K)
         for k in klv:
             sahip = [t for t in ctal if k["yuvalar"] in _yuva_idleri(t["yuvalar"])]
             if not sahip:
@@ -263,6 +273,8 @@ def olcut_satirlari(criteria: list[dict], rows: list[dict], kapsam: dict[str, st
             for t in sahip:
                 if K_KLV not in t["kaynak"].split(" + "):
                     t["kaynak"] += " + " + K_KLV
+                if k.get("kismen_not"):
+                    t["gerekce"] += f"; {k['yuvalar']} {k['kismen_not']}"
                 if k["puan"] > t["puan"]:
                     t["puan"] = k["puan"]
                     if t["hedef_od"] is None:
@@ -285,6 +297,7 @@ def olcut_satirlari(criteria: list[dict], rows: list[dict], kapsam: dict[str, st
             "oncelik": _grup(puan) if ctal else "—", "puan": puan, "gerekce": gerek[0] if gerek else "",
             "tek_belge": tek,
             "karsilanmamis_yuvalar": [k["yuvalar"] for k in klv],
+            "kismen_yuvalar": {k["yuvalar"]: k["kismen"] for k in klv if k.get("kismen")},
             "sonraki_od_tanimi": rubrik(cs, cid, nxt),
         })
     talepler.sort(key=lambda t: (-t["puan"], id_key(t["olcut"]), t["halka"], t["istenecek"]))
@@ -463,6 +476,27 @@ def md_ozet(meta: dict, talepler: list[dict], satirlar: list[dict], gecen: list[
     return "\n".join(L) + "\n"
 
 
+def karsilanan_isaretle(items: list[dict], matches: dict[str, dict], rows: list[dict]) -> int:
+    """Benzerlikle karşılığı bulunamayan (yok/eski) geçen yıl belgesini kabul edilmiş inceleme kararlarına
+    göre kapatır (bidr/ihtiyac/karsilama.py): durum `var`, `karsilama` (karşılayan belge, ölçüt, neden).
+    Kapatılan sayısı."""
+    from .karsilama import Karsilama
+    from .sade import _ders_anahtari
+    K = Karsilama(rows)
+    n = 0
+    for it in items:
+        m = matches.get(it["id"]) or {}
+        if m.get("durum") not in (YOK, ESKI):
+            continue
+        g = {**it, **m}
+        k = K.gecen(g, _ders_anahtari(g) is not None)
+        if k:
+            matches[it["id"]] = {**m, "durum": VAR, "karsilama": k, "karsilik_ad": k["ad"],
+                                 "gerekce": f"dosyada karşılığı: {k['metin']} ({k['neden']})"}
+            n += 1
+    return n
+
+
 def run(ws_root: Path, *, referans: dict | None = None, out: Path | None = None, sorumlular=None,
         turler=None, istekler: list[dict] | None = None, somut=None, oneriler: list[dict] | None = None,
         kurum: dict | None = None, ornekler: list[dict] | None = None) -> dict:
@@ -476,6 +510,7 @@ def run(ws_root: Path, *, referans: dict | None = None, out: Path | None = None,
 
     from .eslestir import eslestir_hepsi, load_target
     from .etkinlik import etkinlik_istekleri
+    from .karsilama import Karsilama
     from .tablolar import Turler
 
     ws_root = Path(ws_root).expanduser().resolve()
@@ -505,8 +540,10 @@ def run(ws_root: Path, *, referans: dict | None = None, out: Path | None = None,
         h = load_target(ws_root, a, turler)
         for m in eslestir_hepsi({**referans, "ogeler": items}, h):
             matches[m["id"]] = m
+        karsilanan_isaretle(items, matches, a.rows)
     satirlar, talepler = olcut_satirlari(criteria, a.rows, kapsam, a.cs, tags, items, matches, sor)
     gecen = [{**it, "durum": "", **matches.get(it["id"], {})} for it in items]
+    kabul = Karsilama(a.rows)
     gecen.sort(key=lambda x: ({YOK: 0, ESKI: 1, VAR: 2}.get(x["durum"], 3), id_key(x["olcut"]), x["id"]))
     meta = {"calisma_alani": str(ws_root), "donem": a.donem,
             "uretim": datetime.now().isoformat(timespec="seconds"),
@@ -518,7 +555,7 @@ def run(ws_root: Path, *, referans: dict | None = None, out: Path | None = None,
     ornekler = ornekler if ornekler is not None else sade.ornekler_yukle()
     sade_rows = sade.satirlar_kur(a.cs, tags, sor, talepler, satirlar, gecen, yil=a.donem,
                                   ref_yil=(referans or {}).get("donem"), istekler=istekler, somut=somut,
-                                  oneriler=oneriler, kurum=kurum, ornekler=ornekler,
+                                  oneriler=oneriler, kurum=kurum, ornekler=ornekler, karsilama=kabul,
                                   etkinlik=etkinlik_istekleri(ws_root, a, satirlar, sor))
     write_xlsx(paths["xlsx"], talepler, satirlar, gecen_x, ornek_satirlari(ornekler, satirlar, sade_rows))
     paths["md"].write_text(md_ozet(meta, talepler, satirlar, gecen), encoding="utf-8")
