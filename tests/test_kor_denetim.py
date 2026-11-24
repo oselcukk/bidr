@@ -185,6 +185,7 @@ def test_apply_validates_quotes_and_classifies(ws):
     assert js["ozet"]["bulgu"] == {"metin": 3, "od": 1, "kanit": 1, "dogrulanamadi": 2}
     md = (ws / KD.OUT_MD).read_text(encoding="utf-8")
     assert "İç ölçüm" in md and "Doğrulanamayan bulgular" in md and "| B.1.1 | 3 | 2 |" in md
+    assert md.splitlines()[2] == f"> **Kişisel veri:** {KD.KISISEL_VERI}"
     # bitmiş tur yeniden istenemez (ikinci denetim ayrı komut)
     with pytest.raises(KD.DenetimHatasi, match="--ikinci"):
         KD.prepare(ws)

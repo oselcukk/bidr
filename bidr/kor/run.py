@@ -57,6 +57,7 @@ ACIKLAMA = ("Puan iç ölçümdür: denetçi metni yazandan bağımsızdır ama 
             "değildir. Metin bulguları kendiliğinden düzeltilir ve yeniden doğrulanır; OD ve kanıt önerileri "
             "bölümün kararına gelir.")
 KARAR = ("kabul", "ret")
+KISISEL_VERI = "Bu çıktı belge alıntıları içerir; kişisel veri bulunabilir, kanıt paketi gibi paylaşmayın."
 DKU = {"D": "kaynakla doğru", "K": "kısmen doğru ya da abartılı", "U": "kaynakla uyuşmuyor"}
 EV_MAX = 20000        # pakette kanıt başına en çok karakter (alıntı denetimi bütün metinde yapılır)
 REL_MAX = 3000        # ilgili belge başına
@@ -1125,7 +1126,7 @@ DURUM_AD = {"duzeltilecek": "düzeltilecek", "duzeltildi": "düzeltildi", "karar
 
 def write_md(ws: Workspace, v: dict) -> Path:
     oz = v.get("ozet") or {}
-    L = [f"# Raporun kör denetimi (tur {v.get('tur')})", "",
+    L = [f"# Raporun kör denetimi (tur {v.get('tur')})", "", f"> **Kişisel veri:** {KISISEL_VERI}", "",
          f"> İç ölçüm. {v.get('aciklama', ACIKLAMA)}", "",
          f"Zaman: {v.get('zaman')} · denetçi: {v.get('model')}", "",
          "Ölçek: " + " · ".join(f"{k} {x}" for k, x in (v.get("olcek") or OLCEK).items()), "",
