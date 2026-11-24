@@ -199,3 +199,29 @@ def test_cli_table(ws, capsys):
     out = capsys.readouterr().out
     assert "2 faaliyet" in out and "YALNIZ DUYURU" in out and "Kariyer Günü" in out and "UYARI: 1" in out
     assert (root / "faaliyetler.json").exists()
+
+
+def test_tarihsiz_seri_uyesi_serinin_kaydina_baglanir_ve_kayit_adi_seriyle_uyumlu():
+    """"ulusal staj 2026-1…5" fotoğrafları içerikten farklı ad almış (ikisi bir seminer, biri "Bölüm Semineri"):
+    seri eşleşmesi ad benzerliğinden önce gelir (adı benzer başka tarihli seminerler olsa da 2026-4 seriye bağlanır);
+    kayıt adı belgelerin çoğunluğunun adı, eşitlikte seriyle uyumlu ad (uzunluk değil)."""
+    seri = "Etkinlik/Staj|ulusal staj 2026"
+
+    def e(did, ad, tarih=None, asama="gerceklesme", s=seri):
+        return G.make_entry(did, {"ad": ad, "tarih": tarih, "asama": asama}, {"seri": s} if s else {})
+    entries = [e("s1", "Gibbs Esitsizligi Semineri"), e("s2", "Ulusal Staj Programı 2026"),
+               e("s3", "Ulusal Staj Programı Proje Sunumu"), e("s4", "Bölüm Semineri"),
+               e("s5", "Gibbs Esitsizligi Semineri"), e("p18", "Ulusal Staj Programı 2026", s=None),
+               # adı "Bölüm Semineri"ne benzer, tarihli başka seminerler (seri dışı)
+               e("x1", "Matematik Bölümü Genel Semineri", "2026-03-27", s=None),
+               e("x2", "Matematik Bölümü Genel Semineri", "2026-11-13", s=None),
+               e("x3", "Bölüm Seminer Sunumları", "2026-06-17", "plan", s=None)]
+    ks = G.group(entries)
+    by = {g.doc_id: k for k in ks for g in k.uyeler}
+    assert by["s1"] is by["s2"] is by["s3"] is by["s4"] is by["s5"]         # 1…5 tek kayıt
+    assert by["x1"] is not by["s1"] and by["x3"] is not by["s1"]
+    rec = G.summarize(by["s1"])
+    assert rec["ad"] == "Ulusal Staj Programı 2026"
+    # eşitlikte seriyle uyumlu ad: iki ad eşit destekli, kısa olan seriyle uyumlu
+    k = G.Kume([e("a", "Gibbs Esitsizligi Uzun Adli Semineri"), e("b", "Ulusal Staj")])
+    assert G.kayit_adi(k) == "Ulusal Staj"

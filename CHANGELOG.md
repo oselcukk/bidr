@@ -4,6 +4,10 @@ Her birleştirmede (main'e giren her değişiklik) buraya en üste bir satır ek
 açıklama ve kullanıcıyı ilgilendiriyorsa ne yapması gerektiği. `bidr guncelle` güncellemeden sonra
 bu dosyanın yeni satırlarını gösterir. Bu dosyadan önceki geçmiş için `git log`.
 
+- 2026-11-24: Faaliyet kaydında dosya serisi bölünmez, adı seriyle uyumlu (prova düzeltmesi): tarihsiz belge aynı
+  dosya serisinden üyesi olan kayda önce bağlanır ("ulusal staj 2026-1…5" tek kayıt); kayıt adı belgelerin
+  çoğunluğunun adı, eşitlikte seriyle uyumlu ad (önceden uzunluk: "Gibbs Eşitsizliği Semineri"). `faaliyetler.json`
+  modelsiz yeniden hesaplanır (`bidr faaliyet`).
 - 2026-11-24: `fotograf` sanılan PDF fotoğraf sayılmaz (prova düzeltmesi): etkinlik dosyası ipucu, yakın-tarih sinyali
   ve "bu fotoğraf hangi etkinliğe ait?" isteği yalnız gerçek görsel dosyalara (jpg, jpeg, png, heic, heif, webp).
   Provada açılan tek yanlış ince karar paketi (giriş ekranı PDF'i) artık açılmaz. Model yok.

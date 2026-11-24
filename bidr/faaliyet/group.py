@@ -14,7 +14,14 @@ Bir belge girdisi: `{doc_id, ad, tarih, asama, ...}`. İki belge aynı faaliyett
      Aynı klasörde aynı dosya serisinden ("… 2026-1.jpg" … "-5.jpg") gelen belgeler ad sayısı farklı
      olsa da adı benzer sayılır (`Kume.name_ok`, `ek["seri"]`).
   3. **Tarihsiz belge** adı benzer tek faaliyete bağlanır; birden çok aday varsa ayrı kayıt
-     olur ve işaretlenir (yanlış birleştirmektense eksik birleştirmek: temkinli taraf).
+     olur ve işaretlenir (yanlış birleştirmektense eksik birleştirmek: temkinli taraf). Aynı dosya
+     serisinden üyesi olan aday varsa yalnız o adaylar sayılır: seri eşleşmesi ad benzerliğinden önce
+     gelir ("ulusal staj 2026-4.jpg" kendi adı "Bölüm Semineri" olsa da serinin kaydına bağlanır).
+
+Kayıt adı (`kayit_adi`): üyelerin adlarından, belgelerin çoğunluğunun adı: her ad için kendisiyle aynı
+ya da benzer adlı üye sayısı; eşitlikte dosya serisinin adıyla (sıra numarasız dosya adı ya da klasör adı)
+uyumlu ad, sonra
+birebir aynı adlı üye sayısı, sonra uzunluk.
 
 Sıra: tarihli çapalar → tarihli öteki aşamalar → tarihsizler. Sonuç kararlıdır (girdi
 sırası doc_id'ye göre).
@@ -159,6 +166,11 @@ class Kume:
         c = sorted(self.capalar, key=lambda g: (("gun", "ay", "yil").index(g.kesinlik), g.aralik[0]))
         return c[0].aralik if c else None
 
+    def seri_ok(self, g: Girdi) -> bool:
+        """Kümede `g` ile aynı dosya serisinden üye var mı."""
+        s = g.ek.get("seri")
+        return bool(s) and any(m.ek.get("seri") == s for m in self.uyeler)
+
     def name_ok(self, g: Girdi) -> bool:
         """Ad benzer ya da aynı dosya serisinden (`ek["seri"]`: klasör + sıra numarasız dosya adı;
         bidr/faaliyet/dosya.py): "Ulusal Staj 2026-1" … "-5" fotoğrafları aynı etkinliktir."""
@@ -215,6 +227,9 @@ def group(entries: list[Girdi]) -> list[Kume]:
     # 3. tarihsizler
     for g in (g for g in entries if not g.aralik):
         cands = [k for k in kumeler if k.name_ok(g)]
+        seri = [k for k in cands if k.seri_ok(g)]
+        if seri:                                    # seri eşleşmesi ad benzerliğinden önce
+            cands = seri
         dated = [k for k in cands if any(m.aralik for m in k.uyeler)]
         undated = [k for k in cands if k not in dated]
         if len(dated) == 1:
@@ -234,10 +249,28 @@ def _iso(d: date) -> str:
     return d.isoformat()
 
 
+def kayit_adi(k: Kume) -> str:
+    """Kaydın adı (bkz. modül belgesi): çoğunluğun adı; eşitlikte seriyle uyumlu ad."""
+    names = Counter(g.ad for g in k.uyeler if g.ad)
+    if not names:
+        return ""
+    seriler = [parse_name(x) for g in k.uyeler if g.ek.get("seri")
+               for x in (g.ek["seri"].split("|", 1)[-1], g.ek["seri"].split("|", 1)[0].rsplit("/", 1)[-1])]
+    adk = {n: parse_name(n) for n in names}
+
+    def destek(n: str) -> int:
+        return sum(1 for g in k.uyeler if g.ad and (g.ad == n or similar(adk[n], g.adk)))
+
+    def seri_uyumlu(n: str) -> bool:
+        return any(similar(adk[n], s) for s in seriler)
+
+    return max(names, key=lambda n: (destek(n), seri_uyumlu(n), names[n], len(n), n))
+
+
 def summarize(k: Kume) -> dict:
     """Faaliyet kaydı (kimlik çağıranda verilir)."""
     names = Counter(g.ad for g in k.uyeler if g.ad)
-    ad = max(names, key=lambda n: (names[n], len(n), n)) if names else ""
+    ad = kayit_adi(k)
     olay = k.olay()
     dated = [g for g in k.uyeler if g.aralik]
     if olay is not None:

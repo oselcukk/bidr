@@ -112,7 +112,9 @@ ok, score, span = verify_quote(quote, text)   # Türkçe katlama, boşluk, OCR t
   ±3 gün; öteki aşamalar olay gününe göre aşamaya özgü pencerede: duyuru 45 gün önce–3 gün
   sonra, değerlendirme 90 gün, iyileştirme 365 gün sonrasına kadar; en yakın faaliyet).
   Tarihsiz belge adı benzer tek faaliyete bağlanır, birden çok aday varsa ayrı kalır ve
-  işaretlenir. `baska_birim` belgeler alınmaz. **Hat aşaması `faaliyet`** (D; karar_ince'den
+  işaretlenir; aynı dosya serisinden üyesi olan aday varsa önce o seçilir (seri ad benzerliğinden
+  önce). Kayıt adı belgelerin çoğunluğunun adıdır (aynı/benzer adlı üye sayısı; eşitlikte dosya
+  serisi ya da klasör adıyla uyumlu ad). `baska_birim` belgeler alınmaz. **Hat aşaması `faaliyet`** (D; karar_ince'den
   sonra, audit'ten önce; `checks.faaliyet_tamam`: `faaliyetler.json` bugünkü decisions.jsonl'den
   yeniden hesaplananla aynı değilse bekliyor — ikinci arama ya da yeniden karar eskitir; yalnız
   duyurulu faaliyet uyarıdır). Write paketine ölçütün kanıtlarının faaliyet özeti girer
