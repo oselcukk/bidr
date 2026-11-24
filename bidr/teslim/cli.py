@@ -6,7 +6,8 @@ PDF kopyaları ve kanıt dizini (bidr/teslim/run.py). Maskeleme kararı bekleyen
 maskeli hâliyle (maskelenemediyse özgünüyle) girer, konsolda ve MASKELEME-UYARI.txt'de listelenir (çıkış
 kodunu değiştirmez). Çıkış kodu: 0 paket eksiksiz; 1 paket eksik ya da (`--kararsizlari-disla` ile)
 kararı bekleyen kanıt pakete girmedi (EKSIK.txt; listelenir); 2 girdi hatası ya da PDF aracı yok (hiçbir şey yazılmaz);
-3 kapı (biçim denetimi geçmedi; `--taslak` ile taslak paket üretilebilir)."""
+3 kapı (biçim denetimi geçmedi; `--taslak` ile taslak paket üretilebilir; ya da bölüm kişisel veri maskelemesi
+kullanıyor ama maskeli kanıt kopyası yok / eksik / kanıtlardan eski: önce `bidr maskele`, `--taslak` bunu aşmaz)."""
 from __future__ import annotations
 
 import sys
@@ -14,9 +15,9 @@ from pathlib import Path
 
 
 def _run(args) -> int:
-    from bidr.pipeline.gate import check_gate
+    from bidr.pipeline.gate import GATE_EXIT, check_gate
 
-    from .run import TeslimError, build, ozet_json
+    from .run import MaskeKapisi, TeslimError, build, ozet_json
     from .web import PdfAraciYok
 
     ws = Path(args.workspace).expanduser().resolve()
@@ -30,6 +31,9 @@ def _run(args) -> int:
     except PdfAraciYok as e:
         print(f"HATA {e}", file=sys.stderr)
         return 2
+    except MaskeKapisi as e:
+        print(f"HATA kapı: {e}", file=sys.stderr)
+        return GATE_EXIT
     except (TeslimError, ValueError) as e:
         print(f"HATA {e}", file=sys.stderr)
         return 2

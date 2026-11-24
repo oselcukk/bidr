@@ -1061,6 +1061,11 @@ def teslim_tamam(c: Ctx) -> Check:
     return durum(c)
 
 
+def kanit_maskele_tamam(c: Ctx) -> Check:
+    from bidr.teslim.run import kanit_maskele_durum
+    return kanit_maskele_durum(c)
+
+
 def _transcribe_tamam(c: Ctx) -> Check:
     from bidr.transcribe.check import transcribe_tamam
     return transcribe_tamam(c)
@@ -1111,6 +1116,7 @@ CHECKS: dict[str, Callable[[Ctx], Check]] = {
     "verify_tamam": verify_tamam,
     "yonler_tamam": yonler_tamam,
     "render_tamam": render_tamam,
+    "kanit_maskele_tamam": kanit_maskele_tamam,
     "teslim_tamam": teslim_tamam,
     "kor_denetim_tamam": _kor_denetim_tamam,
     "duzelt_tamam": _duzelt_tamam,

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import csv
 import json
+import shutil
 import zipfile
 from pathlib import Path
 
@@ -389,13 +390,14 @@ def test_paket_maskeleme(tmp_path, capsys):
     _render(ws, tmp_path, "dekanlik")
     _maskele(ws, {"A/A.1/A.1.1/[1-OD3]. Sentetik kanıt bir.pdf": "tamam",
                   "A/A.1/A.1.1/[2-OD2]. Sentetik web sayfası.html": "tamam",
-                  "A/A.1/A.1.2/[1-OD3]. Kurul kararı.pdf": "basarisiz"})   # A.1.2 html raporda yok
+                  "A/A.1/A.1.2/[1-OD3]. Kurul kararı.pdf": "basarisiz",
+                  "A/A.1/A.1.2/[2-OD2]. Adressiz sayfa.html": "hata"})     # maskelenemedi: özgünü girer
     arac = Sahte()
     res = build(ws, arac=arac, zip_yap=False)
     k = ws / "teslim" / "kanitlar" / "A" / "A.1"
     assert (k / "A.1.1" / "[1-OD3]. Sentetik kanıt bir.pdf").read_bytes() == b"%PDF-1.4 MASKELI"
     assert any(b"MASKELI duyuru" in h for h in arac.htmls)                 # web PDF maskeli HTML'den
-    # kararı bekleyen: kısmen maskeli kopya pakette; raporda olmayan: özgünü pakette (+ web PDF'i)
+    # kararı bekleyen: kısmen maskeli kopya pakette; maskelenemeyen: özgünü pakette (+ web PDF'i)
     assert (k / "A.1.2" / "[1-OD3]. Kurul kararı.pdf").read_bytes() == b"%PDF-1.4 KISMI"
     assert (k / "A.1.2" / "[2-OD2]. Adressiz sayfa.html").is_file()
     assert (k / "A.1.2" / "[2-OD2]. Adressiz sayfa.pdf").is_file()
@@ -409,7 +411,7 @@ def test_paket_maskeleme(tmp_path, capsys):
     assert set(kb) == {"[1-OD3]. Kurul kararı.pdf", "[2-OD2]. Adressiz sayfa.html"}
     assert all(x["pakette"] and x["dosya"].startswith("kanitlar/") for x in kb.values())
     assert "basarisiz" in kb["[1-OD3]. Kurul kararı.pdf"]["neden"]
-    assert "raporunda yok" in kb["[2-OD2]. Adressiz sayfa.html"]["neden"]
+    assert "maskeleme hata" in kb["[2-OD2]. Adressiz sayfa.html"]["neden"]
     assert any("maskeleme kararı bekleyen belge: 2" in u and "1 tanesi MASKELENMEDİ" in u for u in res.uyarilar)
     uy = (ws / "teslim" / MASKE_UYARI).read_text(encoding="utf-8")
     assert "MASKELEME KARARI BEKLEYEN BELGELER: 2" in uy and "Kurul kararı" in uy and "maskelenmedi" in uy
@@ -470,16 +472,22 @@ def test_paket_maskeleme(tmp_path, capsys):
     res = build(ws, arac=Sahte(), zip_yap=False)
     assert (k / "A.1.2" / "[1-OD3]. Kurul kararı.pdf").read_bytes() == b"%PDF-1.4 CERCEVESIZ"
     assert [x["kanit"] for x in res.karar_bekleyen] == [rel] and "öneri bölgesi 1" in res.karar_bekleyen[0]["neden"]
-    # kanıt maskelemeden sonra yeniden yazıldı: maskeli kopya eski → özgünü girer, listelenir
+    # kanıt maskelemeden sonra yeniden yazıldı: maskeli kopya eski → teslim durur (özgünü pakete GİRMEZ)
+    from bidr.teslim.run import MaskeKapisi
     f = ws / "evidence" / "A" / "A.1" / "A.1.1" / "[1-OD3]. Sentetik kanıt bir.pdf"
     t = (ws / "maskeleme-raporu.json").stat().st_mtime + 10
     os.utime(f, (t, t))
-    res = build(ws, arac=Sahte(), zip_yap=False)
-    assert (k / "A.1.1" / "[1-OD3]. Sentetik kanıt bir.pdf").read_bytes() == f.read_bytes()
-    assert any("eski" in x["neden"] and x["maskeleme"] == "maskelenmedi" for x in res.karar_bekleyen)
+    with pytest.raises(MaskeKapisi, match="kanıt kümesinden eski"):
+        build(ws, arac=Sahte(), zip_yap=False)
+    assert (k / "A.1.1" / "[1-OD3]. Sentetik kanıt bir.pdf").read_bytes() == b"%PDF-1.4 MASKELI"   # eski paket yerinde
+    c = durum(ctx)
+    assert c.kim == "komut" and c.komutlar[0].startswith("bidr maskele -w") and "bidr maskele" in c.neden
     # maskeleme raporu değişince paket eskir
-    (ws / "maskeleme-raporu.json").write_text("{}", encoding="utf-8")
-    assert durum(ctx).kim == "komut"
+    t = time.time() + 30
+    os.utime(f, (t - 10, t - 10))
+    (ws / "maskeleme-raporu.json").write_text(json.dumps(dict(rep, zaman="yeni koşu")), encoding="utf-8")
+    os.utime(ws / "maskeleme-raporu.json", (t, t))
+    assert durum(ctx).kim == "komut" and "paketi eski" in durum(ctx).neden
 
 
 def test_paket_maskeleme_yapilmadi(tmp_path):
@@ -497,3 +505,86 @@ def test_paket_adi_birim_ve_donemden(tmp_path):
     assert paket_adi(tmp_path) == "teslim"
     (tmp_path / "config.yaml").write_text("bidr:\n  birim: Sentetik Bölümü\n  donem: 2025\n", encoding="utf-8")
     assert paket_adi(tmp_path) == "BIDR-2025-Sentetik-Bölümü"
+
+
+def test_maskeleme_kapisi(tmp_path, capsys, monkeypatch):
+    """Bölüm maskelemeyi kullanıyorsa (yapılandırma / rapor işareti) maskeli kanıt kopyası yok, eksik ya da kanıt
+    kümesinden eskiyse `bidr teslim` durur (`--taslak` dahil) ve `bidr maskele` ister; hat `kanit_maskele`
+    aşamasında `bidr maskele` gösterir. Maskeleme kullanılmayan çalışma alanında davranış değişmez."""
+    import os
+    import time
+
+    import bidr.teslim.run as TR
+    from bidr.teslim.run import MaskeKapisi, kanit_maskele_durum, maske_eksigi, maskeleme_kullaniliyor
+    monkeypatch.setattr(TR, "pdf_araci", lambda tercih="otomatik": Sahte())
+    ws = _ws(tmp_path)
+    _render(ws, tmp_path, "dekanlik")
+    kctx = Ctx(Workspace(ws), None, lambda s: s.replace("{ws}", str(ws)), {"komut": ["bidr maskele -w {ws}"]})
+    tctx = Ctx(Workspace(ws), None, lambda s: s.replace("{ws}", str(ws)), {"komut": ["bidr teslim -w {ws}"]})
+    # maskeleme kullanılmıyor: kapı yok, aşama atlanır
+    assert maskeleme_kullaniliyor(ws) is None and maske_eksigi(ws) is None and kanit_maskele_durum(kctx).atlandi
+    # işaret: bölüm kaynak maskelemesi kullanılmış, kanıt maskelemesi yapılmamış
+    (ws / "maskeleme-kaynak-raporu.json").write_text("{}", encoding="utf-8")
+    assert "kaynak maskelemesi" in maskeleme_kullaniliyor(ws)
+    with pytest.raises(MaskeKapisi, match="maskeleme-raporu.json yok"):
+        build(ws, arac=Sahte(), zip_yap=False)
+    assert not (ws / "teslim").exists() and not (ws / MANIFEST).exists()
+    assert main(["teslim", "-w", str(ws)]) == 3
+    assert main(["teslim", "-w", str(ws), "--taslak"]) == 3
+    err = capsys.readouterr().err
+    assert "önce `bidr maskele" in err and "(kanıt modu)" in err
+    c = kanit_maskele_durum(kctx)
+    assert c.kim == "komut" and c.komutlar == [f"bidr maskele -w {ws}"]
+    c = durum(tctx)
+    assert c.kim == "komut" and c.komutlar[0] == f"bidr maskele -w {ws}"
+    # işaret: config.yaml privacy.maskeleme
+    (ws / "maskeleme-kaynak-raporu.json").unlink()
+    (ws / "config.yaml").write_text("privacy:\n  maskeleme:\n    etiket_alani: true\n", encoding="utf-8")
+    assert maskeleme_kullaniliyor(ws) == "config.yaml privacy.maskeleme" and maske_eksigi(ws)
+    # rapor var ama maskeli klasör yok
+    hepsi = {"A/A.1/A.1.1/[1-OD3]. Sentetik kanıt bir.pdf": "tamam",
+             "A/A.1/A.1.1/[2-OD2]. Sentetik web sayfası.html": "tamam",
+             "A/A.1/A.1.2/[1-OD3]. Kurul kararı.pdf": "tamam",
+             "A/A.1/A.1.2/[2-OD2]. Adressiz sayfa.html": "tamam"}
+    _maskele(ws, hepsi)
+    shutil.rmtree(ws / "evidence-maskeli")
+    assert "klasörü yok" in maske_eksigi(ws)
+    # maskeli kopya eksik
+    _maskele(ws, hepsi)
+    (ws / "evidence-maskeli" / "A/A.1/A.1.2/[1-OD3]. Kurul kararı.pdf").unlink()
+    assert "1 kanıtın maskeli kopyası" in maske_eksigi(ws)
+    # maskelemeden sonra dosyalanan kanıt raporda yok
+    _maskele(ws, dict(list(hepsi.items())[:3]))
+    assert "1 kanıt maskeleme raporunda yok" in maske_eksigi(ws)
+    # kanıt klasörü işareti maskelemeden sonra yeniden yazıldı (bidr file yeniden)
+    _maskele(ws, hepsi)
+    t = (ws / "maskeleme-raporu.json").stat().st_mtime + 10
+    os.utime(ws / "evidence" / ".bidr-evidence.json", (t, t))
+    assert "kanıt kümesinden eski" in maske_eksigi(ws)
+    # güncel: kapı açık, aşama bitti, paket maskeli kopyalardan
+    _maskele(ws, hepsi)
+    t = time.time() + 20
+    os.utime(ws / "maskeleme-raporu.json", (t, t))
+    assert maske_eksigi(ws) is None and kanit_maskele_durum(kctx).bitti
+    assert main(["teslim", "-w", str(ws), "--tarih", "2025-12-31"]) == 0
+    capsys.readouterr()
+    assert durum(tctx).bitti
+    k = ws / "teslim" / "kanitlar" / "A" / "A.1" / "A.1.1" / "[1-OD3]. Sentetik kanıt bir.pdf"
+    assert k.read_bytes() == b"%PDF-1.4 MASKELI"
+    # bağlantı modu, paket yok: aşama atlanır
+    (ws / MANIFEST).unlink()
+    (ws / "config.yaml").write_text("privacy:\n  maskeleme:\n    etiket_alani: true\nrapor:\n  teslim: baglanti\n",
+                                    encoding="utf-8")
+    assert kanit_maskele_durum(kctx).atlandi
+
+
+def test_maskeleme_kapisi_kaynak_isareti(tmp_path):
+    """Kaynak klasör bölüm kaynak maskelemesinin kopyasıysa (işaret dosyası) maskeleme kullanılıyor sayılır."""
+    from bidr.teslim.run import maskeleme_kullaniliyor
+    ws = _ws(tmp_path)
+    kaynak = tmp_path / "bolum-maskeli"
+    kaynak.mkdir()
+    (ws / "config.yaml").write_text(f"bidr:\n  kaynak: {kaynak}\n", encoding="utf-8")
+    assert maskeleme_kullaniliyor(ws) is None
+    (kaynak / ".bidr-maskeleme.json").write_text('{"durum": "tamam"}', encoding="utf-8")
+    assert "kaynak maskelemesinin kopyası" in maskeleme_kullaniliyor(ws)

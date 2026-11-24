@@ -498,13 +498,34 @@ asamalar:
     onay: yok
     skill: bidr-rapor
 
+  - id: kanit_maskele
+    ad: Kanıt maskelemesi (teslim paketinden önce; yalnız kişisel veri maskelemesi kullanan bölümde)
+    uygulandi: true
+    istege_bagli: true
+    katman: D
+    onkosul: [file]
+    girdi: [evidence/, config.yaml privacy.maskeleme, maskeleme-kararlari.jsonl, maskeleme-elle.json]
+    cikti: [evidence-maskeli/, maskeleme-raporu.json, maskeleme-basarisiz/, maskeleme-bekleyen/]
+    komut: ["bidr maskele -w {ws}"]
+    sart:
+      denetim: kanit_maskele_tamam
+      metin: >-
+        Bölüm maskelemeyi kullanıyorsa (maskeleme-raporu.json, maskeleme-kaynak-raporu.json, config.yaml
+        privacy.maskeleme ya da kaynak klasör bölüm kaynak maskelemesinin kopyası): maskeleme-raporu.json ve
+        evidence-maskeli/ var, kanıt klasöründeki her dosya raporda, hiçbiri maskelemeden sonra değişmemiş ve
+        tamam/elle maskelenmiş her kaydın maskeli kopyası yerinde. Değilse bidr maskele (kanıt modu; model yok,
+        otomatik) çalışır; bidr teslim bu şart sağlanmadan durur (--taslak da). Maskeleme kullanılmıyorsa ya da
+        teslim modu baglanti iken paket yoksa atlanır. Bölge kararları teslim politikasınındır, bu şartın değil.
+    onay: yok
+    skill: bidr-rapor
+
   - id: teslim
     ad: Teslim paketi (rapor + ölçüt klasörlü kanıtlar + web kanıtlarının PDF kopyası + kanıt dizini; zip)
     uygulandi: true
     istege_bagli: true
     katman: D
-    onkosul: [denetle]
-    girdi: [report.docx, evidence/, evidence-index.csv, config.yaml rapor.teslim]
+    onkosul: [denetle, kanit_maskele]
+    girdi: [report.docx, evidence/, evidence-index.csv, config.yaml rapor.teslim, evidence-maskeli/]
     cikti: [teslim/ (report.docx, kanitlar/, kanit-dizini.xlsx, kanit-dizini.csv), teslim.zip, .bidr-teslim.json]
     komut: ["bidr teslim -w {ws}"]
     sart:

@@ -581,7 +581,12 @@ WS/.bidr-teslim.json             özet (teslim_tamam): report_sha, index_sha, ev
   olan klasör yalnız bidr teslim'in işaret dosyasını (`.bidr-teslim`) taşıyorsa silinip yeniden
   yazılır, değilse ve boş değilse hata.
 
-**Hat aşaması `teslim`** (D; isteğe bağlı; önkoşul `denetle`). `checks.teslim_tamam`
+**Hat aşaması `kanit_maskele`** (D; isteğe bağlı; önkoşul `file`; `denetle`den sonra görünür).
+`checks.kanit_maskele_tamam` (`teslim.run.kanit_maskele_durum`): bölüm kişisel veri maskelemesi kullanmıyorsa ya da
+`baglanti` modunda paket yoksa atlandi; kullanıyorsa maskeli kanıt kopyası yok / eksik / kanıt kümesinden eskiyse
+`bidr maskele -w WS` (modelsiz, otomatik komut); güncelse bitti (bkz. docs/PRIVACY.md "Teslim").
+
+**Hat aşaması `teslim`** (D; isteğe bağlı; önkoşul `denetle`, `kanit_maskele`). `checks.teslim_tamam`
 (`teslim.run.durum`): `baglanti` modunda paket yoksa atlandi; `dekanlik`'ta paket yoksa ya da rapor,
 kanıt dizini, kanıt klasörü, maskeleme raporu ya da teslim modu değiştiyse `bidr teslim`; `--taslak` paketi bitmiş
 sayılmaz; eksik paket KULLANICI gerekli; tamamsa bitti, özgün adresi bulunamayan web kanıtı uyarı.
