@@ -218,3 +218,78 @@ def term_year(term: str) -> int | None:
     if not m or not m.group(3):
         return None
     return int(m.group(1)) if m.group(3) == "guz" else int(m.group(2))
+
+
+# -- yanıt zaman damgası (form yanıt tablosu, anket sonuç belgesi) ------------------------------
+# Google Form / Microsoft Forms yanıt tablosunda belgenin tarihi formun oluşturulduğu (başlıkta, açıklamada
+# geçen) tarih değil, yanıtların zaman damgalarıdır: dönem için yanıt aralığı kullanılır (identify
+# `yanit_araligi`; pipeline.date_fields). Sütun başlığı tam hücre olarak aranır (katlanmış).
+RESPONSE_HEADERS = frozenset({
+    "zaman damgasi", "timestamp", "yanit zamani", "yanit tarihi", "yanit zaman damgasi", "gonderim zamani",
+    "gonderim tarihi", "gonderilme zamani", "gonderilme tarihi", "submitted at", "submission time",
+    "submission date", "submitted on", "completion time", "start time", "tamamlanma zamani",
+    "tamamlanma saati", "baslangic zamani", "baslangic saati"})
+_RESP_YMD = re.compile(r"^((?:19|20)\d\d)[-/.](\d{1,2})[-/.](\d{1,2})(?:[ T,]+(\d{1,2}:\d{2}(?::\d{2})?))?")
+_RESP_DMY = re.compile(r"^(\d{1,2})[./-](\d{1,2})[./-]((?:19|20)\d\d)(?:[ T,]+(\d{1,2}:\d{2}(?::\d{2})?))?")
+_RESP_HEAD_LINE = re.compile(r"(?:^|\s)(?:" + "|".join(sorted(RESPONSE_HEADERS, key=len, reverse=True))
+                             + r")(?:\s|$)")
+RESPONSE_MIN_SHARE = 0.5      # sütunun dolu hücrelerinin en az bu oranı tarih olmalı
+RESPONSE_MIN_LINES = 2        # sekmesiz metinde (PDF dökümü) en az bu kadar zaman damgalı satır
+
+
+def _resp_parse(cells: list[str], need_time: bool = False) -> list[date]:
+    """Bir sütunun hücreleri → tarihler. G/A/Y ile A/G/Y ayrımı sütun genelinde: ilk sayı 12'yi aşan
+    hücre varsa gün önde, ikinci sayı aşıyorsa ay önde; ikisi de yoksa gün önde (Türkçe)."""
+    ymd, dmy = [], []
+    for c in cells:
+        c = c.strip()
+        m = _RESP_YMD.match(c)
+        if m and (m.group(4) or not need_time):
+            ymd.append((int(m.group(1)), int(m.group(2)), int(m.group(3))))
+            continue
+        m = _RESP_DMY.match(c)
+        if m and (m.group(4) or not need_time):
+            dmy.append((int(m.group(1)), int(m.group(2)), int(m.group(3))))
+    ay_once = any(b > 12 for _, b, _ in dmy) and not any(a > 12 for a, _, _ in dmy)
+    out = [_mk(y, mo, d) for y, mo, d in ymd]
+    out += [_mk(y, a, b) if ay_once else _mk(y, b, a) for a, b, y in dmy]
+    return [d for d in out if d]
+
+
+def response_dates(raw: str) -> list[date]:
+    """Yanıt zaman damgası sütunu varsa yanıtların tarihleri (sıralı); yoksa boş liste. Sekmeli tablo
+    (xlsx/csv metni): başlığı `RESPONSE_HEADERS`'tan biri olan sütun, dolu hücrelerin en az
+    `RESPONSE_MIN_SHARE`'ı tarih. Sekmesiz metin (tablonun PDF dökümü): başlık satırından sonra saatli
+    tarihle başlayan en az `RESPONSE_MIN_LINES` satır."""
+    from .text import collapse, fold
+    lines = raw.splitlines()
+    out: list[date] = []
+    i = 0
+    while i < len(lines):
+        cells = lines[i].split("\t")
+        heads = [collapse(fold(c)).strip(" :") for c in cells]
+        k = next((j for j, h in enumerate(heads) if h in RESPONSE_HEADERS), None)
+        if k is None and len(cells) == 1 and _RESP_HEAD_LINE.search(heads[0]):
+            k = 0                                            # sekmesiz döküm: başlık satırında geçer
+        if k is None:
+            i += 1
+            continue
+        col = []
+        j = i + 1
+        while j < len(lines) and not lines[j].startswith("[sayfa:"):
+            cs = lines[j].split("\t")
+            if len(cs) > 1 and any(collapse(fold(c)).strip(" :") in RESPONSE_HEADERS for c in cs):
+                break                                        # aynı sayfada ikinci tablo
+            if len(cs) > k and cs[k].strip():
+                col.append(cs[k])
+            j += 1
+        ds = _resp_parse(col) if len(cells) > 1 else []
+        if ds and len(ds) >= RESPONSE_MIN_SHARE * len(col):
+            out += ds
+        elif len(cells) == 1 or not ds:                      # sekmesiz döküm: satır başı saatli tarih
+            rows = [ln.strip() for ln in lines[i + 1:j]]
+            ds = _resp_parse(rows, need_time=True)
+            if len(ds) >= RESPONSE_MIN_LINES:
+                out += ds
+        i = j
+    return sorted(out)

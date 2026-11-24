@@ -4,6 +4,11 @@ Her birleştirmede (main'e giren her değişiklik) buraya en üste bir satır ek
 açıklama ve kullanıcıyı ilgilendiriyorsa ne yapması gerektiği. `bidr guncelle` güncellemeden sonra
 bu dosyanın yeni satırlarını gösterir. Bu dosyadan önceki geçmiş için `git log`.
 
+- 2026-11-24: Form yanıt tablosu / anket sonucunda belge tarihi yanıt zaman damgalarından (d1-yanit-tarihi): "Zaman
+  damgası"/"Timestamp"/"Tamamlanma saati" vb. sütunu varsa `tarih` son yanıt, `yanit_araligi` [ilk, son] ve dönem
+  yanıt aralığından (form oluşturma/başlık tarihi değil). identify araç sürümü 3: BİR KEZ `bidr next` identify'ı
+  yeniden ister (bütün belgelerin tarih alanları yeniden okunur); tarihi değişen belgelerin dönem sınıfı ve
+  çalışma adı değişebilir, audit/inceleme yeniden çalışır.
 - 2026-11-24: Farklı adla yeniden yüklenmiş, taranmamış kopya yeniden öneri üretmez (d1-metin-kopya): tarama kopyası
   grubu metin tabanlı belgelere genişletildi (yöntem `metin_kopyasi`: birincil tarih ikisinde de var ve aynı, metinde
   iki yönlü kapsama ≥ 0,9). Grupta tek paket, incelemede tek satır + "Kopyaları:"; önceden ayrı işlenmiş kopyalar

@@ -45,7 +45,7 @@ ETIKET = {
 # sayılmayan dönem işaretleri (satır görünür; yayımlanan listeye girmez: bidr/file/select.py)
 DONEM_DISI = ("donem_sonrasi", "surum_yururlukten_kalkmis", "surum_donem_sonrasi", "yururlukten_kalkmis")
 KAYNAK = {"bas_en_sik": "baş bölgede en sık tarih", "bas_ilk": "baş bölgedeki ilk tarih",
-          "metin_ilk": "metindeki ilk tarih"}
+          "metin_ilk": "metindeki ilk tarih", "yanit_zaman_damgasi": "yanıt zaman damgaları"}
 ARALIK_TABLOSU = 3      # en az bu kadar başlangıç–bitiş çifti: proje/sözleşme listesi
 _YIL = re.compile(r"(?<!\d)((?:19|20)\d\d)(?!\d)")
 _AKADEMIK = re.compile(r"(?<!\d)(20\d\d)\s*[-_/]\s*(20\d\d)(?!\d)")
@@ -181,6 +181,9 @@ def doc_time(doc: dict, dosya: str | None = None) -> dict:
         try:
             year = int(str(doc["tarih"])[:4])
             kaynak = _source_text(doc.get("tarih_kaynagi"))
+            ya = doc.get("yanit_araligi")
+            if doc.get("tarih_kaynagi") == "yanit_zaman_damgasi" and isinstance(ya, (list, tuple)) and len(ya) == 2:
+                kaynak = f"metin (yanıt zaman damgaları: {ya[0]} – {ya[1]})"
         except ValueError:
             year = None
     terms = doc.get("akademik_donem") or []
@@ -267,6 +270,8 @@ def _event_date(rule: Rule, doc: dict, dtype: str, t: dict) -> tuple[dict, str]:
                 "kaynak": (t["kaynak"] + "; " if t["kaynak"] else "") + f"aralık başlangıcı ({period})"}, ""
     if not doc.get("tarih") or not ys:
         return t, ""
+    if doc.get("tarih_kaynagi") == "yanit_zaman_damgasi":
+        return t, ""                    # form yanıt tablosu: dönemi yanıt aralığı belirledi (identify)
     if dtype in rule.en_gec_turler:
         y = max(ys)                     # duyuru: yayım tarihi değil etkinlik tarihi (en geç)
         if y > period and t["zaman"] != SONRA:

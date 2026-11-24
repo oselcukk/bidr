@@ -18,8 +18,8 @@ from bidr.common import Workspace, write_jsonl
 from . import versions
 from .catalog import UNKNOWN, Catalog, load_catalog
 from .classify import classify
-from .dates import (DateFinder, academic_terms, date_ranges, plan_span, term_year, update_dates,
-                    year_phrases)
+from .dates import (DateFinder, academic_terms, date_ranges, plan_span, response_dates, term_year,
+                    update_dates, year_phrases)
 from .naming import title, working_name
 from .text import collapse, fold
 
@@ -27,8 +27,9 @@ INVENTORY_COLUMNS = ("doc_id", "dup_of", "status", "method", "pages", "parca_gru
 SCHEMA_VERSION = 1
 # Üreten kodun sürümü (her kayda `arac_surumu`). Çıktıyı değiştiren her identify değişikliğinde
 # artırılır: `bidr status` eski sürümle üretilmiş kaydı "eski (araç sürümü değişti)" sayar ve
-# identify'ı yeniden ister. 1: alan yok (birleşik belgede `parcalar` öncesi), 2: `parcalar`.
-ARAC_SURUMU = 2
+# identify'ı yeniden ister. 1: alan yok (birleşik belgede `parcalar` öncesi), 2: `parcalar`,
+# 3: form yanıt tablosunda tarih yanıt zaman damgalarından (`yanit_araligi`).
+ARAC_SURUMU = 3
 
 
 def read_inventory(ws: Workspace) -> list[dict]:
@@ -55,10 +56,15 @@ def _format(method: str) -> str:
 
 
 def date_fields(folded: str, finder: DateFinder, type_labels: list[str], head: int,
-                period: int | None = None) -> dict:
-    """Katlanmış metnin tarih alanları (belge ya da birleşik belgenin bir parçası)."""
+                period: int | None = None, yanit: list | None = None) -> dict:
+    """Katlanmış metnin tarih alanları (belge ya da birleşik belgenin bir parçası). `yanit`: yanıt zaman
+    damgaları (`dates.response_dates`; form yanıt tablosu): varsa belgenin tarihi son yanıtın tarihi
+    (`tarih_kaynagi: yanit_zaman_damgasi`), dönemi yanıt aralığı (`yanit_araligi`) belirler; formun
+    oluşturulma/başlık tarihi değil."""
     found = finder.content_dates(folded)
     d, src, _ = finder.primary(folded, type_labels, found, head=head)
+    if yanit:
+        d, src = max(yanit), "yanit_zaman_damgasi"
     terms = academic_terms(folded, head)
     distinct = sorted({f.d.isoformat() for f in found})
     r: dict = {"tarih": d.isoformat() if d else None, "tarih_kaynagi": src, "tarihler": distinct[:30],
@@ -73,9 +79,12 @@ def date_fields(folded: str, finder: DateFinder, type_labels: list[str], head: i
     r["yil_ifadeleri"] = year_phrases(folded)[:5]
     upd = update_dates(folded)
     r["guncelleme_tarihi"] = upd[-1].isoformat() if upd else None
+    r["yanit_araligi"] = [min(yanit).isoformat(), max(yanit).isoformat()] if yanit else None
     if period is not None:
         ici, kanit = None, None
-        if d:
+        if yanit:
+            ici, kanit = min(yanit).year <= period <= max(yanit).year, "yanit_araligi"
+        elif d:
             ici, kanit = d.year == period, "tarih"
         else:
             ys = [term_year(x) for x in terms if term_year(x)]
@@ -94,14 +103,14 @@ def identify_text(raw: str, catalog: Catalog, finder: DateFinder,
     doc = r.pop("_doc")
     t = catalog.get(r["doc_type"])
     labels = t.date_labels if t else []
-    r.update(date_fields(doc.folded, finder, labels, catalog.regions["bas"], period))
+    r.update(date_fields(doc.folded, finder, labels, catalog.regions["bas"], period, response_dates(raw)))
     # birleşik/derleme belge: parça başına tarih (bidr/identify/parca.py; dönem kuralı eşleşme
     # başına alıntının parçasının tarihini kullanır)
     pages = raw.split("\f")
     if len(pages) > 1:
         from .parca import parts_record
         r["parcalar"] = parts_record(pages, lambda part: date_fields(
-            fold(collapse(part)), finder, labels, catalog.regions["bas"], period))
+            fold(collapse(part)), finder, labels, catalog.regions["bas"], period, response_dates(part)))
     else:
         r["parcalar"] = []
     label = t.label if t else "Bilinmeyen Belge"
