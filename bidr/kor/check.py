@@ -12,6 +12,8 @@ varsayılan hat eskisi gibi biter. İstenince:
                Bölümün daha önce olduğu gibi kabul ettiği metne (verify/write karar `kabul`, aynı içerik) düşen metin
                bulgusu kendiliğinden düzeltilmez: "Kabul edilmiş metne öneri" olarak bölüm kararına gelir (hattı
                tutmaz); kabul → küçük düzeltme turu, ret → metin aynen kalır.
+               Metin bu denetimin düzeltmesiyle (kabul edilen başka öneri/OD) yeniden yazılınca karar verilmemiş
+               öneriler `eskidi` olur (olağan düzeltmeye düşmez).
 """
 from __future__ import annotations
 
@@ -68,8 +70,8 @@ def duzelt_tamam(c: Ctx) -> Check:
     count: dict[str, int] = {}
     for d, _ in st.values():
         count[d] = count.get(d, 0) + 1
-    prog = {k: count.get(k, 0) for k in ("duzeltilecek", "duzeltildi", "karar_bekliyor", "kabul", "ret", "bilgi",
-                                          "dogrulanamadi")}
+    prog = {k: count.get(k, 0) for k in ("duzeltilecek", "duzeltildi", "karar_bekliyor", "kabul", "ret", "eskidi",
+                                          "bilgi", "dogrulanamadi")}
     crit, areas = targets(ws)
     kb = KD.karar_bekleyen(ws, js)
     uy = []

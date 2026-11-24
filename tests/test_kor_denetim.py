@@ -854,3 +854,82 @@ def test_write_decision_acceptance_also_protects(ws):
     # `write karar … cikar` kabul sayılmaz (çıkarılan metin zaten düzeltmeye girmez)
     (ws / KR.HUMAN).write_text(json.dumps({**rec, "karar": "cikar"}, ensure_ascii=False) + "\n", encoding="utf-8")
     assert KD.human_accept(w, "B.1.1", t) is None
+
+
+def test_undecided_proposal_expires_when_denetim_rewrites_text(ws):
+    """Aynı metinde bir öneri kabul edilip metin denetim düzeltmesiyle yeniden yazılınca, karar verilmemiş öbür öneri
+    olağan düzeltmeye düşmez: `eskidi` olur (eski metne dayanır), bekleyen önerilerden düşer, karar alınmaz."""
+    _verify_kabul(ws)
+    _denetle(ws)
+    w = Workspace(ws)
+    KD.decide(ws, "B.1.1-1", "kabul")
+    D.prepare(ws)
+    # yazar yalnız kabul edilen öneriyi düzeltir; B.1.1-3'ün alıntısı ("toplam iş yükü 150 …") metinde kalır
+    answer(ws, "B.1.1", GOOD | {"paragraflar": [GOOD["paragraflar"][0],
+                                                 {"metin": "Ders bilgi formlarında AKTS kredisinin toplam iş yükünün "
+                                                           "25'e bölümü olduğu açıkça belirtilmektedir [2_OD3]. Örneğin "
+                                                           "incelenen formda toplam iş yükü 150 olarak verilmiştir "
+                                                           "[2_OD3]."}]})
+    assert W.apply(ws)["islenen"] == 1
+    js = KD.load(w)
+    st = KD.statuses(w, js)
+    assert st["B.1.1-1"][0] == "duzeltildi"
+    assert st["B.1.1-3"] == ("eskidi", KD.ESKIDI_NOTU)
+    assert KD.kabul_metni_durum(w, js)["B.1.1-3"] == "eskidi" and "B.1.1-3" not in KD.kabul_metni_ids(w, js)
+    assert "B.1.1-3" not in {x["bulgu_id"] for x in KD.karar_bekleyen(w)}
+    assert KD.notes(w, "B.1.1") == []
+    crit, _ = D.targets(w)
+    assert crit == []
+    with pytest.raises(KD.DenetimHatasi, match="eski metne dayanıyordu"):
+        KD.decide(ws, "B.1.1-3", "kabul")
+    v = KD.view_dict(w, js)
+    f = {x["id"]: x for x in v["bulgular"]}
+    assert f["B.1.1-3"]["durum"] == "eskidi" and f["B.1.1-3"]["oneri_turu"] == KD.KABUL_METNI
+    assert v["karar_bekleyen_sayisi"] == 2                     # yalnız OD ve belge önerisi
+    assert "eskidi (metin denetim düzeltmesiyle değişti)" in KD.write_md(w, v).read_text(encoding="utf-8")
+    assert _check(ws, "duzelt").ilerleme["eskidi"] == 1
+    # sonradan denetim dışı bir yeniden yazım (yeni rapor turu; düzeltme izi metinde taşınır) eskimiş öneriyi açmaz
+    t = W.load_text(w, "B.1.1")
+    t["onceki_yila_gore"] = "Geçen yıla göre süreç belgelendi."
+    (ws / "texts/B.1.1.json").write_text(json.dumps(t, ensure_ascii=False), encoding="utf-8")
+    assert KD.statuses(w, js)["B.1.1-3"][0] == "eskidi"
+
+
+def test_accepted_od_rewrite_expires_text_proposals(ws):
+    """Kabul edilen OD yüzünden kabul edilmiş metin yeniden yazılınca karar verilmemiş metin önerileri eskir."""
+    _verify_kabul(ws)
+    _denetle(ws)
+    w = Workspace(ws)
+    KD.decide(ws, "B.1.1-od", "kabul")
+    D.prepare(ws)
+    pkg = json.loads((ws / "work/write/B.1.1.json").read_text(encoding="utf-8"))
+    assert pkg["meta"]["duzeltme"]["bulgular"] == ["B.1.1-od"]      # metin önerileri nota girmez
+    # OD notuyla yeniden yazım: metin önerilerinin alıntıları metinde kalır (yazar onlara dokunmadı)
+    answer(ws, "B.1.1", {"paragraflar": [GOOD["paragraflar"][0],
+                                         {"metin": "Ders bilgi formlarında AKTS kredisinin toplam iş yükünün 25'e "
+                                                   "bölümü olduğu belirtilmektedir [2_OD3]. Örneğin incelenen formda "
+                                                   "toplam iş yükü 150 olarak verilmiştir [2_OD3]. Süreç geliştirilme "
+                                                   "aşamasındadır [1_OD2]."}], "onceki_yila_gore": ""})
+    assert W.apply(ws)["islenen"] == 1
+    t = W.load_text(w, "B.1.1")
+    assert KD.trace_ids(w, t) == ["B.1.1-od"] and W.text_sha(t) != KD.load(w)["metin_sha"]["B.1.1"]
+    st = KD.statuses(w, KD.load(w))
+    assert st["B.1.1-1"][0] == "eskidi" and st["B.1.1-3"][0] == "eskidi"
+    assert {x["bulgu_id"] for x in KD.karar_bekleyen(w)} == {"B.1.1-k1"}
+    crit, _ = D.targets(w)
+    assert crit == []
+
+
+def test_acceptance_stale_by_non_denetim_change_after_audit(ws):
+    """Denetimden sonra metin denetim dışı bir nedenle (yeni rapor turu; düzeltme izi yok) değişirse kabul eskir ve
+    olağan düzeltme sürer (eskidi değil)."""
+    _verify_kabul(ws)
+    _denetle(ws)
+    w = Workspace(ws)
+    t = W.load_text(w, "B.1.1")
+    t["onceki_yila_gore"] = "Geçen yıla göre süreç belgelendi."
+    (ws / "texts/B.1.1.json").write_text(json.dumps(t, ensure_ascii=False), encoding="utf-8")
+    st = KD.statuses(w, KD.load(w))
+    assert st["B.1.1-1"][0] == "duzeltilecek" and st["B.1.1-3"][0] == "duzeltilecek"
+    crit, _ = D.targets(w)
+    assert crit == ["B.1.1"]

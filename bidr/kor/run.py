@@ -26,7 +26,9 @@ karar    `bidr denetim karar <bulgu_id> kabul|ret [--not]` → `kor-denetim-kara
          `write karar … kabul`; kayıt metnin içeriğine, `metin_sha`, bağlı) düşen metin bulgusu kendiliğinden
          düzeltilmez: "Kabul edilmiş metne öneri" (`oneri_turu: kabul_metni`) olarak bölüm kararına gelir;
          kabul → küçük düzeltme turu (duzelt prepare → write → verify …), ret → metin aynen kalır. Metin
-         sonradan başka bir nedenle değiştiyse kabul eskimiştir: olağan düzeltme sürer.
+         sonradan denetim dışı bir nedenle değiştiyse kabul eskimiştir: olağan düzeltme sürer. Metin bu
+         denetimin düzeltmesiyle (kabul edilen başka öneri ya da OD) yeniden yazılınca karar verilmemiş öneriler
+         `eskidi` olur: olağan düzeltmeye düşmez, karar beklemez (ikinci denetim yeniden bakar).
 ozet     dosya + kararlar + düzeltme durumu (bulgu başına `durum`).
 
 Tek tur: denetim → düzelt → doğrulama. Otomatik ikinci denetim yok; `prepare --ikinci` (ilk turun
@@ -65,6 +67,8 @@ KARAR = ("kabul", "ret")
 # Bölümün daha önce olduğu gibi kabul ettiği metne (`verify karar … kabul` / `write karar … kabul`, aynı içerik)
 # düşen metin bulgusu kendiliğinden düzeltilmez: bölüm kararı bekleyen öneri olur (OD/kanıt önerileri gibi).
 KABUL_METNI = "kabul_metni"
+ESKIDI_NOTU = ("metin bu denetimin düzeltmesiyle değişti; öneri eski metne dayanıyordu (isterseniz ikinci denetim "
+               "yeniden bakar)")
 ONERI_ADLARI = {"od": "OD önerisi", "kanit": "Kullanılmamış belge önerisi",
                 KABUL_METNI: "Kabul edilmiş metne öneri"}
 KISISEL_VERI = "Bu çıktı belge alıntıları içerir; kişisel veri bulunabilir, kanıt paketi gibi paylaşmayın."
@@ -775,23 +779,36 @@ def human_accept(ws: Workspace, key: str, t: dict | None) -> dict | None:
     (write-insan.jsonl). Metin sonradan başka bir nedenle değiştiyse kabul eskimiştir: None."""
     if is_yon(key) or not t:
         return None
+    return _kabul_kaydi(ws, key, W.text_sha(t))
+
+
+def _kabul_kaydi(ws: Workspace, key: str, sha: str | None) -> dict | None:
+    if not sha:
+        return None
     from bidr.verify import run as V
     from bidr.write import karar as KR
-    sha = W.text_sha(t)
     for r in reversed(V.load_human(ws) + KR.load_human(ws)):
         if r.get("olcut") == key and r.get("karar") == "kabul" and r.get("metin_sha") == sha:
             return r
     return None
 
 
-def kabul_metni_ids(ws: Workspace, js: dict) -> set[str]:
-    """Bölümün kabul ettiği (güncel içerikteki) metne düşen, henüz düzeltilmemiş doğrulanmış metin bulguları:
-    kendiliğinden düzeltilmez, bölüm kararına öneri olarak gelir (`Kabul edilmiş metne öneri`)."""
+def kabul_metni_durum(ws: Workspace, js: dict) -> dict[str, str]:
+    """Kabul edilmiş metne öneriler: {bulgu_id: "acik" | "eskidi"}.
+    acik    bölümün kabul ettiği (güncel içerikteki) metne düşen, henüz düzeltilmemiş doğrulanmış metin bulgusu:
+            kendiliğinden düzeltilmez, bölüm kararına öneri olarak gelir;
+    eskidi  denetim anında kabul edilmiş metne düşmüştü, ama metin bu denetimin düzeltmesiyle (kabul edilen başka
+            bir öneri ya da OD; metinde bu denetimin `duzeltme` izi var) yeniden yazıldı ve bulgu o düzeltmeye
+            girmedi: öneri eski metne dayanır, kapanır (olağan düzeltmeye düşmez; ikinci denetim yeniden bakar).
+    Metin denetim dışı bir nedenle (yeni rapor turu) değiştiyse kabul eskimiştir: bulgu burada yer almaz, olağan
+    düzeltme sürer."""
     if int(js.get("tur") or 1) >= 2:
-        return set()
+        return {}
     recs: dict[str, dict | None] = {}
     korunan: dict[str, bool] = {}
-    out = set()
+    ilk: dict[str, bool] = {}
+    sha0 = js.get("metin_sha") or {}
+    out: dict[str, str] = {}
     for f in js.get("bulgular") or []:
         if f["sinif"] != "metin" or f.get("dogrulama") != "dogrulandi":
             continue
@@ -801,19 +818,29 @@ def kabul_metni_ids(ws: Workspace, js: dict) -> set[str]:
         if hedef not in recs:
             recs[hedef] = _record(ws, hedef)
             korunan[hedef] = human_accept(ws, hedef, recs[hedef]) is not None
+            ilk[hedef] = _kabul_kaydi(ws, hedef, sha0.get(hedef)) is not None   # denetim anındaki metin kabul edilmişti
         t = recs[hedef]
-        if (korunan[hedef] and f["id"] not in consumed(js, t)
-                and _q(f["alinti"], _record_text(hedef, t))):
-            out.add(f["id"])
+        if f["id"] in consumed(js, t):
+            continue
+        if korunan[hedef] and _q(f["alinti"], _record_text(hedef, t)):
+            out[f["id"]] = "acik"
+        elif (ilk[hedef] and t and W.text_sha(t) != sha0.get(hedef) and trace_ids(ws, t, js)):
+            out[f["id"]] = "eskidi"
     return out
 
 
+def kabul_metni_ids(ws: Workspace, js: dict) -> set[str]:
+    """Karar bekleyebilen (açık) kabul edilmiş metne öneriler (`kabul_metni_durum` "acik")."""
+    return {k for k, v in kabul_metni_durum(ws, js).items() if v == "acik"}
+
+
 def statuses(ws: Workspace, js: dict, key: str | None = None) -> dict[str, tuple[str, str]]:
-    """{bulgu_id: (durum, not)} — duzeltilecek | duzeltildi | karar_bekliyor | kabul | ret | dogrulanamadi | bilgi.
+    """{bulgu_id: (durum, not)} — duzeltilecek | duzeltildi | karar_bekliyor | kabul | ret | eskidi | dogrulanamadi |
+    bilgi.
     `key` verilirse yalnız o hedefin (ölçüt ya da `yon_X`) bulguları."""
     kar = load_kararlar(ws, js)
     olcum = int(js.get("tur") or 1) >= 2
-    korunan = kabul_metni_ids(ws, js)
+    km = kabul_metni_durum(ws, js)
     recs: dict[str, dict | None] = {}
     out = {}
     audit = None
@@ -827,10 +854,16 @@ def statuses(ws: Workspace, js: dict, key: str | None = None) -> dict[str, tuple
         if olcum:
             out[fid] = ("bilgi", "ikinci denetim ölçümdür: bulgular kendiliğinden düzeltilmez")
             continue
-        if f["sinif"] == "metin" and fid in korunan:
-            # bölümün olduğu gibi kabul ettiği metin: düzeltme bölümün kararıyla (kabul → küçük tur; ret → aynen)
+        if f["sinif"] == "metin" and fid in km:
+            # bölümün olduğu gibi kabul ettiği metin: düzeltme bölümün kararıyla (kabul → küçük tur; ret → aynen);
+            # metin bu denetimin düzeltmesiyle değiştiyse karar verilmemiş öneri eskir (olağan düzeltmeye düşmez)
             k = kar.get(fid)
-            out[fid] = (k["karar"], "") if k else ("karar_bekliyor", "")
+            if k:
+                out[fid] = (k["karar"], "")
+            elif km[fid] == "eskidi":
+                out[fid] = ("eskidi", ESKIDI_NOTU)
+            else:
+                out[fid] = ("karar_bekliyor", "")
             continue
         if f["sinif"] == "metin":
             hedef = target(f)   # `key` (süzgeç) ezilmesin: yoksa ilk hedeften sonrakiler atlanır
@@ -874,7 +907,7 @@ def view_dict(ws: Workspace, js: dict) -> dict:
     """`bidr denetim ozet --json`: dosya + bulgu başına güncel durum ve karar."""
     st = statuses(ws, js)
     kar = load_kararlar(ws, js)
-    korunan = kabul_metni_ids(ws, js)
+    korunan = kabul_metni_durum(ws, js)
     out = {k: v for k, v in js.items() if k not in ("metin_sha", "yon_sha", "paket_izi")}
     out["olcutler"] = [{k: v for k, v in r.items() if k != "cumleler"} for r in js.get("olcutler") or []]
     fs = []
@@ -933,8 +966,12 @@ def decide(ws_root: Path, bulgu_id: str, karar: str, note: str = "") -> dict:
     f = next((x for x in js.get("bulgular") or [] if x["id"] == bulgu_id), None)
     if f is None:
         raise DenetimHatasi(f"bulgu yok: {bulgu_id}")
-    if f["sinif"] == "metin" and bulgu_id not in kabul_metni_ids(ws, js):
-        raise DenetimHatasi(f"{bulgu_id} bir metin bulgusu: kendiliğinden düzeltilir, karar gerekmez")
+    if f["sinif"] == "metin":
+        km = kabul_metni_durum(ws, js).get(bulgu_id)
+        if km == "eskidi":
+            raise DenetimHatasi(f"{bulgu_id}: {ESKIDI_NOTU}; karar verilemez")
+        if km != "acik":
+            raise DenetimHatasi(f"{bulgu_id} bir metin bulgusu: kendiliğinden düzeltilir, karar gerekmez")
     if f.get("dogrulama") != "dogrulandi":
         raise DenetimHatasi(f"{bulgu_id} doğrulanamadı ({f.get('dogrulama_nedeni')}): karar verilemez")
     if int(js.get("tur") or 1) >= 2:
@@ -1192,7 +1229,8 @@ def duzelt_acik(ws: Workspace) -> list[str]:
 # -- insan raporu ---------------------------------------------------------------------------------------
 
 DURUM_AD = {"duzeltilecek": "düzeltilecek", "duzeltildi": "düzeltildi", "karar_bekliyor": "bölüm kararı bekliyor",
-            "kabul": "kabul edildi", "ret": "reddedildi", "dogrulanamadi": "doğrulanamadı", "bilgi": "bilgi"}
+            "kabul": "kabul edildi", "ret": "reddedildi",
+            "eskidi": "eskidi (metin denetim düzeltmesiyle değişti)", "dogrulanamadi": "doğrulanamadı", "bilgi": "bilgi"}
 
 
 def write_md(ws: Workspace, v: dict) -> Path:

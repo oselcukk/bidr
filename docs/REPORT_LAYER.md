@@ -617,8 +617,8 @@ denetimi ister; istenmezse `kor_denetim` ve `duzelt` `atlandi`, hat eskisi gibi 
   `cikar` kararlı metin düzeltmeye girmez. Bölümün olduğu gibi kabul ettiği metne (`verify karar … kabul`
   ya da `write karar … kabul`; insan kaydı metnin içeriğine, `metin_sha`, bağlı) düşen metin bulgusu
   kendiliğinden girmez: "Kabul edilmiş metne öneri" (`oneri_turu: kabul_metni`) olarak bölüm kararına
-  gelir; kabul edilirse not olarak girer (küçük tur), reddedilirse metin aynen kalır. Metin sonradan başka
-  bir nedenle değiştiyse kabul eskimiştir, olağan düzeltme sürer. Yazım kuralları, kod denetimi ve bağımsız doğrulama aynıdır; hat write → verify → yonler →
+  gelir; kabul edilirse not olarak girer (küçük tur), reddedilirse metin aynen kalır. Metin sonradan denetim
+  dışı bir nedenle (yeni rapor turu) değiştiyse kabul eskimiştir, olağan düzeltme sürer. Metin bu denetimin düzeltmesiyle (kabul edilen başka öneri ya da OD) yeniden yazılınca karar verilmemiş öneriler `eskidi` olur: olağan düzeltmeye düşmez, karar beklemez (ikinci denetim yeniden bakar). Yazım kuralları, kod denetimi ve bağımsız doğrulama aynıdır; hat write → verify → yonler →
   render → denetle'ye döner. Metin kaydına `duzeltme: {denetim, tur, bulgular}` izi geçer; iz bulguyu
   "düzeltildi" sayar. Not `write/yonler prepare`'de de eklenir, iz yeniden yazımlarda taşınır.
 - **Bölüm kararı:** `bidr denetim karar -w WS <bulgu_id> kabul|ret [--not]` → `kor-denetim-kararlar.jsonl`

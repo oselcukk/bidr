@@ -360,7 +360,8 @@ rapor aşaması), 30–40 dk sürebilir, puan iç ölçümdür (aynı model aile
   bulgularını işleme.
 - Kullanıcının daha önce olduğu gibi kabul ettiği metne (`verify karar`/`write karar` `kabul`) düşen metin
   bulgusu kendiliğinden düzeltilmez: "Kabul edilmiş metne öneri" olarak aynı karar komutuyla kullanıcıya
-  gelir (kabul → küçük düzeltme turu, ret → metin aynen kalır).
+  gelir (kabul → küçük düzeltme turu, ret → metin aynen kalır). Metin denetim düzeltmesiyle yeniden yazılınca
+  karar verilmemiş öneriler `eskidi` olur; onlara karar sorma.
 - İkinci denetim (`--ikinci`) yalnız kullanıcı isterse; ölçümdür, düzeltme yapılmaz.
 - `denetle` (biçim denetimi, `denetim.json`) ile karıştırma.
 
