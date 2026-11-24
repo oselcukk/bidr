@@ -267,7 +267,7 @@ yeniden yazmak isteğe bağlıdır. Geçersiz cevabı taze bir ajan yeniden yaza
 için `bidr next` "KULLANICI gerekli" ve "Karar bekleyen:" listesi verir. DUR: son cevabı ve kod
 denetiminin bulgularını kullanıcıya göster. Karar kullanıcının: `bidr write karar -w WS <ölçüt>
 cikar` (rapora girmez) / `tekrar` (bir tur daha) / `kabul` (yalnız bütün bulgular üslup türündeyse:
-abartı, slogan, koçluk, tahmin, OD dili; atıf/alıntı bulgusunda komut reddeder; metin yine
+abartı, slogan, ODn dili; atıf/alıntı bulgusunda komut reddeder; metin yine
 doğrulanır). Bu komutu yalnız kullanıcı söyleyince çalıştır.
 
 ## Doğrulama (verify) ve yeniden yazım döngüsü

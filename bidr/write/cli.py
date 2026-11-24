@@ -116,7 +116,7 @@ def register(sub):
     a.set_defaults(func=_cmd)
     a = act.add_parser("karar", help="KULLANICININ kararı, yeniden yazımlardan sonra kod denetimini geçemeyen "
                                      "metin için: cikar (rapora girmez) | tekrar (bir yeniden yazım turu daha) | "
-                                     "kabul (yalnız üslup bulguları: abartı/slogan/koçluk/tahmin/OD dili; metin "
+                                     "kabul (yalnız üslup bulguları: abartı/slogan/ODn dili; metin "
                                      "doğrulamaya gider) → write-insan.jsonl")
     a.add_argument("--workspace", "-w", required=True)
     a.add_argument("olcut")

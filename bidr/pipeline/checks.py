@@ -703,7 +703,7 @@ def write_tamam(c: Ctx) -> Check:
                                    f"{karar} <ölçüt> cikar   # KULLANICI derse: metin rapora girmez",
                                    f"{karar} <ölçüt> tekrar  # KULLANICI derse: bir yeniden yazım turu daha",
                                    f"{karar} <ölçüt> kabul   # KULLANICI derse; yalnız bütün bulgular üslup türündeyse "
-                                   "(abartı/slogan/koçluk/tahmin/OD dili); atıf/alıntı bulgusunda reddedilir"],
+                                   "(abartı/slogan/ODn dili); atıf/alıntı bulgusunda reddedilir"],
                          neden=f"{len(kb)} ölçütün metni yeniden yazımlardan sonra kod denetimini geçemedi: "
                                "insan kararı gerekli (" + ", ".join(
                                    f"{x['olcut']}: deneme {x['deneme']}/{x['sinir'] + 1}"

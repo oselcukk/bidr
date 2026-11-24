@@ -19,7 +19,7 @@ bu dosyanın yeni satırlarını gösterir. Bu dosyadan önceki geçmiş için `
   yeniden yazımdan sonra hâlâ geçemeyen ölçütte `bidr next` `kim: insan` ve `karar_bekleyen` listesi verir (JSON'da
   `sonraki.karar_bekleyen`: ölçüt, deneme, sınır, sorunlar, kabul_edilebilir). Yeni komut `bidr write karar -w WS
   <ölçüt> cikar|tekrar|kabul [--not]` (`write-insan.jsonl`); `kabul` yalnız üslup bulgularında (abartı/slogan/
-  koçluk/tahmin/OD dili), atıf/alıntı/bilinmeyen atıf bulgusunda reddedilir; kabul edilen metin yine doğrulanır.
+  ODn dili; koçluk/tahmin/meta ve açık OD anışı değil), atıf/alıntı/bilinmeyen atıf bulgusunda reddedilir; kabul edilen metin yine doğrulanır.
   Panel bu listeyi gösteren sürümle birlikte güncellenmeli.
 - 2026-11-24: Maskeleme önbelleğinin kod izi daraltıldı (d1-kod-izi): yalnız sonucu belirleyen kod (tespit/kapatma/
   biçim modülleri, run.py'nin sonuç fonksiyonları) sözdizimi ağacından izlenir; ilerleme göstergesi (`suanki`)

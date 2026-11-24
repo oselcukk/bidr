@@ -12,14 +12,17 @@ Kararlar (`write-insan.jsonl`, son geçemeyen cevaba bağlı):
   `insan_karari: cikar` yazılır; doğrulama kaydına (`verify.jsonl`) `asama: yazim_kod` reddi girer,
   `bidr verify` bu metni kullanıcı kararıyla çıkarılmış sayar (yeniden yazıma göndermez).
 - `tekrar`: bir yeniden yazım turu daha (ajan GECERSIZ.md'deki gerekçeyle yeniden yazar).
-- `kabul`: yalnız bütün bulgular üslup türündeyse (`USLUP`: abartı, slogan, koçluk, tahmin dili ve OD
-  dili `od_asimi`); atıf, alıntı, bilinmeyen atıf, gelecek vaadi, dönem, içerik bulgularından biri bile
-  varsa reddedilir. Metin `texts/<ölçüt>.json` olur (`durum: taslak`, `yazim_karari`); bağımsız
+- `kabul`: yalnız bütün bulgular üslup türündeyse (yasak ifade: abartı, slogan; `od_asimi`ın rubrik
+  dili "ODn dili"); atıf, alıntı, bilinmeyen atıf, gelecek vaadi, dönem, içerik bulgularından, açık OD
+  anışından ("OD4" > önerilen) ya da koçluk/tahmin/meta yasak ifadesinden biri bile varsa reddedilir
+  (koçluk "-malıdır/öneririz" öğüt ve plan dili, tahmin "muhtemelen" kanıtsız çıkarım; panel
+  `app/dogrulama.py: uslup_mu` aynı kuralı uygular). Metin `texts/<ölçüt>.json` olur (`durum: taslak`, `yazim_karari`); bağımsız
   doğrulama (`bidr verify`) yine yapılır, kod denetimi yalnız kabul edilen üslup bulgularını yok sayar.
 """
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from bidr.common import Workspace, read_jsonl
@@ -29,15 +32,17 @@ from . import packages as K
 DENEMELER = "write-kod-denemeleri.json"
 HUMAN = "write-insan.jsonl"
 KARARLAR = ("cikar", "tekrar", "kabul")
-USLUP_TURLERI = ("abartı", "slogan", "koçluk", "tahmin")      # yasak_ifade türleri (text.YASAK)
-USLUP_KODLARI = ("od_asimi",)                                  # OD dili
+USLUP_TURLERI = ("abartı", "slogan")      # yasak_ifade türleri (text.YASAK); koçluk/tahmin/meta değil
+OD_DILI = re.compile(r"\bOD\d dili\b")     # od_asimi: rubrik dili ("“sürdürülebilir” OD5 dili; önerilen OD3")
 
 
 def uslup_mu(issue: dict) -> bool:
-    """Bulgu yalnız üslup mu (insan kabulüyle geçebilir)."""
+    """Bulgu yalnız üslup mu (insan kabulüyle geçebilir). Panel `app/dogrulama.py: uslup_mu` ile aynı kural:
+    yasak ifadenin abartı/slogan türü ya da üst OD'nin rubrik dili; açık OD anışı ("“od4” > önerilen OD3")
+    düzey iddiasıdır, üslup değil."""
     kod = issue.get("kod")
-    if kod in USLUP_KODLARI:
-        return True
+    if kod == "od_asimi":
+        return bool(OD_DILI.search(str(issue.get("ayrinti") or "")))
     if kod == "yasak_ifade":
         return str(issue.get("ayrinti") or "").split(":", 1)[0].strip() in USLUP_TURLERI
     return False
@@ -145,7 +150,7 @@ def karar(ws_root: Path, olcut: str, k: str, note: str = "") -> dict:
     son = e["denemeler"][-1]
     if k == "kabul" and not b[olcut]["kabul_edilebilir"]:
         diger = sorted({i["kod"] for i in son["sorunlar"] if not uslup_mu(i)})
-        raise ValueError(f"{olcut}: kabul yalnız üslup bulgularında (abartı/slogan/koçluk/tahmin/OD dili) "
+        raise ValueError(f"{olcut}: kabul yalnız üslup bulgularında (abartı/slogan/ODn dili) "
                          f"geçerli; bu cevapta {', '.join(diger)} var (atıf/alıntı/içerik kusuru): "
                          "`tekrar` ya da `cikar`")
     rec = {"olcut": olcut, "karar": k, "istem_sha": e["istem_sha"], "cevap_sha": son["cevap_sha"],

@@ -288,8 +288,8 @@ için `bidr next` `kim: insan` ve `karar_bekleyen` listesi (ölçüt, deneme, s�
 `kabul_edilebilir`) verir. Kullanıcı `bidr write karar -w WS <ölçüt> cikar|tekrar|kabul` ile karar
 verir (`write-insan.jsonl`): `cikar` son cevabı `durum: reddedildi`, `insan_karari: cikar` metni yapar
 ve doğrulama kaydına `asama: yazim_kod` reddi yazar (verify yeniden yazıma göndermez, render basmaz);
-`tekrar` bir tur ekler; `kabul` yalnız bütün bulgular üslup türündeyse (yasak ifade: abartı, slogan,
-koçluk, tahmin; OD dili `od_asimi`) geçerlidir, metin `durum: taslak` olur ve bağımsız doğrulamaya
+`tekrar` bir tur ekler; `kabul` yalnız bütün bulgular üslup türündeyse (yasak ifade: abartı, slogan;
+`od_asimi`ın "ODn dili"; koçluk/tahmin/meta ve açık OD anışı değil) geçerlidir, metin `durum: taslak` olur ve bağımsız doğrulamaya
 gider (verify'ın kod denetimi yalnız kabul edilen üslup bulgularını yok sayar).
 
 ## yonler → `yonler/<alan>.json` (Güçlü / Gelişmeye Açık Yönler)

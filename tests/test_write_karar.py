@@ -24,10 +24,10 @@ def _out(*paras: str) -> dict:
     return {"paragraflar": [{"metin": p} for p in paras], "onceki_yila_gore": ""}
 
 
-# yalnız üslup bulguları (abartı, slogan, koçluk, tahmin): her deneme farklı cevap
+# yalnız üslup bulguları (abartı, slogan, ODn dili): her deneme farklı cevap
 USLUP = [_out(P1.replace("süreç tanımlanmıştır", "süreç başarıyla tanımlanmıştır"), P2),
          _out(P1.replace("süreç tanımlanmıştır", "süreç titizlikle tanımlanmıştır"), P2),
-         _out(P1.replace("süreç tanımlanmıştır", "süreç muhtemelen özenle tanımlanmıştır"), P2)]
+         _out(P1.replace("süreç tanımlanmıştır", "süreç son derece özenle tanımlanmıştır"), P2)]
 # atıf kusuru (bilinmeyen atıf) + üslup
 ATIF = [_out(P1.replace("[1_OD2]", "[9_OD2]"), P2),
         _out(P1.replace("[1_OD2]", "[8_OD2]"), P2),
@@ -99,7 +99,7 @@ def test_kabul_yalniz_uslupte_ve_dogrulamaya_gider(tmp_path):
     assert r["karar"] == "kabul" and r["metin_sha"]
     t = json.loads((ws / "texts/B.1.1.json").read_text(encoding="utf-8"))
     assert t["durum"] == "taslak" and t["yazim_karari"]["karar"] == "kabul"
-    assert "muhtemelen" in t["paragraflar"][0]["metin"]
+    assert "son derece" in t["paragraflar"][0]["metin"]
     assert t["kaynak"]["model"] == "test:ajan"
     assert not (ws / "work/write/GECERSIZ.md").exists()
     assert C.write_tamam(_ctx(ws)).bitti
@@ -177,3 +177,17 @@ def test_next_cikti_karar_bekleyen(tmp_path, capsys):
         ST.evaluate = orig
     out = capsys.readouterr().out
     assert "Karar bekleyen:" in out and "B.1.1 (deneme 3, kabul edilebilir)" in out
+
+
+def test_uslup_kurali_panel_ile_ayni():
+    """Panel `app/dogrulama.py: uslup_mu` ile aynı tablo (panel tests/test_yazim_karari.py aynı örnekleri sınar).
+    Panel kabulü bu sınıflamaya göre sunar; bidr `write karar … kabul` aynı kuralla doğrular."""
+    ornek = [("yasak_ifade", "abartı: “başarıyla”", True), ("yasak_ifade", "slogan: “!”", True),
+             ("yasak_ifade", "koçluk: “unutmayın”", False), ("yasak_ifade", "tahmin: “muhtemelen”", False),
+             ("yasak_ifade", "meta: “yapay zekâ ile yazılmıştır”", False),
+             ("od_asimi", "“sürdürülebilir” OD5 dili; önerilen OD3", True),
+             ("od_asimi", "“od4” > önerilen OD3", False),
+             ("bilinmeyen_atif", "[7_OD2] kanıt listesinde yok", False), ("gelecek_vaat", "“yapılacaktır”", False),
+             ("kanitsiz_ust_duzey", "“izlenmektedir” izleme/iyileştirme iddiası OD4+ kanıt atfı ister", False)]
+    for kod, ayrinti, beklenen in ornek:
+        assert KR.uslup_mu({"kod": kod, "ayrinti": ayrinti}) is beklenen, (kod, ayrinti)
