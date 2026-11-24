@@ -731,6 +731,10 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
         r = backend.render_task(TASK, inputs)
         t = load(ws, alan)
         cur = t and t.get("girdi_sha") == meta["girdi_sha"]
+        from bidr.kor import run as KD          # kör denetimin bekleyen düzeltme notu (bidr/kor/run.py)
+        dz_sec, dz = KD.duzeltme(ws, f"{KD.YON}{alan}", t)
+        if dz:
+            meta["duzeltme"] = dz
         if rejected_only:
             if alan not in rej or not cur:
                 continue
@@ -744,11 +748,15 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
             st["tur"][alan] = tur + 1
         else:
             kay = (t or {}).get("kaynak") or {}
-            if (cur and not redo and (kay.get("temel_istem_sha") or kay.get("istem_sha")) == K.sha(r["prompt"])
+            if (cur and not redo and not dz_sec
+                    and (kay.get("temel_istem_sha") or kay.get("istem_sha")) == K.sha(r["prompt"])
                     and str(kay.get("gorev_surumu")) == str(r["version"])):
                 st["zaten_tamam"] += 1
                 continue
             meta.update({"tur": int((t or {}).get("tur") or 0) if cur else 0, "temel_istem_sha": K.sha(r["prompt"])})
+        if dz_sec:
+            r = {**r, "prompt": r["prompt"] + "\n\n" + dz_sec}
+            st.setdefault("duzeltme", []).append(alan)
         st["paket"] += 1
         st["yeni"] += K.write_pkg(d, alan, r, meta, force=bool(redo and t))
     st["bekleyen"] = K.write_readme(d, task=TASK, version=W.task_version(TASK), cmd="yonler", rule=RULE,
@@ -788,7 +796,8 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", backend: W.Backen
                            for x in out["gelisme"]],
                "kaynak": {"model": model, "gorev_surumu": str(pkg["surum"]), "istem_sha": pkg["istem_sha"],
                           "temel_istem_sha": meta.get("temel_istem_sha") or pkg["istem_sha"],
-                          "cevap_sha": K.sha(raw), "zaman": K.now()}}
+                          "cevap_sha": K.sha(raw), "zaman": K.now()},
+               **({"duzeltme": meta["duzeltme"]} if meta.get("duzeltme") else {})}
         issues = check(rec, meta)
         if issues:
             st["gecersiz"][alan] = [f"{i['yer']} {i['kod']}: {i['ayrinti']}" for i in issues]

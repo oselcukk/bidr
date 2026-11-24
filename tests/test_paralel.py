@@ -77,7 +77,7 @@ def test_every_model_stage_declares_parallelism():
             assert isinstance(s["paralel"]["bolunebilir"], bool) and s["paralel"]["gerekce"].strip(), sid
     assert {k for k, s in st.items() if (s.get("paralel") or {}).get("bolunebilir")} == {
         "transcribe", "describe", "karar_kaba", "karar_ince", "belirsiz_okuma", "ikinci_arama", "name", "write",
-        "verify"}
+        "verify", "kor_denetim"}
     assert st["yonler"]["paralel"]["bolunebilir"] is False
     assert st["write"]["paralel"]["grup"] == "alt_bolum"
 

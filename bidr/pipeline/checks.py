@@ -1020,6 +1020,16 @@ def _describe_tamam(c: Ctx) -> Check:
     return describe_tamam(c)
 
 
+def _kor_denetim_tamam(c: Ctx) -> Check:
+    from bidr.kor.check import kor_denetim_tamam
+    return kor_denetim_tamam(c)
+
+
+def _duzelt_tamam(c: Ctx) -> Check:
+    from bidr.kor.check import duzelt_tamam
+    return duzelt_tamam(c)
+
+
 def yok(c: Ctx) -> Check:
     return Check(neden="henüz uygulanmadı")
 
@@ -1046,5 +1056,7 @@ CHECKS: dict[str, Callable[[Ctx], Check]] = {
     "yonler_tamam": yonler_tamam,
     "render_tamam": render_tamam,
     "teslim_tamam": teslim_tamam,
+    "kor_denetim_tamam": _kor_denetim_tamam,
+    "duzelt_tamam": _duzelt_tamam,
     "yok": yok,
 }

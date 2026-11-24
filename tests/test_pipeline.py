@@ -71,7 +71,7 @@ def _agent_answers(ws: Path, stage: str, broken: set[str] = frozenset()) -> int:
 def test_spec_is_consistent():
     spec = load_spec()
     ids = [s["id"] for s in spec["asamalar"]]
-    assert ids[:2] == ["kurulum", "ingest"] and ids[-2:] == ["denetle", "teslim"]
+    assert ids[:2] == ["kurulum", "ingest"] and ids[-4:] == ["denetle", "teslim", "kor_denetim", "duzelt"]
     for s in spec["asamalar"]:
         if s["uygulandi"]:
             assert s["komut"] and s["skill"], s["id"]

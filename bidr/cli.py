@@ -29,6 +29,7 @@ SUBCOMMAND_MODULES = [
     "bidr.faaliyet.cli",
     "bidr.check.cli",
     "bidr.teslim.cli",
+    "bidr.kor.cli",
     "bidr.mask.cli",
     "bidr.ihtiyac.cli",
     "bidr.ihtiyac.katalog_cli",

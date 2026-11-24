@@ -84,6 +84,9 @@ def _next(args) -> int:
     if n.karar_bekleyen:
         print("Karar bekleyen:")
         for x in n.karar_bekleyen:
+            if x.get("bulgu_id"):               # kör denetimin OD/kanıt önerisi (bidr denetim karar)
+                print(f"  - {x['bulgu_id']} ({x['sinif']}): {x.get('ozet', '')}")
+                continue
             ek = "" if not x.get("sorunlar") else ": " + "; ".join(
                 f"{i.get('yer', '-')} {i['kod']}: {i['ayrinti']}" for i in x["sorunlar"][:5])
             print(f"  - {x['olcut']} (deneme {x.get('deneme')}, "

@@ -519,3 +519,58 @@ asamalar:
         (dizinde "bağlantı bilinmiyor"; adres uydurulmaz).
     onay: yok
     skill: bidr-rapor
+
+  - id: kor_denetim
+    ad: Raporun kör denetimi (isteğe bağlı; iç ölçüm; model işi ajanda, yazandan bağımsız denetçi)
+    uygulandi: true
+    istege_bagli: true
+    katman: M
+    onkosul: [render]
+    girdi: [texts/, yonler/, evidence-index.csv, audit-olcutler.json, text/, decisions.jsonl (aday belgeler), documents.jsonl]
+    cikti: [work/kor_denetim/<anahtar>.json, kor-denetim.json, kor-denetim.md]
+    komut:
+      - "bidr denetim prepare -w {ws}"
+      - "(metni yazmamış, taze denetçi ajan; model Opus) work/kor_denetim/README.md'ye göre her paket için <anahtar>.out.json yaz"
+      - "bidr denetim apply -w {ws} --model {ajan}"
+    sart:
+      denetim: kor_denetim_tamam
+      metin: >-
+        İstenmediyse (`bidr denetim prepare` çalışmadıysa) atlanır; hat eskisi gibi biter. İstenince her ölçüt
+        (birimin doldurduğu, kanıtsız olanlar dahil) ve her alanın yön hücreleri için paket cevaplanmış ve apply ile
+        işlenmiş; kor-denetim.json bu turun paketlerinden üretilmiş. Paket yazarın bağlamını içermez (yazım istemi,
+        doğrulama gerekçesi, inceleme notu yok). Rapor alıntısı raporda, kanıt alıntısı belgede kodla aranır; tutmayan
+        bulgu "doğrulanamadı" olur ve işlenmez. Bulgular metin (kendiliğinden düzeltilir) | od | kanit (bölüm kararı)
+        diye sınıflanır. Puan iç ölçümdür, kalite belgesi değildir. Tek tur: otomatik ikinci denetim yok;
+        `bidr denetim prepare --ikinci` (ilk turun düzeltmesinden sonra) önce/sonra karşılaştırması veren bir ölçümdür.
+    onay: yok
+    skill: bidr-rapor
+    paralel:
+      bolunebilir: true
+      dizin: work/kor_denetim
+      duzen: dosya
+      anahtar: '(?:[A-E]\.\d+\.\d+|yon_[A-D])'
+      gerekce: >-
+        Paket tek ölçüt bölümü (metin, atıf yapılan kanıtların metni, aday ama kullanılmamış belgeler) ya da tek alanın yön hücreleri (alanın ölçüt metinleriyle); denetçi başka paketi görmez. Ölçüt arası tutarlılık yön paketinde alan düzeyinde okunur. Denetçi ajanlar metni yazan ve doğrulayan ajanlardan ayrı, taze olmalı.
+
+  - id: duzelt
+    ad: Denetim düzeltmeleri (metin bulguları kendiliğinden; OD ve kanıt önerileri bölüm kararıyla)
+    uygulandi: true
+    istege_bagli: true
+    katman: D
+    onkosul: [kor_denetim]
+    girdi: [kor-denetim.json, kor-denetim-kararlar.jsonl, texts/, yonler/]
+    cikti: [work/write/<ölçüt>.json (düzeltme notlu), work/yonler/<alan>.json (düzeltme notlu), kor-denetim-kararlar.jsonl]
+    komut:
+      - "bidr duzelt prepare -w {ws}"
+      - "(insan) OD ve kanıt önerileri: bidr denetim karar -w {ws} <bulgu_id> kabul|ret --not \"…\""
+    sart:
+      denetim: duzelt_tamam
+      metin: >-
+        Denetim yoksa atlanır. Doğrulanmış her metin bulgusu (ve kabul edilen OD kararı) düzeltme notu olarak yazım/yön
+        paketine girmiş ve yeniden yazılan metin `duzeltme` iziyle kaydedilmiş; yazım kuralları, kod denetimi ve bağımsız
+        doğrulama aynen işler (hat write → verify → yonler → render → denetle'ye döner). OD ve kanıt önerilerine bölüm
+        karar vermiş (`bidr denetim karar`; ajan vermez): kabul edilen OD audit okunurken ölçütün OD'si olur ve metin
+        yeniden yazılır; kabul edilen belge ikinci aramaya girer, eşleşirse inceleme tablosunda aday olur. İkinci
+        denetim turu ölçümdür, düzeltme istemez.
+    onay: yok
+    skill: bidr-rapor

@@ -540,6 +540,8 @@ def prepare_rejected(ws_root: Path, *, only: list[str] | None = None, index: Pat
         r = {**r, "prompt": r["prompt"] + "\n\n" + rejection_section(t, log.get(c), tur + 1, lim)}
         meta.update({"tur": tur + 1, "temel_istem_sha": base, "girdi_sha": inputs_sha(src, c),
                      "ret": (log.get(c) or {}).get("gerekce") or []})
+        if t.get("duzeltme"):               # kör denetim düzeltmesinin izi yeniden yazımda kalır
+            meta["duzeltme"] = t["duzeltme"]
         st["paket"] += 1
         st["yeni"] += K.write_pkg(d, c, r, meta)
         st["tur"][c] = tur + 1
@@ -577,16 +579,21 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
     st = {"paket": 0, "yeni": 0, "zaten_tamam": 0, "kanitsiz": no, "onceki": src.previous_name,
           "onceki_olcut": sum(c in src.previous for c in yes), "eski_surum": [],
           "yenilenen": list(only) if old_rules else []}
+    from bidr.kor import run as KD
     for c in yes:
         inputs, meta = write_inputs(src, c, h)
         r = backend.render_task(TASK, inputs)
         t = load_text(src.ws, c)
         kay = (t or {}).get("kaynak") or {}
-        if (t and not redo and not only and (kay.get("temel_istem_sha") or kay.get("istem_sha")) == K.sha(r["prompt"])
+        # kör denetimin bekleyen düzeltme notu (bidr/kor/run.py): metin güncel olsa da yeniden paketlenir
+        dz_sec, dz = KD.duzeltme(src.ws, c, t)
+        if (t and not redo and not only and not dz_sec
+                and (kay.get("temel_istem_sha") or kay.get("istem_sha")) == K.sha(r["prompt"])
                 and str(kay.get("gorev_surumu")) == str(r["version"])):
             st["zaten_tamam"] += 1
             continue
-        if t and not redo and not only and old_version_valid(t, str(r["version"]), inputs_sha(src, c)):
+        if (t and not redo and not only and not dz_sec
+                and old_version_valid(t, str(r["version"]), inputs_sha(src, c))):
             st["eski_surum"].append(c)          # görevin eski sürümüyle yazılmış, girdileri güncel: geçerli
             continue
         gsha = inputs_sha(src, c)
@@ -595,6 +602,11 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
         same = bool(t) and t.get("girdi_sha") == gsha and not old_rules
         meta.update({"tur": int(t.get("tur") or 0) if same else 0, "temel_istem_sha": K.sha(r["prompt"]),
                      "girdi_sha": gsha})
+        if dz:
+            meta["duzeltme"] = dz
+        if dz_sec:
+            r = {**r, "prompt": r["prompt"] + "\n\n" + dz_sec}
+            st.setdefault("duzeltme", []).append(c)
         st["paket"] += 1
         st["yeni"] += K.write_pkg(d, c, r, meta, force=bool(redo and t))
     st["bekleyen"] = K.write_readme(d, task=TASK, version=task_version(), cmd="write", rule=RULE)
@@ -694,6 +706,7 @@ def text_record(src: Sources, c: str, pkg: dict, raw: str, out: dict, model: str
                          for n in _cited(paras, onceki) if n in byno],
             "eksikler": meta["eksikler"], "onceki_yila_gore": onceki,
             **({"onceki_ret": meta["ret"]} if meta.get("ret") else {}),
+            **({"duzeltme": meta["duzeltme"]} if meta.get("duzeltme") else {}),
             "kaynak": {"model": model, "gorev_surumu": str(pkg["surum"]), "istem_sha": pkg["istem_sha"],
                        "temel_istem_sha": meta.get("temel_istem_sha") or pkg["istem_sha"],
                        "cevap_sha": K.sha(raw), "onceki": meta.get("onceki"), "zaman": K.now()}}

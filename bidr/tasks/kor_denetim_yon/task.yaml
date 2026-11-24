@@ -1,0 +1,10 @@
+version: 1
+description: >-
+  Kör denetim (isteğe bağlı; bidr/kor/run.py): bir alanın (A-D) "Güçlü Yönler" ve "Gelişmeye Açık
+  Yönler" hücreleri, alanın ölçüt bölümleriyle (işaretlenen OD, açıklama metni) karşılaştırılır →
+  hücre başına puan (1-5, iç ölçüm) ve sorun, madde bulguları (çelişki, genelleme, dayanaksız madde,
+  ölçüt metniyle çelişen yokluk hükmü). Yazarın bağlamı verilmez; alıntılar kodla maddelerde aranır.
+inputs:
+  alan: "alan kodu ve başlığı"
+  maddeler: "hücrelerdeki maddeler: yer (g: güçlü, a: gelişmeye açık), metin"
+  olcutler: "alanın ölçüt bölümleri: kod, başlık, işaretlenen OD, açıklama metni (atıfsız) ya da 'metin yok'"

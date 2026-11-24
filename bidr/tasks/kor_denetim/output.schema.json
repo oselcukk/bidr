@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "kor_denetim",
+  "type": "object",
+  "required": ["puan", "puan_gerekce", "denetci_od", "od_gerekce", "cumleler", "bulgular", "kullanilmayan", "genel"],
+  "additionalProperties": false,
+  "properties": {
+    "puan": {"type": "integer", "minimum": 1, "maximum": 5},
+    "puan_gerekce": {"type": "string", "minLength": 1, "maxLength": 600},
+    "denetci_od": {"type": "integer", "minimum": 1, "maximum": 5},
+    "od_gerekce": {"type": "string", "minLength": 1, "maxLength": 600},
+    "cumleler": {
+      "type": "array",
+      "maxItems": 40,
+      "items": {
+        "type": "object",
+        "required": ["alinti", "etiket", "doc_id", "kanit_alintisi", "gerekce"],
+        "additionalProperties": false,
+        "properties": {
+          "alinti": {"type": "string", "minLength": 8, "maxLength": 500},
+          "etiket": {"enum": ["D", "K", "U"]},
+          "doc_id": {"type": "string", "maxLength": 64},
+          "kanit_alintisi": {"type": "string", "maxLength": 500},
+          "gerekce": {"type": "string", "maxLength": 400}
+        }
+      }
+    },
+    "bulgular": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "required": ["tur", "alinti", "doc_id", "kanit_alintisi", "aciklama", "oneri"],
+        "additionalProperties": false,
+        "properties": {
+          "tur": {"enum": ["sayi", "yanlis_ozet", "gundem_gerceklesmis", "sablon_arac", "od_kanit_onunde",
+                           "genelleme", "kanit_yok_denmis", "celiski", "kurum_geneli", "abarti", "diger"]},
+          "alinti": {"type": "string", "minLength": 8, "maxLength": 500},
+          "doc_id": {"type": "string", "maxLength": 64},
+          "kanit_alintisi": {"type": "string", "maxLength": 500},
+          "aciklama": {"type": "string", "minLength": 1, "maxLength": 600},
+          "oneri": {"type": "string", "maxLength": 600}
+        }
+      }
+    },
+    "kullanilmayan": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "required": ["doc_id", "neden", "kanit_alintisi"],
+        "additionalProperties": false,
+        "properties": {
+          "doc_id": {"type": "string", "minLength": 1, "maxLength": 64},
+          "neden": {"type": "string", "minLength": 1, "maxLength": 600},
+          "kanit_alintisi": {"type": "string", "minLength": 10, "maxLength": 500}
+        }
+      }
+    },
+    "genel": {"type": "string", "maxLength": 1000}
+  }
+}

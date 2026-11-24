@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "kor_denetim_yon",
+  "type": "object",
+  "required": ["hucreler", "bulgular", "genel"],
+  "additionalProperties": false,
+  "properties": {
+    "hucreler": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "required": ["hucre", "puan", "sorun"],
+        "additionalProperties": false,
+        "properties": {
+          "hucre": {"enum": ["guclu", "gelisme"]},
+          "puan": {"type": "integer", "minimum": 1, "maximum": 5},
+          "sorun": {"type": "string", "maxLength": 600}
+        }
+      }
+    },
+    "bulgular": {
+      "type": "array",
+      "maxItems": 15,
+      "items": {
+        "type": "object",
+        "required": ["tur", "yer", "alinti", "olcut", "aciklama", "oneri"],
+        "additionalProperties": false,
+        "properties": {
+          "tur": {"enum": ["celiski", "olcut_metniyle_celiski", "genelleme", "dayanaksiz", "kanit_yok_denmis",
+                           "abarti", "diger"]},
+          "yer": {"type": "string", "pattern": "^[ga][0-9]+$"},
+          "alinti": {"type": "string", "minLength": 8, "maxLength": 500},
+          "olcut": {"type": "string", "maxLength": 16},
+          "aciklama": {"type": "string", "minLength": 1, "maxLength": 600},
+          "oneri": {"type": "string", "maxLength": 600}
+        }
+      }
+    },
+    "genel": {"type": "string", "maxLength": 1000}
+  }
+}

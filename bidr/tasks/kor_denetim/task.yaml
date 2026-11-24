@@ -1,0 +1,14 @@
+version: 1
+description: >-
+  Kör denetim (isteğe bağlı, rapor bittikten sonra; bidr/kor/run.py). Raporun bir ölçüt bölümü
+  (metin, kanıt listesi, işaretlenen OD), atıf yapılan kanıtların metni ve ölçütte aday olup
+  kullanılmamış belgeler → ölçüt puanı (1-5, iç ölçüm), denetçinin OD görüşü, cümle etiketleri
+  D (kaynakla doğru) / K (kısmen, abartılı) / U (kaynakla uyuşmuyor), bulgular ve kullanılmayan
+  ilgili belgeler. Yazarın bağlamı (yazım istemi, doğrulama gerekçeleri, inceleme notları) verilmez.
+  Bütün alıntılar kodla raporda ve belgede aranır; tutmayan bulgu "doğrulanamadı" olur.
+inputs:
+  olcut: "ölçüt kimliği, başlığı, tanımı, rubrik 1-5"
+  donem: "rapor yılı"
+  rapor: "raporun bu ölçüt bölümü: işaretlenen OD, açıklama metni (atıflı), kanıt listesi"
+  kanitlar: "metnin kanıt listesindeki belgeler: no, ad, doc_id, tür, tarih, metin"
+  ilgili: "ölçütte aday olup kanıt listesine girmemiş belgeler: doc_id, ad, tür, tarih, metin başı (yoksa 'yok')"
