@@ -1,8 +1,9 @@
-# Rapor katmanı (name → file → write → verify → yonler → render → denetle → teslim) — arayüz sözleşmesi
+# Rapor katmanı (name → file → write → verify → yonler → render → denetle → teslim [→ kor_denetim → duzelt]) — arayüz sözleşmesi
 
 Sahibi: şef. Aşamalar `bidr/data/pipeline.yaml`'da; tamamlanma denetimleri
 `bidr/pipeline/checks.py`'de (`name_tamam`, `file_tamam`, `write_tamam`, `verify_tamam`,
-`yonler_tamam`, `render_tamam`, `denetle_tamam`, `teslim_tamam`). Her komut önkoşulu bitmeden çıkış kodu 3 ile durur.
+`yonler_tamam`, `render_tamam`, `denetle_tamam`, `teslim_tamam`; isteğe bağlı kör denetim:
+`bidr/kor/check.py` `kor_denetim_tamam`, `duzelt_tamam`). Her komut önkoşulu bitmeden çıkış kodu 3 ile durur.
 
 ## Girdi: onaylı eşleşmeler
 `decisions.jsonl` içindeki kabul edilmiş eşleşmeler; varsa `review-decisions.jsonl`
@@ -264,6 +265,13 @@ cümlenin kanıta değil komisyon bilgisine (`rapor-notlari.yaml`) dayandığın
 girmez (render siler). `girdi_sha`: kanıt listesi (no, doc_id) + OD; değişirse metin eskir.
 `onceki_ret`, `insan_karari` yalnız gerektiğinde bulunur.
 
+**v5 (kör denetim 2026-11-24, "kanıt bulunamadı" denip arşivde ilgili belge olması):** pakette
+İLGİLİ AMA KANIT SAYILMAMIŞ BELGELER — ölçütte aday olmuş (belirleyici aday, kaba seçim, ince eşleşme)
+ama kanıt listesine girmemiş belgelerin adı/türü/tarihi (`bidr/write/ilgili.py`, en çok 8; başka
+birimin belgesi ve mükerrer kopya hariç; nedeni verilmez; `meta.ilgili`). Kural 16: listede konuyla
+ilgili belge varken "kanıt bulunmamaktadır / belge yoktur / izlenmemektedir" yazılmaz; listedeki
+belgelere atıf yapılmaz. v4 metinleri girdileri değişmedikçe geçerli kalır.
+
 ## verify → `verify.jsonl` + `texts/<olcut>.json` `durum` güncellemesi
 Kod denetimi (atıf var mı, alıntı belgede mi, OD aşımı) + model denetimi (cümle atfıyla
 gerçekten destekleniyor mu; metni yazmamış, taze bir ajan). Geçemeyen metin `reddedildi`,
@@ -349,6 +357,11 @@ rapor TASLAK olur (`yon_kapsam_kaybi`; madde düzeltilip yeniden doğrulanır). 
 hücreye açık ifade yazılır ("Bu alanda bu dönem için kanıtla doğrulanmış bir güçlü yön
 belirlenmemiştir."; `yon_ifadeli`), şablon yönergesi kalmaz. Alan maddesi hiç yazılmamışsa hücre
 yönergeyle kalır, rapor TASLAK olur. `verify-yonler.jsonl` render girdi özetine girer.
+
+**Tutarlılık uyarısı (kör denetim 2026-11-24, `yonler.tutarlilik`):** aynı ölçüt kodu bir güçlü yön
+maddesinde ve yokluk hükmü kuran ("bulunmamaktadır", "yer almamaktadır", "eksik" …) bir gelişmeye açık
+maddede geçiyorsa `yonler_tamam` uyarı verir ve doğrulama paketine "DİKKAT (kod uyarısı; karar senin)"
+satırı girer (verify_yonler kural 4-5). Engel değildir; dar kalıplı `ic_celiski` reddi aynen sürer.
 
 ## Sorumlu birim kapsamı (`bidr/render/kapsam.py`)
 Her alt ölçüt için `bolum` (birim doldurur) | `ortak` (başka birimlerle birlikte) |
@@ -558,6 +571,54 @@ WS/.bidr-teslim.json             özet (teslim_tamam): report_sha, index_sha, ev
 kanıt dizini, kanıt klasörü, maskeleme raporu ya da teslim modu değiştiyse `bidr teslim`; `--taslak` paketi bitmiş
 sayılmaz; eksik paket KULLANICI gerekli; tamamsa bitti, özgün adresi bulunamayan web kanıtı uyarı.
 Kapı: biçim denetimi geçmeden komut çıkış 3 ile durur; `--taslak` kapıyı atlar, paketi TASLAK işaretler.
+
+## kor_denetim → `kor-denetim.json` + `kor-denetim.md` (isteğe bağlı kör denetim; `bidr/kor/`)
+Rapor bittikten sonra bölüm isterse (panelde "Raporu denetlet" tuşu): `bidr denetim prepare -w WS`
+denetimi ister; istenmezse `kor_denetim` ve `duzelt` `atlandi`, hat eskisi gibi biter. (`denetle` /
+`denetim.json` biçim denetçisidir; bu ayrı bir aşamadır.)
+
+- **Paketler** `work/kor_denetim/<anahtar>.json` (görev `kor_denetim`, `kor_denetim_yon`): birimin
+  doldurduğu her ölçüt (`B.1.1`; metni olmayan kanıtsız ölçüt dahil) ve maddesi olan her alanın yön
+  hücreleri (`yon_A`…). Ölçüt paketi: raporun ölçüt bölümü (render'ın işaretlediği OD, atıflı metin,
+  kanıt listesi), atıf yapılan kanıtların METNİ (en çok 20 000 karakter/belge), ölçütte aday olup
+  kullanılmamış belgelerin kısa metni (kapsam kaybı). Yazar bağlamı yok: yazım istemi, eksik notları,
+  ince karar alıntıları, doğrulama gerekçeleri, inceleme notları girmez. Denetçi metni yazmamış,
+  taze bir ajandır (model Opus). Paralel bölünebilir.
+- **Cevap:** ölçüt başına `puan` 1-5 (1 yanıltıcı · 2 zayıf · 3 kullanılabilir taslak · 4 küçük
+  düzeltmeyle kullanılabilir · 5 doğrudan kullanılabilir), `denetci_od` + gerekçe, `cumleler`
+  (D kaynakla doğru / K kısmen, abartılı / U kaynakla uyuşmuyor; rapor alıntısı + doc_id + kanıt
+  alıntısı), `bulgular` (tür: sayi, yanlis_ozet, gundem_gerceklesmis, sablon_arac, od_kanit_onunde,
+  genelleme, kanit_yok_denmis, celiski, kurum_geneli, abarti, diger), `kullanilmayan` (doc_id, neden,
+  belgeden alıntı); yön paketi: hücre puanları ve madde bulguları.
+- **apply (kod):** rapor alıntısı raporun o bölümünde, kanıt alıntısı belirtilen belgede normalize
+  aranır (`verify_quote`, atıf işaretleri atılır); tutmayan bulgu `dogrulama: dogrulanamadi` (gösterilir,
+  işlenmez). Sınıf: `metin` (bulgular + doğrulanmış K/U cümleleri; kendiliğinden düzeltilir), `od`
+  (denetçi OD'si ≠ raporun OD'si; `<ölçüt>-od`), `kanit` (kullanılmayan belge; `<ölçüt>-k<n>`; belge
+  kanıt listesindeyse doğrulanamadı). Şemaya uymayan cevap `GECERSIZ.md`; bütün paketler geçerliyse
+  `kor-denetim.json` (`ic_olcum: true`, `olcutler`, `yonler`, `bulgular`, `ozet`, `karsilastirma`) ve
+  `kor-denetim.md` yazılır. Rapor paketten sonra değişirse paket eskir (prepare yeniler).
+- **Puan iç ölçümdür:** denetçi yazandan bağımsızdır ama aynı model ailesindendir; kalite belgesi değildir.
+- `bidr denetim ozet -w WS [--json]`: bulgu başına güncel `durum` (duzeltilecek | duzeltildi |
+  karar_bekliyor | kabul | ret | dogrulanamadi | bilgi), `karar`, `dku` ve `tur_adlari` sözlükleri.
+
+## duzelt → düzeltme notlu yazım/yön paketleri, bölüm kararları
+- `bidr duzelt prepare -w WS`: doğrulanmış metin bulguları (ve kabul edilen OD kararı) "DENETİM
+  DÜZELTME NOTU" olarak olağan yazım (`work/write/<ölçüt>.json`) ve yön (`work/yonler/<alan>.json`)
+  paketinin sonuna eklenir (bulgu, kaynak alıntısı, denetçinin bağlayıcı olmayan önerisi, mevcut
+  metin). Yazım kuralları, kod denetimi ve bağımsız doğrulama aynıdır; hat write → verify → yonler →
+  render → denetle'ye döner. Metin kaydına `duzeltme: {denetim, tur, bulgular}` izi geçer; iz bulguyu
+  "düzeltildi" sayar. Not `write/yonler prepare`'de de eklenir, iz yeniden yazımlarda taşınır.
+- **Bölüm kararı:** `bidr denetim karar -w WS <bulgu_id> kabul|ret [--not]` → `kor-denetim-kararlar.jsonl`
+  (yalnız od/kanit; ajan vermez). Kabul edilen OD audit okunurken ölçütün `od`'si olur
+  (`bidr/kor/od.py`; `od_denetim` alanı; kararın kod önerisi değişirse eskir; komisyonun `od_onayli`'si
+  önceliklidir, o zaman karar verilemez) ve metin OD notuyla yeniden yazılır. Kabul edilen belge
+  önerisi ikinci arama paketine `denetim` kaynağıyla girer (`--yalniz-denetim`; `rapor.ikinci_arama:
+  false` olsa da); eşleşirse inceleme tablosunda insan kararı bekler.
+- `duzelt_tamam`: denetim yoksa atlandi; not bekleyen ölçüt/alan → komut; karar bekleyen →
+  insan (`karar_bekleyen`: `{bulgu_id, sinif, olcut, ozet, rapor_od, denetci_od, doc_id, belge_adi}`).
+- **Tek tur:** otomatik ikinci denetim yok. `bidr denetim prepare --ikinci` (ilk turun düzeltmesi ve
+  kararları bittikten sonra) ölçüm turudur: önceki tur `kor-denetim-1.json`, paketler
+  `work/kor_denetim/_tur1/`; bulgular düzeltilmez, `karsilastirma` önce/sonra puanları verir.
 
 ## config.yaml `rapor:` bölümü (hepsi isteğe bağlı; kullanıcı yazar, `bidr init` korur)
 | anahtar | anlamı |

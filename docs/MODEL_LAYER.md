@@ -325,6 +325,7 @@ deseni ve `grup: alt_bolum`). `load_spec` her M aşamasında bu alanı ister.
 | write | evet | alt bölüm (A.1, A.2 …) | paket tek ölçüt ve onun bütün kanıtları/faaliyet özeti (ölçütün zinciri bölünmez); aynı alt bölümün ölçütleri aynı faaliyeti farklı anlatmasın diye tek parçada |
 | verify | evet | ölçüt | doğrulayıcı yazarın paketini görmez; parça ajanları da yazım ajanlarından ayrı ve taze |
 | yonler (+ yönlerin doğrulaması) | hayır | — | en çok 4 alan paketi; maddeler alanın bütün doğrulanmış metinlerinden, alanlar arası denge ve tekrar raporun bütününde okunur |
+| kor_denetim (isteğe bağlı) | evet | ölçüt / alan yön paketi (`yon_A`…) | paket tek ölçüt bölümü (metin + atıf yapılan kanıtların metni + kullanılmamış aday belgeler) ya da tek alanın yön hücreleri; denetçi ajanlar metni yazan ve doğrulayan ajanlardan ayrı, taze (model Opus) |
 
 **PUKÖ zinciri, faaliyet ve OD bölmeden etkilenmez.** Belgeler arası bağlantıyı hiçbir model
 paketi kurmaz: `classify_coarse`/`classify_fine`/`name_evidence`/`transcribe`/`describe` istemlerinin

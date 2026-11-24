@@ -344,6 +344,21 @@ kapat|birak`) ve elle maskelenmiş sürümü (`bidr maskele yukle`) yalnız kull
 maskele -w WS` ve `bidr teslim` yeniden. Maskeleme hiç yapılmadıysa özgün dosya girer ("yapılmadı"). Web kanıtının adresi bilinmiyorsa
 uydurma; kullanıcıdan review.xlsx "bağlantı" sütununa yazmasını iste.
 
+## Kör denetim ve düzeltme (kor_denetim, duzelt; isteğe bağlı)
+
+Yalnız kullanıcı isterse: `bidr denetim prepare -w WS` (rapor render'dan sonra; istenmezse iki aşama
+`atlandi`, hat eskisi gibi biter). Kullanıcıya önce söyle: model kotasını belirgin tüketir (yaklaşık bir
+rapor aşaması), 30–40 dk sürebilir, puan iç ölçümdür (aynı model ailesi), kalite belgesi değildir.
+- `work/kor_denetim/README.md`: paketleri metni YAZMAMIŞ ve doğrulamamış, taze denetçi ajanlara (Opus)
+  ver; yazım/doğrulama bağlamını onlara verme. Paralel parça düzeni geçerli. Sonra `bidr denetim apply`.
+- `bidr next` → `bidr duzelt prepare`: metin bulguları düzeltme notuyla yazım/yön paketine girer; hat
+  write → verify → yonler → render → denetle'ye döner (yazımı ve doğrulamayı ayrı, taze ajanlara ver).
+- OD ve kullanılmamış belge önerileri: `kor-denetim.md` bölümlerini kullanıcıya göster; karar yalnız
+  kullanıcının sözüyle: `bidr denetim karar -w WS <bulgu_id> kabul|ret --not "…"`. "Doğrulanamadı"
+  bulgularını işleme.
+- İkinci denetim (`--ikinci`) yalnız kullanıcı isterse; ölçümdür, düzeltme yapılmaz.
+- `denetle` (biçim denetimi, `denetim.json`) ile karıştırma.
+
 ## Bitirirken
 
 Çalışma günlüğü tutuyorsan (ör. kullanıcıya ya da bir dosyaya zaman damgalı adımlar) saati her

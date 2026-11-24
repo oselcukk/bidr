@@ -27,6 +27,9 @@ reddedilen metni yeniden yazmak ayrı, taze ajanların işidir; doğrulayıcı y
 Paket çoksa `bidr next` "Paralel:" satırı `bidr parcala` ile ayrık parça listeleri önerir (alt ajan
 başına bir liste; `docs/MODEL_LAYER.md` "Paralel model aşamaları"). Yeni model aşamasına
 `pipeline.yaml` `paralel` alanı (bölünebilir mi + gerekçe) zorunludur.
+Rapor bittikten sonra isteğe bağlı **kör denetim** (`kor_denetim` → `duzelt`; `docs/REPORT_LAYER.md`):
+yalnız istenirse (`bidr denetim prepare`); denetçi metni yazmamış taze ajandır, puan iç ölçümdür; OD ve
+kanıt önerilerine kararı (`bidr denetim karar`) kullanıcı verir. `denetle`/`denetim.json` biçim denetimidir, ayrıdır.
 
 ## Değişmez kurallar (her ajan için)
 
@@ -35,8 +38,8 @@ başına bir liste; `docs/MODEL_LAYER.md` "Paralel model aşamaları"). Yeni mod
 - Alıntısız iddia yok: her eşleşme belgeden birebir alıntıyla gelir ve kodla denetlenir.
   Kaynakta olmayan şey yazılmaz; emin olunmayan alan boş bırakılır.
 - Ücretli API çağrılmaz: rapor işinde `bidr decide run` ve `bidr llm` kullanılmaz.
-- İnsan kararını ajan vermez: review.xlsx KARAR'ı, hakem cevapları, `bidr verify karar` ve
-  `bidr write karar` (cikar/tekrar/kabul) yalnız kullanıcının sözüyle yazılır. Tek istisna, kullanıcının açık yetki
+- İnsan kararını ajan vermez: review.xlsx KARAR'ı, hakem cevapları, `bidr verify karar`,
+  `bidr write karar` (cikar/tekrar/kabul) ve `bidr denetim karar` (kabul/ret) yalnız kullanıcının sözüyle yazılır. Tek istisna, kullanıcının açık yetki
   devridir ("inceleme tablosunda karar vermeyeceğim, sen devam et"): o zaman ajan yalnız devredilen
   kararları verir, her birini "ajan (kullanıcı yetkisiyle)" diye işaretler, güveni düşük
   eşleşmeleri ret sayar ve raporu TASLAK bırakır (ayrıntı: `bidr-rapor` skill'i, "Denetim").
