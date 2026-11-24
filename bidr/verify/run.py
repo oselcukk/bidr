@@ -324,6 +324,12 @@ def verify_inputs(src: W.Sources, t: dict) -> tuple[dict, dict]:
     rows = T.sentence_rows(paras, onceki)
     cited = set(W._cited(paras, onceki))
     ev = identity(src, c, src.evidence(c, only=cited))
+    # denetim düzeltmesinin uyguladığı bulguların denetçi alıntıları (apply'da belgede doğrulandı) o kanıtın
+    # alıntısı sayılır: denetçinin tam belgede bulduğu doğru bilgi "kanıtta yok" diye reddedilmesin
+    from bidr.kor import run as KD
+    ids = KD.trace_ids(src.ws, t)
+    if ids:
+        ev = KD.augment_evidence(src, c, ev, ids)
     inputs = {"olcut": W.render_criterion(src.cs, c, od=t.get("od_onerisi")),
               "cumleler": render_sentences(rows),
               "kanitlar": W.render_evidence(ev, src.cs),

@@ -1005,6 +1005,79 @@ def section(ws: Workspace, key: str, fs: list[dict], t: dict | None) -> str:
     return "\n".join(L)
 
 
+def kanit_alintilari(ws: Workspace, key: str, ids, js: dict | None = None) -> list[dict]:
+    """Uygulanan metin bulgularının (`ids`: düzeltme izi) denetçi kanıt alıntıları — apply'da belgede
+    doğrulanmış olanlar: [{id, doc_id, alinti}]. Yazım ve doğrulama paketleri bunları kanıt alıntısı olarak
+    görür; böylece denetçinin tam belgede bulduğu doğru bilgi "kanıtta yok" diye silinmez."""
+    js = js if js is not None else load(ws)
+    if not js or int(js.get("tur") or 1) >= 2 or is_yon(key):
+        return []
+    ids = set(ids or [])
+    out = []
+    for f in js.get("bulgular") or []:
+        if (f["id"] in ids and f["sinif"] == "metin" and f.get("dogrulama") == "dogrulandi"
+                and target(f) == key and (f.get("doc_id") or "").strip() and (f.get("kanit_alintisi") or "").strip()):
+            out.append({"id": f["id"], "doc_id": f["doc_id"].strip(), "alinti": f["kanit_alintisi"].strip()})
+    return out
+
+
+def trace_ids(ws: Workspace, t: dict | None, js: dict | None = None) -> list[str]:
+    """Metnin bu denetime ait düzeltme izindeki bulgu kimlikleri (yoksa boş)."""
+    js = js if js is not None else load(ws)
+    dz = (t or {}).get("duzeltme") or {}
+    return list(dz.get("bulgular") or []) if js and dz.get("denetim") == js.get("id") else []
+
+
+def alinti_bolumu(src, key: str, ids) -> str | None:
+    """Yazım paketine eklenen DENETİM KANIT ALINTILARI bölümü (temel istemin dışında: istem özeti değişmez).
+    Yalnız ölçütün kanıt listesindeki belgeler (atıf yapılabilir); alıntı belgede (parçada) bulunmalı."""
+    rows = augment_evidence(src, key, [{"no": r["kanit_no"], "doc_id": r.get("doc_id", ""),
+                                         "alintilar": [{"alinti": q} for q in r["alintilar"]]}
+                                        for r in src.index.get(key, [])], ids)
+    L = []
+    for e in rows:
+        for q in e["alintilar"]:
+            if not q.get("denetim"):
+                continue                 # kanıtın kendi alıntısı zaten KANITLAR'da
+            L.append(f"- [{e['no']}] «{q['alinti']}»" + (f"\n  bağlam: «{q['baglam']}»" if q.get("baglam") else ""))
+    if not L:
+        return None
+    return "\n".join(["DENETİM KANIT ALINTILARI (bağımsız denetçinin kanıt alıntıları; kod belgede doğruladı. Bu "
+                      "bilgiler ilgili kanıtın alıntısı sayılır, atıf yapılabilir; yalnız alıntının gösterdiği kadarını "
+                      "yaz)", *L])
+
+
+def augment_evidence(src, key: str, ev: list[dict], ids) -> list[dict]:
+    """Kanıt bloklarına (Sources.evidence biçimi) denetçinin doğrulanmış alıntılarını ekler: belge kanıt
+    listesinde ve alıntı (birleşik belgede o parçanın) metninde bulunmalı. Eklenen alıntı `denetim: True`."""
+    from bidr.write import sources as S
+    qs = kanit_alintilari(src.ws, key, ids)
+    if not qs or not getattr(src, "verify", None):
+        return ev
+    out = []
+    for e in ev:
+        mine = [q for q in qs if q["doc_id"] == e.get("doc_id")]
+        if not mine:
+            out.append(e)
+            continue
+        txt = src.doc_text(e["doc_id"])
+        row = next((r for r in src.index.get(key, []) if r["kanit_no"] == e["no"]), None)
+        doc = (getattr(src, "docs", {}) or {}).get(e["doc_id"]) or {}
+        if row is not None:
+            txt, _ = S.part_scope(txt, doc.get("parcalar") or [], row["alintilar"], src.verify)
+        have = {_norm(q["alinti"]) for q in e.get("alintilar") or []}
+        add = []
+        for q in mine:
+            if _norm(q["alinti"]) in have:
+                continue
+            ctx = S.evidence_context(txt, [q["alinti"]], src.verify)
+            if ctx and ctx[0].get("alinti_belgede"):
+                have.add(_norm(q["alinti"]))
+                add.append({**ctx[0], "denetim": q["id"]})
+        out.append({**e, "alintilar": [*(e.get("alintilar") or []), *add[:4]]} if add else e)
+    return out
+
+
 def duzeltme(ws: Workspace, key: str, t: dict | None) -> tuple[str | None, dict | None]:
     """Yazım/yön paketi için: (istem bölümü ya da None, metin kaydına geçecek `duzeltme` izi ya da None).
     Bekleyen not yoksa önceki iz (bu denetimin) taşınır: girdisi değişip yeniden yazılan metin düzeltilmiş

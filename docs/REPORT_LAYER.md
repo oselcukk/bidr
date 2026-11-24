@@ -610,7 +610,11 @@ denetimi ister; istenmezse `kor_denetim` ve `duzelt` `atlandi`, hat eskisi gibi 
 - `bidr duzelt prepare -w WS`: doğrulanmış metin bulguları (ve kabul edilen OD kararı) "DENETİM
   DÜZELTME NOTU" olarak olağan yazım (`work/write/<ölçüt>.json`) ve yön (`work/yonler/<alan>.json`)
   paketinin sonuna eklenir (bulgu, kaynak alıntısı, denetçinin bağlayıcı olmayan önerisi, mevcut
-  metin). Yazım kuralları, kod denetimi ve bağımsız doğrulama aynıdır; hat write → verify → yonler →
+  metin). Uygulanan metin bulgularının denetçi kanıt alıntıları (apply'da belgede doğrulanmış; belge
+  ölçütün kanıt listesinde, birleşik belgede o parçada) yazım paketine "DENETİM KANIT ALINTILARI" olarak,
+  doğrulama paketinde o kanıtın alıntılarına "(bağımsız denetçinin alıntısı)" etiketiyle eklenir (metnin
+  `duzeltme` izi; yeniden yazımda da). Yeniden yazım sayacı (`tur`) düzeltme notlu pakette 0'dan başlar;
+  `cikar` kararlı metin düzeltmeye girmez. Yazım kuralları, kod denetimi ve bağımsız doğrulama aynıdır; hat write → verify → yonler →
   render → denetle'ye döner. Metin kaydına `duzeltme: {denetim, tur, bulgular}` izi geçer; iz bulguyu
   "düzeltildi" sayar. Not `write/yonler prepare`'de de eklenir, iz yeniden yazımlarda taşınır.
 - **Bölüm kararı:** `bidr denetim karar -w WS <bulgu_id> kabul|ret [--not]` → `kor-denetim-kararlar.jsonl`

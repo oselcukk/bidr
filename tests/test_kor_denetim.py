@@ -576,3 +576,32 @@ def test_absence_claim_detection():
     assert KD.absence_claim({"gerekce": "Kaynakta yok."})
     assert not KD.absence_claim({"aciklama": "Kaynakta 3, metinde 1 yazıyor."})
     assert not KD.absence_claim({"tur": "kanit_yok_denmis", "aciklama": "rapor 'bulunmamaktadır' diyor"})
+
+
+def test_auditor_quotes_reach_write_and_verify_packages(ws):
+    from bidr.verify import run as V
+    KD.prepare(ws)
+    answer_all(ws, {"B.1.1": B11, "yon_B": YON})
+    KD.apply(ws)
+    D.prepare(ws)
+    ist = json.loads((ws / "work/write/B.1.1.json").read_text(encoding="utf-8"))["istem"]
+    # U cümlesinin (B.1.1-3) doğrulanmış kanıt alıntısı yazım paketinde kanıt alıntısı olarak
+    assert "DENETİM KANIT ALINTILARI" in ist and "- [2_OD3] «Toplam iş yükü: 150»" in ist and "«AKTS kredisi, toplam" not in ist.split("DENETİM KANIT ALINTILARI")[1]
+    fixed = {"paragraflar": [GOOD["paragraflar"][0],
+                             {"metin": "Ders bilgi formunda toplam iş yükü 150 saat olarak verilmiştir [2_OD3]."}],
+             "onceki_yila_gore": ""}
+    answer(ws, "B.1.1", fixed)
+    assert W.apply(ws)["islenen"] == 1
+    V.prepare(ws, only=["B.1.1"])
+    vist = json.loads((ws / "work/verify/B.1.1.json").read_text(encoding="utf-8"))["istem"]
+    assert "(bağımsız denetçinin alıntısı; kod belgede doğruladı): «Toplam iş yükü: 150»" in vist
+    # belge kanıt listesinde zaten olan alıntı (B.1.1-1, AKTS) iki kez girmez
+    assert "kod belgede doğruladı): «AKTS" not in vist
+    # doğrulamada reddedilip yeniden yazıma giderse de alıntılar pakette
+    _reject(ws, "B.1.1")
+    W.prepare_rejected(ws)
+    rist = json.loads((ws / "work/write/B.1.1.json").read_text(encoding="utf-8"))["istem"]
+    assert "DOĞRULAMADA REDDEDİLDİ" in rist and "- [2_OD3] «Toplam iş yükü: 150»" in rist
+    # denetimi olmayan metnin doğrulama paketi değişmez
+    t = W.load_text(Workspace(ws), "B.1.1")
+    assert KD.trace_ids(Workspace(ws), {**t, "duzeltme": None}) == []

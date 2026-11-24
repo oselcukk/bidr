@@ -265,7 +265,8 @@ def render_evidence(ev: list[dict], cs, donem: int | None = None) -> str:
             except KeyError:
                 lines.append(f"  yuva {y}")
         for i, q in enumerate(e["alintilar"], 1):
-            lines.append(f"  alıntı {i}: «{q['alinti']}»")
+            src = " (bağımsız denetçinin alıntısı; kod belgede doğruladı)" if q.get("denetim") else ""
+            lines.append(f"  alıntı {i}{src}: «{q['alinti']}»")
             if q.get("baglam"):
                 lines.append(f"  bağlam {i}: «{q['baglam']}»")
             elif q.get("alinti_belgede") is False:
@@ -538,6 +539,10 @@ def prepare_rejected(ws_root: Path, *, only: list[str] | None = None, index: Pat
         r = backend.render_task(TASK, inputs)
         base = K.sha(r["prompt"])
         r = {**r, "prompt": r["prompt"] + "\n\n" + rejection_section(t, log.get(c), tur + 1, lim)}
+        from bidr.kor import run as KD
+        ka = KD.alinti_bolumu(src, c, KD.trace_ids(src.ws, t))   # denetim düzeltmesinin yeniden yazımı
+        if ka:
+            r = {**r, "prompt": r["prompt"] + "\n\n" + ka}
         meta.update({"tur": tur + 1, "temel_istem_sha": base, "girdi_sha": inputs_sha(src, c),
                      "ret": (log.get(c) or {}).get("gerekce") or []})
         if t.get("duzeltme"):               # kör denetim düzeltmesinin izi yeniden yazımda kalır
@@ -609,6 +614,10 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
         if dz_sec:
             r = {**r, "prompt": r["prompt"] + "\n\n" + dz_sec}
             st.setdefault("duzeltme", []).append(c)
+        # denetçinin doğrulanmış kanıt alıntıları (temel istemin dışında; istem özeti değişmez)
+        ka = KD.alinti_bolumu(src, c, (dz or {}).get("bulgular")) if dz else None
+        if ka:
+            r = {**r, "prompt": r["prompt"] + "\n\n" + ka}
         st["paket"] += 1
         st["yeni"] += K.write_pkg(d, c, r, meta, force=bool(redo and t))
     st["bekleyen"] = K.write_readme(d, task=TASK, version=task_version(), cmd="write", rule=RULE)
