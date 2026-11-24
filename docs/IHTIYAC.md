@@ -96,6 +96,12 @@ Kapanan geçen yıl isteği sade listede **kendi satırında, işaretli (☑)** 
 "Dosyada var: «karşılayan belge» (ölçütü)". Dosyada olduğu için istenmeyen kurum belgeleri kurum satırında
 "İstenmedi (dosyada var): …" olarak görünür.
 
+**Kısmen dolu yuva:** yuvayı yalnız zayıf kanıtlar dolduruyorsa kılavuz isteği somut biçimde kalır. Zayıf:
+alıntı tek soru ya da en çok 6 sözcük; ya da anket belgesinden tek madde (tek cümle, en çok 25 sözcük) ve
+yuvanın ana metni (ayraç içindeki örnekler dışında) anket/geri bildirim istemiyor: B.1.4/7 "AKTS hesaplama
+tabloları ve ek belgeler (örn; anketler)" tek anket maddesiyle dolmaz, ders bazında iş yükü hesap tablosu
+istenir.
+
 ## 3. Ölçüt satırı ve öncelik
 
 Her ölçüt için: mevcut (sayılan) kanıtlar, önerilen OD, PUKÖ zinciri, bir üst düzey için eksik

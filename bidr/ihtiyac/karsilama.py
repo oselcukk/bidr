@@ -21,9 +21,11 @@ değildir); yalnız biri taşıyorsa sınıflandırma birebir aynı olmalı, hi�
 ölçüt, sonra adın geçen yılki belgeyle ortak sözcük kökü çok olan, sonra tam (zayıf olmayan) kanıt, sonra
 aynı yuva (`_sec`; en çok `GOSTER_EN_COK` belge).
 
-Yuva doluluğu: yuvayı karşılayan satırların hepsi zayıfsa (alıntı tek soru ya da en çok `ZAYIF_SOZCUK`
-sözcük) yuva **kısmen** doludur; kılavuz isteği somut biçimde kalır, "Var olan kanıt" sütununda zayıf
-kanıt gösterilir. Model yok; salt okunur.
+Yuva doluluğu: yuvayı karşılayan satırların hepsi zayıfsa yuva **kısmen** doludur; kılavuz isteği somut
+biçimde kalır, "Var olan kanıt" sütununda zayıf kanıt gösterilir. Zayıf: alıntı tek soru ya da en çok
+`ZAYIF_SOZCUK` sözcük; ya da anket belgesinden tek madde (`anket_maddesi`) ve yuvanın ana metni (ayraç içi
+örnekler dışında) anket/geri bildirim istemiyor ("AKTS hesaplama tabloları ve ek belgeler (örn; anketler)":
+tek anket maddesi hesap tablosu değildir). Model yok; salt okunur.
 """
 from __future__ import annotations
 
@@ -32,6 +34,7 @@ import re
 from .tablolar import norm
 
 ZAYIF_SOZCUK = 6
+ANKET_MADDE_SOZCUK = 25     # anket belgesinden tek cümlelik alıntı en çok bu kadar sözcükse tek anket maddesidir
 GOSTER_EN_COK = 2
 # Belge adındaki tür ifadesi (norm'lu ad üzerinde; sıra önemsiz, bir ad birden çok ifade taşıyabilir).
 # "iş akışları listesi" tek tek iş akışı değildir: liste ifadesi varsa `is_akisi` yazılmaz.
@@ -54,6 +57,8 @@ TUR_IFADE: tuple[tuple[str, str], ...] = (
     ("protokol", r"\bprotokol|\banlasma"),
 )
 _TUR_RE = tuple((k, re.compile(d)) for k, d in TUR_IFADE)
+_ANKET_AD = re.compile(r"\banket|\bsurvey")
+_ANKET_ISTER = re.compile(r"\banket|\bsurvey|geri ?bildirim|\bgorus|\bmemnuniyet")
 KURUM_TURLER = frozenset({"yonetmelik", "yonerge", "usul_esas", "is_akisi", "senato_karari", "anket_formu",
                           "form_belgesi", "mevzuat"})
 GENEL_ILISKI = frozenset({"kurum_geneli", "fakulte_geneli"})
@@ -67,10 +72,31 @@ def karsilar(r: dict) -> bool:
     return k(r)
 
 
+def anket_maddesi(r: dict) -> bool:
+    """Anket belgesinden tek cümlelik, kısa alıntı: tek bir anket maddesi/cevabı. Anket belgesi: adında anket
+    geçer ya da türü anket ve adı başka bir tür ifadesi taşımaz ("… Toplantısı Haberi" anket değildir)."""
+    n = ad(r)
+    if not (_ANKET_AD.search(norm(n)) or (r.get("belge_turu") in ("anket_sonucu", "anket_formu")
+                                         and not tur_ifadeleri(n))):
+        return False
+    q = " ".join(str(r.get("alinti") or "").replace("|", " ").split())
+    cumle = [c for c in re.split(r"(?<=[.!?])\s+", q) if c.strip()]
+    return len(cumle) <= 1 and len(q.split()) <= ANKET_MADDE_SOZCUK
+
+
+def anket_yeter(yuva_metni: str | None) -> bool:
+    """Yuvanın ana metni (ayraç içindeki örnekler hariç) anket/geri bildirim istiyor mu."""
+    t = re.sub(r"\([^)]*\)?", " ", norm(yuva_metni or ""))
+    return bool(_ANKET_ISTER.search(t))
+
+
 def zayif(r: dict) -> bool:
-    """Tek başına yuvayı dolduramayacak kanıt: alıntı tek soru ya da çok kısa."""
+    """Tek başına yuvayı dolduramayacak kanıt: alıntı tek soru ya da çok kısa; ya da yuva anket istemiyorken
+    tek anket maddesi (bkz. modül belgesi)."""
     q = " ".join(str(r.get("alinti") or "").split())
-    return q.endswith("?") or len(q.split()) <= ZAYIF_SOZCUK
+    if q.endswith("?") or len(q.split()) <= ZAYIF_SOZCUK:
+        return True
+    return anket_maddesi(r) and r.get("yuva_metni") is not None and not anket_yeter(r.get("yuva_metni"))
 
 
 def kok(s: str) -> set[str]:

@@ -162,7 +162,7 @@ def test_d_zayif_kanit_yuvayi_kismen_doldurur_istek_somut_kalir(tmp_path):
     t = next(t for t in res["talepler"] if t["olcut"] == "B.1.4" and "B.1.4/7" in t["yuvalar"])
     assert "kısmen karşılanmış (yalnız zayıf kanıt: «Ders Degerlendirme Anket Formu»" in t["gerekce"]
     r = _sade(res, "B.1.4")
-    m = next(m for m in r["maddeler"] if "iş yükü hesap tabloları" in m["metin"])
+    m = next(m for m in r["maddeler"] if "iş yükü hesap tablosu" in m["metin"])
     assert m["dosyada"] == "kısmen: «Ders Degerlendirme Anket Formu» (tek soru ya da kısa alıntı)"
     # Excel: "Var olan kanıt" sütununda o isteğin satırında zayıf kanıt
     wb = load_workbook(res["paths"]["sade"])[S.SHEETS[0]]
@@ -170,3 +170,27 @@ def test_d_zayif_kanit_yuvayi_kismen_doldurur_istek_somut_kalir(tmp_path):
     hit = [x for x in rows if x[3] == m["metin"]]
     assert hit and "Bu istek için: kısmen: «Ders Degerlendirme Anket Formu»" in hit[0][5]
     assert S.bilgi_denetimi(res["sade"], res["paths"]["sade"]) == []
+
+
+def test_e_tek_anket_maddesi_anket_istemeyen_yuvayi_kismen_doldurur(tmp_path):
+    """B.1.4/7 "AKTS hesaplama tabloları ve ek belgeler (örn; anketler)": anket sonucundan tek madde (soru işaretsiz,
+    kısa değil) yuvayı kısmen doldurur; ders bazında iş yükü hesap tablosu istenir. Anket/geri bildirim isteyen
+    yuvada (A.4.2/2) aynı tür alıntı yuvayı tam doldurur."""
+    madde = "ECTS of the course and the total time spent were comparable."
+    ws = _hedef(tmp_path, {
+        "ank": ("anket_sonucu", True, "2026-01-10", "Ders Degerlendirme Anketi Sonuclari", T4,
+                [{**_m("B.1.4", "B.1.4/7", "uygula", 3), "alinti": madde},
+                 {**_m("A.4.2", "A.4.2/2", "uygula", 3), "alinti": madde}], "kabul"),
+        "dbf": ("ders_bilgi_formu", True, "2026-01-10", "Ders Bilgi Formu", T1,
+                [{**_m("B.1.4", "B.1.4/1", "uygula", 3), "alinti": ALINTI}], "kabul")})
+    res = R.run(ws, out=tmp_path / "o")
+    s = {x["olcut"]: x for x in res["satirlar"]}
+    assert s["B.1.4"]["kismen_yuvalar"] == {"B.1.4/7": ["Ders Degerlendirme Anketi Sonuclari"]}
+    assert "A.4.2/2" not in s["A.4.2"]["karsilanmamis_yuvalar"]
+    m = next(m for m in _sade(res, "B.1.4")["maddeler"] if "iş yükü hesap tablosu" in m["metin"])
+    assert m["metin"].startswith("En az bir ders için ders bazında AKTS iş yükü hesap tablosu")
+    assert "kısmen: «Ders Degerlendirme Anketi Sonuclari»" in m["dosyada"]
+    # anket olmayan belgenin (DBF) tek cümlelik alıntısı zayıf sayılmaz
+    from bidr.ihtiyac.karsilama import zayif
+    assert not zayif({"alinti": madde, "kanit_adi": "Ders Bilgi Formu", "belge_turu": "ders_bilgi_formu",
+                      "yuva_metni": "AKTS hesaplama tabloları ve ek belgeler (örn; anketler)"})
