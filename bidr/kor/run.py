@@ -823,14 +823,25 @@ def kanit_ciftleri(ws_root: Path, *, recs: dict[str, dict] | None = None, bekley
 
 # -- düzeltme notları (bidr write / bidr yonler paketlerine girer) --------------------------------------
 
+def excluded(ws: Workspace, key: str, t: dict | None) -> bool:
+    """Bölümün rapordan çıkardığı metin (`verify karar … cikar` ya da `write karar … cikar`): denetim
+    düzeltmesine girmez (insan kararı korunur)."""
+    if is_yon(key) or not t:
+        return False
+    from bidr.verify import run as V
+    return t.get("insan_karari") == "cikar" or V.excluded(t, V.load_human(ws))
+
+
 def notes(ws: Workspace, key: str, js: dict | None = None, t: dict | None = None) -> list[dict]:
     """Hedefin (ölçüt metni ya da alan maddeleri) bekleyen düzeltme notları: düzeltilecek metin bulguları
     ve kabul edilip audit'e yansımış ama metne henüz işlenmemiş OD kararı."""
     js = js if js is not None else load(ws)
     if not js or int(js.get("tur") or 1) >= 2:
         return []
-    st = statuses(ws, js, key)
     t = t if t is not None else _record(ws, key)
+    if excluded(ws, key, t):
+        return []
+    st = statuses(ws, js, key)
     done = consumed(js, t)
     out = []
     for f in js.get("bulgular") or []:

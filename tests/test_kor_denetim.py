@@ -462,3 +462,60 @@ def test_managed_next_contract(kurulum, capsys, monkeypatch):  # noqa: F811
     assert "Bütün aşamalar bitti." in capsys.readouterr().out          # bulgu yok: düzelt de biter
     assert main(["denetim", "ozet", "-w", str(ws)]) == 0
     assert "İç ölçüm" in capsys.readouterr().out
+
+
+def _reject(ws: Path, c: str) -> None:
+    """Doğrulamada (ajan) reddedilmiş metin: verify.jsonl kaydı + texts durumu (sahte doğrulayıcı)."""
+    from bidr.verify import run as V
+    w = Workspace(ws)
+    t = W.load_text(w, c)
+    t["durum"] = "reddedildi"
+    (ws / f"texts/{c}.json").write_text(json.dumps(t, ensure_ascii=False), encoding="utf-8")
+    log = V.load_log(w)
+    log[c] = {"olcut": c, "durum": "reddedildi", "metin_sha": W.text_sha(t), "asama": "model",
+              "tur": int(t.get("tur") or 0), "gerekce": ["s1 (kismen): x"], "cumleler": [],
+              "gorev_surumu": W.task_version(V.TASK)}
+    V.save_log(w, log)
+
+
+def test_duzelt_starts_its_own_rewrite_counter(ws):
+    # önceki rapor turlarında yeniden yazım sınırı dolmuş metin (tur 2 = sınır)
+    t = W.load_text(Workspace(ws), "B.1.1")
+    t["tur"] = W.rewrite_limit(ws)
+    (ws / "texts/B.1.1.json").write_text(json.dumps(t, ensure_ascii=False), encoding="utf-8")
+    KD.prepare(ws)
+    answer_all(ws, {"B.1.1": B11, "yon_B": YON})
+    KD.apply(ws)
+    D.prepare(ws)
+    pkg = json.loads((ws / "work/write/B.1.1.json").read_text(encoding="utf-8"))
+    assert pkg["meta"]["tur"] == 0 and pkg["meta"]["duzeltme"]
+    ypkg = json.loads((ws / "work/yonler/B.json").read_text(encoding="utf-8"))
+    assert ypkg["meta"]["tur"] == 0
+    fixed = {"paragraflar": [GOOD["paragraflar"][0],
+                             {"metin": "Ders bilgi formlarında AKTS kredisinin toplam iş yükünün 25'e bölümü olduğu "
+                                       "belirtilmektedir [2_OD3]."}], "onceki_yila_gore": ""}
+    answer(ws, "B.1.1", fixed)
+    assert W.apply(ws)["islenen"] == 1
+    assert W.load_text(Workspace(ws), "B.1.1")["tur"] == 0
+    # düzeltilmiş metin doğrulamada reddedilir: insan kararına değil, yeniden yazıma gider (tur 1/2)
+    _reject(ws, "B.1.1")
+    st = W.prepare_rejected(ws)
+    assert st["insan_gerekli"] == [] and st["tur"] == {"B.1.1": 1}
+    # notu tükettikten sonra olağan write prepare sayacı sıfırlamaz (sınır yine işler)
+    W.prepare(ws)
+    pkg = json.loads((ws / "work/write/B.1.1.json").read_text(encoding="utf-8"))
+    assert "DENETİM DÜZELTME NOTU" not in pkg["istem"] and pkg["meta"]["tur"] == 1
+
+
+def test_human_excluded_text_is_not_corrected(ws):
+    KD.prepare(ws)
+    answer_all(ws, {"B.1.1": B11, "yon_B": YON})
+    KD.apply(ws)
+    assert main(["denetim", "karar", "-w", str(ws), "B.1.1-od", "kabul"]) == 0
+    # bölüm metni rapordan çıkardı (önceki turun insan kararı): metin ya da OD notu düzeltmeye girmez
+    t = W.load_text(Workspace(ws), "B.1.1")
+    t["insan_karari"] = "cikar"
+    (ws / "texts/B.1.1.json").write_text(json.dumps(t, ensure_ascii=False), encoding="utf-8")
+    assert KD.notes(Workspace(ws), "B.1.1") == []
+    crit, areas = D.targets(Workspace(ws))
+    assert crit == [] and areas == ["B"]

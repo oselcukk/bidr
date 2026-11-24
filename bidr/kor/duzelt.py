@@ -5,7 +5,10 @@ aşımı) ve ardından bağımsız doğrulama (`bidr verify`) aynen işler; hat 
 render → denetle sırasıyla yeniden koşar (`bidr next` gösterir).
 
 Not, metin kaydına `duzeltme: {denetim, tur, bulgular}` izi olarak geçer; iz bu denetimin bulgusunu
-"düzeltildi" sayar. Not `bidr write prepare` / `bidr yonler prepare` her çalıştığında da eklenir
+"düzeltildi" sayar.
+Düzeltme yeni bir denemedir: yazım + doğrulama yeniden yazım sayacı (`tur`) her denetim düzeltmesinde
+sıfırdan başlar (önceki rapor turlarında sınırı dolmuş metin hemen insan kararına düşmez). Bölümün
+rapordan çıkardığı (`cikar`) metin düzeltmeye girmez (`KD.excluded`). Not `bidr write prepare` / `bidr yonler prepare` her çalıştığında da eklenir
 (bidr/kor/run.py `duzeltme`): metin başka bir nedenle yeniden yazılsa da not kaybolmaz. İkinci denetim
 turu ölçümdür: bulguları paketlere girmez.
 """

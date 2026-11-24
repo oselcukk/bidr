@@ -600,7 +600,9 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
         # doğrulama tur sayacı metnin girdisine bağlıdır: kanıt listesi/OD değişince ya da metin yeni
         # kuralla yenilenince yeni metin baştan sayılır (eski metnin turları yeni metne yük olmaz)
         same = bool(t) and t.get("girdi_sha") == gsha and not old_rules
-        meta.update({"tur": int(t.get("tur") or 0) if same else 0, "temel_istem_sha": K.sha(r["prompt"]),
+        # kör denetim düzeltmesi yeni bir denemedir: önceki rapor turlarının yeniden yazım sayacı
+        # devralınmaz (sınırı dolmuş metin denetim düzeltmesinde hemen insan kararına düşmesin)
+        meta.update({"tur": int(t.get("tur") or 0) if same and not dz_sec else 0, "temel_istem_sha": K.sha(r["prompt"]),
                      "girdi_sha": gsha})
         if dz:
             meta["duzeltme"] = dz

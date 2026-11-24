@@ -753,7 +753,9 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
                     and str(kay.get("gorev_surumu")) == str(r["version"])):
                 st["zaten_tamam"] += 1
                 continue
-            meta.update({"tur": int((t or {}).get("tur") or 0) if cur else 0, "temel_istem_sha": K.sha(r["prompt"])})
+            # kör denetim düzeltmesi kendi sayacıyla başlar (bidr/write/run.py prepare ile aynı)
+            meta.update({"tur": int((t or {}).get("tur") or 0) if cur and not dz_sec else 0,
+                         "temel_istem_sha": K.sha(r["prompt"])})
         if dz_sec:
             r = {**r, "prompt": r["prompt"] + "\n\n" + dz_sec}
             st.setdefault("duzeltme", []).append(alan)
