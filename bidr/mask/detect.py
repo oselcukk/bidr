@@ -3,7 +3,7 @@
 Türler (öncelik sırasıyla; çakışmada önce gelen kazanır):
   tc_no       11 hane + T.C. kimlik algoritması (ilk hane 0 değil, 10. ve 11. hane denetimi)
   iban        TR + 24 hane (boşluklu yazım dahil)
-  eposta      ad@alan.uzantı
+  eposta      ad@alan.uzantı (Unicode harfli; OCR bozulmaları: `@ ` boşluklu, `(at)`, `. com`, `.c0m`)
   telefon     +90 / 0090 / 0 önekli ya da alan kodu parantezli Türkiye numarası (önünde "FR-",
               "E-" gibi harf+tire varsa doküman kodudur, alınmaz)
   ogrenci_no  yapılandırılabilir desenler (`privacy.maskeleme.ogrenci_no_desenleri`)
@@ -40,7 +40,26 @@ DEFAULT_STUDENT_PATTERNS = (
 
 _RE_TC = re.compile(r"(?<!\d)[1-9]\d{10}(?!\d)")
 _RE_IBAN = re.compile(r"(?<![A-Za-z0-9])[Tt][Rr][ \t]?(?:\d[ \t]?){23}\d(?!\d)")
-_RE_EMAIL = re.compile(r"(?<![\w.%+\-])[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}(?![\w])")
+# E-posta. İki biçim (aynı desende, önce katı):
+#   katı     ad@alan.uzantı: yerel kısım ve alan adı Unicode harfli (Türkçe/OCR bozulması: `ad@gıtu.edu.tr`,
+#            `şükrü@ornek.de`), uzantı en az iki harf (`.con` gibi OCR bozulması da harftir);
+#   gevşek   OCR/yazım bozulması: `@` çevresinde boşluk (`ad @ ornek.com`), `(at)`/`[at]`, alan adında boşluklu ya da
+#            `(dot)` nokta (`ornek. com`), rakamlı uzantı (`.c0m`, `.0rg`). Yanlış pozitifi sınırlamak için yalnız
+#            bilinen uzantıyla biter (genel uzantılar + OCR biçimleri + yaygın ülke kodları): `x @ np.linalg`,
+#            `paket@1.2.3` (sürüm), `@property` (yerel kısım yok) alınmaz; DOI/sürüm rakamla biter, katı biçim de almaz.
+#            Sözcük olabilen ülke kodları (in, it, at, be, no, us, me …) gevşek listede yok; katı biçim onları da alır.
+_EM_LOCAL = r"[\w%+\-](?:[\w.%+\-']*[\w%+\-])?"
+_EM_LABEL = r"[\w\-]+"
+_EM_AT = r"(?:[ \t]?@[ \t]?|[ \t]?[(\[{][ \t]?(?i:at)[ \t]?[)\]}][ \t]?)"
+_EM_DOT = r"(?:[ \t]?\.[ \t]?|[ \t]?[(\[{][ \t]?(?i:dot|nokta)[ \t]?[)\]}][ \t]?)"
+_EM_TLD = (r"(?i:c[o0](?:m|n|rn)|n[e3]t|[o0]rg|[e3]du|g[o0]v|mil|int|inf[o0]|biz|i[o0]|ac|k12|bel|pol|tsk|av|"
+           r"tr|de|uk|fr|es|nl|ch|se|dk|fi|pl|ru|jp|cn|kr|ca|au|eu|ir|gr|pt|cz|hu|ro|bg|az|kz|"
+           r"il|sa|ae|br|mx|ie|lu|cy|ua|rs|ba|mk|ge|uz|tm|kg|pk|eg|tn|za|nz|sg|hk|tw)")
+_RE_EMAIL = re.compile(
+    rf"(?<![\w.%+\-]){_EM_LOCAL}"
+    rf"(?:@{_EM_LABEL}(?:\.{_EM_LABEL})*\.[^\W\d_]{{2,}}"
+    rf"|{_EM_AT}(?:{_EM_LABEL}{_EM_DOT})+{_EM_TLD})"
+    r"(?![\w])")
 _SEP = r"[ \t\-./]{0,2}"
 _RE_PHONE = re.compile(
     r"(?<![\d+])(?<![A-Za-zÇĞİÖŞÜçğıöşü]-)(?:"

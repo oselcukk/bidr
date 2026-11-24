@@ -440,3 +440,62 @@ def test_model_masking_backend_wrappers(tmp_path):
     off = ModelMasker(False)
     assert off.render(fake_render) is fake_render and off.verify_quote(verify_quote) is verify_quote
     assert callable(render_task)
+
+
+# ---------------------------------------------------------------- e-posta biçimleri (OCR bozulmaları)
+
+@pytest.mark.parametrize("adres", [
+    "ad@ornek.con",                      # OCR: .com → .con
+    "ad@ornek.c0m",                      # OCR: o → 0
+    "ad@ornek.corn",                     # OCR: m → rn
+    "ad.soyad@ornek.0rg",
+    "ad @ ornek.com",                    # @ çevresinde boşluk
+    "ad@ ornek.edu.tr",
+    "ad @ornek.edu.tr",
+    "ad@ornek. com",                     # alan adında boşluklu nokta
+    "ad@ornek .edu. tr",
+    "ad(at)ornek.com",                   # (at) yazımı
+    "ad (at) ornek.edu.tr",
+    "ad [AT] ornek [dot] com",
+    "ad@gıtu.edu.tr",                    # alan adında noktasız ı (OCR)
+    "ad@örnek-üni.edu.tr",               # alan adında Türkçe harfler
+    "kişi.şükrü@ornek.edu.tr",           # yerel kısımda Türkçe harfler
+    "ÇAĞRI.ÖZ@ORNEK.COM.TR",
+    "ad.soyad@birim.ornek.gov.tr",       # kurum adresi (alt alan adı)
+    "jane.doe@uni-ornek.de",             # yabancı üniversite adresleri
+    "j.doe@ornek.ac.uk",
+    "prof_x@ornek-univ.edu",
+    "o'neil@ornek.ie",
+    "ad.soyad+bidr@ornek.ch",
+])
+def test_eposta_bicimleri(adres):
+    t = f"İletişim: {adres}, 2025."
+    fs = [f for f in detect(t) if f.kind == "eposta"]
+    assert [t[f.start:f.end] for f in fs] == [adres]
+    masked, c = mask_text(t)
+    assert c["eposta"] == 1 and masked == "İletişim: [EPOSTA], 2025."
+
+
+@pytest.mark.parametrize("metin", [
+    "lodash@4.17.21 sürümü",             # paket sürümü
+    "python@3.12 ve node@18.x",
+    "pip install bidr==0.1.0",
+    "doi:10.1000/ornek.2025.123 ve https://doi.org/10.1000/xyz",
+    "@property\ndef ad(self): ...",       # dekoratör: yerel kısım yok
+    "@app.route('/x')",
+    "y = x @ np.linalg.inv(a)",           # matris çarpımı (boşluklu @, bilinen uzantı yok)
+    "c = a @ b.T + w @ v.shape",
+    "kullanici@localhost",
+    "v1.2@3.4",
+    "Toplantı @ salon saat 14.00",
+    "x@y.c",
+    "e-posta: eposta@maskeli.invalid",   # maskeleyicinin yer tutucu adresi
+])
+def test_eposta_yanlis_pozitif_yok(metin):
+    assert [metin[f.start:f.end] for f in detect(metin) if f.kind == "eposta"] == []
+
+
+def test_eposta_cumle_icinde_sinirlar():
+    t = "Adresler: ad@ornek.edu.tr'ye, (ikinci@ornek.com) ve ucuncu @ ornek. com.tr; son."
+    assert [t[f.start:f.end] for f in detect(t) if f.kind == "eposta"] == [
+        "ad@ornek.edu.tr", "ikinci@ornek.com", "ucuncu @ ornek. com.tr"]
