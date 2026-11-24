@@ -562,7 +562,7 @@ asamalar:
     cikti: [work/write/<ölçüt>.json (düzeltme notlu), work/yonler/<alan>.json (düzeltme notlu), kor-denetim-kararlar.jsonl]
     komut:
       - "bidr duzelt prepare -w {ws}"
-      - "(insan, hattı tutmaz; ne zaman olursa) OD ve kanıt önerileri: bidr denetim karar -w {ws} <bulgu_id> kabul|ret --not \"…\""
+      - "(insan) OD ve kanıt önerileri: bidr denetim karar -w {ws} <bulgu_id> kabul|ret --not \"…\""
     sart:
       denetim: duzelt_tamam
       metin: >-

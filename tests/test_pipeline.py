@@ -518,8 +518,13 @@ def _report_layer(ws: Path, capsys) -> None:
     assert "denetle" in out and "yayıma hazır değil" in out and "KULLANICI gerekli" in out
     # rapor yeniden üretilince denetim eskir (farklı kanıt gösterimiyle: aynı saniyede aynı girdiyle
     # üretilen docx bayt bayt aynı olabilir, o zaman denetim gerçekten günceldir)
+    from bidr.check.run import file_sha
+    sha0 = json.loads((ws / "denetim.json").read_text(encoding="utf-8"))["docx_sha"]
     assert main(["render", "-w", str(ws), "--kanit-bicimi", "kilavuz"]) == 0
-    assert ev("denetle").kim == "komut" and "güncel" in ev("denetle").neden
+    if file_sha(ws / "report.docx") != sha0:
+        assert ev("denetle").kim == "komut" and "güncel" in ev("denetle").neden
+    else:   # aynı saniyede bayt bayt aynı docx: denetim gerçekten güncel (zamanlamaya bağlı düşüş olmasın)
+        assert ev("denetle").kim == "insan"
     # metin değişirse rapor eskir
     t = json.loads((ws / "texts/B.2.3.json").read_text(encoding="utf-8"))
     t["eksikler"] = ["değişti"]

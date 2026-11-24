@@ -61,7 +61,7 @@ def paralel_satirlari(p: dict) -> list[str]:
 
 def oneri_satirlari(rep) -> list[str]:
     """Hattı tutmayan, bölüm kararı bekleyen öneriler (kör denetimin OD/kanıt önerileri): bilgi olarak."""
-    ob = rep.oneri_bekleyen
+    ob = getattr(rep, "oneri_bekleyen", None) or []
     if not ob:
         return []
     out = [f"Bilgi: denetimin {len(ob)} önerisi bölüm kararını bekliyor (hattı tutmaz; rapor tamamlandı sayılır):"]
