@@ -131,9 +131,15 @@ class Report:
     def sonraki(self) -> StageState | None:
         return next((s for s in self.asamalar if s.durum not in DONE), None)
 
+    oneri: list[dict] | None = None   # evaluate: kör denetimin karar bekleyen önerileri (aşama engelinden bağımsız)
+
     @property
     def oneri_bekleyen(self) -> list[dict]:
-        """Bütün aşamaların hattı tutmayan, bölüm kararı bekleyen önerileri (kör denetimin OD/kanıt önerileri)."""
+        """Hattı tutmayan, bölüm kararı bekleyen öneriler (kör denetimin OD/kanıt önerileri). Aşama engelli olsa da
+        (ör. yeniden yazımdan sonra render eskidi, kor_denetim/duzelt `engelli`) doğrudan denetim kaydından okunur;
+        yoksa aşamaların bildirdikleri."""
+        if self.oneri is not None:
+            return self.oneri
         return [x for s in self.asamalar for x in s.oneri_bekleyen]
 
     def to_dict(self) -> dict:
@@ -187,4 +193,13 @@ def evaluate(ws_root: Path, *, until: str | None = None) -> Report:
         states[s["id"]] = st
         if until and s["id"] == until:
             break
-    return Report(str(ws.root), sec is not None, list(states.values()))
+    oneri = None
+    if not until:
+        try:
+            from bidr.kor import run as KD
+            js = KD.load(ws)
+            if js and int(js.get("tur") or 1) < 2:
+                oneri = KD.karar_bekleyen(ws, js)
+        except (OSError, ValueError, KeyError):
+            oneri = None
+    return Report(str(ws.root), sec is not None, list(states.values()), oneri)

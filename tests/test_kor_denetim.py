@@ -259,6 +259,11 @@ def test_stage_contract_and_duzelt_cycle(ws, capsys):
     assert {x["bulgu_id"] for x in d.oneri_bekleyen} == {"B.1.1-od", "B.1.1-k1"}
     assert "2 öneri bölüm kararını bekliyor (hattı tutmaz)" in d.neden
     assert any("hattı tutmaz" in u and "denetim karar" in u for u in d.uyarilar)
+    # aşama engelli olsa da (render eskidi) rapor düzeyinde öneriler görünür (panel açık kararları eskitmesin)
+    import bidr.pipeline.state as ST
+    rep = ST.Report(str(ws), True, [], KD.karar_bekleyen(Workspace(ws)))
+    assert {x["bulgu_id"] for x in rep.to_dict()["oneri_bekleyen"]} == {"B.1.1-od", "B.1.1-k1"}
+    assert {x["bulgu_id"] for x in ST.evaluate(ws).oneri_bekleyen} == {"B.1.1-od", "B.1.1-k1"}
     kb = {x["bulgu_id"]: x for x in d.oneri_bekleyen}
     assert kb["B.1.1-od"]["rapor_od"] == 3 and kb["B.1.1-od"]["denetci_od"] == 2
     assert kb["B.1.1-k1"]["doc_id"] == REL_ID and "deneme" not in kb["B.1.1-k1"]
