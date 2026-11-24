@@ -4,6 +4,14 @@ Her birleştirmede (main'e giren her değişiklik) buraya en üste bir satır ek
 açıklama ve kullanıcıyı ilgilendiriyorsa ne yapması gerektiği. `bidr guncelle` güncellemeden sonra
 bu dosyanın yeni satırlarını gösterir. Bu dosyadan önceki geçmiş için `git log`.
 
+- 2026-11-24: Belge kimliği maskeli kopyanın baytına bağlı değil (k1-kimlik): maskeli kaynakta `doc_id` özgün
+  dosyanın sha256'sından (`inventory.csv` `ozgun_sha256`); maskeli kopya yeniden üretilip baytı değişince kimlik
+  ve kayıtlar korunur, metin yalnız gerçekten değiştiyse yenilenir. Eski çalışma alanlarında var olan kimlikler
+  korunur (`kimlikler.jsonl`); doğrulanamayan kimlik silinmez, `_oksuz/`a alınır ve `bidr next` durur. Yeni
+  komut `bidr kimlik-onar -w WS [--yedek DIR] [--uygula]`: kimliği kaymış belgeleri eski kimliklerine geri
+  bağlar. Metni model yazmış (transcribe/describe) belge `--force` olmadan yeniden çıkarılmaz; kaynaktan çıkan
+  belgenin okuma paketleri de `kaynaktan-cikarilan/`a taşınır. Güncellemeden sonra maskeli kaynaklı çalışma
+  alanında önce `bidr kimlik-onar -w WS` (kuru koşu) çalıştırın.
 - 2026-11-23: Paralel model aşamaları: varsayılan ajan sayısı min(20, n, 2 + (n-1)//20) (1 paket → 1, 2–20 → 2,
   sonra her 20 pakette +1, 361+ → 20); mutlak tavan 10 → 20; yeni `taban` ayarı (`rapor.paralel_taban`,
   `bidr parcala --taban`; vars. 2).

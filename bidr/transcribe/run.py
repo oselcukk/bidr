@@ -277,7 +277,10 @@ def source_file(src_root: Path, row: dict, ws_root: Path) -> Path | None:
     if not rel:
         return None
     if SEP in rel and row.get("doc_id"):
-        c = cache_path(ws_root, row["doc_id"], (row.get("ext") or "").lower())
+        # açılmış kopya içerik sha'sıyla adlanır (`containers.write_cache`); maskeli kaynakta kimlik özgün dosyadandır
+        from bidr.common import doc_id_from_sha
+        key = doc_id_from_sha(row["sha256"]) if row.get("ozgun_sha256") and row.get("sha256") else row["doc_id"]
+        c = cache_path(ws_root, key, (row.get("ext") or "").lower())
         if c.is_file():
             return c
     return source_path(Path(src_root), rel, Path(ws_root))
@@ -495,7 +498,7 @@ def _drop_rows(path: Path, ids: set[str]) -> int:
     return len(rows) - len(keep)
 
 
-def invalidate_downstream(ws: Workspace, ids: set[str]) -> dict:
+def invalidate_downstream(ws: Workspace, ids: set[str], neden: str = "transcribe") -> dict:
     """Metni değişen belgelerin türetilmiş kayıtlarını geçersiz kılar (veri dosyaları;
     kod değişmez). identify/candidates satırları silinir (tam yeniden üretilir; kapı
     `bidr next`'te bunları yeniden çalıştırtır). decisions.jsonl kaydı silinmez:
@@ -510,7 +513,7 @@ def invalidate_downstream(ws: Workspace, ids: set[str]) -> dict:
         for i, r in enumerate(rows):
             if r.get("doc_id") in ids and r.get("durum") != "metin_degisti":
                 rows[i] = {"doc_id": r["doc_id"], "sema": r.get("sema", 1), "durum": "metin_degisti",
-                           "neden": "transcribe", "onceki": r}
+                           "neden": neden, "onceki": r}
                 st["decisions"] += 1
                 ch = True
         if ch:

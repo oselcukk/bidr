@@ -81,6 +81,25 @@ Büyük aşamalarda (kaba/ince karar, binlerce paket) paketler alt ajanlara grup
 `doc_id` = içerik sha256'sının ilk 16 hanesi (`bidr.common.doc_id`). Aynı içerik
 aynı kimliği alır; ad değişse de değişmez.
 
+**Maskeli kaynak** (`bidr maskele --kaynak` çıktısı; panel akışı): kimlik maskeli kopyanın baytından değil,
+ÖZGÜN dosyanın sha256'sından türer (`bidr/ingest/kimlik.py`). Maskeli kopya yalnız metin kaynağıdır; aynı
+özgünden yeniden üretilince baytı değişebilir (PDF `/ID`, docx/xlsx zaman damgası, maskeleme kodu, bölge
+kararı) ve kimlik bayta bağlı olsaydı belge "yeni belge" olur, eski kimliğe bağlı bütün kayıtlar öksüz
+kalırdı. Özgün sha maskeleme raporundan gelir (`hedef` → `sha256`); `inventory.csv` `ozgun_sha256` sütununda
+durur (`sha256` maskeli kopyanın baytıdır). Maskeli kaynak değilse `ozgun_sha256` boştur ve kimlik eskisi gibi
+içerik sha'sıdır.
+
+- Maskeli baytı değişen belgede metin yeniden çıkarılır ve önceki ingest metniyle karşılaştırılır: aynıysa
+  hiçbir kayıt eskimez; farklıysa yeni metin yazılır (maskeli kopya modelin göreceği tek hâl), eski metin ve
+  okuma kayıtları `kaynaktan-cikarilan/metin-degisen/` altına alınır, belgenin kararı `metin_degisti` olur.
+- Eski çalışma alanları göç eder: var olan kimlik (maskeli sha) korunur ve `kimlikler.jsonl`'e sabitlenir
+  (özgün sha256 → doc_id). Maskeli baytı değişmiş eski satır maskeleme önbelleğiyle (`kaynak_cikti`) ya da
+  metin eşitliğiyle doğrulanır; doğrulanamazsa kayıtları SİLİNMEZ, `_oksuz/` altına alınır
+  (`_oksuz/bekleyen.jsonl`) ve `bidr next` ingest'te "KULLANICI gerekli: `bidr kimlik-onar`" der.
+- `bidr kimlik-onar -w WS` (varsayılan kuru koşu; `--uygula`): kimliği kaymış belgelerin kayıtlarını
+  `kaynaktan-cikarilan/` ya da `_oksuz/`tan eski kimliklerine geri bağlar (`bidr/ingest/onar.py`).
+- Metni model yazmış belge (transcribe/describe; method `agent_*`) `--force` olmadan yeniden çıkarılmaz.
+
 ## Ingest ayrıntıları (`bidr/ingest/`)
 
 - **Biçimler** (`extract.py`): PDF (metin katmanı + OCR), docx/doc/rtf/odt, xlsx/xlsm, **xls**

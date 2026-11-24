@@ -86,6 +86,14 @@ def ingest_tamam(c: Ctx) -> Check:
         return Check(kim=KOMUT, neden="inventory.csv yok: kaynak henüz taranmadı")
     with open(ws.inventory, newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
+    from bidr.ingest import kimlik as K
+    bek = K.bekleyenler(ws.root)
+    if bek:
+        return Check(kim=INSAN, komutlar=[c.fmt("bidr kimlik-onar -w {ws}")],
+                     neden=f"{len(bek)} belgenin kimliği belirsiz: maskeli kopyası değişmiş, eski kayıtları "
+                           f"(karar, metin) {K.OKSUZ_DIR}/ altına alındı ({_sample(b['doc_id'] for b in bek)}). "
+                           "Model işi başlamadan önce `bidr kimlik-onar` (önce kuru koşu; --uygula ile yazar) "
+                           "eski kimlikleri geri bağlar ya da belgelerin gerçekten değiştiğini onaylar")
     src = Path(c.sec["kaynak"])
     inv = {r["rel_path"] for r in rows}
     cur = {e.rel for e in scan(src)}

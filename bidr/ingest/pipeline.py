@@ -21,10 +21,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from bidr.common import Workspace, doc_id_from_sha, read_jsonl, sha256_file, write_jsonl
+from bidr.common import Workspace, read_jsonl, sha256_file, write_jsonl
 
 from . import containers as C
 from . import extract as ex
+from . import kimlik as K
 from . import parts as P
 
 FIELDS = [
@@ -38,6 +39,9 @@ FIELDS = [
     # bölünmüş parçaları: grup kimliği, sıra, gerekçe); birden çok belge şüphesi (yeni belgenin
     # başladığı sayfalar, ";" ile; bölme yapılmaz).
     "kapsayici", "parca_grubu", "parca_sira", "parca_gerekce", "coklu_belge_suphesi",
+    # Maskeli kaynakta (bidr maskele --kaynak) özgün dosyanın sha256'sı: belge kimliği bundan türer, maskeli
+    # kopyanın baytından (`sha256`) değil (bkz. `kimlik`). Maskeli kaynak değilse boş.
+    "ozgun_sha256",
 ]
 # Önceki çalıştırmadan / ilk kopyadan taşınan alanlar
 CARRY = ("pages", "chars", "method", "status", "ocr_conf", "quality", "low_quality",
@@ -54,6 +58,7 @@ NOT_DOWNLOADED = "not_downloaded"  # iCloud yer tutucusu; içerik yerelde yok
 ARCHIVE = C.ARCHIVE          # arşivin kendisi: metni yok, üyeleri ayrı satırlarda
 
 DONE_STATUSES = {OK, OCR}  # yeniden çalıştırmada atlananlar
+MODEL_METHODS = ("agent_vision", "agent_describe")   # transcribe.METHOD, describe.METHOD: metni model yazdı
 
 SKIP_NAMES = C.SKIP_NAMES
 SKIP_DIRS = C.SKIP_DIRS
@@ -130,15 +135,27 @@ def scan(source: Path) -> list[Entry]:
     return out
 
 
-def _read_prior(ws: Workspace) -> dict[str, dict]:
+def _read_prior_rows(ws: Workspace) -> list[dict]:
     if not ws.inventory.exists():
-        return {}
+        return []
     with open(ws.inventory, newline="", encoding="utf-8") as f:
-        return {r["doc_id"]: r for r in csv.DictReader(f) if r.get("doc_id") and not r.get("dup_of")}
+        return list(csv.DictReader(f))
 
 
-def _process(e: Entry, ws: Workspace, use_ocr: bool) -> dict:
-    """Tek dosyanın metnini çıkar ve yaz; satır alanlarını döndür. Hata fırlatmaz."""
+def _read_prior(ws: Workspace) -> dict[str, dict]:
+    return {r["doc_id"]: r for r in _read_prior_rows(ws) if r.get("doc_id") and not r.get("dup_of")}
+
+
+AYNI = "_metin_ayni"         # _process: kimliği aynı, baytı değişen belgenin çıkarılan metni tabanla aynı
+DEGISTI = "_metin_degisti"   # _process: metin gerçekten değişti (yeni metin yazıldı)
+
+
+def _process(e: Entry, ws: Workspace, use_ocr: bool, taban: str | None = None) -> dict:
+    """Tek dosyanın metnini çıkar ve yaz; satır alanlarını döndür. Hata fırlatmaz.
+
+    `taban`: kimliği korunan ama (maskeli) baytı değişen belgenin önceki ingest metni. Yeni çıkarılan metin
+    bununla birebir aynıysa hiçbir şey yazılmaz (`AYNI`: önceki satır alanları ve model metni geçerli kalır);
+    farklıysa yeni metin yazılır ve `DEGISTI` işaretlenir (çağıran türetilmiş kayıtları geçersiz kılar)."""
     did = e.row["doc_id"]
     try:
         res = ex.extract(e.path, use_ocr=use_ocr)
@@ -148,7 +165,11 @@ def _process(e: Entry, ws: Workspace, use_ocr: bool) -> dict:
         msg = f"{type(err).__name__}: {err}".replace("\n", " ")[:300]
         return {"status": ERROR, "method": "", "pages": "", "chars": "", "error": msg}
     text = res.text
+    if taban is not None and text == taban:
+        return {AYNI: True}
     q = ex.assess(res)
+    if taban is not None:
+        _text_changed_archive(ws, did)
     tmp = ws.text_path(did).with_suffix(".txt.tmp")
     tmp.write_text(text, encoding="utf-8")
     tmp.replace(ws.text_path(did))
@@ -167,6 +188,7 @@ def _process(e: Entry, ws: Workspace, use_ocr: bool) -> dict:
         "ocr_conf": q["ocr_conf"], "quality": q["quality"],
         "low_quality": 1 if q["low_quality"] else "",
         "images_ocr": res.images_ocr or "", "images_lowq": res.images_lowq or "",
+        **({DEGISTI: True} if taban is not None else {}),
     }
 
 
@@ -181,7 +203,11 @@ def run(source: Path, workspace: Path, *, force: bool = False, use_ocr: bool = T
         raise ValueError("çalışma klasörü kaynak klasörün içinde olamaz (kaynak salt okunur)")
     ws.ensure()
     t0 = time.time()
-    prior = _read_prior(ws)
+    prior_rows = _read_prior_rows(ws)
+    prior = {r["doc_id"]: r for r in prior_rows if r.get("doc_id") and not r.get("dup_of")}
+    kim = K.Kimlik(ws.root, K.maske_eslemesi(source), prior_rows)
+    if kim.esleme is not None:
+        log(f"maskeli kaynak: belge kimliği özgün dosyadan ({kim.esleme.rapor_yolu.name})")
     entries: list[Entry] = []
     notes: dict[str, C.Note] = {}
     for e in _scan_files(source):
@@ -192,7 +218,10 @@ def run(source: Path, workspace: Path, *, force: bool = False, use_ocr: bool = T
     log(f"tarandı: {len(entries)} dosya (arşiv/e-posta üyesi: {sum(1 for e in entries if e.member)})")
 
     first_by_sha: dict[str, Entry] = {}
+    first_by_ozgun: dict[str, Entry] = {}
+    dup_src: dict[int, Entry] = {}       # id(kopya satırı) → ilk örnek
     todo: list[Entry] = []
+    taban: dict[int, str] = {}           # id(Entry) → önceki ingest metni (kimlik aynı, bayt değişti)
     for e in entries:
         r = e.row
         r.update({k: "" for k in FIELDS})
@@ -212,11 +241,16 @@ def run(source: Path, workspace: Path, *, force: bool = False, use_ocr: bool = T
         except OSError as err:
             r.update(status=ERROR, error=f"okunamadı: {err}"[:300])
             continue
-        r.update(sha256=sha, doc_id=doc_id_from_sha(sha))
-        if sha in first_by_sha:
-            r["dup_of"] = first_by_sha[sha].rel
+        ozgun = kim.ozgun(e.rel, sha)
+        ilk = first_by_sha.get(sha) or (first_by_ozgun.get(ozgun) if ozgun else None)
+        if ilk is not None:               # birebir kopya (aynı bayt ya da aynı özgün dosya)
+            r.update(sha256=sha, ozgun_sha256=ozgun, doc_id=ilk.row["doc_id"], dup_of=ilk.rel)
+            dup_src[id(r)] = ilk
             continue
+        r.update(sha256=sha, ozgun_sha256=ozgun, doc_id=kim.doc_id(ozgun, sha, e.rel))
         first_by_sha[sha] = e
+        if ozgun:
+            first_by_ozgun[ozgun] = e
         did = r["doc_id"]
         if C.is_archive(e.rel.rsplit(C.SEP, 1)[-1]):
             n = notes.get(e.rel)
@@ -224,25 +258,67 @@ def run(source: Path, workspace: Path, *, force: bool = False, use_ocr: bool = T
                      error=(n.error if n else ""))
             continue
         old = prior.get(did)
+        # Metni model yazmış belge (transcribe/describe; ingest'in kendi çıkarımı boş kalmış olabilir: status
+        # `empty`/`needs_ocr`) --force olmadan yeniden çıkarılmaz: çıkarım model metnini ezer, apply metni yeniden
+        # yazıp belgenin kararını `metin_degisti` yapar ve belge her koşuda yeniden karara gider.
+        modelden = bool(old) and (old.get("method") or "") in MODEL_METHODS
         if (not force and ws.text_path(did).exists() and old
-                and old.get("status") in DONE_STATUSES):
-            for k in CARRY:
-                r[k] = old.get(k, "")
-            continue
+                and (old.get("status") in DONE_STATUSES or modelden)):
+            if not old.get("sha256") or old["sha256"] == sha:
+                for k in CARRY:
+                    r[k] = old.get(k, "")
+                continue
+            # kimlik aynı (özgün dosya aynı), maskeli kopyanın baytı değişti: metin yeniden çıkarılır ve
+            # öncekiyle karşılaştırılır; aynıysa hiçbir kayıt eskimez
+            t = K.taban_metni(ws.root, did)
+            if t is not None:
+                taban[id(e)] = t
         todo.append(e)
 
     log(f"işlenecek: {len(todo)} (yinelenen: {sum(1 for e in entries if e.row['dup_of'])}, "
         f"atlanan/önceden: {len(first_by_sha) - len(todo)})")
     workers = workers or max(1, (os.cpu_count() or 2))
-    done = 0
+    done = ayni = 0
+    degisen: set[str] = set()
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        futs = {pool.submit(_process, e, ws, use_ocr): e for e in todo}
+        futs = {pool.submit(_process, e, ws, use_ocr, taban.get(id(e))): e for e in todo}
         for fut in as_completed(futs):
             e = futs[fut]
-            e.row.update(fut.result())
+            res = fut.result()
+            if res.pop(AYNI, False):
+                ayni += 1
+                for k in CARRY:
+                    e.row[k] = prior[e.row["doc_id"]].get(k, "")
+            else:
+                if res.pop(DEGISTI, False):
+                    degisen.add(e.row["doc_id"])
+                e.row.update(res)
             done += 1
             if done % 10 == 0 or done == len(todo):
                 log(f"  {done}/{len(todo)}  ({time.time() - t0:.0f} sn)")
+
+    if ayni:
+        log(f"maskeli kopyası yeniden üretilen {ayni} belgenin metni aynı: kimlik ve kayıtlar korundu")
+    # Göç: aynı yolda maskeli baytı değişmiş, özgünü önbellekten doğrulanamayan eski belge. Yeni çıkarılan
+    # metin eskisiyle birebir aynıysa kimlik korunur; değilse belirsiz kalır (budama `_oksuz/`a alır).
+    for e in entries:
+        if e.row["doc_id"] in kim.belirsiz and not e.row["dup_of"]:
+            yeni = e.row["doc_id"]
+            eski = kim.metinle_dogrula(yeni)
+            if eski:
+                for x in entries:
+                    if x.row["doc_id"] == yeni:
+                        x.row["doc_id"] = eski
+                for k in CARRY:
+                    e.row[k] = prior[eski].get(k, "")
+    if degisen:
+        from bidr.transcribe.run import invalidate_downstream
+        _archive_ids(ws, ws.root / REMOVED_DIR / CHANGED_DIR, degisen, MODEL_JSONL, text=False, work=())
+        invalidate_downstream(ws, degisen, neden="ingest: maskeli kopyanın metni değişti")
+        log(f"maskeli kopyasının METNİ değişen {len(degisen)} belge: yeni metin yazıldı, bu belgelerin "
+            f"türetilmiş kayıtları geçersiz kılındı ({', '.join(sorted(degisen)[:5])}"
+            + (" …" if len(degisen) > 5 else "") + ")")
+    kim.kaydet()
 
     # E-posta ekleri okunamadıysa notu satıra
     for e in entries:
@@ -253,11 +329,11 @@ def run(source: Path, workspace: Path, *, force: bool = False, use_ocr: bool = T
     # Birebir kopyalar ilk örneğin sonucunu paylaşır.
     for e in entries:
         if e.row["dup_of"]:
-            src = first_by_sha[e.row["sha256"]].row
+            src = dup_src[id(e.row)].row
             for k in CARRY:
                 e.row[k] = src[k]
 
-    _page_structure(ws, entries, first_by_sha)
+    _page_structure(ws, entries, first_by_sha, dup_src)
     rows = [e.row for e in entries]
     tmp = ws.inventory.with_suffix(".csv.tmp")
     with open(tmp, "w", newline="", encoding="utf-8") as f:
@@ -266,7 +342,7 @@ def run(source: Path, workspace: Path, *, force: bool = False, use_ocr: bool = T
         w.writerows(rows)
     tmp.replace(ws.inventory)
     _update_gaps(ws, rows)
-    _prune_removed(ws, rows, log)
+    _prune_removed(ws, rows, log, belirsiz=kim.belirsiz)
     log(f"bitti: {len(rows)} satır, {time.time() - t0:.1f} sn -> {ws.inventory}")
     return rows
 
@@ -277,55 +353,115 @@ def run(source: Path, workspace: Path, *, force: bool = False, use_ocr: bool = T
 # doc_id'si artık kararlarda olmadığı için kullanılmaz.
 DERIVED_JSONL = ("documents.jsonl", "candidates.jsonl", "decisions.jsonl")
 DERIVED_WORK = ("coarse", "fine")
+# Model okuma kayıtları (transcribe/describe): belge kaynaktan çıkınca paketleri kalırsa `apply` onları
+# "envanterde yok" diye geçersiz cevap sayar ve aşama insan kararında durur.
+MODEL_JSONL = ("transcribe.jsonl", "describe.jsonl")
+MODEL_WORK = ("transcribe", "describe")            # work/<aşama>/<doc_id>/
+MODEL_TEXT = ("text_ocr", "text_pre_describe")     # <klasör>/<doc_id>.txt
 REMOVED_DIR = "kaynaktan-cikarilan"
+CHANGED_DIR = "metin-degisen"                      # kaynaktan-cikarilan/ altında: metni değişen belgenin eski hâli
 
 
-def _prune_removed(ws: Workspace, rows: list[dict], log: Callable[[str], None]) -> list[str]:
+def _move(src: Path, dst: Path) -> None:
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if dst.exists():                                # önceki olayın aynı adlı kaydı ezilmez
+        dst = dst.with_name(f"{dst.name}.{time.strftime('%Y%m%dT%H%M%S')}")
+    src.replace(dst)
+
+
+def _archive_ids(ws: Workspace, arch: Path, ids: set[str], jsonl: tuple[str, ...], *, text: bool = True,
+                 work: tuple[str, ...] = DERIVED_WORK, model: bool = True) -> None:
+    """`ids` belgelerinin kayıtlarını `arch` altına TAŞIR (silmez): `jsonl` dosyalarındaki satırlar
+    `arch/kayitlar.jsonl`'e eklenir; metin, iş paketleri ve (model) okuma klasörleri aynı göreli yola."""
+    if not ids:
+        return
+    arch.mkdir(parents=True, exist_ok=True)
+    when = time.strftime("%Y-%m-%dT%H:%M:%S")
+    with open(arch / "kayitlar.jsonl", "a", encoding="utf-8") as f:
+        for name in jsonl:
+            p = ws.root / name
+            if not p.exists():
+                continue
+            keep, drop = [], []
+            for r in read_jsonl(p):
+                (drop if r.get("doc_id") in ids else keep).append(r)
+            for r in drop:
+                f.write(json.dumps({"zaman": when, "dosya": name, "kayit": r}, ensure_ascii=False) + "\n")
+            if drop:
+                write_jsonl(p, keep)
+    for did in sorted(ids):
+        if text and ws.text_path(did).exists():
+            _move(ws.text_path(did), arch / "text" / f"{did}.txt")
+        for stage in work:
+            d = ws.root / "work" / stage
+            for p in (d / f"{did}.json", d / f"{did}.out.json"):
+                if p.exists():
+                    _move(p, arch / "work" / stage / p.name)
+        if model:
+            for sub in MODEL_TEXT:
+                p = ws.root / sub / f"{did}.txt"
+                if p.exists():
+                    _move(p, arch / sub / p.name)
+            for stage in MODEL_WORK:
+                p = ws.root / "work" / stage / did
+                if p.is_dir():
+                    _move(p, arch / "work" / stage / did)
+
+
+def _text_changed_archive(ws: Workspace, did: str) -> None:
+    """Metni değişen belgenin eski metni (yeni metin yazılmadan önce; işçi iş parçacığında, yalnız dosya)."""
+    src = ws.text_path(did)
+    if src.exists():
+        dst = ws.root / REMOVED_DIR / CHANGED_DIR / "text" / src.name
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if dst.exists():
+            dst = dst.with_name(f"{dst.name}.{time.strftime('%Y%m%dT%H%M%S')}")
+        dst.write_bytes(src.read_bytes())
+
+
+def _prune_removed(ws: Workspace, rows: list[dict], log: Callable[[str], None],
+                   belirsiz: dict[str, dict] | None = None) -> list[str]:
     """Kaynakta artık olmayan (envanterde doc_id'si kalmayan) belgelerin türetilmiş kayıtlarını
     kaldırır: `text/<doc_id>.txt`, documents/candidates/decisions.jsonl satırları, decide iş
-    paketleri (`work/coarse|fine/<doc_id>.json` ve cevapları). Silinmez: `kaynaktan-cikarilan/`
+    paketleri (`work/coarse|fine/<doc_id>.json` ve cevapları), model okuma kayıtları (transcribe/describe
+    satırları, paket klasörleri, `text_ocr/`, `text_pre_describe/`). Silinmez: `kaynaktan-cikarilan/`
     altına taşınır (kayıtlar `kayitlar.jsonl`'e eklenir). decisions.jsonl değiştiği için audit,
     file ve write kendi parmak izleriyle eskir ve yeniden koşar (review.xlsx satırı, kanıt
     dizini, ölçüt metni). Bir dosya okunamadıysa ya da iCloud'da duruyorsa (doc_id'si bilinemiyor)
-    hiçbir şey kaldırılmaz. Döner: kaldırılan doc_id'ler."""
+    hiçbir şey kaldırılmaz.
+
+    `belirsiz` (`kimlik.Kimlik.belirsiz`: yeni doc_id → {eski, rel_path, ozgun}): eski kimliği aynı yoldaki
+    dosyayla doğrulanamayan belgeler. Kaynaktan çıktıkları kesin değildir (maskeli kopya yeniden üretilmiş
+    olabilir): kayıtları `_oksuz/` altına alınır, `_oksuz/bekleyen.jsonl`'e yazılır ve `bidr next`
+    `bidr kimlik-onar`a yönlendirir. Döner: kaldırılan doc_id'ler (belirsizler dahil)."""
     if any(not r.get("doc_id") and r.get("status") in (NOT_DOWNLOADED, ERROR) for r in rows):
         return []
     known = {r["doc_id"] for r in rows if r.get("doc_id")}
     have: set[str] = {p.stem for p in ws.text_dir.glob("*.txt")} if ws.text_dir.exists() else set()
-    recs: dict[str, list[dict]] = {}
     for name in DERIVED_JSONL:
         p = ws.root / name
-        recs[name] = list(read_jsonl(p)) if p.exists() else []
-        have |= {r["doc_id"] for r in recs[name] if r.get("doc_id")}
+        if p.exists():
+            have |= {r["doc_id"] for r in read_jsonl(p) if r.get("doc_id")}
     gone = sorted(have - known)
     if not gone:
         return []
-    arch = ws.root / REMOVED_DIR
-    arch.mkdir(exist_ok=True)
-    when = time.strftime("%Y-%m-%dT%H:%M:%S")
-    g = set(gone)
-    with open(arch / "kayitlar.jsonl", "a", encoding="utf-8") as f:
-        for name in DERIVED_JSONL:
-            keep, drop = [], []
-            for r in recs[name]:
-                (drop if r.get("doc_id") in g else keep).append(r)
-            for r in drop:
-                f.write(json.dumps({"zaman": when, "dosya": name, "kayit": r}, ensure_ascii=False) + "\n")
-            if drop:
-                write_jsonl(ws.root / name, keep)
-    for did in gone:
-        src = ws.text_path(did)
-        if src.exists():
-            (arch / "text").mkdir(exist_ok=True)
-            src.replace(arch / "text" / src.name)
-        for stage in DERIVED_WORK:
-            d = ws.root / "work" / stage
-            for p in (d / f"{did}.json", d / f"{did}.out.json"):
-                if p.exists():
-                    (arch / "work" / stage).mkdir(parents=True, exist_ok=True)
-                    p.replace(arch / "work" / stage / p.name)
-    log(f"kaynaktan çıkan {len(gone)} belgenin türetilmiş kayıtları kaldırıldı ({REMOVED_DIR}/): "
-        + ", ".join(gone[:5]) + (" …" if len(gone) > 5 else ""))
+    supheli = {b["eski"]: dict(b, yeni=y) for y, b in (belirsiz or {}).items() if b["eski"] in gone}
+    kesin = set(gone) - set(supheli)
+    _archive_ids(ws, ws.root / REMOVED_DIR, kesin, DERIVED_JSONL + MODEL_JSONL)
+    if kesin:
+        g = sorted(kesin)
+        log(f"kaynaktan çıkan {len(g)} belgenin türetilmiş kayıtları kaldırıldı ({REMOVED_DIR}/): "
+            + ", ".join(g[:5]) + (" …" if len(g) > 5 else ""))
+    if supheli:
+        _archive_ids(ws, ws.root / K.OKSUZ_DIR, set(supheli), DERIVED_JSONL + MODEL_JSONL)
+        when = time.strftime("%Y-%m-%dT%H:%M:%S")
+        K.bekleyen_yaz(ws.root, K.bekleyenler(ws.root) + [
+            {"doc_id": d, "rel_path": b["rel_path"], "yeni_doc_id": b["yeni"], "ozgun_sha256": b["ozgun"],
+             "neden": "aynı yolda maskeli kopya değişmiş; özgün dosya önbellekten ve metinden doğrulanamadı",
+             "zaman": when} for d, b in sorted(supheli.items())])
+        log(f"KİMLİĞİ BELİRSİZ {len(supheli)} belge: kayıtları silinmedi, {K.OKSUZ_DIR}/ altına alındı "
+            f"(`bidr kimlik-onar -w {ws.root}`): " + ", ".join(sorted(supheli)[:5])
+            + (" …" if len(supheli) > 5 else ""))
     return gone
 
 
@@ -341,7 +477,8 @@ def _materialize(ws: Workspace, e: Entry) -> str:
     return m.sha
 
 
-def _page_structure(ws: Workspace, entries: list[Entry], first_by_sha: dict[str, Entry]) -> None:
+def _page_structure(ws: Workspace, entries: list[Entry], first_by_sha: dict[str, Entry],
+                    dup_src: dict[int, Entry] | None = None) -> None:
     """Parça grubu ve birden çok belge şüphesi (metinden; her çalıştırmada yeniden)."""
     pages: dict[str, list[str]] = {}
     for e in first_by_sha.values():
@@ -361,7 +498,7 @@ def _page_structure(ws: Workspace, entries: list[Entry], first_by_sha: dict[str,
         if g:
             e.row.update(parca_grubu=g["grup"], parca_sira=g["sira"], parca_gerekce=g["gerekce"])
         if e.row["dup_of"]:
-            src = first_by_sha[e.row["sha256"]].row
+            src = (dup_src[id(e.row)] if dup_src else first_by_sha[e.row["sha256"]]).row
             e.row["coklu_belge_suphesi"] = src["coklu_belge_suphesi"]
 
 
