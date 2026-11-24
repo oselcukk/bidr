@@ -359,9 +359,12 @@ belirlenmemiştir."; `yon_ifadeli`), şablon yönergesi kalmaz. Alan maddesi hi�
 yönergeyle kalır, rapor TASLAK olur. `verify-yonler.jsonl` render girdi özetine girer.
 
 **Tutarlılık uyarısı (kör denetim 2026-11-24, `yonler.tutarlilik`):** aynı ölçüt kodu bir güçlü yön
-maddesinde ve yokluk hükmü kuran ("bulunmamaktadır", "yer almamaktadır", "eksik" …) bir gelişmeye açık
-maddede geçiyorsa `yonler_tamam` uyarı verir ve doğrulama paketine "DİKKAT (kod uyarısı; karar senin)"
-satırı girer (verify_yonler kural 4-5). Engel değildir; dar kalıplı `ic_celiski` reddi aynen sürer.
+maddesinde ve açık yokluk hükmü kuran (`yonler.YOKLUK`: "bulunmamaktadır", "yer almamaktadır", "kanıt
+bulunamamıştır", "izlenmemektedir", "yapılmamıştır", "belge yok" …) bir gelişmeye açık maddede geçiyorsa
+doğrulama paketine çift başına "DİKKAT (kod uyarısı; karar senin)" satırı girer (verify_yonler kural 4-5);
+`yonler_tamam` alan başına TEK uyarı satırı verir ("B alanı: 14 ölçüt hem güçlü yönde hem yokluk hükmünde —
+doğrulayıcıya bildirildi"). Olağan derece dili ("eksik", "sınırlı kalmaktadır", "ulaşılamamıştır", "daha
+fazla", "sistematik değil") yokluk hükmü sayılmaz. Engel değildir; dar kalıplı `ic_celiski` reddi aynen sürer.
 
 ## Sorumlu birim kapsamı (`bidr/render/kapsam.py`)
 Her alt ölçüt için `bolum` (birim doldurur) | `ortak` (başka birimlerle birlikte) |

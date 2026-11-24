@@ -925,7 +925,7 @@ def yonler_tamam(c: Ctx) -> Check:
         return Check(kim=AJAN if ajan else KOMUT, ilerleme=prog, uyarilar=uy, komutlar=cmds,
                      neden="; ".join(why), bekleyen=sorted(no_out | bad | v_agent) if ajan else None)
     for a, t in sorted(texts.items()):
-        uy += [f"{a} yönleri: {x}" for x in Y.tutarlilik_satirlari(t)]
+        uy += [f"{a} alanı: {x}" for x in Y.tutarlilik_satirlari(t)]
     empty = sorted(a for a, t in texts.items() if a not in rej and not (t.get("guclu") and t.get("gelisme")))
     if empty:
         uy.append(f"dayanağı olmadığı için boş liste kalan alan ({', '.join(empty)}): o hücre şablon yönergesiyle "

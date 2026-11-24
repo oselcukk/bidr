@@ -633,12 +633,23 @@ def cross_check(t: dict, meta: dict) -> list[dict]:
     return out
 
 
+# Tutarlılık uyarısının "yokluk hükmü": yalnız AÇIK yokluk iddiası ("belge bulunmamaktadır", "kanıt
+# bulunamamıştır", "izlenmemektedir", "yapılmamıştır", "belge yok"). Gelişmeye açık maddenin olağan
+# derece/nitelik dili ("eksik", "sınırlı kalmaktadır", "hedefe ulaşılamamıştır", "daha fazla", "sistematik
+# değil") yokluk iddiası değildir: güçlü yönle birlikte durabilir (prova 2026-11-24).
+YOKLUK = re.compile(r"bulunmamak|bulunmadig|bulunmuyor|yer almamak|yer almadig|yer almiyor|\byok(?:tur)?\b"
+                    r"|bulunamam|gorulmemekte|gosterilmemis|ortaya konmamis|kanitlanmamis"
+                    r"|izlenme(?:mekte|mis|dig)|izlenmiyor|yapilma(?:mis|makta|dig)|yapilmiyor"
+                    r"|gerceklestirilme(?:mis|mekte|dig)")
+
+
 def tutarlilik(t: dict) -> list[dict]:
     """Basit tutarlılık uyarısı (kör denetim 2026-11-24): aynı ölçüt kodu hem bir güçlü yön maddesinde
-    hem yokluk hükmü kuran ("bulunmamaktadır", "yer almamaktadır", "eksik" …) bir gelişmeye açık yön
-    maddesinde geçiyorsa → [{olcut, guclu: [yer], gelisme: yer, metin}]. Engel değildir (eksik halkayı
-    adıyla söyleyen madde doğrudur); `cross_check`'in `ic_celiski`'si dar kalıplara bakar, bu uyarı
-    geniş: yonler_tamam uyarı olarak gösterir, doğrulama paketine "DİKKAT" satırı olarak girer."""
+    hem açık yokluk hükmü kuran (`YOKLUK`: "bulunmamaktadır", "yer almamaktadır", "izlenmemektedir" …) bir
+    gelişmeye açık yön maddesinde geçiyorsa → [{olcut, guclu: [yer], gelisme: yer, metin}]. Engel değildir
+    (eksik halkayı adıyla söyleyen madde doğrudur); `cross_check`'in `ic_celiski`'si dar kalıplara bakar, bu
+    uyarı geniş: ayrıntısı doğrulama paketine "DİKKAT" satırı olarak girer, yonler_tamam alan başına tek
+    satır özet gösterir (`tutarlilik_satirlari`)."""
     strong: dict[str, list[str]] = {}
     rows = items(t)
     for r in rows:
@@ -651,7 +662,7 @@ def tutarlilik(t: dict) -> list[dict]:
             continue
         for s in T.split_sentences(r["metin"]):
             low = _f(KOD.sub(" ", s))
-            if not YOK.search(low) or NEDENLI.search(low):
+            if not YOKLUK.search(low) or NEDENLI.search(low):
                 continue
             for c in dict.fromkeys(KOD.findall(s)):
                 if c in strong and not any(x["olcut"] == c and x["gelisme"] == r["yer"] for x in out):
@@ -660,9 +671,12 @@ def tutarlilik(t: dict) -> list[dict]:
 
 
 def tutarlilik_satirlari(t: dict) -> list[str]:
-    return [f"{x['olcut']}: güçlü yön ({', '.join(x['guclu'])}) ile gelişmeye açık yön ({x['gelisme']}) aynı "
-            "ölçütte; gelişmeye açık madde yokluk hükmü kuruyor, güçlü yönle ya da ölçüt metniyle çelişmediğini "
-            "denetleyin" for x in tutarlilik(t)]
+    """`status`/`next` için alan başına en çok TEK satır (ölçüt sayısı); çift başına ayrıntı yalnız doğrulama
+    paketindeki "DİKKAT" satırındadır (prova 2026-11-24: Matematik'te 55 çift satırı)."""
+    olc = {x["olcut"] for x in tutarlilik(t)}
+    if not olc:
+        return []
+    return [f"{len(olc)} ölçüt hem güçlü yönde hem yokluk hükmünde — doğrulayıcıya bildirildi"]
 
 
 def check(t: dict, meta: dict) -> list[dict]:

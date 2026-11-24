@@ -427,7 +427,39 @@ def test_yonler_consistency_warning():
                      {"metin": "İzleme sonuçlarına ilişkin kanıt bulunmamaktadır (B.1.2)."}]}
     w = Y.tutarlilik(t)
     assert [(x["olcut"], x["guclu"], x["gelisme"]) for x in w] == [("B.1.1", ["g1"], "a1")]
-    assert "çelişmediğini" in Y.tutarlilik_satirlari(t)[0]
+    assert Y.tutarlilik_satirlari(t) == ["1 ölçüt hem güçlü yönde hem yokluk hükmünde — doğrulayıcıya bildirildi"]
+
+
+def test_yonler_consistency_warning_one_line_per_area():
+    """Prova 2026-11-24: her güçlü-yön × gelişme çifti ayrı satırdı (Matematik 55); artık alan başına tek satır
+    (ölçüt sayısı), çift ayrıntısı yalnız doğrulama paketindeki DİKKAT satırında."""
+    t = {"guclu": [{"metin": "Ders planları kurulda görüşülmektedir (B.1.1, B.1.2, B.1.3)."},
+                   {"metin": "Program çıktıları izlenmektedir (B.1.1)."}],
+         "gelisme": [{"metin": "Bu uygulamaların izlendiğini gösteren belge bulunmamaktadır (B.1.1, B.1.2, B.1.3)."},
+                     {"metin": "İzleme sonuçlarına dayanan iyileştirmeyi gösteren belge yoktur (B.1.1, B.1.2)."}]}
+    assert len(Y.tutarlilik(t)) == 5                               # çift başına ayrıntı (DİKKAT için)
+    assert Y.tutarlilik_satirlari(t) == ["3 ölçüt hem güçlü yönde hem yokluk hükmünde — doğrulayıcıya bildirildi"]
+    assert Y.tutarlilik_satirlari({"guclu": t["guclu"], "gelisme": []}) == []
+
+
+def test_yonler_consistency_only_explicit_absence():
+    """Gelişmeye açık maddenin olağan derece dili yokluk hükmü değildir; yalnız açık yokluk iddiası uyarılır."""
+    g = [{"metin": "Ders planları kurulda görüşülmektedir (B.1.1)."}]
+    olagan = ["Ders planlarının güncellenmesi sistematik değildir (B.1.1).",
+              "Paydaş katılımının daha fazla artırılması gerekir (B.1.1).",
+              "Ders planlarının izlenmesi sınırlı kalmaktadır (B.1.1).",
+              "Ders planlarına ilişkin geri bildirim süreci eksiktir (B.1.1).",
+              "Gösterge hedefine ulaşılamamıştır (B.1.1)."]
+    for m in olagan:
+        assert Y.tutarlilik({"guclu": g, "gelisme": [{"metin": m}]}) == [], m
+    acik = ["Ders planlarının izlendiğini gösteren belge bulunmamaktadır (B.1.1).",
+            "Ders planlarına ilişkin kanıt bulunamamıştır (B.1.1).",
+            "Ders planlarının uygulanması izlenmemektedir (B.1.1).",
+            "Ders planlarının gözden geçirilmesi yapılmamıştır (B.1.1).",
+            "Ders planlarının bölümce değerlendirildiğine dair belge yok (B.1.1).",
+            "Ders planları izlenmiyor (B.1.1)."]
+    for m in acik:
+        assert [x["olcut"] for x in Y.tutarlilik({"guclu": g, "gelisme": [{"metin": m}]})] == ["B.1.1"], m
 
 
 from test_pipeline import kurulum  # noqa: E402,F401  (pytest fixture: yönetilen çalışma alanı)
