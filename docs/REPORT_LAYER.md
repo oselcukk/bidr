@@ -358,6 +358,17 @@ hücreye açık ifade yazılır ("Bu alanda bu dönem için kanıtla doğrulanm�
 belirlenmemiştir."; `yon_ifadeli`), şablon yönergesi kalmaz. Alan maddesi hiç yazılmamışsa hücre
 yönergeyle kalır, rapor TASLAK olur. `verify-yonler.jsonl` render girdi özetine girer.
 
+**Bölüm kararı (yön hücresi, `bidr/write/yon_karar.py`):** sınır + kullanıcının `tekrar`ları kadar yeniden
+yazımdan sonra hâlâ reddedilen alanda `yonler_tamam` `kim: insan` ve `karar_bekleyen` verir
+(`[{alan, tur, sinir, metin_sha, kabul_edilebilir, maddeler: [{yer, yon: guclu|gelisme, metin, hukum:
+kismen|desteklenmiyor|kod, gerekce}]}]`; öteki alanların işi sürerken `kim: ajan/komut` ile birlikte).
+`bidr yonler karar -w WS <alan> tekrar|kabul|cikar [--not]` → `yonler-insan.jsonl` (alanın `metin_sha`'sına bağlı;
+maddeler değişince karar geçmez). `tekrar`: bir tur daha. `kabul`: yalnız bütün reddedilen maddeler `kismen`
+ise; alan `dogrulandi` olur (insan onayı ve doğrulayıcı reddi `yonler/<alan>.json` `dogrulama`'da ve
+verify-yonler.jsonl `asama: insan`'da kalır), maddeler yazıldığı gibi basılır. `cikar`: desteklenmeyen maddeler
+çıkarılmış kalır; bölüm onayladığı için ne alan ne `yon_kapsam_kaybi` raporu TASLAK yapar (uyarı kalır).
+`yonler-insan.jsonl` render girdi özetine girer.
+
 **Tutarlılık uyarısı (kör denetim 2026-11-24, `yonler.tutarlilik`):** aynı ölçüt kodu bir güçlü yön
 maddesinde ve yokluk hükmü kuran ("bulunmamaktadır", "yer almamaktadır", "eksik" …) bir gelişmeye açık
 maddede geçiyorsa `yonler_tamam` uyarı verir ve doğrulama paketine "DİKKAT (kod uyarısı; karar senin)"

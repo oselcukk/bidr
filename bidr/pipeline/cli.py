@@ -107,6 +107,11 @@ def _next(args) -> int:
             if x.get("bulgu_id"):               # kör denetimin OD/kanıt önerisi (bidr denetim karar)
                 print(f"  - {x['bulgu_id']} ({x['sinif']}): {x.get('ozet', '')}")
                 continue
+            if x.get("alan"):                   # yön hücresi (bidr yonler karar)
+                print(f"  - {x['alan']} alanı (tur {x.get('tur')}/{x.get('sinir')}, "
+                      f"{'kabul edilebilir' if x.get('kabul_edilebilir') else 'kabul edilemez'}): " + "; ".join(
+                          f"{m['yer']} {m['hukum']}: {m['gerekce']}" for m in x.get("maddeler", [])[:5]))
+                continue
             ek = "" if not x.get("sorunlar") else ": " + "; ".join(
                 f"{i.get('yer', '-')} {i['kod']}: {i['ayrinti']}" for i in x["sorunlar"][:5])
             print(f"  - {x['olcut']} (deneme {x.get('deneme')}, "

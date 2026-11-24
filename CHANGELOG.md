@@ -4,6 +4,11 @@ Her birleştirmede (main'e giren her değişiklik) buraya en üste bir satır ek
 açıklama ve kullanıcıyı ilgilendiriyorsa ne yapması gerektiği. `bidr guncelle` güncellemeden sonra
 bu dosyanın yeni satırlarını gösterir. Bu dosyadan önceki geçmiş için `git log`.
 
+- 2026-11-24: Yön hücresi için bölüm kararı (d3b): güçlü/gelişmeye açık yön alanı yeniden yazımlardan sonra
+  doğrulamada hâlâ reddedilirse `bidr next` yonler aşamasında `kim: insan` + `karar_bekleyen` verir (önceden yalnız
+  desteklenen maddeler basılıp rapor TASLAK oluyordu). `bidr yonler karar -w WS <alan> tekrar|kabul|cikar`
+  (`yonler-insan.jsonl`); `kabul` yalnız bütün reddedilen maddeler "kısmen" ise; `kabul`/`cikar` o alanın TASLAK
+  nedenini kaldırır.
 - 2026-11-24: Elle eşleşme (d3b): bölüm modelin önermediği belge–ölçüt eşleşmesini ekleyebilir (`elle-eslesmeler.json`;
   `bidr audit elle esitle|ekle|geri|liste -w WS`). Eşleşme review-decisions.jsonl'e insan kaynaklı kabul olarak girer
   (`kaynak: insan`, `elle`), OD/PUKÖ, kanıt dosyalama ve yazımda olağan kabul gibi sayılır; alıntısızsa ikinci aramayla
