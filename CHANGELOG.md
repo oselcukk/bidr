@@ -4,6 +4,11 @@ Her birleştirmede (main'e giren her değişiklik) buraya en üste bir satır ek
 açıklama ve kullanıcıyı ilgilendiriyorsa ne yapması gerektiği. `bidr guncelle` güncellemeden sonra
 bu dosyanın yeni satırlarını gösterir. Bu dosyadan önceki geçmiş için `git log`.
 
+- 2026-11-24: Maskeleme çıktısı belirlenimci (d1-belirlenimci): aynı girdi + aynı kurallar → bayt bayt aynı maskeli
+  dosya. PDF kaydında rastgele `/ID` üretilmez (özgününki korunur), docx/xlsx yeniden yazımında zip girdi zamanları
+  sabit (1980-01-01) ve `docProps/core.xml`'de yalnız `created`/`modified` (özgünün değerleri) kalır; yeniden
+  paketlenen zip/tar.gz üyeleri, çevrilen .xls/.doc ve .msg→eml sınırları da sabit. Maskeli dosyaların baytı bir
+  kez değişir (bkz. sonraki satır: yeniden maskeleme tek sefer).
 - 2026-11-24: Belge kimliği maskeli kopyanın baytına bağlı değil (k1-kimlik): maskeli kaynakta `doc_id` özgün
   dosyanın sha256'sından (`inventory.csv` `ozgun_sha256`); maskeli kopya yeniden üretilip baytı değişince kimlik
   ve kayıtlar korunur, metin yalnız gerçekten değiştiyse yenilenir. Eski çalışma alanlarında var olan kimlikler

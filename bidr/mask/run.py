@@ -456,7 +456,8 @@ def onay_cercevesi(dst: Path, kind: str, bolgeler: list[dict], eng: str) -> None
                 except Exception:
                     pass
             tmp = dst.with_suffix(dst.suffix + ".tmp")
-            doc.save(str(tmp), garbage=3, deflate=True)
+            from .belirlenimci import pdf_kaydet
+            pdf_kaydet(doc, tmp, garbage=3, deflate=True)
         finally:
             doc.close()
         tmp.replace(dst)

@@ -318,8 +318,9 @@ def _handle_archive(src: Path, rel: str, hedef: str, dst: Path, ctx: _Ctx, depth
     tmp_out = dst.with_name(dst.name + ".yaziliyor")
     try:
         with tempfile.TemporaryDirectory(prefix="bidr-maske-") as td:
+            from . import belirlenimci as BL
             if ck == "tar":
-                writer = tarfile.open(str(tmp_out), _tar_mode(ext))
+                writer = BL.tar_ac(tmp_out, _tar_mode(ext))
             else:
                 writer = zipfile.ZipFile(str(tmp_out), "w", compression=zipfile.ZIP_DEFLATED)
             with writer:
@@ -375,10 +376,10 @@ def _handle_archive(src: Path, rel: str, hedef: str, dst: Path, ctx: _Ctx, depth
                         shutil.rmtree(d_out, ignore_errors=True)
                         continue                 # --ayir: elle bakılmalı üye kaba girmez
                     arc = "/".join(mparts[:-1] + [renamed(mparts[-1], base, written.name)])   # 7z → +.zip; .doc → .docx
-                    if ck == "tar":
-                        writer.add(str(written), arcname=arc, recursive=False)
+                    if ck == "tar":            # belirlenimci: üye zamanı/sahibi sabit
+                        writer.add(str(written), arcname=arc, recursive=False, filter=BL.tar_bilgisi)
                     else:
-                        writer.write(str(written), arcname=arc)
+                        writer.writestr(BL.zip_bilgisi(arc), written.read_bytes())
                     shutil.rmtree(d_in, ignore_errors=True)
                     shutil.rmtree(d_out, ignore_errors=True)
         tmp_out.replace(dst)

@@ -689,7 +689,8 @@ def mask_pdf_pymupdf(src: Path, dst: Path, rules: MaskRules, bolge=None) -> dict
         doc.set_toc([])
         temiz.add("yer_imleri")
     dst.parent.mkdir(parents=True, exist_ok=True)
-    doc.save(str(dst), garbage=4, deflate=True, clean=True)
+    from .belirlenimci import pdf_kaydet
+    pdf_kaydet(doc, dst, garbage=4, deflate=True, clean=True)
     doc.close()
     # PyMuPDF'in dokunmadığı katalog girdileri (yapı ağacı vb.): pypdf ile ikinci geçiş
     from pypdf import PdfReader, PdfWriter
@@ -1030,6 +1031,8 @@ def mask_docx(src: Path, dst: Path, rules: MaskRules, *, imza: bool = True) -> d
     counts.update(med["maskelenen"])
     dst.parent.mkdir(parents=True, exist_ok=True)
     d.save(str(dst))
+    from .belirlenimci import ooxml_sabitle
+    ooxml_sabitle(dst, src)
     return {"maskelenen": counts, "temizlenen": sorted(temiz), "uyarilar": med["uyarilar"],
             "imza_bolgesi": med["imza_bolgesi"], "ortusen_kelime": med["ortusen_kelime"]}
 
@@ -1292,6 +1295,8 @@ def mask_xlsx(src: Path, dst: Path, rules: MaskRules) -> dict:
         pass
     dst.parent.mkdir(parents=True, exist_ok=True)
     wb.save(str(dst))
+    from .belirlenimci import ooxml_sabitle
+    ooxml_sabitle(dst, src)
     return {"maskelenen": counts, "temizlenen": sorted(temiz), "uyarilar": uyarilar}
 
 

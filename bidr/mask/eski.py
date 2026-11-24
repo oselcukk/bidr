@@ -219,6 +219,8 @@ def _msg_to_eml(src: Path, dst: Path) -> None:
             m.close()
         except Exception:
             pass
+    from .belirlenimci import eml_sinirlarini_sabitle
+    eml_sinirlarini_sabitle(msg)
     dst.write_bytes(msg.as_bytes())
 
 
@@ -245,6 +247,8 @@ def convert(src: Path, workdir: Path) -> tuple[Path, str]:
         if textutil_available():                    # macOS: mevcut yol
             out = workdir / f"{stem}.docx"
             _textutil_docx(src, out)
+            from .belirlenimci import ooxml_sabitle
+            ooxml_sabitle(out, None)            # textutil çıktısının zip zamanları/core tarihleri: çeviri anı
             return out, "textutil"
         if soffice_path():                          # Linux/Windows: LibreOffice → PDF
             return _soffice_pdf(src, workdir, ext), "soffice"
@@ -260,6 +264,8 @@ def convert(src: Path, workdir: Path) -> tuple[Path, str]:
             return out, "uzantı düzeltme (içi HTML)"
         out = workdir / f"{stem}.xlsx"
         _xls_to_xlsx(src, out)
+        from .belirlenimci import ooxml_sabitle
+        ooxml_sabitle(out, None)                # openpyxl: core.xml created/modified = çeviri anı
         return out, "xlrd→openpyxl"
     if ext == ".msg":
         out = workdir / f"{stem}.eml"

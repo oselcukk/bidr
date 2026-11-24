@@ -223,8 +223,8 @@ def test_kaynak_onbellek_ilerleme_ve_isaret(src, tmp_path, monkeypatch):
     assert not any(NAME in v or OGR in v for v in map(str, il.values()))     # ilerlemede dosya adı yok
     islenen = sum(1 for r in rep["dosyalar"] if r.get("sha256"))
     assert islenen and rep["ozet"]["onbellekten"] == 0
-    def agac():   # işaret (zaman) ve yeniden paketlenen tar.gz (gzip zaman damgası) dışında
-        return {k: v for k, v in _tree_sha(out).items() if k != ".bidr-maskeleme.json" and not k.endswith(".gz")}
+    def agac():   # işaret (zaman) dışında; yeniden paketlenen tar.gz de belirlenimci (gzip zamanı sabit)
+        return {k: v for k, v in _tree_sha(out).items() if k != ".bidr-maskeleme.json"}
     once = agac()
     rep2 = K.run_source(src, out, rules=RULES, engine="pypdf", ws=ws)
     assert rep2["ozet"]["onbellekten"] == islenen                 # bitmiş dosyalar baştan yapılmadı
