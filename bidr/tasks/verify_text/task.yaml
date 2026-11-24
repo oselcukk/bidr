@@ -12,6 +12,9 @@ description: >-
   uyuşuyorsa "kismen/desteksiz" sayılmaz; alıntı içerik iddialarını (sayı, tarih, ne yapıldığı)
   desteklemeli. Sürüm artışı doğrulanmış metinleri yeniden doğrulatmaz; yalnız eski sürümle ajan
   reddi almış ve bekleyen metinler yeni kuralla doğrulanır (bidr/verify/run.py `stale_reject`).
+  v4 açıklama (sürüm değişmedi, şema aynı; 2026-11-24): afiş/duyuru faaliyetin planlandığını/duyurulduğunu
+  destekler (planlama kanıtı); yalnız "düzenlenmiştir/gerçekleştirilmiştir" iddiası için yetmez. Sürüm
+  artmadı: doğrulanmış ve reddedilmiş metinler yeniden doğrulanmaz; yalnız bekleyen paketler yeni istemle.
 inputs:
   olcut: "ölçüt kimliği, başlığı, önerilen OD ve rubrik"
   cumleler: "denetlenecek cümleler: yer kimliği, metin, atıflar"

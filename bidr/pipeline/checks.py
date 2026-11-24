@@ -421,7 +421,7 @@ def faaliyet_tamam(c: Ctx) -> Check:
         return Check(kim=KOMUT, komutlar=[cmd], neden=f"{F.DECISIONS} yok")
     if not out.exists():
         return Check(kim=KOMUT, komutlar=[cmd], neden=f"{F.OUT} yok: faaliyet kayıtları üretilmedi")
-    want = json.loads(json.dumps(F.build(list(read_jsonl(src))), ensure_ascii=False))
+    want = json.loads(json.dumps(F.build_ws(ws), ensure_ascii=False))
     try:
         have = json.loads(out.read_text(encoding="utf-8"))
     except (OSError, ValueError):

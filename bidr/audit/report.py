@@ -111,6 +111,7 @@ SAVUNMA = {
     "bos_form": "boş form/şablon: uygulama değil → planla",
     "gerceklesme_kaniti_yok": "duyuru/gelecek zamanlı ifade ya da gerçekleşmesi kanıtlanmamış faaliyet → planla",
     "faaliyet_asamasi_uyusmuyor": "faaliyet kaydındaki aşama daha düşük → o aşama",
+    "etkinlik_gerceklesti": "gerçekleşmesi kanıtlı etkinliğin duyurusu/afişi (etkinlik dosyası) → uygula",
     "katilim_izleme_degil": "katılım/yapılma kaydı izleme değil → uygula",
     "niyet_onlem_degil": "öneri/niyet iyileştirme değil → kontrol_et",
     "bilgilendirme_onlem_degil": "kurula bilgi verilmesi iyileştirme değil → uygula",

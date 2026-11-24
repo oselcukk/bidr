@@ -444,6 +444,14 @@ class Context:
     def pin(self, did: str) -> str | None:
         return (self.pins.get(did) or {}).get("birim_iliskisi")
 
+    def etkinlik(self, did: str) -> list[dict]:
+        """Etkinlik dosyası ipucu (bidr/faaliyet/dosya.py): fotoğrafın grubundaki kaynak belgelerin
+        faaliyetleri. Harita ilk kullanımda çalışma alanından (decisions, inventory) bir kez kurulur."""
+        if getattr(self, "_etkinlik", None) is None:
+            from bidr.faaliyet import dosya as ED
+            self._etkinlik = ED.yukle(self.ws.root)
+        return self._etkinlik.get(did) or []
+
     @classmethod
     def load(cls, ws_root: Path, *, profile: str | None = "akademik_bolum", k: int = 5,
              max_aday: int = 6, candidates_name: str = "candidates.jsonl",
@@ -572,9 +580,16 @@ def fine_inputs(ctx: Context, did: str, rec: dict, pin: bool = True,
     if kom:                                 # uzayan aday listesi metin payından düşer (istem bütçesi)
         pay = min(pay, max(KOMISYON_MIN_METIN, pay - max(0, len(liste) - LISTE_BUTCE)))
     pay -= len(N.block(ctx.note(did)))      # bölümün belge notu da metin payından düşer
+    from bidr.faaliyet import dosya as ED
+    etk = ctx.etkinlik(did) if ED.ipucu_alir(rec) else []
+    bilgi = P.render_info(rec.get("belge_bilgisi") or {})
+    if etk:                                 # etkinlik dosyası ipucu (yalnız fotoğraf; karar modelin)
+        bilgi = (f"{bilgi}; " if bilgi != "(yok)" else "") + ED.satir(etk)
+        meta[ED.ALAN] = [x["doc_id"] for x in etk]
+        pay -= len(ED.satir(etk))
     body, ex = P.excerpt(text, pay, P.criteria_terms(ctx.cs, cands))
     inputs = {"adaylar": liste,
-              "belge_bilgisi": N.with_note(P.render_info(rec.get("belge_bilgisi") or {}), ctx.note(did)),
+              "belge_bilgisi": N.with_note(bilgi, ctx.note(did)),
               "belge_metni": body,
               "kanit_ilkeleri": P.evidence_principles(),
               "birim": P.render_unit(ctx.unit, ctx.pin(did) if pin else None)}
@@ -631,7 +646,9 @@ def apply_fine(ctx: Context, did: str, rec: dict, out: dict, meta: dict, model_i
                    **({"birim_iliskisi_model": model_rel} if pin else {}),
                    "kanit_adi": evidence_name_of(out), **activity_of(out), "model": model_id,
                    "metin": meta["metin"], "istem_token_tahmini": meta["istem_token_tahmini"],
-                   "denetim_surumu": DENETIM_SURUMU, **note_fields(meta, out), **(extra or {})}
+                   "denetim_surumu": DENETIM_SURUMU, **note_fields(meta, out),
+                   **({"etkinlik_baglami": meta["etkinlik_baglami"]} if meta.get("etkinlik_baglami") else {}),
+                   **(extra or {})}
     rec["eslesmeler"] = matches + carry_second_search(ctx, did, prev_second, matches, kg["karar"], rel, verify)
     if prev_second:                         # ilk geçiş değişti: "aynı alıntı" işareti yeniden hesaplanır
         from bidr.candidates.arama import load_review, mark_same_quote
@@ -848,7 +865,8 @@ def load_restale(ws: Workspace, stage: str) -> dict | None:
 # hesabı geçersizdir: `bidr status` prepare'i (onaysız, model işi yok) yeniden ister.
 _PKG = Path(__file__).resolve().parents[1]
 FINGERPRINT_CODE = (_PKG / "decide" / "run.py", _PKG / "decide" / "prompt.py",
-                    _PKG / "candidates" / "komisyon.py", _PKG / "candidates" / "text.py")
+                    _PKG / "candidates" / "komisyon.py", _PKG / "candidates" / "text.py",
+                    _PKG / "faaliyet" / "dosya.py")
 FINGERPRINT_DATA = (_PKG / "data" / "criteria", _PKG / "data" / "profiles")
 
 
@@ -872,6 +890,9 @@ def input_fingerprint(ws: Workspace, stage: str) -> str:
     for name in ("documents.jsonl", "candidates.jsonl", BIRIM_KARARLARI, N.NOTLAR):
         add(ws.root / name)
     h.update(json.dumps(P.unit_info(ws.root), ensure_ascii=False, sort_keys=True).encode("utf-8"))
+    if stage == "fine":                     # etkinlik dosyası ipucu başka belgelerin kararından kurulur
+        from bidr.faaliyet import dosya as ED
+        h.update(ED.parmak(ED.yukle(ws.root)).encode("utf-8"))
     if ws.text_dir.exists():
         for p in sorted(ws.text_dir.glob("*.txt")):
             add(p)

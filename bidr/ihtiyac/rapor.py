@@ -475,6 +475,7 @@ def run(ws_root: Path, *, referans: dict | None = None, out: Path | None = None,
     from bidr.render.kapsam import workspace_scope
 
     from .eslestir import eslestir_hepsi, load_target
+    from .etkinlik import etkinlik_istekleri
     from .tablolar import Turler
 
     ws_root = Path(ws_root).expanduser().resolve()
@@ -517,7 +518,8 @@ def run(ws_root: Path, *, referans: dict | None = None, out: Path | None = None,
     ornekler = ornekler if ornekler is not None else sade.ornekler_yukle()
     sade_rows = sade.satirlar_kur(a.cs, tags, sor, talepler, satirlar, gecen, yil=a.donem,
                                   ref_yil=(referans or {}).get("donem"), istekler=istekler, somut=somut,
-                                  oneriler=oneriler, kurum=kurum, ornekler=ornekler)
+                                  oneriler=oneriler, kurum=kurum, ornekler=ornekler,
+                                  etkinlik=etkinlik_istekleri(ws_root, a, satirlar, sor))
     write_xlsx(paths["xlsx"], talepler, satirlar, gecen_x, ornek_satirlari(ornekler, satirlar, sade_rows))
     paths["md"].write_text(md_ozet(meta, talepler, satirlar, gecen), encoding="utf-8")
     paths["sade"] = sade.write_xlsx(out / sade.FILE, sade_rows,

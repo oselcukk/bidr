@@ -230,6 +230,21 @@ Markdown: yalnız madde işaretli satırlar okunur, `- B.3.2 — 2026 ders izlen
 `(kimden: …)` isteğe bağlı. `B.1.x` ya da `B.1` ana madde satırı olarak ("alt madde belirtilmedi"),
 kodsuz satır "Genel" satırı olarak eklenir. CSV: `madde,istek` zorunlu, `oncelik`, `kimden` isteğe bağlı.
 
+### 5.2 Etkinlik adıyla istekler
+
+`bidr/ihtiyac/etkinlik.py`, faaliyet kayıtlarından (`bidr faaliyet` ile aynı kurulum; etkinlik dosyası,
+`bidr/faaliyet/dosya.py`) elle isteklerden sonra yazılır (öncelik Orta, kimden: etkinliği düzenleyen):
+
+- planlaması kanıtlı (afiş/duyuru/plan) ama gerçekleşmesi kanıtlanmamış etkinlik: "«<ad> (<tarih>)»
+  etkinliğinin gerçekleştiğini gösteren fotoğraf, haber, sosyal medya paylaşımı ya da katılım listesi";
+- gerçekleşmiş, değerlendirmesi olmayan etkinlik, ölçütü OD3'teyse (OD4'e aday): değerlendirme / geri
+  bildirim / sonraki dönem için alınan karar;
+- bağlamsız fotoğraf (faaliyet adı yok, aynı klasör/ad serisinde etkinlik belgesi yok, sahnesi mekân
+  değil): "Bu fotoğraf hangi etkinliğe ait? Belgeler sayfasında belge notu yazın: <yol>" ("Genel"
+  maddesinde; en çok 15, kalanı tek satır).
+
+İstek etkinliğin belgelerinin (incelemede reddedilmemiş) ilk ölçütüne yazılır; yoksa "Genel".
+
 ## 6. Kurum belge kataloğu (`bidr kurum-katalog`)
 
 Kurumun herkese açık mevzuat ve kalite sayfalarındaki belgelerin (yönetmelik, yönerge, usul-esas,

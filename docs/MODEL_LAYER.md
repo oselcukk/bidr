@@ -88,6 +88,18 @@ ok, score, span = verify_quote(quote, text)   # Türkçe katlama, boşluk, OCR t
   eski kararlar geçerli kalır ve faaliyetsiz sayılır. İstem boyut sınırı (`test_prompt_size_budget`,
   < 8000 token) için ince karar metin bütçesi `FINE_CHARS` 8000 → 7300 karakter.
 
+  **Etkinlik dosyası (v10 açıklama, sürüm değişmedi; 2026-11-24).** Bölümün etkinliğinin afişi/duyurusu
+  planlama kanıtıdır (kanıt ilkesi `etkinlik_dosyasi`; "yalnız duyuru" diye `kanit_degil` denmez). Aynı
+  klasörde aynı dosya serisi ("… 2026-1.jpg" … "-5.jpg") ya da faaliyet adı taşıyan belgeyle ±7 gün içindeki
+  fotoğraf aday grup kurar (`bidr/faaliyet/dosya.py`); grubun kendi içeriğinden faaliyet adı almış üyeleri
+  fotoğrafın belge bilgisine "etkinlik dosyası adayı" ipucu olarak girer, karar modelindir
+  (`ince.etkinlik_baglami`: ipucunun kaynak belgeleri). İpucu yalnız faaliyet adı olmayan ya da zaten
+  ipucuyla karar almış fotoğrafa verilir; ipuçlu karar kaynak olmaz (zincir ve yeniden karar döngüsü yok).
+  Eskime: sürüm artmadı, mevcut kararlar geçerli ("kural değişti" bilgisi); yalnız ipucu eklenen
+  fotoğrafların girdisi değişir ve onaysız yeniden paketlenir. Faaliyet kaydında aynı dosya serisi ad sayısı
+  farklı olsa da birleşir; audit'te gerçekleşmesi kanıtlı faaliyetin duyurusu uygulamayı kabul eden yuvada
+  `uygula` sayılır (`etkinlik_gerceklesti`).
+
   `bidr faaliyet -w WS [--out DOSYA] [--json]` (`bidr/faaliyet/`, belirleyici, model yok):
   `decisions.jsonl`'deki faaliyet alanlarını faaliyet kayıtlarında toplar → `faaliyetler.json`
   (`ozet` + `faaliyetler[]`: `id` F001…, `ad`, `adlar`, `tarih` (olay günü), `tarih_araligi`,

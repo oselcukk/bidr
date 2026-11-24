@@ -26,6 +26,9 @@ def _cmd(args) -> int:
     if st["yalniz_duyuru"]:
         print(f"UYARI: {st['yalniz_duyuru']} faaliyetin yalnız duyuru/plan belgesi var; "
               f"'düzenlenmiştir' denemez (gerçekleşme kanıtı gerekir).")
+    if st.get("baglamsiz_fotograf"):
+        print(f"Not: {st['baglamsiz_fotograf']} fotoğraf hiçbir etkinliğe bağlanamadı (faaliyet adı yok, aynı "
+              f"klasör/ad serisinde etkinlik belgesi yok); `bidr ihtiyac` bölümden belge notu ister.")
     if st["alansiz_eski"]:
         print(f"Not: {st['alansiz_eski']} kayıt classify_fine v8 ve öncesinden (faaliyet alanı yok); "
               f"isteğe bağlı: `bidr decide prepare -w WS --stage fine` özetini görüp `--yes`.")

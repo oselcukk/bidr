@@ -4,6 +4,12 @@ Her birleştirmede (main'e giren her değişiklik) buraya en üste bir satır ek
 açıklama ve kullanıcıyı ilgilendiriyorsa ne yapması gerektiği. `bidr guncelle` güncellemeden sonra
 bu dosyanın yeni satırlarını gösterir. Bu dosyadan önceki geçmiş için `git log`.
 
+- 2026-11-24: Etkinlik dosyası ve planlama kanıtı (d3a): afiş/duyuru planlama kanıtıdır (ince karar istemi, kanıt
+  ilkesi `etkinlik_dosyasi`, doğrulama istemi; görev sürümleri artmadı). Aynı klasör/dosya serisindeki fotoğrafa
+  grubun etkinlik adı ipucu olarak verilir (model karar verir); gerçekleşmesi kanıtlı etkinliğin duyurusu
+  uygulama sayılır. `bidr ihtiyac` etkinliği adıyla ister (gerçekleşme, OD3 ölçütte değerlendirme) ve bağlamsız
+  fotoğraf için belge notu ister. BİR KEZ: `bidr faaliyet` yeniden ister (yeni alanlar); ipucu alan fotoğraflar
+  onaysız yeniden karara gider; öteki ince kararlar "kural değişti" bilgisiyle geçerli kalır.
 - 2026-11-24: Raporun kör denetimi ve düzeltmesi (d2, isteğe bağlı aşamalar `kor_denetim`, `duzelt`): `bidr denetim
   prepare|apply|karar|ozet`, `bidr duzelt prepare`. İstenmezse hat eskisi gibi biter. Metin bulguları kendiliğinden
   düzeltilir ve yeniden doğrulanır; OD/kanıt önerilerinin bölüm kararı hattı tutmaz (rapor tamamlandı sayılır, `bidr
