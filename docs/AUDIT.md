@@ -448,6 +448,11 @@ WS <belge yolu|doc_id> <ölçüt> [--yuva] [--asama] [--not]`, `geri <anahtar>`,
   (o satır ayrıca sorulmaz). Yoksa satır alıntısızdır ve çift ikinci aramaya zorunlu aday girer (kör denetimin kabul
   edilen belge önerisiyle aynı yol, kaynak `elle`, `--yalniz-denetim`): alıntıyı model belgeden bulur, kod birebir
   denetler, yazım onu kullanır. Bulunamazsa satır sayılır ama yazım belgeyi alıntısız görür.
+- Hat dosyayı kendisi tüketir: işleyici dosyayı hazırlıkta (ingest'ten önce) yazar, `bidr audit` ve `bidr audit
+  apply` başta eşitler; dosya son eşitlemeden sonra değiştiyse (`elle-eslesmeler-durum.json` `kaynak_sha`) audit
+  eskir. Belgesi henüz çözülemeyen girdi hata değildir: `bekliyor` kalır, sonraki audit'te yeniden denenir.
+- Sonuç `elle-eslesmeler-durum.json`: `{"surum": 1, "kaynak_sha", "zaman", "eslesmeler": {"<anahtar>": {"durum":
+  "uygulandi"|"zaten_kabul"|"bulunamadi"|"bekliyor", "neden", "doc_id", "yuva", "satir"}}}`.
 - Dosyadan çıkan eşleşmenin kaydı kalkar (yalnız `elle` anahtarı eşleşenler). Tablodaki karar elle kaydı
   değiştirmez (`apply` korur); geri alma dosyadan. Elle kayıtları değişince `review.xlsx` eskir (meta `elle_sha`),
   `bidr audit` tabloyu yeniden üretir; file ve sonraki aşamalar `review-decisions.jsonl` özetinden eskir.

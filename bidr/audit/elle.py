@@ -41,6 +41,7 @@ from pathlib import Path
 from bidr.common import read_jsonl, write_jsonl
 
 DOSYA = "elle-eslesmeler.json"
+DURUM = "elle-eslesmeler-durum.json"     # son eşitlemenin sonucu (panel gösterir) + kaynak dosyanın özeti
 KAYNAK = "insan"
 ISARET = "elle_eslesme"
 VARSAYILAN_ASAMA = "planla"
@@ -95,6 +96,25 @@ def yaz(ws_root: Path | str, girdiler: list[dict], kaynak: str | None = None) ->
     tmp = p.with_name(p.name + ".yaziliyor")
     tmp.write_text(json.dumps(d, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     tmp.replace(p)
+
+
+def kaynak_sha(ws_root: Path | str) -> str:
+    """Kaynak dosyanın özeti (yoksa "")."""
+    p = path(ws_root)
+    return hashlib.sha256(p.read_bytes()).hexdigest()[:16] if p.is_file() else ""
+
+
+def durum_oku(ws_root: Path | str) -> dict:
+    p = Path(ws_root) / DURUM
+    try:
+        return json.loads(p.read_text(encoding="utf-8")) if p.is_file() else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def eski_mi(ws_root: Path | str) -> bool:
+    """Kaynak dosya son eşitlemeden sonra değişti mi (audit eskir; `bidr audit` eşitler)."""
+    return (durum_oku(ws_root).get("kaynak_sha") or "") != kaynak_sha(ws_root)
 
 
 def kayitlar(review: dict[str, dict]) -> dict[str, dict]:
@@ -171,7 +191,8 @@ def esitle(ws_root: Path | str, *, out: Path | None = None) -> dict:
     base = temel(review)
     girdiler = oku(ws_root)
     st = {"eklenen": [], "guncellenen": [], "kaldirilan": [], "zaten_kabul": [], "bulunamayan": [],
-          "degisti": False}
+          "bekleyen": [], "degisti": False}
+    durum: dict[str, dict] = {}
     yeni: dict[str, dict] = {}
     if girdiler:
         cs = load_criteria()
@@ -206,7 +227,8 @@ def esitle(ws_root: Path | str, *, out: Path | None = None) -> dict:
                 continue
             did, neden = get(e)
             if not did:
-                st["bulunamayan"].append({"anahtar": k, "neden": neden})
+                # belge henüz çalışma alanında yok (ör. yeni yüklendi, ingest sonra): bekler, sonraki audit'te denenir
+                st["bekleyen"].append({"anahtar": k, "neden": neden})
                 continue
             olcut, yuva = crit.id, e["yuva"]
             mine = [r for r in rows if r["doc_id"] == did or did in (r.get("kopyalar") or "").split("; ")]
@@ -215,6 +237,9 @@ def esitle(ws_root: Path | str, *, out: Path | None = None) -> dict:
             if kabul or (did, olcut, yuva) in alinan or (did, olcut, None) in alinan or (
                     yuva is None and any(x[:2] == (did, olcut) for x in alinan)):
                 st["zaten_kabul"].append(k)
+                durum[k] = {"durum": "zaten_kabul", "neden": "belge bu maddede zaten kabul edilmiş", "doc_id": did,
+                            "yuva": kabul[0]["yuva"] if kabul else (yuva or ""),
+                            "satir": kabul[0]["satir"] if kabul else ""}
                 continue
             aday = [r for r in mine if r["olcut_model"] == olcut and r["olcut"] == olcut
                     and (yuva is None or r["yuva_model"] == yuva) and r["karar"] in ("", "ret")]
@@ -250,6 +275,13 @@ def esitle(ws_root: Path | str, *, out: Path | None = None) -> dict:
             yeni[k] = {key: rec[key] for key in ("satir", "doc_id", "olcut", "yuva", "karar", "duzelt", "etiket",
                                                  "not", "kaynak", "elle", "elle_kim", "elle_tarih", "asama",
                                                  "yapay", "asama_varsayilan", "onceki") if key in rec}
+    for b in st["bulunamayan"]:
+        durum[b["anahtar"]] = {"durum": "bulunamadi", "neden": b["neden"], "doc_id": "", "yuva": "", "satir": ""}
+    for b in st["bekleyen"]:
+        durum[b["anahtar"]] = {"durum": "bekliyor", "neden": b["neden"], "doc_id": "", "yuva": "", "satir": ""}
+    for k, r in yeni.items():
+        durum[k] = {"durum": "uygulandi", "neden": "", "doc_id": r["doc_id"], "yuva": r["yuva"], "satir": r["satir"]}
+    _durum_yaz(ws_root, durum)
     for k, r in yeni.items():
         if k not in eski:
             st["eklenen"].append(k)
@@ -263,6 +295,28 @@ def esitle(ws_root: Path | str, *, out: Path | None = None) -> dict:
         write_jsonl(rp, [merged[x] for x in sorted(merged)])
         st["degisti"] = True
     return st
+
+
+def _durum_yaz(ws_root: Path, durum: dict[str, dict]) -> None:
+    from datetime import datetime
+    d = {"surum": 1, "kaynak_sha": kaynak_sha(ws_root), "zaman": datetime.now().isoformat(timespec="seconds"),
+         "eslesmeler": {k: durum[k] for k in sorted(durum)}}
+    if not path(ws_root).is_file() and not durum:
+        (Path(ws_root) / DURUM).unlink(missing_ok=True)
+        return
+    p = Path(ws_root) / DURUM
+    tmp = p.with_name(p.name + ".yaziliyor")
+    tmp.write_text(json.dumps(d, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    tmp.replace(p)
+
+
+def gerekli(ws_root: Path | str, out: Path | str | None = None) -> bool:
+    """Eşitleme yapılacak bir şey var mı: kaynak dosya, durum dosyası ya da kayıtlarda elle kaydı."""
+    ws_root = Path(ws_root)
+    if path(ws_root).is_file() or (ws_root / DURUM).is_file():
+        return True
+    rp = Path(out or ws_root) / REVIEW
+    return rp.exists() and any(r.get("elle") for r in read_jsonl(rp))
 
 
 def ekle(ws_root: Path | str, belge: str, olcut: str, *, yuva: str | None = None, asama: str | None = None,

@@ -93,7 +93,14 @@ def test_sha_resolves_and_missing_doc(ws):
     st = E.esitle(ws)
     assert st["eklenen"] == ["panel-1"]
     neden = {b["anahtar"]: b["neden"] for b in st["bulunamayan"]}
-    assert set(neden) == {"panel-2", "panel-3", "panel-4"} and "envanterde" in neden["panel-2"]
+    assert set(neden) == {"panel-3", "panel-4"}
+    # belge henüz çalışma alanında yok: hata değil, bekler (sonraki audit'te yeniden denenir)
+    assert [b["anahtar"] for b in st["bekleyen"]] == ["panel-2"] and "envanterde" in st["bekleyen"][0]["neden"]
+    d = json.loads((ws / E.DURUM).read_text(encoding="utf-8"))
+    assert d["kaynak_sha"] == E.kaynak_sha(ws)
+    es = d["eslesmeler"]
+    assert es["panel-1"]["durum"] == "uygulandi" and es["panel-1"]["doc_id"] == "d_plan" and es["panel-1"]["yuva"]
+    assert es["panel-2"]["durum"] == "bekliyor" and es["panel-3"]["durum"] == "bulunamadi"
 
 
 def test_duplicate_and_already_accepted(ws):
@@ -135,7 +142,7 @@ def test_overrides_human_reject_and_undo_restores(ws):
 def test_undo_synthetic_row_and_pipeline_staleness(ws):
     a, _ = audit(ws)
     _girdi(ws, _e("panel-1", "kurul/eylem-plani.pdf", "A.1.3", yuva="A.1.3/1"))
-    assert review_state(ws)["guncel"]
+    assert not review_state(ws)["guncel"]                     # kaynak dosya değişti
     E.esitle(ws)
     assert not review_state(ws)["guncel"]                     # tablo yeniden üretilmeli (elle_sha)
     a, _ = audit(ws)
@@ -214,9 +221,39 @@ def test_cli(ws, capsys):
     capsys.readouterr()
     assert main(["audit", "elle", "esitle", "-w", str(ws), "--json"]) == 0
     js = json.loads(capsys.readouterr().out)
-    assert set(js) == {"eklenen", "guncellenen", "kaldirilan", "zaten_kabul", "bulunamayan"}
+    assert set(js) == {"eklenen", "guncellenen", "kaldirilan", "zaten_kabul", "bulunamayan", "bekleyen"}
     assert main(["audit", "elle", "liste", "-w", str(ws), "--json"]) == 0
     assert json.loads(capsys.readouterr().out)[0]["olcut"] == "A.1.3"
     assert main(["audit", "elle", "geri", "-w", str(ws), g[0]["anahtar"]]) == 0
     assert not any(r.get("elle") for r in _review(ws).values())
     assert main(["audit", "elle", "geri", "-w", str(ws), "cli-yok"]) == 2
+
+
+def test_pipeline_consumes_file_without_explicit_sync(ws):
+    """İşleyici dosyayı yalnız yazar (esitle çağırmaz): audit tabloyu eski sayar, `bidr audit` / `audit apply`
+    eşitler; çözülemeyen belge sonraki çalıştırmada (belge gelince) uygulanır."""
+    audit(ws)
+    assert review_state(ws)["guncel"]
+    _girdi(ws, _e("panel-1", "kurul/eylem-plani.pdf", "A.1.3"), _e("panel-2", "yeni/belge.pdf", "B.1.1"))
+    assert not review_state(ws)["guncel"]                    # kaynak dosya değişti
+    a, _ = audit(ws)
+    assert review_state(ws)["guncel"]
+    assert any(r["doc_id"] == "d_plan" and r["olcut"] == "A.1.3" and r["karar"] == "kabul" for r in a.rows)
+    d = json.loads((ws / E.DURUM).read_text(encoding="utf-8"))["eslesmeler"]
+    assert d["panel-1"]["durum"] == "uygulandi" and d["panel-2"]["durum"] == "bekliyor"
+    # belge geldi (envanter + karar kaydı): sonraki audit uygular
+    with open(ws / "inventory.csv", "a", encoding="utf-8", newline="") as f:
+        csv.writer(f).writerow(["d_yeni", "y" * 64, "yeni/belge.pdf", ".pdf", 1, 1, 10, "x", "ok", "", ""])
+    with open(ws / "decisions.jsonl", "a", encoding="utf-8") as f:
+        f.write(json.dumps({"doc_id": "d_yeni", "durum": "ok", "asama": "ince", "karar": "olcut_yok",
+                            "eslesmeler": []}) + "\n")
+    assert not review_state(ws)["guncel"]                    # decisions.jsonl değişti
+    a, _ = audit(ws)
+    assert any(r["doc_id"] == "d_yeni" and r["olcut"] == "B.1.1" for r in a.rows)
+    assert json.loads((ws / E.DURUM).read_text(encoding="utf-8"))["eslesmeler"]["panel-2"]["durum"] == "uygulandi"
+    # dosyanın silinmesi: bütün elle kayıtlar kalkar
+    (ws / E.DOSYA).unlink()
+    assert not review_state(ws)["guncel"]
+    a, _ = audit(ws)
+    assert not any(r.get("karar") and "elle_eslesme" in r["flags"] for r in a.rows)
+    assert review_state(ws)["guncel"]

@@ -924,8 +924,11 @@ def audit(ws_root: Path, *, out: Path | None = None, profile: str | None = None)
     """Tabloyu üretir. Var olan review.xlsx'teki henüz uygulanmamış kararlar kaybolmaz:
     yeni tabloya taşınır (önceki tablo `review.onceki.xlsx` olarak saklanır)."""
     from . import sheet
+    from . import elle as E
     ws = Workspace(ws_root)
     outp = Path(out).expanduser().resolve() if out else ws.root
+    if E.gerekli(ws.root, outp):        # bölümün elle eşleşmeleri (panel dosyayı hazırlıkta yazar): belgeler artık belli
+        E.esitle(ws.root, out=outp)
     applied = load_review_decisions(outp)
     carry: dict[str, dict] = {}
     carry_names: dict[str, str] = {}
@@ -1259,12 +1262,13 @@ def review_state(out: Path, ws_root: Path | None = None) -> dict:
     # birim kararları değişince tablo da değişir (geri alınan eşleşmeler satır olur)
     # faaliyetler.json değişince sayılan aşamalar değişebilir (faaliyet → audit)
     applied = load_review_decisions(out)
-    from .elle import elle_sha, korunur
+    from .elle import eski_mi, elle_sha, korunur
     # elle eşleşme kayıtları değişince (bidr audit elle esitle) tablo yeniden üretilir: yeni/kalkan satırlar
     st["guncel"] = (meta.get("kararlar_sha") == dsha
                     and (meta.get("birim_sha") or "") == file_sha(out / FILES["birim"])
                     and (meta.get("faaliyet_sha") or "") == file_sha(Path(ws_root or out) / "faaliyetler.json")
-                    and (meta.get("elle_sha") or "") == elle_sha(applied))
+                    and (meta.get("elle_sha") or "") == elle_sha(applied)
+                    and not eski_mi(Path(ws_root or out)))
     cs = load_criteria()
     st["satir"] = len(xrows)
     for xr in xrows:
@@ -1326,6 +1330,9 @@ def apply(ws_root: Path, *, out: Path | None = None, profile: str | None = None)
         raise FileNotFoundError(f"{x} yok: önce `bidr audit`")
     _, xrows = sheet.read_review(x)
     cs = load_criteria()
+    from . import elle as E
+    if E.gerekli(ws.root, outp):
+        E.esitle(ws.root, out=outp)
     prev = load_review_decisions(outp)
     from .elle import korunur
     hatalar, yeni = {}, {}

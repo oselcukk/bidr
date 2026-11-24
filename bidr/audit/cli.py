@@ -113,13 +113,16 @@ def _elle(args, ws: Path) -> int:
         print(f"HATA {e}", file=sys.stderr)
         return 2
     if args.json:
-        print(json.dumps({k: st[k] for k in ("eklenen", "guncellenen", "kaldirilan", "zaten_kabul", "bulunamayan")},
+        print(json.dumps({k: st[k] for k in ("eklenen", "guncellenen", "kaldirilan", "zaten_kabul", "bulunamayan",
+                                                        "bekleyen")},
                          ensure_ascii=False))
     else:
         print(f"elle eşleşme: {len(st['eklenen'])} eklendi, {len(st['guncellenen'])} güncellendi, "
               f"{len(st['kaldirilan'])} kaldırıldı, {len(st['zaten_kabul'])} zaten kabul edilmişti")
         for b in st["bulunamayan"]:
             print(f"uyarı: {b['anahtar']}: {b['neden']}")
+        for b in st["bekleyen"]:
+            print(f"bekliyor: {b['anahtar']}: {b['neden']} (sonraki audit'te yeniden denenir)")
         if st["degisti"]:
             print(f"Sonra: bidr audit -w {ws} (inceleme tablosu ve OD yenilenir)")
     return 0
