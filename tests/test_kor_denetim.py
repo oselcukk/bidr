@@ -606,3 +606,98 @@ def test_auditor_quotes_reach_write_and_verify_packages(ws):
     # denetimi olmayan metnin doğrulama paketi değişmez
     t = W.load_text(Workspace(ws), "B.1.1")
     assert KD.trace_ids(Workspace(ws), {**t, "duzeltme": None}) == []
+
+
+def test_duzelt_chain_end_to_end_next_says_done(ws, capsys, monkeypatch):
+    """Sentetik uçtan uca: hat biter → denetim istenir → denetçi (sahte) → duzelt → write → verify → yonler →
+    render → denetle; `bidr next` "Bütün aşamalar bitti." der. Dosyalamaya kadarki aşamalar sınama gereği
+    bitmiş sayılır; write'tan sonrası gerçek komutlar ve gerçek aşama denetimleridir (ajanlar sahte)."""
+    import shlex
+
+    import bidr.pipeline.checks as C
+    from bidr.check.run import file_sha
+    from bidr.criteria.loader import load_criteria
+    from bidr.pipeline.checks import Check
+    from bidr.pipeline.state import evaluate
+
+    from test_pipeline import _verify_answers, _verify_yonler_answers, _yonler_answers
+    from test_render import make_template
+    gercek = ("write", "verify", "yonler", "render", "denetle", "teslim", "kor_denetim", "duzelt")
+    for s in load_spec()["asamalar"]:
+        if s["id"] not in gercek:
+            monkeypatch.setitem(C.CHECKS, s["sart"]["denetim"], lambda c: Check(bitti=True, neden="sınama"))
+    tpl = make_template(ws.parent / "sablon.docx", ids=tuple((x.id, x.title) for x in load_criteria().sub_criteria),
+                        full=True)
+    (ws / "config.yaml").write_text(
+        f"bidr:\n  donem: 2025\n  birim: Kimya Bölümü\n  profil: akademik_bolum\nrapor:\n  sablon: {tpl}\n"
+        "  teslim: baglanti\n  hazirlayanlar:\n  - ad_soyad: Sentetik Hazırlayan\n    unvan: Dr.\n", encoding="utf-8")
+    (ws / ".bidr-render.json").unlink()
+    fixed = {"paragraflar": [GOOD["paragraflar"][0],
+                             {"metin": "Ders bilgi formlarında AKTS kredisinin toplam iş yükünün 25'e bölümü olduğu "
+                                       "belirtilmektedir [2_OD3]."}], "onceki_yila_gore": ""}
+
+    def yon_cevap(d: Path) -> dict:
+        """Denetçi (yön): B alanının ilk maddesinden birebir alıntıyla bir bulgu."""
+        out = {}
+        for p in d.glob("yon_*.json"):
+            if p.name.endswith(".out.json"):
+                continue
+            m = json.loads(p.read_text(encoding="utf-8"))["meta"]
+            yer, metin = sorted(m["maddeler"].items())[0]
+            out[p.stem] = {"hucreler": [{"hucre": h, "puan": 3, "sorun": "x"} for h in m["hucreler"]],
+                           "bulgular": [{"tur": "abarti", "yer": yer, "alinti": metin[:30], "olcut": "",
+                                         "aciklama": "madde abartılı", "oneri": "yumuşat"}] if p.stem == "yon_B" else [],
+                           "genel": ""}
+        return out
+
+    yol: list[str] = []
+    for _ in range(40):
+        n = evaluate(ws).sonraki
+        if n is None:
+            if (ws / KD.OUT_JSON).exists():
+                break
+            assert main(["denetim", "prepare", "-w", str(ws)]) == 0     # bölüm "Raporu denetlet" der
+            yol.append("denetim_iste")
+            continue
+        yol.append(n.id)
+        assert n.kim in ("komut", "ajan"), (n.id, n.kim, n.neden)
+        if n.kim == "ajan":
+            if n.id == "write":
+                for p in (ws / "work/write").glob("*.json"):
+                    if not p.name.endswith(".out.json") and not p.with_name(f"{p.stem}.out.json").exists():
+                        answer(ws, p.stem, fixed)
+            elif n.id == "verify":
+                _verify_answers(ws)
+            elif n.id == "yonler":
+                _yonler_answers(ws)
+                _verify_yonler_answers(ws)
+            elif n.id == "kor_denetim":
+                answer_all(ws, {"B.1.1": B11, **yon_cevap(ws / "work" / KD.WORK)})
+            cmd = next(k for k in n.komutlar if " apply" in k)
+        else:
+            cmd = n.komutlar[0]
+        main(shlex.split(cmd)[1:])
+    else:
+        pytest.fail(f"hat bitmedi: {yol}")
+    capsys.readouterr()
+    assert main(["next", "-w", str(ws)]) == 0
+    assert "Bütün aşamalar bitti." in capsys.readouterr().out
+    # denetimden sonra zincir: duzelt → write → verify → yonler → render → denetle
+    sonra = yol[yol.index("kor_denetim"):]
+    sira = [s for i, s in enumerate(sonra) if i == 0 or s != sonra[i - 1]]
+    assert sira == ["kor_denetim", "duzelt", "write", "verify", "yonler", "render", "denetle"], sira
+    rep = {s.id: s for s in evaluate(ws).asamalar}
+    assert all(rep[s].durum == "bitti" for s in ("write", "verify", "yonler", "render", "denetle", "kor_denetim",
+                                                   "duzelt"))
+    w = Workspace(ws)
+    js = KD.load(w)
+    st = KD.statuses(w, js)
+    assert {k for k, v in st.items() if v[0] == "duzeltildi"} >= {"B.1.1-1", "B.1.1-3", "yon_B-1"}
+    assert not [k for k, v in st.items() if v[0] == "duzeltilecek"]
+    t = W.load_text(w, "B.1.1")
+    assert t["durum"] == "dogrulandi" and t["duzeltme"]["denetim"] == js["id"] and t["tur"] == 0
+    y = Y.load(w, "B")
+    assert y["durum"] == "dogrulandi" and y["duzeltme"]["bulgular"] == ["yon_B-1"]
+    assert Y.load_log(w)["B"]["metin_sha"] == Y.text_sha(y)
+    # biçim denetimi düzeltilmiş raporun kendisine ait
+    assert json.loads((ws / "denetim.json").read_text(encoding="utf-8"))["docx_sha"] == file_sha(ws / "report.docx")
