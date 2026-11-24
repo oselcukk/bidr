@@ -8,7 +8,10 @@ Not, metin kaydına `duzeltme: {denetim, tur, bulgular}` izi olarak geçer; iz b
 "düzeltildi" sayar.
 Düzeltme yeni bir denemedir: yazım + doğrulama yeniden yazım sayacı (`tur`) her denetim düzeltmesinde
 sıfırdan başlar (önceki rapor turlarında sınırı dolmuş metin hemen insan kararına düşmez). Bölümün
-rapordan çıkardığı (`cikar`) metin düzeltmeye girmez (`KD.excluded`). Not `bidr write prepare` / `bidr yonler prepare` her çalıştığında da eklenir
+rapordan çıkardığı (`cikar`) metin düzeltmeye girmez (`KD.excluded`). Bölümün olduğu gibi kabul ettiği
+metne (`verify|write karar … kabul`, aynı içerik) düşen metin bulgusu kendiliğinden girmez: bölüm kararı
+bekleyen öneri olur (`KD.kabul_metni_ids`); kabul edilirse not olarak girer (küçük tur), ret edilirse metin
+aynen kalır. Metin sonradan başka nedenle değiştiyse kabul eskimiştir, olağan düzeltme sürer. Not `bidr write prepare` / `bidr yonler prepare` her çalıştığında da eklenir
 (bidr/kor/run.py `duzeltme`): metin başka bir nedenle yeniden yazılsa da not kaybolmaz. İkinci denetim
 turu ölçümdür: bulguları paketlere girmez.
 """

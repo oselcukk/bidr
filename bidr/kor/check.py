@@ -9,6 +9,9 @@ varsayılan hat eskisi gibi biter. İstenince:
                verilirse). Sonradan kabul edilen OD bu aşamayı yeniden açar (küçük düzeltme turu: duzelt prepare →
                write → verify → render …); kabul edilen kanıt önerisi ikinci arama aşamasında işlenir
                (checks.ikinci_arama_tamam).
+               Bölümün daha önce olduğu gibi kabul ettiği metne (verify/write karar `kabul`, aynı içerik) düşen metin
+               bulgusu kendiliğinden düzeltilmez: "Kabul edilmiş metne öneri" olarak bölüm kararına gelir (hattı
+               tutmaz); kabul → küçük düzeltme turu, ret → metin aynen kalır.
 """
 from __future__ import annotations
 
@@ -74,8 +77,9 @@ def duzelt_tamam(c: Ctx) -> Check:
         uy.append(f"{count['dogrulanamadi']} bulgunun alıntısı raporda/belgede doğrulanamadı: işlenmedi "
                   f"({KD.OUT_MD} 'Doğrulanamayan bulgular')")
     if kb:
-        uy.append(f"{len(kb)} denetim önerisi (OD/kanıt) bölüm kararını bekliyor; hattı tutmaz, rapor tamamlandı "
-                  f"sayılır ({KD.OUT_MD} 'OD önerileri', 'Kullanılmamış belge önerileri'; karar: "
+        uy.append(f"{len(kb)} denetim önerisi (OD/kanıt/kabul edilmiş metne öneri) bölüm kararını bekliyor; hattı "
+                  f"tutmaz, rapor tamamlandı sayılır ({KD.OUT_MD} 'OD önerileri', 'Kullanılmamış belge önerileri', "
+                  "'Kabul edilmiş metne öneriler'; karar: "
                   + c.fmt("bidr denetim karar -w {ws}") + " <bulgu_id> kabul|ret — yalnız KULLANICI derse)")
     if crit or areas:
         what = ", ".join(x for x in (f"{len(crit)} ölçüt metni ({', '.join(crit)})" if crit else "",

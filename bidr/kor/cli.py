@@ -40,6 +40,10 @@ def _denetim(args) -> int:
             print(f"{r['bulgu_id']}: {r['karar']} kaydedildi ({r['sinif']}, {r['olcut']})")
             if r["karar"] == "kabul" and r["sinif"] == "od":
                 print(f"{r['olcut']}: OD{r['od']} rapora ve metne yansır (sıradaki: bidr next)")
+            elif r["sinif"] == "metin":
+                print(f"{r['olcut']}: " + ("kabul edilmiş metin bu öneriyle küçük bir düzeltme turunda yeniden "
+                                           "yazılır ve doğrulanır (sıradaki: bidr next)" if r["karar"] == "kabul"
+                                           else "metin olduğu gibi kalır"))
             elif r["karar"] == "kabul":
                 print(f"{r['olcut']}: belge ikinci aramaya girer, eşleşirse inceleme tablosuna aday olarak düşer "
                       "(sıradaki: bidr next)")
@@ -92,7 +96,7 @@ def register(sub):
     a.add_argument("--workspace", "-w", required=True)
     a.add_argument("--model", default="ajan:belirtilmemis", help="denetçi ajan/model (kayda geçer)")
     a.set_defaults(func=_denetim)
-    a = act.add_parser("karar", help="BÖLÜMÜN kararı, OD/kanıt önerisi için: kabul | ret (ajan vermez)")
+    a = act.add_parser("karar", help="BÖLÜMÜN kararı, OD/kanıt önerisi ve kabul edilmiş metne öneri için: kabul | ret (ajan vermez)")
     a.add_argument("--workspace", "-w", required=True)
     a.add_argument("bulgu_id")
     a.add_argument("karar", choices=["kabul", "ret"])

@@ -8,7 +8,9 @@ bu dosyanın yeni satırlarını gösterir. Bu dosyadan önceki geçmiş için `
   prepare|apply|karar|ozet`, `bidr duzelt prepare`. İstenmezse hat eskisi gibi biter. Metin bulguları kendiliğinden
   düzeltilir ve yeniden doğrulanır; OD/kanıt önerilerinin bölüm kararı hattı tutmaz (rapor tamamlandı sayılır, `bidr
   next` bekleyen önerileri "Bilgi:" satırında, `--json` üst düzey `oneri_bekleyen`'de gösterir); kabul edilen OD
-  sonradan küçük bir düzeltme turu açar.
+  sonradan küçük bir düzeltme turu açar. Bölümün daha önce olduğu gibi kabul ettiği metin (`verify karar`/`write
+  karar` `kabul`) kendiliğinden yeniden yazılmaz: ona düşen metin bulgusu "Kabul edilmiş metne öneri" olarak bölüm
+  kararına gelir (kabul → küçük düzeltme turu, ret → metin aynen kalır; metin sonradan değiştiyse olağan düzeltme).
 - 2026-11-24: Form yanıt tablosu / anket sonucunda belge tarihi yanıt zaman damgalarından (d1-yanit-tarihi): "Zaman
   damgası"/"Timestamp"/"Tamamlanma saati" vb. sütunu varsa `tarih` son yanıt, `yanit_araligi` [ilk, son] ve dönem
   yanıt aralığından (form oluşturma/başlık tarihi değil). identify araç sürümü 3: BİR KEZ `bidr next` identify'ı

@@ -614,21 +614,26 @@ denetimi ister; istenmezse `kor_denetim` ve `duzelt` `atlandi`, hat eskisi gibi 
   ölçütün kanıt listesinde, birleşik belgede o parçada) yazım paketine "DENETİM KANIT ALINTILARI" olarak,
   doğrulama paketinde o kanıtın alıntılarına "(bağımsız denetçinin alıntısı)" etiketiyle eklenir (metnin
   `duzeltme` izi; yeniden yazımda da). Yeniden yazım sayacı (`tur`) düzeltme notlu pakette 0'dan başlar;
-  `cikar` kararlı metin düzeltmeye girmez. Yazım kuralları, kod denetimi ve bağımsız doğrulama aynıdır; hat write → verify → yonler →
+  `cikar` kararlı metin düzeltmeye girmez. Bölümün olduğu gibi kabul ettiği metne (`verify karar … kabul`
+  ya da `write karar … kabul`; insan kaydı metnin içeriğine, `metin_sha`, bağlı) düşen metin bulgusu
+  kendiliğinden girmez: "Kabul edilmiş metne öneri" (`oneri_turu: kabul_metni`) olarak bölüm kararına
+  gelir; kabul edilirse not olarak girer (küçük tur), reddedilirse metin aynen kalır. Metin sonradan başka
+  bir nedenle değiştiyse kabul eskimiştir, olağan düzeltme sürer. Yazım kuralları, kod denetimi ve bağımsız doğrulama aynıdır; hat write → verify → yonler →
   render → denetle'ye döner. Metin kaydına `duzeltme: {denetim, tur, bulgular}` izi geçer; iz bulguyu
   "düzeltildi" sayar. Not `write/yonler prepare`'de de eklenir, iz yeniden yazımlarda taşınır.
 - **Bölüm kararı:** `bidr denetim karar -w WS <bulgu_id> kabul|ret [--not]` → `kor-denetim-kararlar.jsonl`
-  (yalnız od/kanit; ajan vermez). Kabul edilen OD audit okunurken ölçütün `od`'si olur
+  (od/kanit ve kabul edilmiş metne öneri; ajan vermez). Kabul edilen OD audit okunurken ölçütün `od`'si olur
   (`bidr/kor/od.py`; `od_denetim` alanı; kararın kod önerisi değişirse eskir; komisyonun `od_onayli`'si
   önceliklidir, o zaman karar verilemez) ve metin OD notuyla yeniden yazılır. Kabul edilen belge
   önerisi ikinci arama paketine `denetim` kaynağıyla girer (`--yalniz-denetim`; `rapor.ikinci_arama:
   false` olsa da); eşleşirse inceleme tablosunda insan kararı bekler.
 - `duzelt_tamam`: denetim yoksa atlandi; not bekleyen ölçüt/alan → komut; yoksa **bitti**, karar
   bekleyen OD/kanıt önerisi olsa da (hattı tutmaz; rapor tamamlandı sayılır). Bekleyen öneriler
-  `oneri_bekleyen` (`{bulgu_id, sinif, olcut, ozet, rapor_od, denetci_od, doc_id, belge_adi}`) ile bilgi
+  `oneri_bekleyen` (`{bulgu_id, sinif, oneri_turu (od|kanit|kabul_metni), oneri_adi, olcut, ozet, rapor_od,
+  denetci_od, doc_id, belge_adi}`; kabul_metni ayrıca `alinti, oneri, kanit_alintisi`) ile bilgi
   olarak durur: `bidr next` "Bilgi: denetimin N önerisi…" satırları, `next --json`/`status --json`
   üst düzey `oneri_bekleyen`, `denetim ozet` `karar_bekleyen_sayisi`. Karar sonradan gelirse: kabul
-  edilen OD `duzelt`'i yeniden açar (küçük tur: duzelt prepare → write → verify → render → denetle);
+  edilen OD ya da kabul edilmiş metne öneri `duzelt`'i yeniden açar (küçük tur: duzelt prepare → write → verify → render → denetle);
   kabul edilen belge `ikinci_arama`'yı açar; ret yalnız kayda geçer.
 - **Tek tur:** otomatik ikinci denetim yok. `bidr denetim prepare --ikinci` (ilk turun düzeltmesi ve
   kararları bittikten sonra; bekleyen öneri varsa reddedilir) ölçüm turudur: önceki tur `kor-denetim-1.json`, paketler

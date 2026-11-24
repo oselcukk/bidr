@@ -701,3 +701,156 @@ def test_duzelt_chain_end_to_end_next_says_done(ws, capsys, monkeypatch):
     assert Y.load_log(w)["B"]["metin_sha"] == Y.text_sha(y)
     # biçim denetimi düzeltilmiş raporun kendisine ait
     assert json.loads((ws / "denetim.json").read_text(encoding="utf-8"))["docx_sha"] == file_sha(ws / "report.docx")
+
+
+# -- bölümün olduğu gibi kabul ettiği metin: kendiliğinden yeniden yazılmaz, öneri olarak gelir ---------------
+
+FIXED = {"paragraflar": [GOOD["paragraflar"][0],
+                         {"metin": "Ders bilgi formlarında AKTS kredisinin toplam iş yükünün 25'e bölümü olduğu "
+                                   "belirtilmektedir [2_OD3]."}], "onceki_yila_gore": ""}
+
+
+def _verify_kabul(ws: Path, c: str = "B.1.1") -> None:
+    """Bölüm doğrulayıcının reddini geçti: `bidr verify karar … kabul` (metnin içeriğine bağlı insan kaydı)."""
+    from bidr.verify import run as V
+    _reject(ws, c)
+    V.decide(ws, c, "kabul", "bölüm: metin doğru")
+    assert W.load_text(Workspace(ws), c)["durum"] == "dogrulandi"
+
+
+def _denetle(ws: Path) -> None:
+    KD.prepare(ws)
+    answer_all(ws, {"B.1.1": B11, "yon_B": YON})
+    KD.apply(ws)
+
+
+def test_accepted_text_findings_become_proposals(ws, capsys):
+    _verify_kabul(ws)
+    _denetle(ws)
+    w = Workspace(ws)
+    js = KD.load(w)
+    st = KD.statuses(w, js)
+    # kabul edilmiş metnin bulguları kendiliğinden düzeltilmez: bölüm kararını bekler; yön bulgusu olağan
+    assert st["B.1.1-1"] == ("karar_bekliyor", "") and st["B.1.1-3"] == ("karar_bekliyor", "")
+    assert st["yon_B-1"][0] == "duzeltilecek"
+    assert KD.kabul_metni_ids(w, js) == {"B.1.1-1", "B.1.1-3"}
+    assert KD.notes(w, "B.1.1") == []
+    crit, areas = D.targets(w)
+    assert crit == [] and areas == ["B"]
+    kb = {x["bulgu_id"]: x for x in KD.karar_bekleyen(w)}
+    assert set(kb) == {"B.1.1-1", "B.1.1-3", "B.1.1-od", "B.1.1-k1"}
+    m = kb["B.1.1-1"]
+    assert m["sinif"] == "metin" and m["oneri_turu"] == KD.KABUL_METNI and m["oneri_adi"] == "Kabul edilmiş metne öneri"
+    assert m["alinti"] == "AKTS kredisinin toplam iş yükünün 25'e bölümü" and m["oneri"] == "kaynaktaki gibi yaz"
+    assert "olduğu gibi kabul ettiği metinde" in m["ozet"]
+    assert kb["B.1.1-od"]["oneri_turu"] == "od" and kb["B.1.1-k1"]["oneri_turu"] == "kanit"
+    # ozet: öneri türü ve sayısı; insan raporunda ayrı bölüm
+    v = KD.view_dict(w, js)
+    f = {x["id"]: x for x in v["bulgular"]}
+    assert f["B.1.1-1"]["oneri_turu"] == KD.KABUL_METNI and "oneri_turu" not in f["yon_B-1"]
+    assert v["karar_bekleyen_sayisi"] == 4 and v["oneri_adlari"][KD.KABUL_METNI] == "Kabul edilmiş metne öneri"
+    md = KD.write_md(w, v).read_text(encoding="utf-8")
+    sec = md.split("## Kabul edilmiş metne öneriler")[1].split("## OD önerileri")[0]
+    assert "B.1.1-1" in sec and "B.1.1-3" in sec
+    assert "B.1.1-1" not in md.split("## Metin düzeltmeleri")[1].split("## Kabul edilmiş")[0]
+    # yön düzeltmesi biter → aşama biter; öneriler hattı tutmaz
+    y = Y.load(w, "B")
+    Y.prepare(ws, only=["B"])
+    y["duzeltme"] = json.loads((ws / "work/yonler/B.json").read_text(encoding="utf-8"))["meta"]["duzeltme"]
+    (ws / "yonler/B.json").write_text(json.dumps(y, ensure_ascii=False), encoding="utf-8")
+    d = _check(ws, "duzelt")
+    assert d.bitti and {x["bulgu_id"] for x in d.oneri_bekleyen} == {"B.1.1-1", "B.1.1-3", "B.1.1-od", "B.1.1-k1"}
+    assert "4 öneri bölüm kararını bekliyor" in d.neden
+    # bölümün kararı: bir öneri kabul, biri ret
+    assert main(["denetim", "karar", "-w", str(ws), "B.1.1-1", "kabul", "--not", "doğru"]) == 0
+    assert "küçük bir düzeltme turunda yeniden yazılır" in capsys.readouterr().out
+    assert main(["denetim", "karar", "-w", str(ws), "B.1.1-3", "ret"]) == 0
+    assert "olduğu gibi kalır" in capsys.readouterr().out
+    rec = [json.loads(x) for x in (ws / KD.KARARLAR).read_text(encoding="utf-8").splitlines()][-2]
+    assert rec["sinif"] == "metin" and rec["oneri_turu"] == KD.KABUL_METNI
+    assert rec["metin_sha"] == W.text_sha(W.load_text(w, "B.1.1"))
+    st = KD.statuses(w, js)
+    assert st["B.1.1-1"] == ("kabul", "") and st["B.1.1-3"] == ("ret", "")
+    # kabul edilen öneri küçük düzeltme turu açar: yalnız o bulgu nota girer, reddedilen girmez
+    d = _check(ws, "duzelt")
+    assert d.kim == "komut" and "B.1.1" in d.neden
+    assert {x["bulgu_id"] for x in d.oneri_bekleyen} == {"B.1.1-od", "B.1.1-k1"}
+    r = D.prepare(ws)
+    assert r["olcut"] == ["B.1.1"]
+    pkg = json.loads((ws / "work/write/B.1.1.json").read_text(encoding="utf-8"))
+    assert "[B.1.1-1]" in pkg["istem"] and "[B.1.1-3]" not in pkg["istem"]
+    assert pkg["meta"]["duzeltme"]["bulgular"] == ["B.1.1-1"] and pkg["meta"]["tur"] == 0
+    # yeniden yazılır; yeni içerik insan kabulüyle değil bağımsız doğrulamayla geçer
+    answer(ws, "B.1.1", FIXED)
+    assert W.apply(ws)["islenen"] == 1
+    from bidr.verify import run as V
+    t = W.load_text(w, "B.1.1")
+    assert t["durum"] == "taslak" and KD.human_accept(w, "B.1.1", t) is None
+    assert not V.accepted(t, V.load_human(w))
+    assert "B.1.1" not in V.prepare(ws)["insan_kabulu"]
+    st = KD.statuses(w, js)
+    assert st["B.1.1-1"][0] == "duzeltildi"
+    crit, _ = D.targets(w)
+    assert crit == []
+
+
+def test_rejected_proposal_keeps_accepted_text(ws):
+    _verify_kabul(ws)
+    _denetle(ws)
+    w = Workspace(ws)
+    before = W.text_sha(W.load_text(w, "B.1.1"))
+    KD.decide(ws, "B.1.1-1", "ret")
+    KD.decide(ws, "B.1.1-3", "ret", "bölüm metni koruyor")
+    st = KD.statuses(w, KD.load(w))
+    assert st["B.1.1-1"] == ("ret", "") and st["B.1.1-3"] == ("ret", "")
+    assert KD.notes(w, "B.1.1") == []
+    crit, _ = D.targets(w)
+    assert crit == []
+    D.prepare(ws)
+    W.prepare(ws)
+    p = ws / "work/write/B.1.1.json"
+    assert not p.exists() or "DENETİM DÜZELTME NOTU" not in json.loads(p.read_text(encoding="utf-8"))["istem"]
+    assert W.text_sha(W.load_text(w, "B.1.1")) == before
+    # karar değiştirilebilir (metin değişmediyse)
+    KD.decide(ws, "B.1.1-1", "kabul")
+    crit, _ = D.targets(w)
+    assert crit == ["B.1.1"]
+
+
+def test_stale_acceptance_keeps_normal_correction(ws):
+    """Kabul kaydı metnin içeriğine bağlıdır: metin sonradan başka bir nedenle değiştiyse kabul eskimiştir,
+    denetim bulgusu olağan biçimde kendiliğinden düzeltilir."""
+    _verify_kabul(ws)
+    w = Workspace(ws)
+    t = W.load_text(w, "B.1.1")
+    t["onceki_yila_gore"] = "Geçen yıla göre süreç belgelendi."
+    (ws / "texts/B.1.1.json").write_text(json.dumps(t, ensure_ascii=False), encoding="utf-8")
+    assert KD.human_accept(w, "B.1.1", t) is None
+    _denetle(ws)
+    js = KD.load(w)
+    st = KD.statuses(w, js)
+    assert st["B.1.1-1"][0] == "duzeltilecek" and st["B.1.1-3"][0] == "duzeltilecek"
+    assert not KD.kabul_metni_ids(w, js)
+    assert {x["bulgu_id"] for x in KD.karar_bekleyen(w)} == {"B.1.1-od", "B.1.1-k1"}
+    crit, _ = D.targets(w)
+    assert crit == ["B.1.1"]
+    with pytest.raises(KD.DenetimHatasi, match="kendiliğinden düzeltilir"):
+        KD.decide(ws, "B.1.1-1", "kabul")
+
+
+def test_write_decision_acceptance_also_protects(ws):
+    """Yazım kod denetiminde `write karar … kabul` ile geçen metin de aynı korunur (kayıt metin özetine bağlı)."""
+    from bidr.write import karar as KR
+    w = Workspace(ws)
+    t = W.load_text(w, "B.1.1")
+    rec = {"olcut": "B.1.1", "karar": "kabul", "istem_sha": "x", "cevap_sha": "y", "deneme": 3,
+           "sorunlar": [{"yer": "p1", "kod": "yasak_ifade", "ayrinti": "abartı: etkin"}], "not": "",
+           "zaman": "2026-11-24T10:00:00", "metin_sha": W.text_sha(t)}
+    (ws / KR.HUMAN).write_text(json.dumps(rec, ensure_ascii=False) + "\n", encoding="utf-8")
+    _denetle(ws)
+    js = KD.load(w)
+    assert KD.kabul_metni_ids(w, js) == {"B.1.1-1", "B.1.1-3"}
+    assert KD.statuses(w, js)["B.1.1-1"] == ("karar_bekliyor", "")
+    # `write karar … cikar` kabul sayılmaz (çıkarılan metin zaten düzeltmeye girmez)
+    (ws / KR.HUMAN).write_text(json.dumps({**rec, "karar": "cikar"}, ensure_ascii=False) + "\n", encoding="utf-8")
+    assert KD.human_accept(w, "B.1.1", t) is None

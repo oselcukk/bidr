@@ -358,6 +358,9 @@ rapor aşaması), 30–40 dk sürebilir, puan iç ölçümdür (aynı model aile
   metin düzeltmeleri bitince `bidr next` "Bütün aşamalar bitti" der, bekleyen öneriler "Bilgi:" satırında
   durur; kabul sonradan gelirse `bidr next` küçük düzeltme turunu gösterir. "Doğrulanamadı"
   bulgularını işleme.
+- Kullanıcının daha önce olduğu gibi kabul ettiği metne (`verify karar`/`write karar` `kabul`) düşen metin
+  bulgusu kendiliğinden düzeltilmez: "Kabul edilmiş metne öneri" olarak aynı karar komutuyla kullanıcıya
+  gelir (kabul → küçük düzeltme turu, ret → metin aynen kalır).
 - İkinci denetim (`--ikinci`) yalnız kullanıcı isterse; ölçümdür, düzeltme yapılmaz.
 - `denetle` (biçim denetimi, `denetim.json`) ile karıştırma.
 

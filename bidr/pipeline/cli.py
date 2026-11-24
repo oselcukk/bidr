@@ -60,15 +60,17 @@ def paralel_satirlari(p: dict) -> list[str]:
 
 
 def oneri_satirlari(rep) -> list[str]:
-    """Hattı tutmayan, bölüm kararı bekleyen öneriler (kör denetimin OD/kanıt önerileri): bilgi olarak."""
+    """Hattı tutmayan, bölüm kararı bekleyen öneriler (kör denetimin OD/kanıt önerileri ve kabul edilmiş metne
+    öneriler): bilgi olarak."""
     ob = getattr(rep, "oneri_bekleyen", None) or []
     if not ob:
         return []
     out = [f"Bilgi: denetimin {len(ob)} önerisi bölüm kararını bekliyor (hattı tutmaz; rapor tamamlandı sayılır):"]
-    out += [f"  - {x['bulgu_id']} ({x['sinif']}): {x.get('ozet', '')}" for x in ob]
+    out += [f"  - {x['bulgu_id']} ({x.get('oneri_adi') or x['sinif']}): {x.get('ozet', '')}" for x in ob]
     out += [f"  Karar yalnız KULLANICI derse: {bidr_command()} denetim karar -w {rep.calisma_alani} <bulgu_id> "
-            "kabul|ret [--not \"…\"]; kabul edilen OD küçük bir düzeltme turu açar (bidr next gösterir), kabul "
-            "edilen belge ikinci aramaya girer."]
+            "kabul|ret [--not \"…\"]; kabul edilen OD ya da kabul edilmiş metne öneri küçük bir düzeltme turu açar "
+            "(bidr next gösterir), kabul edilen belge ikinci aramaya girer; reddedilen metin önerisinde metin aynen "
+            "kalır."]
     return out
 
 
