@@ -32,6 +32,7 @@ from bidr.common import Workspace, read_jsonl
 from bidr.criteria.loader import load_criteria
 from bidr.criteria.model import id_key
 
+from . import karar as KR
 from . import packages as K
 from . import sources as S
 from . import text as T
@@ -657,6 +658,57 @@ def text_sha(t: dict) -> str:
     return K.sha(body)
 
 
+def _answer_text(out: dict) -> tuple[list[str], str]:
+    return [x["metin"].strip() for x in out["paragraflar"]], (out.get("onceki_yila_gore") or "").strip()
+
+
+def code_issues(src: Sources, meta: dict, c: str, paras: list[str], onceki: str) -> list[dict]:
+    """Yazım cevabının kod denetimi (şema geçtikten sonra)."""
+    issues = T.check_text(paras, onceki, index_nos=src.index_nos(c), od=meta["od_onerisi"],
+                          komisyon=meta.get("komisyon", False))
+    return issues + T.content_issues(paras, onceki, donem=meta.get("donem"),
+                                     donem_ici=set(meta.get("donem_ici") or []))
+
+
+def text_record(src: Sources, c: str, pkg: dict, raw: str, out: dict, model: str) -> dict:
+    """Cevaptan `texts/<ölçüt>.json` kaydı (`durum: taslak`)."""
+    meta = pkg["meta"]
+    paras, onceki = _answer_text(out)
+    byno = {k["no"]: k for k in meta["kanitlar"]}
+    return {"olcut": c, "od_onerisi": meta["od_onerisi"], "durum": "taslak",
+            "tur": int(meta.get("tur") or 0), "girdi_sha": meta.get("girdi_sha") or inputs_sha(src, c),
+            "paragraflar": [{"metin": m, "atiflar": _cited([m], "")} for m in paras],
+            "kanitlar": [{"no": n, "ad": byno[n]["ad"], "dosya": byno[n]["dosya"]}
+                         for n in _cited(paras, onceki) if n in byno],
+            "eksikler": meta["eksikler"], "onceki_yila_gore": onceki,
+            **({"onceki_ret": meta["ret"]} if meta.get("ret") else {}),
+            "kaynak": {"model": model, "gorev_surumu": str(pkg["surum"]), "istem_sha": pkg["istem_sha"],
+                       "temel_istem_sha": meta.get("temel_istem_sha") or pkg["istem_sha"],
+                       "cevap_sha": K.sha(raw), "onceki": meta.get("onceki"), "zaman": K.now()}}
+
+
+def insan_metni(ws_root: Path, c: str, raw: str, karar: dict, backend: Backend | None = None) -> dict:
+    """`bidr write karar … cikar|kabul`: kod denetimini geçemeyen son cevaptan metin kaydı. `kabul`:
+    `durum: taslak` (doğrulamaya gider); `cikar`: `durum: reddedildi`, `insan_karari: cikar`."""
+    backend = backend or Backend()
+    sp = source_paths(ws_root, index=None, audit=None)
+    src = Sources(ws_root, index=sp["index"], audit=sp["audit"], onceki="", verify=backend.verify_quote)
+    pkg = json.loads((work_dir(src.ws) / f"{c}.json").read_text(encoding="utf-8"))
+    out, errs = backend.validate_output(TASK, raw)
+    if out is None:
+        raise ValueError(f"{c}: son cevap şemaya uymuyor ({'; '.join(errs[:2])})")
+    t = text_record(src, c, pkg, raw, out, karar.get("model") or "ajan:belirtilmemis")
+    iz = {"karar": karar["karar"], "kayit": KR.HUMAN, "sorunlar": karar["sorunlar"], "not": karar["not"],
+          "zaman": karar["zaman"]}
+    t["yazim_karari"] = iz
+    if karar["karar"] == "cikar":
+        t["durum"] = "reddedildi"
+        t["insan_karari"] = "cikar"
+        t["dogrulama"] = {"kayit": KR.HUMAN, "model": None, "zaman": karar["zaman"],
+                          "gerekce": [f"{i.get('yer', '-')} {i['kod']}: {i['ayrinti']}" for i in karar["sorunlar"]]}
+    return t
+
+
 def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", index: Path | None = None,
           audit: Path | None = None, backend: Backend | None = None) -> dict:
     backend = backend or Backend()
@@ -664,7 +716,7 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", index: Path | Non
     src = Sources(ws_root, index=sp["index"], audit=sp["audit"], onceki="", verify=backend.verify_quote)
     d = work_dir(src.ws)
     td = texts_dir(src.ws)
-    st = {"islenen": 0, "degismedi": 0, "bekleyen": [], "gecersiz": {}, "eski": []}
+    st = {"islenen": 0, "degismedi": 0, "bekleyen": [], "gecersiz": {}, "eski": [], "insan_gerekli": []}
     version = task_version()
     for p in K.pkg_paths(d):
         pkg = json.loads(p.read_text(encoding="utf-8"))
@@ -698,25 +750,16 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", index: Path | Non
         if out is None:
             st["gecersiz"][c] = errs[:5]
             continue
-        paras = [x["metin"].strip() for x in out["paragraflar"]]
-        onceki = (out.get("onceki_yila_gore") or "").strip()
-        issues = T.check_text(paras, onceki, index_nos=src.index_nos(c), od=meta["od_onerisi"],
-                              komisyon=meta.get("komisyon", False))
-        issues += T.content_issues(paras, onceki, donem=meta.get("donem"), donem_ici=set(meta.get("donem_ici") or []))
+        paras, onceki = _answer_text(out)
+        issues = code_issues(src, meta, c, paras, onceki)
         if issues:
             st["gecersiz"][c] = [f"{i['yer']} {i['kod']}: {i['ayrinti']}" for i in issues]
+            n = KR.basarisiz(src.ws, c, pkg["istem_sha"], raw, issues, model)
+            if n > KR.sinir(src.ws, c, pkg["istem_sha"]):
+                st["insan_gerekli"].append(c)
             continue
-        cited = _cited(paras, onceki)
-        byno = {k["no"]: k for k in meta["kanitlar"]}
-        rec = {"olcut": c, "od_onerisi": meta["od_onerisi"], "durum": "taslak",
-               "tur": int(meta.get("tur") or 0), "girdi_sha": meta.get("girdi_sha") or inputs_sha(src, c),
-               "paragraflar": [{"metin": m, "atiflar": _cited([m], "")} for m in paras],
-               "kanitlar": [{"no": n, "ad": byno[n]["ad"], "dosya": byno[n]["dosya"]} for n in cited],
-               "eksikler": meta["eksikler"], "onceki_yila_gore": onceki,
-               **({"onceki_ret": meta["ret"]} if meta.get("ret") else {}),
-               "kaynak": {"model": model, "gorev_surumu": str(pkg["surum"]), "istem_sha": pkg["istem_sha"],
-                          "temel_istem_sha": meta.get("temel_istem_sha") or pkg["istem_sha"],
-                          "cevap_sha": K.sha(raw), "onceki": meta.get("onceki"), "zaman": K.now()}}
+        KR.gecti(src.ws, c)
+        rec = text_record(src, c, pkg, raw, out, model)
         if old and text_sha(old) == text_sha(rec) and (old.get("kaynak") or {}).get("istem_sha") == pkg["istem_sha"]:
             st["degismedi"] += 1
             continue

@@ -81,6 +81,13 @@ def _next(args) -> int:
         print("İlerleme: " + ", ".join(f"{k}={v}" for k, v in n.ilerleme.items()))
     for u in n.uyarilar:
         print(f"Uyarı: {u}")
+    if n.karar_bekleyen:
+        print("Karar bekleyen:")
+        for x in n.karar_bekleyen:
+            ek = "" if not x.get("sorunlar") else ": " + "; ".join(
+                f"{i.get('yer', '-')} {i['kod']}: {i['ayrinti']}" for i in x["sorunlar"][:5])
+            print(f"  - {x['olcut']} (deneme {x.get('deneme')}, "
+                  f"{'kabul edilebilir' if x.get('kabul_edilebilir') else 'kabul edilemez'}){ek}")
     if n.komutlar:
         print("Yap:")
         for i, k in enumerate(n.komutlar, 1):

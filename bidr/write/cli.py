@@ -15,6 +15,19 @@ def _cmd(args) -> int:
     from . import run as R
 
     try:
+        if args.action == "karar":
+            from . import karar as KR
+            r = KR.karar(args.workspace, args.olcut, args.karar, args.note or "")
+            print(f"{r['olcut']}: {r['karar']} kaydedildi (deneme {r['deneme']}, sınır {r['sinir']}) → {KR.HUMAN}")
+            if r["karar"] == "tekrar":
+                print("Sıradaki: work/write/GECERSIZ.md'deki gerekçeyle bir yeniden yazım turu daha (taze ajan), "
+                      f"sonra bidr write apply -w {args.workspace}")
+            elif r["karar"] == "kabul":
+                print(f"{r['olcut']}: metin üslup bulgularıyla insan onayıyla yazıldı (durum taslak); "
+                      "bağımsız doğrulama (bidr verify) yine yapılır")
+            else:
+                print(f"{r['olcut']}: metin rapora girmez (kullanıcı kararı)")
+            return 0
         if args.action == "prepare" and args.reddedilenler:
             if args.redo or args.eski_kurallar:
                 print("HATA --reddedilenler ile --redo/--eski-kurallar birlikte kullanılmaz")
@@ -54,7 +67,7 @@ def _cmd(args) -> int:
         from bidr.pipeline.paralel import apply_oncesi
         apply_oncesi(args.workspace, "work/write")   # parça dışı yazılmış/ezilmiş cevap reddedilir
         st = R.apply(args.workspace, model=args.model, index=args.index, audit=args.audit)
-    except (FileNotFoundError, KeyError) as e:
+    except (FileNotFoundError, KeyError, ValueError) as e:
         print(f"HATA {e}")
         return 2
     print(f"işlenen={st['islenen']} değişmedi={st['degismedi']} bekleyen={len(st['bekleyen'])} "
@@ -65,6 +78,10 @@ def _cmd(args) -> int:
             print(f"    - {e}")
     if st["eski"]:
         print(f"  eski paket (kanıt listesi/OD/görev sürümü değişti; yeniden prepare): {', '.join(st['eski'])}")
+    if st.get("insan_gerekli"):
+        print("yeniden yazım sınırından sonra kod denetimini hâlâ geçemeyen (KULLANICI kararı gerekli; "
+              "`bidr write karar -w WS <ölçüt> cikar|tekrar|kabul`, kabul yalnız üslup bulgularında): "
+              + ", ".join(st["insan_gerekli"]))
     print(f"Sıradaki: bidr next -w {args.workspace}")
     return 1 if st["gecersiz"] else 0
 
@@ -96,6 +113,15 @@ def register(sub):
     a = act.add_parser("apply", help="<ölçüt>.out.json cevaplarını denetle ve texts/'e yaz")
     _src_args(a)
     a.add_argument("--model", default="ajan:belirtilmemis", help="metni yazan ajan/model (kayda geçer)")
+    a.set_defaults(func=_cmd)
+    a = act.add_parser("karar", help="KULLANICININ kararı, yeniden yazımlardan sonra kod denetimini geçemeyen "
+                                     "metin için: cikar (rapora girmez) | tekrar (bir yeniden yazım turu daha) | "
+                                     "kabul (yalnız üslup bulguları: abartı/slogan/koçluk/tahmin/OD dili; metin "
+                                     "doğrulamaya gider) → write-insan.jsonl")
+    a.add_argument("--workspace", "-w", required=True)
+    a.add_argument("olcut")
+    a.add_argument("karar", choices=["cikar", "tekrar", "kabul"])
+    a.add_argument("--not", dest="note", default="", help="kullanıcının gerekçesi (kayda geçer)")
     a.set_defaults(func=_cmd)
     register_yonler(sub)        # aynı katman (iş paketi + kod denetimi); ayrı modül listesi gerekmez
 

@@ -4,6 +4,13 @@ Her birleştirmede (main'e giren her değişiklik) buraya en üste bir satır ek
 açıklama ve kullanıcıyı ilgilendiriyorsa ne yapması gerektiği. `bidr guncelle` güncellemeden sonra
 bu dosyanın yeni satırlarını gösterir. Bu dosyadan önceki geçmiş için `git log`.
 
+- 2026-11-24: Yazım kod denetimi takılırsa insan kararı (d1-write-karar): `bidr write apply`ın kod denetimini geçemeyen
+  her ayrı cevap deneme sayılır (`write-kod-denemeleri.json`); ilk yazım + `rapor.yeniden_yazim_siniri` (vars. 2)
+  yeniden yazımdan sonra hâlâ geçemeyen ölçütte `bidr next` `kim: insan` ve `karar_bekleyen` listesi verir (JSON'da
+  `sonraki.karar_bekleyen`: ölçüt, deneme, sınır, sorunlar, kabul_edilebilir). Yeni komut `bidr write karar -w WS
+  <ölçüt> cikar|tekrar|kabul [--not]` (`write-insan.jsonl`); `kabul` yalnız üslup bulgularında (abartı/slogan/
+  koçluk/tahmin/OD dili), atıf/alıntı/bilinmeyen atıf bulgusunda reddedilir; kabul edilen metin yine doğrulanır.
+  Panel bu listeyi gösteren sürümle birlikte güncellenmeli.
 - 2026-11-24: Maskeleme önbelleğinin kod izi daraltıldı (d1-kod-izi): yalnız sonucu belirleyen kod (tespit/kapatma/
   biçim modülleri, run.py'nin sonuç fonksiyonları) sözdizimi ağacından izlenir; ilerleme göstergesi (`suanki`)
   çağrıları, belge dizgeleri/yorumlar, komut satırı, kaynak kip yönetimi (`kaynak.py`) ve run.py'nin klasör/rapor

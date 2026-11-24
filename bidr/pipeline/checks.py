@@ -31,6 +31,7 @@ class Check:
     ilerleme: dict = field(default_factory=dict)
     uyarilar: list[str] = field(default_factory=list)
     bekleyen: list[str] | None = None   # kim=ajan: cevap bekleyen paket anahtarları (`bidr parcala` böler)
+    karar_bekleyen: list[dict] = field(default_factory=list)   # kim=insan: karar bekleyen öğeler (panel gösterir)
 
 
 @dataclass
@@ -671,20 +672,42 @@ def write_tamam(c: Ctx) -> Check:
         return Check(kim=KOMUT, ilerleme=prog, uyarilar=uy, komutlar=[prep],
                      neden="; ".join(parts) + ": prepare")
     if pending:
+        from bidr.write import karar as KR
+        # kod denetimini yeniden yazım sınırından sonra hâlâ geçemeyen: insan kararı (bidr write karar)
+        kb = KR.bekleyen(ws, {k: pkgs[k].get("istem_sha") for k in pending})
+        kbset = {x["olcut"] for x in kb}
         no_out = {k for k in pending if not (d / f"{k}.out.json").exists()}
-        bad = _invalid_keys(d / "GECERSIZ.md", r"^- `([A-E]\.\d+\.\d+)\.json`") & pending
+        bad = (_invalid_keys(d / "GECERSIZ.md", r"^- `([A-E]\.\d+\.\d+)\.json`") & pending) - kbset
         tur = (f" (yeniden yazım turu: {', '.join(f'{k} tur {pkgs[k]['meta'].get('tur')}' for k in rounds)})"
                if rounds else "")
+        if kb:
+            prog["insan_karari_bekleyen"] = len(kb)
+            uy.append(f"{len(kb)} ölçütün metni {kb[0]['sinir']} yeniden yazımdan sonra kod denetimini hâlâ "
+                      f"geçemedi, KULLANICI kararı bekliyor: {', '.join(sorted(kbset, key=_crit_key))}")
         if no_out or bad:
             parts = [x for x in (f"{len(no_out)} paket cevapsız" if no_out else "",
                                  f"{len(bad)} cevap geçersiz (work/write/GECERSIZ.md)" if bad else "") if x]
             who = ("metni ilk yazandan ve doğrulayıcıdan AYRI, taze bir ajan" if rounds
                    else "ajan (doğrulamayı sonra başka, taze bir ajan yapar)")
-            return Check(kim=AJAN, ilerleme=prog, uyarilar=uy, bekleyen=sorted(no_out | bad),
+            return Check(kim=AJAN, ilerleme=prog, uyarilar=uy, bekleyen=sorted(no_out | bad), karar_bekleyen=kb,
                          komutlar=[f"({who}) work/write/README.md'yi oku; cevapsız/geçersiz her <ölçüt>.json için "
-                                   "work/write/<ölçüt>.out.json yaz (her cümle [n_ODk] atıflı; yalnız kanıttaki)",
+                                   "work/write/<ölçüt>.out.json yaz (her cümle [n_ODk] atıflı; yalnız kanıttaki)"
+                                   + (f"; insan kararı bekleyenlere ({', '.join(sorted(kbset))}) yazma" if kb else ""),
                                    apply_],
                          neden=", ".join(parts) + ": model işi ajanda" + tur)
+        if kb:
+            karar = c.fmt("bidr write karar -w {ws}")
+            return Check(kim=INSAN, ilerleme=prog, uyarilar=uy, karar_bekleyen=kb,
+                         komutlar=["(insan) reddedilen son cevabı ve kod denetiminin bulgularını (work/write/GECERSIZ.md, "
+                                   "work/write/<ölçüt>.out.json) kullanıcıya göster; karar kullanıcınındır",
+                                   f"{karar} <ölçüt> cikar   # KULLANICI derse: metin rapora girmez",
+                                   f"{karar} <ölçüt> tekrar  # KULLANICI derse: bir yeniden yazım turu daha",
+                                   f"{karar} <ölçüt> kabul   # KULLANICI derse; yalnız bütün bulgular üslup türündeyse "
+                                   "(abartı/slogan/koçluk/tahmin/OD dili); atıf/alıntı bulgusunda reddedilir"],
+                         neden=f"{len(kb)} ölçütün metni yeniden yazımlardan sonra kod denetimini geçemedi: "
+                               "insan kararı gerekli (" + ", ".join(
+                                   f"{x['olcut']}: deneme {x['deneme']}/{x['sinir'] + 1}"
+                                   + (", kabul edilebilir" if x["kabul_edilebilir"] else "") for x in kb) + ")")
         return Check(kim=KOMUT, ilerleme=prog, uyarilar=uy, komutlar=[apply_],
                      neden=f"{len(pending)} cevap yazılmış ama işlenmemiş: apply" + tur)
     return Check(bitti=True, ilerleme=prog, uyarilar=uy, neden=f"{len(need)} ölçütün metni yazıldı")

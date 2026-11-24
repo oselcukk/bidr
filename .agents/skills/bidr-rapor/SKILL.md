@@ -204,8 +204,8 @@ kullanıcıya gerçekleşme belgesinin (tutanak, katılım listesi, rapor) eksik
      birimin adı ya da ders kodu varken "birim doğrulanamıyor", içerik varken "yalnız başlık"
      yazılmaz. Somut neden kurulamıyorsa satır `kabul`. `duzelt`, kanıt adı ve bağlantı
      düzeltmesi yapma; OD'yi yükseltmek için karar verme.
-   - Yetki yalnız review.xlsx kararlarını kapsar; hakem cevapları ve `bidr verify karar` için
-     ayrıca açık söz gerekir.
+   - Yetki yalnız review.xlsx kararlarını kapsar; hakem cevapları, `bidr verify karar` ve
+     `bidr write karar` için ayrıca açık söz gerekir.
    - Rapor TASLAK kalır: render'ın TASLAK damgası yalnız doğrulanmamış metne bakar, bu yüzden
      raporu sen TASLAK diye bildirirsin. Bitirirken ve her özetinde "kararlar ajan tarafından,
      kullanıcı yetkisiyle verildi; rapor kullanıcı tabloyu gözden geçirene kadar TASLAK" de;
@@ -262,7 +262,13 @@ verir: "düzenlenmiştir/gerçekleştirilmiştir" yalnız gerçekleşmesi kanıt
 gerçekleşme kanıtına atıfla; "YALNIZ DUYURU" faaliyet için "duyurulmuştur/planlanmıştır". Cevap
 `work/write/<ölçüt>.out.json` → `bidr write apply -w WS --model <ajan adı>`; geçersizler
 `work/write/GECERSIZ.md`'de. Görevin eski sürümüyle yazılmış metinler geçerli kalır (uyarı);
-yeniden yazmak isteğe bağlıdır.
+yeniden yazmak isteğe bağlıdır. Geçersiz cevabı taze bir ajan yeniden yazar; ilk yazım +
+`rapor.yeniden_yazim_siniri` (vars. 2) yeniden yazımdan sonra kod denetimini hâlâ geçemeyen ölçüt
+için `bidr next` "KULLANICI gerekli" ve "Karar bekleyen:" listesi verir. DUR: son cevabı ve kod
+denetiminin bulgularını kullanıcıya göster. Karar kullanıcının: `bidr write karar -w WS <ölçüt>
+cikar` (rapora girmez) / `tekrar` (bir tur daha) / `kabul` (yalnız bütün bulgular üslup türündeyse:
+abartı, slogan, koçluk, tahmin, OD dili; atıf/alıntı bulgusunda komut reddeder; metin yine
+doğrulanır). Bu komutu yalnız kullanıcı söyleyince çalıştır.
 
 ## Doğrulama (verify) ve yeniden yazım döngüsü
 

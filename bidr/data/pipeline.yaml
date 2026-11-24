@@ -384,7 +384,7 @@ asamalar:
     katman: M
     onkosul: [file]
     girdi: [evidence-index.csv, audit-olcutler.json, text/, config.yaml rapor.onceki_rapor, rapor-notlari.yaml]
-    cikti: [work/write/<ölçüt>.json, texts/<ölçüt>.json (durum taslak)]
+    cikti: [work/write/<ölçüt>.json, texts/<ölçüt>.json (durum taslak), write-kod-denemeleri.json, write-insan.jsonl]
     komut:
       - "bidr write prepare -w {ws}"
       - "(ajan) work/write/README.md'ye göre her paket için <ölçüt>.out.json yaz"
@@ -394,6 +394,8 @@ asamalar:
       metin: >-
         Kanıtı olan her ölçütün texts/<ölçüt>.json metni var, kanıt listesi ve önerilen OD'si güncel ve
         bekleyen (cevapsız, geçersiz ya da işlenmemiş) paket yok; yeniden yazım turu paketleri dahil.
+        Yeniden yazım sınırından sonra kod denetimini hâlâ geçemeyen ölçüt için kullanıcı karar verir
+        (bidr write karar: cikar | tekrar | kabul; kabul yalnız üslup bulgularında).
     onay: yok
     skill: bidr-rapor
     paralel:

@@ -57,7 +57,7 @@ Okumadan işe başlama.
   komutu var (`texts/`, `evidence/`, `evidence-index.csv`, `verify.jsonl`, `report.docx` dahil).
   Yazabileceğin dosyalar yalnız: iş paketi cevapları `work/*/<doc_id|ölçüt>.out.json`;
   kullanıcının kararları yalnız kullanıcının sözüyle ve komutla (`bidr hakem cevap`,
-  `bidr verify karar`; review.xlsx'i kullanıcı doldurur). İstisna: kullanıcı açıkça "inceleme
+  `bidr verify karar`, `bidr write karar`; review.xlsx'i kullanıcı doldurur). İstisna: kullanıcı açıkça "inceleme
   tablosunda karar vermeyeceğim, sen devam et" derse review.xlsx kararlarını sen verirsin; her
   satır "ajan (kullanıcı yetkisiyle)" işaretli, güveni düşük eşleşme ret, rapor TASLAK
   (`bidr-rapor`, "Denetim").

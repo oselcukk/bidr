@@ -47,6 +47,7 @@ from pathlib import Path
 
 from bidr.common import Workspace, read_jsonl, write_jsonl
 from bidr.criteria.model import id_key
+from bidr.write import karar as KR
 from bidr.write import packages as K
 from bidr.write import run as W
 from bidr.write import text as T
@@ -84,8 +85,12 @@ def save_log(ws: Workspace, recs: dict[str, dict]) -> Path:
 
 
 def load_human(ws: Workspace) -> list[dict]:
+    """Kullanıcının reddedilen metin kararları (`verify-insan.jsonl`) + yazım kod denetiminde takılan
+    metin için verdiği `cikar` kararları (`write-insan.jsonl`, bidr/write/karar.py): ikisi de metni
+    (aynı içerik) rapordan çıkarır."""
     p = ws.root / HUMAN
-    return [r for r in read_jsonl(p) if r.get("olcut") and r.get("karar") in HUMAN_KARARLAR] if p.exists() else []
+    out = [r for r in read_jsonl(p) if r.get("olcut") and r.get("karar") in HUMAN_KARARLAR] if p.exists() else []
+    return out + [r for r in KR.load_human(ws) if r["karar"] == "cikar" and r.get("metin_sha")]
 
 
 def limit_for(ws: Workspace, olcut: str, human: list[dict] | None = None) -> int:
@@ -380,6 +385,9 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
                 continue
             renew = True
         issues = code_check(src, t)
+        kabul = KR.kabul_edilen(ws, t)          # `bidr write karar … kabul`: kullanıcının geçirdiği üslup bulguları
+        if kabul:
+            issues = [i for i in issues if not (KR.uslup_mu(i) and (i["kod"], i["ayrinti"]) in kabul)]
         if renew and issues:
             t = {**t, "tur": 0}
             st["yeni_kural"].append(c)

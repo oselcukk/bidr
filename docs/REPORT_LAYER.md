@@ -281,6 +281,17 @@ metin tur 0'dan başlar; girdi aynıyken `--only`/`--redo` sayacı sıfırlamaz.
 kullanıcı `bidr verify karar -w WS <ölçüt> cikar|tekrar` ile karar verir (`verify-insan.jsonl`;
 `cikar` metni rapordan çıkarır, `tekrar` bir tur ekler).
 
+Yazım kod denetimi takılırsa (`bidr/write/karar.py`): `write apply`ın kod denetimini geçemeyen her
+ayrı cevap bir denemedir (`write-kod-denemeleri.json`; aynı cevap ikinci kez sayılmaz, paket değişince
+sayaç baştan). İlk yazım + `rapor.yeniden_yazim_siniri` yeniden yazımdan sonra hâlâ geçemeyen ölçüt
+için `bidr next` `kim: insan` ve `karar_bekleyen` listesi (ölçüt, deneme, sınır, son bulgular,
+`kabul_edilebilir`) verir. Kullanıcı `bidr write karar -w WS <ölçüt> cikar|tekrar|kabul` ile karar
+verir (`write-insan.jsonl`): `cikar` son cevabı `durum: reddedildi`, `insan_karari: cikar` metni yapar
+ve doğrulama kaydına `asama: yazim_kod` reddi yazar (verify yeniden yazıma göndermez, render basmaz);
+`tekrar` bir tur ekler; `kabul` yalnız bütün bulgular üslup türündeyse (yasak ifade: abartı, slogan,
+koçluk, tahmin; OD dili `od_asimi`) geçerlidir, metin `durum: taslak` olur ve bağımsız doğrulamaya
+gider (verify'ın kod denetimi yalnız kabul edilen üslup bulgularını yok sayar).
+
 ## yonler → `yonler/<alan>.json` (Güçlü / Gelişmeye Açık Yönler)
 FR-0833'ün son tablosu: A, B, C, D alanlarının her birinde "Güçlü Yönler" ve "Gelişmeye Açık
 Yönler" hücresi (8 hücre). `bidr yonler prepare|apply` (ajan modu, görev `write_yonler`,

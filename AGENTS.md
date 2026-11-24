@@ -35,8 +35,8 @@ başına bir liste; `docs/MODEL_LAYER.md` "Paralel model aşamaları"). Yeni mod
 - Alıntısız iddia yok: her eşleşme belgeden birebir alıntıyla gelir ve kodla denetlenir.
   Kaynakta olmayan şey yazılmaz; emin olunmayan alan boş bırakılır.
 - Ücretli API çağrılmaz: rapor işinde `bidr decide run` ve `bidr llm` kullanılmaz.
-- İnsan kararını ajan vermez: review.xlsx KARAR'ı, hakem cevapları, `bidr verify karar`
-  (cikar/tekrar) yalnız kullanıcının sözüyle yazılır. Tek istisna, kullanıcının açık yetki
+- İnsan kararını ajan vermez: review.xlsx KARAR'ı, hakem cevapları, `bidr verify karar` ve
+  `bidr write karar` (cikar/tekrar/kabul) yalnız kullanıcının sözüyle yazılır. Tek istisna, kullanıcının açık yetki
   devridir ("inceleme tablosunda karar vermeyeceğim, sen devam et"): o zaman ajan yalnız devredilen
   kararları verir, her birini "ajan (kullanıcı yetkisiyle)" diye işaretler, güveni düşük
   eşleşmeleri ret sayar ve raporu TASLAK bırakır (ayrıntı: `bidr-rapor` skill'i, "Denetim").
