@@ -114,6 +114,7 @@ class StageState:
     uyarilar: list[str] = field(default_factory=list)
     paralel: dict = field(default_factory=dict)       # kim=ajan: bölünebilir mi, kaç parça (bidr parcala)
     karar_bekleyen: list[dict] = field(default_factory=list)   # kim=insan: karar bekleyen öğeler (panel)
+    oneri_bekleyen: list[dict] = field(default_factory=list)   # hattı tutmayan, karar bekleyen öneriler (bilgi)
     bekleyen: list[str] | None = field(default=None, repr=False)   # to_dict'e girmez (uzun olabilir)
 
 
@@ -130,11 +131,16 @@ class Report:
     def sonraki(self) -> StageState | None:
         return next((s for s in self.asamalar if s.durum not in DONE), None)
 
+    @property
+    def oneri_bekleyen(self) -> list[dict]:
+        """Bütün aşamaların hattı tutmayan, bölüm kararı bekleyen önerileri (kör denetimin OD/kanıt önerileri)."""
+        return [x for s in self.asamalar for x in s.oneri_bekleyen]
+
     def to_dict(self) -> dict:
         n = self.sonraki
         return {"calisma_alani": self.calisma_alani, "yonetilen": self.yonetilen,
                 "asamalar": [_d(s) for s in self.asamalar],
-                "sonraki": _d(n) if n else None}
+                "sonraki": _d(n) if n else None, "oneri_bekleyen": self.oneri_bekleyen}
 
 
 def _d(s: StageState) -> dict:
@@ -173,7 +179,8 @@ def evaluate(ws_root: Path, *, until: str | None = None) -> Report:
             st = StageState(**base, durum=durum, kim=None if durum in DONE else ck.kim,
                             neden=ck.neden, komutlar=cmds, ilerleme=ck.ilerleme, uyarilar=ck.uyarilar,
                             bekleyen=ck.bekleyen if durum == BEKLIYOR and ck.kim == "ajan" else None,
-                            karar_bekleyen=ck.karar_bekleyen if durum == BEKLIYOR else [])
+                            karar_bekleyen=ck.karar_bekleyen if durum == BEKLIYOR else [],
+                            oneri_bekleyen=ck.oneri_bekleyen)
             if st.bekleyen is not None and s.get("paralel"):
                 from .paralel import durum as paralel_durum
                 st.paralel = paralel_durum(ws.root, s["id"], len(st.bekleyen))

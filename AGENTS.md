@@ -29,7 +29,8 @@ başına bir liste; `docs/MODEL_LAYER.md` "Paralel model aşamaları"). Yeni mod
 `pipeline.yaml` `paralel` alanı (bölünebilir mi + gerekçe) zorunludur.
 Rapor bittikten sonra isteğe bağlı **kör denetim** (`kor_denetim` → `duzelt`; `docs/REPORT_LAYER.md`):
 yalnız istenirse (`bidr denetim prepare`); denetçi metni yazmamış taze ajandır, puan iç ölçümdür; OD ve
-kanıt önerilerine kararı (`bidr denetim karar`) kullanıcı verir. `denetle`/`denetim.json` biçim denetimidir, ayrıdır.
+kanıt önerilerine kararı (`bidr denetim karar`) kullanıcı verir; bu karar hattı tutmaz (rapor tamamlanmış
+sayılır, öneriler `next`'te bilgi olarak durur; kabul edilen OD küçük bir düzeltme turu açar). `denetle`/`denetim.json` biçim denetimidir, ayrıdır.
 
 ## Değişmez kurallar (her ajan için)
 

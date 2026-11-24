@@ -246,12 +246,20 @@ def test_stage_contract_and_duzelt_cycle(ws, capsys):
     y = Y.load(Workspace(ws), "B")
     y["duzeltme"] = ypkg["meta"]["duzeltme"]
     (ws / "yonler/B.json").write_text(json.dumps(y, ensure_ascii=False), encoding="utf-8")
+    # metin düzeltmeleri bitti: OD/kanıt önerilerine karar verilmemiş olsa da aşama biter (hattı tutmaz); öneriler
+    # `oneri_bekleyen` ile bilgi olarak durur
     d = _check(ws, "duzelt")
-    assert d.kim == "insan" and {x["bulgu_id"] for x in d.karar_bekleyen} == {"B.1.1-od", "B.1.1-k1"}
-    kb = {x["bulgu_id"]: x for x in d.karar_bekleyen}
+    assert d.bitti and d.kim is None and not d.karar_bekleyen
+    assert {x["bulgu_id"] for x in d.oneri_bekleyen} == {"B.1.1-od", "B.1.1-k1"}
+    assert "2 öneri bölüm kararını bekliyor (hattı tutmaz)" in d.neden
+    assert any("hattı tutmaz" in u and "denetim karar" in u for u in d.uyarilar)
+    kb = {x["bulgu_id"]: x for x in d.oneri_bekleyen}
     assert kb["B.1.1-od"]["rapor_od"] == 3 and kb["B.1.1-od"]["denetci_od"] == 2
     assert kb["B.1.1-k1"]["doc_id"] == REL_ID and "deneme" not in kb["B.1.1-k1"]
-    assert "denetim karar" in d.komutlar[1]
+    assert main(["denetim", "ozet", "-w", str(ws), "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["karar_bekleyen_sayisi"] == 2
+    assert main(["denetim", "ozet", "-w", str(ws)]) == 0
+    assert "Bölüm kararını bekleyen öneri: 2" in capsys.readouterr().out
     # karar komutu: metin bulgusuna karar verilmez; doğrulanamayan bulguya da
     assert main(["denetim", "karar", "-w", str(ws), "B.1.1-1", "kabul"]) == 2
     assert main(["denetim", "karar", "-w", str(ws), "B.1.1-k2", "kabul"]) == 2
@@ -263,6 +271,9 @@ def test_stage_contract_and_duzelt_cycle(ws, capsys):
     assert a["od"] == 2 and a["od_denetim"]["bulgu_id"] == "B.1.1-od"
     crit, _ = D.targets(Workspace(ws))
     assert crit == ["B.1.1"]
+    # sonradan gelen kabul küçük bir düzeltme turu açar: duzelt yeniden komut (prepare), öneri bekleyen kalmadı
+    d = _check(ws, "duzelt")
+    assert d.kim == "komut" and "duzelt prepare" in d.komutlar[0] and "B.1.1" in d.neden and not d.oneri_bekleyen
     W.prepare(ws)
     pkg = json.loads((ws / "work/write/B.1.1.json").read_text(encoding="utf-8"))
     assert "OD2 olarak kabul etti" in pkg["istem"] and pkg["meta"]["od_onerisi"] == 2
@@ -357,6 +368,32 @@ def test_next_prints_audit_decisions(ws, capsys, monkeypatch):
         workspace, json = str(ws), False
     PC._next(A())
     assert "B.1.1-od (od): OD 3 → 2" in capsys.readouterr().out
+
+
+def test_next_done_shows_pending_proposals_as_info(ws, capsys, monkeypatch):
+    """Bütün aşamalar bitti; bölüm kararı bekleyen öneriler hattı tutmaz, bilgi olarak yazılır (json'da da)."""
+    import bidr.pipeline.cli as PC
+    import bidr.pipeline.state as ST
+    ob = [{"bulgu_id": "B.1.1-od", "sinif": "od", "olcut": "B.1.1", "ozet": "OD 3 → 2"}]
+    s = ST.StageState(id="duzelt", ad="x", durum="bitti", kim=None, neden="n", komutlar=[], sart="", onay="yok",
+                      katman="D", skill=None, oneri_bekleyen=ob)
+    rep = ST.Report(str(ws), True, [s])
+    assert rep.sonraki is None and rep.to_dict()["oneri_bekleyen"] == ob
+    monkeypatch.setattr(ST, "evaluate", lambda w: rep)
+    monkeypatch.setattr(PC, "_head", lambda r: "bidr durum")
+
+    class A:
+        workspace, json = str(ws), False
+    PC._next(A())
+    out = capsys.readouterr().out
+    assert "Bütün aşamalar bitti." in out and "1 önerisi bölüm kararını bekliyor (hattı tutmaz" in out
+    assert "B.1.1-od (od): OD 3 → 2" in out and "KULLANICI" in out
+
+    class J:
+        workspace, json = str(ws), True
+    PC._next(J())
+    js = json.loads(capsys.readouterr().out)
+    assert js["sonraki"] is None and js["oneri_bekleyen"] == ob
 
 
 def test_related_documents_in_write_package(ws):

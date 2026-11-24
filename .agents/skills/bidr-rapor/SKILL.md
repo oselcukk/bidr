@@ -354,7 +354,9 @@ rapor aşaması), 30–40 dk sürebilir, puan iç ölçümdür (aynı model aile
 - `bidr next` → `bidr duzelt prepare`: metin bulguları düzeltme notuyla yazım/yön paketine girer; hat
   write → verify → yonler → render → denetle'ye döner (yazımı ve doğrulamayı ayrı, taze ajanlara ver).
 - OD ve kullanılmamış belge önerileri: `kor-denetim.md` bölümlerini kullanıcıya göster; karar yalnız
-  kullanıcının sözüyle: `bidr denetim karar -w WS <bulgu_id> kabul|ret --not "…"`. "Doğrulanamadı"
+  kullanıcının sözüyle: `bidr denetim karar -w WS <bulgu_id> kabul|ret --not "…"`. Karar hattı tutmaz:
+  metin düzeltmeleri bitince `bidr next` "Bütün aşamalar bitti" der, bekleyen öneriler "Bilgi:" satırında
+  durur; kabul sonradan gelirse `bidr next` küçük düzeltme turunu gösterir. "Doğrulanamadı"
   bulgularını işleme.
 - İkinci denetim (`--ikinci`) yalnız kullanıcı isterse; ölçümdür, düzeltme yapılmaz.
 - `denetle` (biçim denetimi, `denetim.json`) ile karıştırma.

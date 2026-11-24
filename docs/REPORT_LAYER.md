@@ -614,10 +614,15 @@ denetimi ister; istenmezse `kor_denetim` ve `duzelt` `atlandi`, hat eskisi gibi 
   önceliklidir, o zaman karar verilemez) ve metin OD notuyla yeniden yazılır. Kabul edilen belge
   önerisi ikinci arama paketine `denetim` kaynağıyla girer (`--yalniz-denetim`; `rapor.ikinci_arama:
   false` olsa da); eşleşirse inceleme tablosunda insan kararı bekler.
-- `duzelt_tamam`: denetim yoksa atlandi; not bekleyen ölçüt/alan → komut; karar bekleyen →
-  insan (`karar_bekleyen`: `{bulgu_id, sinif, olcut, ozet, rapor_od, denetci_od, doc_id, belge_adi}`).
+- `duzelt_tamam`: denetim yoksa atlandi; not bekleyen ölçüt/alan → komut; yoksa **bitti**, karar
+  bekleyen OD/kanıt önerisi olsa da (hattı tutmaz; rapor tamamlandı sayılır). Bekleyen öneriler
+  `oneri_bekleyen` (`{bulgu_id, sinif, olcut, ozet, rapor_od, denetci_od, doc_id, belge_adi}`) ile bilgi
+  olarak durur: `bidr next` "Bilgi: denetimin N önerisi…" satırları, `next --json`/`status --json`
+  üst düzey `oneri_bekleyen`, `denetim ozet` `karar_bekleyen_sayisi`. Karar sonradan gelirse: kabul
+  edilen OD `duzelt`'i yeniden açar (küçük tur: duzelt prepare → write → verify → render → denetle);
+  kabul edilen belge `ikinci_arama`'yı açar; ret yalnız kayda geçer.
 - **Tek tur:** otomatik ikinci denetim yok. `bidr denetim prepare --ikinci` (ilk turun düzeltmesi ve
-  kararları bittikten sonra) ölçüm turudur: önceki tur `kor-denetim-1.json`, paketler
+  kararları bittikten sonra; bekleyen öneri varsa reddedilir) ölçüm turudur: önceki tur `kor-denetim-1.json`, paketler
   `work/kor_denetim/_tur1/`; bulgular düzeltilmez, `karsilastirma` önce/sonra puanları verir.
 
 ## config.yaml `rapor:` bölümü (hepsi isteğe bağlı; kullanıcı yazar, `bidr init` korur)

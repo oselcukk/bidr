@@ -59,21 +59,39 @@ def paralel_satirlari(p: dict) -> list[str]:
             "(apply da aynı denetimi yapar)"]
 
 
+def oneri_satirlari(rep) -> list[str]:
+    """Hattı tutmayan, bölüm kararı bekleyen öneriler (kör denetimin OD/kanıt önerileri): bilgi olarak."""
+    ob = rep.oneri_bekleyen
+    if not ob:
+        return []
+    out = [f"Bilgi: denetimin {len(ob)} önerisi bölüm kararını bekliyor (hattı tutmaz; rapor tamamlandı sayılır):"]
+    out += [f"  - {x['bulgu_id']} ({x['sinif']}): {x.get('ozet', '')}" for x in ob]
+    out += [f"  Karar yalnız KULLANICI derse: {bidr_command()} denetim karar -w {rep.calisma_alani} <bulgu_id> "
+            "kabul|ret [--not \"…\"]; kabul edilen OD küçük bir düzeltme turu açar (bidr next gösterir), kabul "
+            "edilen belge ikinci aramaya girer."]
+    return out
+
+
 def _next(args) -> int:
     from .state import evaluate
     rep = evaluate(args.workspace)
     n = rep.sonraki
     if args.json:
+        d = rep.to_dict()
         print(json.dumps({"calisma_alani": rep.calisma_alani, "yonetilen": rep.yonetilen,
-                          "sonraki": rep.to_dict()["sonraki"]}, ensure_ascii=False, indent=1))
+                          "sonraki": d["sonraki"], "oneri_bekleyen": d["oneri_bekleyen"]}, ensure_ascii=False, indent=1))
         return 0
     print(_head(rep))
     if n is None:
         print("Bütün aşamalar bitti.")
+        for satir in oneri_satirlari(rep):
+            print(satir)
         return 0
     if n.durum == "yok":
         print(f"Uygulanmış aşamalar bitti. Sıradaki aşama '{n.id}' ({n.ad}) bidr'de henüz yok; "
               "hat burada biter. Kullanıcıya durumu bildir ve dur; bu aşamayı elle uydurma.")
+        for satir in oneri_satirlari(rep):
+            print(satir)
         return 0
     print(f"Aşama: {n.id} — {n.ad}")
     print(f"Durum: {n.durum}" + (f" ({KIM[n.kim]})" if n.kim else "") + f" — {n.neden}")
@@ -96,6 +114,8 @@ def _next(args) -> int:
         for i, k in enumerate(n.komutlar, 1):
             print(f"  {i}. {k}")
     for satir in paralel_satirlari(n.paralel):
+        print(satir)
+    for satir in oneri_satirlari(rep):
         print(satir)
     print(f"Tamamlanma şartı (kod denetler): {n.sart}")
     print("İnsan onayı: " + ("GEREKLİ — kullanıcı karar vermeden bu aşama bitmez; dur ve sor."

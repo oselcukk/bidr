@@ -722,6 +722,8 @@ def view_dict(ws: Workspace, js: dict) -> dict:
         fs.append({**f, "durum": d, "durum_notu": note,
                    "karar": {"karar": k["karar"], "not": k.get("not") or "", "zaman": k.get("zaman")} if k else None})
     out["bulgular"] = fs
+    # hattı tutmayan, bölüm kararını bekleyen OD/kanıt önerileri (rapor tamamlandı sayılır; karar ne zaman verilirse)
+    out["karar_bekleyen_sayisi"] = sum(1 for f in fs if f["durum"] == "karar_bekliyor")
     out["dku"] = DKU
     out["tur_adlari"] = TUR_ADLARI
     return out
@@ -943,6 +945,9 @@ def write_md(ws: Workspace, v: dict) -> Path:
          f"- Yön hücreleri ortalaması: {oz.get('yon_ortalama')}",
          f"- Cümle etiketleri: D {oz.get('D')} · K {oz.get('K')} · U {oz.get('U')}",
          "- Bulgular: " + ", ".join(f"{k} {n}" for k, n in (oz.get("bulgu") or {}).items()), ""]
+    if v.get("karar_bekleyen_sayisi"):
+        L[-1:-1] = [f"- Bölüm kararını bekleyen öneri: {v['karar_bekleyen_sayisi']} (OD/kanıt; hattı tutmaz, rapor "
+                    "tamamlandı sayılır; kabul edilen OD küçük bir düzeltme turu açar)"]
     kar = v.get("karsilastirma")
     if kar:
         L += ["## Önce / sonra", "",

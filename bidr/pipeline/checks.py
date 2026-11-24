@@ -32,6 +32,9 @@ class Check:
     uyarilar: list[str] = field(default_factory=list)
     bekleyen: list[str] | None = None   # kim=ajan: cevap bekleyen paket anahtarları (`bidr parcala` böler)
     karar_bekleyen: list[dict] = field(default_factory=list)   # kim=insan: karar bekleyen öğeler (panel gösterir)
+    # hattı tutmayan, bölüm kararını bekleyen öneriler (kör denetimin OD/kanıt önerileri): aşama bitmiş olsa da
+    # `next`/`status` bilgi olarak gösterir; karar sonradan gelirse ilgili düzeltme küçük bir tur olarak koşar
+    oneri_bekleyen: list[dict] = field(default_factory=list)
 
 
 @dataclass

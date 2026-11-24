@@ -562,15 +562,16 @@ asamalar:
     cikti: [work/write/<ölçüt>.json (düzeltme notlu), work/yonler/<alan>.json (düzeltme notlu), kor-denetim-kararlar.jsonl]
     komut:
       - "bidr duzelt prepare -w {ws}"
-      - "(insan) OD ve kanıt önerileri: bidr denetim karar -w {ws} <bulgu_id> kabul|ret --not \"…\""
+      - "(insan, hattı tutmaz; ne zaman olursa) OD ve kanıt önerileri: bidr denetim karar -w {ws} <bulgu_id> kabul|ret --not \"…\""
     sart:
       denetim: duzelt_tamam
       metin: >-
         Denetim yoksa atlanır. Doğrulanmış her metin bulgusu (ve kabul edilen OD kararı) düzeltme notu olarak yazım/yön
         paketine girmiş ve yeniden yazılan metin `duzeltme` iziyle kaydedilmiş; yazım kuralları, kod denetimi ve bağımsız
-        doğrulama aynen işler (hat write → verify → yonler → render → denetle'ye döner). OD ve kanıt önerilerine bölüm
-        karar vermiş (`bidr denetim karar`; ajan vermez): kabul edilen OD audit okunurken ölçütün OD'si olur ve metin
-        yeniden yazılır; kabul edilen belge ikinci aramaya girer, eşleşirse inceleme tablosunda aday olur. İkinci
-        denetim turu ölçümdür, düzeltme istemez.
+        doğrulama aynen işler (hat write → verify → yonler → render → denetle'ye döner). OD ve kanıt önerilerinin bölüm
+        kararı (`bidr denetim karar`; ajan vermez) hattı TUTMAZ: karar verilmemiş öneriler `oneri_bekleyen` ile bilgi
+        olarak gösterilir, rapor tamamlandı sayılır. Karar ne zaman gelirse: kabul edilen OD audit okunurken ölçütün
+        OD'si olur ve bu aşama yeniden açılır (metin küçük bir düzeltme turunda yeniden yazılır); kabul edilen belge
+        ikinci aramaya girer, eşleşirse inceleme tablosunda aday olur. İkinci denetim turu ölçümdür, düzeltme istemez.
     onay: yok
     skill: bidr-rapor

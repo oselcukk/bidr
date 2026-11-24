@@ -4,12 +4,15 @@
 varsayılan hat eskisi gibi biter. İstenince:
   kor_denetim  paketler → ajan (metni yazmamış, taze denetçi) → apply → kor-denetim.json;
   duzelt       metin bulgusu/kabul edilen OD → `bidr duzelt prepare` (hat write → verify → yonler → render →
-               denetle'ye geri döner) → bölüm kararı bekleyen od/kanit bulgusu → insan (`bidr denetim karar`).
-               Kabul edilen kanıt önerisi ikinci arama aşamasında işlenir (checks.ikinci_arama_tamam).
+               denetle'ye geri döner). Metin düzeltmeleri bitince aşama biter: bölüm kararı bekleyen od/kanit
+               önerileri hattı TUTMAZ, `oneri_bekleyen` ile bilgi olarak gösterilir (`bidr denetim karar` ne zaman
+               verilirse). Sonradan kabul edilen OD bu aşamayı yeniden açar (küçük düzeltme turu: duzelt prepare →
+               write → verify → render …); kabul edilen kanıt önerisi ikinci arama aşamasında işlenir
+               (checks.ikinci_arama_tamam).
 """
 from __future__ import annotations
 
-from bidr.pipeline.checks import AJAN, INSAN, KOMUT, Check, Ctx
+from bidr.pipeline.checks import AJAN, KOMUT, Check, Ctx
 
 from . import run as KD
 
@@ -70,26 +73,19 @@ def duzelt_tamam(c: Ctx) -> Check:
     if count.get("dogrulanamadi"):
         uy.append(f"{count['dogrulanamadi']} bulgunun alıntısı raporda/belgede doğrulanamadı: işlenmedi "
                   f"({KD.OUT_MD} 'Doğrulanamayan bulgular')")
+    if kb:
+        uy.append(f"{len(kb)} denetim önerisi (OD/kanıt) bölüm kararını bekliyor; hattı tutmaz, rapor tamamlandı "
+                  f"sayılır ({KD.OUT_MD} 'OD önerileri', 'Kullanılmamış belge önerileri'; karar: "
+                  + c.fmt("bidr denetim karar -w {ws}") + " <bulgu_id> kabul|ret — yalnız KULLANICI derse)")
     if crit or areas:
-        if kb:
-            uy.append(f"{len(kb)} bulgu bölüm kararı bekliyor (OD/kanıt önerisi); düzeltmeden sonra sorulur")
         what = ", ".join(x for x in (f"{len(crit)} ölçüt metni ({', '.join(crit)})" if crit else "",
                                      f"{len(areas)} alanın yönleri ({', '.join(areas)})" if areas else "") if x)
         return Check(kim=KOMUT, komutlar=[c.fmt(c.stage["komut"][0])], ilerleme=prog, uyarilar=uy,
+                     oneri_bekleyen=kb,
                      neden=f"denetim bulgularıyla düzeltilecek: {what}. prepare yazım/yön paketlerini düzeltme notuyla "
                            "açar; hat write → verify → yonler → render → denetle sırasıyla yeniden koşar (yazımı ve "
                            "doğrulamayı ayrı, taze ajanlara ver)")
-    if kb:
-        karar = c.fmt("bidr denetim karar -w {ws}")
-        return Check(kim=INSAN, ilerleme=prog, uyarilar=uy, karar_bekleyen=kb,
-                     komutlar=[f"(insan) {KD.OUT_MD} 'OD önerileri' ve 'Kullanılmamış belge önerileri' bölümlerini "
-                               "kullanıcıya göster; karar bölümündür (ajan vermez)",
-                               f"{karar} <bulgu_id> kabul [--not \"…\"]   # KULLANICI derse: OD değişikliği metne ve "
-                               "rapora yansır / belge inceleme adayı olur",
-                               f"{karar} <bulgu_id> ret [--not \"…\"]     # KULLANICI derse: rapor olduğu gibi kalır"],
-                     neden=f"{len(kb)} denetim bulgusu bölüm kararı bekliyor: "
-                           + ", ".join(f"{x['bulgu_id']} ({x['sinif']})" for x in kb[:8])
-                           + (" …" if len(kb) > 8 else ""))
-    return Check(bitti=True, ilerleme=prog, uyarilar=uy,
+    return Check(bitti=True, ilerleme=prog, uyarilar=uy, oneri_bekleyen=kb,
                  neden=f"{count.get('duzeltildi', 0)} metin bulgusu düzeltildi; {count.get('kabul', 0)} öneri kabul, "
-                       f"{count.get('ret', 0)} ret")
+                       f"{count.get('ret', 0)} ret" + (f"; {len(kb)} öneri bölüm kararını bekliyor (hattı tutmaz)"
+                                                       if kb else ""))
