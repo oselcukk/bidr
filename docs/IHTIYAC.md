@@ -83,11 +83,18 @@ ama bu ölçüte eşleşmemiş" satırı karar/inceleme için ipucudur (karar de
 kabul/düzelt) bir kanıtla karşılanıyorsa `var` olur ve istenmez; `karsilama` alanı karşılayan belgeyi,
 ölçütünü ve nedenini taşır. Sıra: (1) eşleştirmenin bulduğu karşılık herhangi bir ölçütte kabul edilmiş;
 (2) derse özgü belge tür düzeyinde istenir, aynı türden kabul edilmiş herhangi bir belge (herhangi bir
-ölçütte) kapatır; (3) aynı ölçütte yuva tam dolu ya da aynı türden/aynı adlı belge kabul edilmiş ("başka
-belgeyle"); (4) kurum düzeyi belge (yönetmelik, yönerge, iş akışı, form; kurum/fakülte geneli satır) adıyla
-başka ölçütün kanıtı ("dosyada var (X ölçütünde)"). Kurum kataloğundan gelen satırlar da (5. bölüm) dosyada
-kabul edilmiş karşılığı varsa istenmez. Kapanan istekler sade listenin "Var olan kanıt" sütununda
-"İstenmedi (dosyada var): …" satırıyla görünür.
+ölçütte) kapatır; (3) aynı ölçütte aynı türden, zayıf olmayan başka bir belge kabul edilmiş ("başka
+belgeyle"); yuvanın başka türden belgeyle dolu olması kapatmaz; (4) kurum düzeyi belge (yönetmelik, yönerge,
+iş akışı, form; kurum/fakülte geneli satır) adıyla ve türüyle başka ölçütün kanıtı ("dosyada var (X
+ölçütünde)"). **Tür zorunludur** (`tur_uyumlu`): tür, adın tür ifadesinden (anket sonucu, ders bilgi formu /
+çıktı matrisi, müfredat, seminer, çalıştay, iş akışı, iş akışları listesi, fotoğraf, yönerge, tutanak…;
+`TUR_IFADE`) ve sınıflandırmadan okunur. İki ad da tür ifadesi taşıyorsa ortak ifade gerekir (aynı
+sınıflandırmalı "toplantı haberi" anket sonucu değildir); taşımıyorsa sınıflandırma aynı ya da adlar aynı belge
+olmalı. Uyan adaylardan önce aynı ölçüttekiler, sonra adı geçen yılki belgeye en yakın olanlar gösterilir (en
+çok 2). Kurum kataloğundan gelen satırlar da (5. bölüm) dosyada kabul edilmiş karşılığı varsa istenmez.
+Kapanan geçen yıl isteği sade listede **kendi satırında, işaretli (☑)** durur; "Var olan kanıt" hücresinde
+"Dosyada var: «karşılayan belge» (ölçütü)". Dosyada olduğu için istenmeyen kurum belgeleri kurum satırında
+"İstenmedi (dosyada var): …" olarak görünür.
 
 ## 3. Ölçüt satırı ve öncelik
 

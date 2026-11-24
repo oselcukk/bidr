@@ -4,6 +4,10 @@ Her birleştirmede (main'e giren her değişiklik) buraya en üste bir satır ek
 açıklama ve kullanıcıyı ilgilendiriyorsa ne yapması gerektiği. `bidr guncelle` güncellemeden sonra
 bu dosyanın yeni satırlarını gösterir. Bu dosyadan önceki geçmiş için `git log`.
 
+- 2026-11-24: Eksik listesinde karşılayan belge türüyle seçilir (prova düzeltmesi): geçen yılın belgesi yalnız aynı
+  TÜRden (adın tür ifadesi: anket sonucu, ders bilgi formu, seminer, iş akışları listesi…; ve sınıflandırma) kabul
+  edilmiş belgeyle kapanır; yuvanın başka türden belgeyle dolu olması kapatmaz. Kapanan istek kendi satırında ☑ ve
+  "Dosyada var: «…»" notuyla durur (önceden maddenin ilk satırında "İstenmedi"). Model yok; `bidr ihtiyac` yeniden çalıştırmak yeter.
 - 2026-11-24: Eksik listesi inceleme kararlarına göre (d3a): `bidr ihtiyac` geçen yılın belgesini kabul edilmiş
   inceleme kararlarıyla da arar: aynı belge başka ölçütte, derse özgü istekte aynı türden herhangi bir belge, aynı
   ölçütte dolu yuva/aynı tür ("başka belgeyle"), başka ölçütte kanıt olan kurum belgesi → istenmez, "Var olan

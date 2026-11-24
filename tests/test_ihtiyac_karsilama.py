@@ -33,8 +33,9 @@ def _sade(res, cid):
 
 
 def _metinler(res, cid):
+    """Açık (işaretsiz) istekler; dosyada karşılığı bulunan istek işaretli satırdadır, sayılmaz."""
     r = _sade(res, cid)
-    return [m["metin"] for m in r["maddeler"]] if r else []
+    return [m["metin"] for m in r["maddeler"] if not m.get("bulundu")] if r else []
 
 
 def test_a_tur_duzeyinde_istek_ayni_turden_kabul_edilmis_belgeyle_kapanir(tmp_path):
@@ -49,8 +50,10 @@ def test_a_tur_duzeyinde_istek_ayni_turden_kabul_edilmis_belgeyle_kapanir(tmp_pa
     assert not any("anket" in m.lower() and "MATH407" in m for m in _metinler(res, "B.3.1"))
     assert not any(t["kaynak"] == "geçen yıl" for t in res["talepler"] if t["olcut"] == "B.3.1")
     r = _sade(res, "B.3.1")
-    assert r and r["karsilanan"] == ["«MATH407 Ders Degerlendirme Anketi Sonucu 2024-2025» yerine "
-                                     "«Math 204 Ders Degerlendirme Anketi Sonucu» (A.4.2 ölçütünde)"]
+    kap = [m for m in r["maddeler"] if m.get("bulundu")]
+    assert len(kap) == 1 and "Herhangi bir dersin" in kap[0]["metin"]
+    assert kap[0]["dosyada"] == "Dosyada var: «Math 204 Ders Degerlendirme Anketi Sonucu» (A.4.2 ölçütünde)"
+    assert r["karsilanan"] == []
     # incelemede reddedilmiş aynı türden belge kapatmaz
     ws2 = _ws(tmp_path / "guncel2", 2026, {"m204": ("anket_sonucu", True, "2026-02-01", "Math 204 Anket", T1,
                                                     [_m("A.4.2", "A.4.2/2", "uygula", 3)], "ret")})
@@ -77,20 +80,73 @@ def test_b_baska_olcutte_kanit_olan_kurum_belgesi_istenmez(tmp_path):
     assert any("Is Akislari Listesi" in x and "A.3.4 ölçütünde" in x for x in r["karsilanan"])
 
 
-def test_c_ayni_yuva_baska_belgeyle_karsilanmis(tmp_path):
-    """Geçen yılın seminer duyurularının yuvası bu yıl başka bir belgeyle (çalıştay programı) tam dolu."""
-    ref = _ref(tmp_path, "B.3.5,etkinlik_duyurusu,Bolum Seminer Duyurulari 2025,B.3.5/2\n")
-    ws = _hedef(tmp_path, {"cal": ("faaliyet_raporu", True, "2026-03-01", "Sentetik Calistay Programi", T3,
-                                   [_m("B.3.5", "B.3.5/2", "uygula", 3)], "kabul")})
+def test_c_ayni_olcutte_ayni_turden_baska_belgeyle_karsilanmis(tmp_path):
+    """Geçen yılın seminer duyuruları bu yıl aynı ölçütte başka bir seminer duyurusuyla karşılanmış; yuvası başka
+    türden belgeyle (yönerge, çalıştay programı) dolu olsa kapanmaz."""
+    ref = _ref(tmp_path, "B.3.5,etkinlik_duyurusu,2024-2025 Bahar Donemi Bolum Seminerleri,B.3.5/2\n")
+    ws = _hedef(tmp_path, {
+        "yon": ("yonerge", None, "2024-01-01", "Akademik Atama Kosullari Yonergesi", T4,
+                [_m("B.3.5", "B.3.5/2", "planla", 2)], "kabul"),
+        "sem": ("etkinlik_duyurusu", True, "2026-03-27", "Bolum Genel Seminer Duyurusu Mart 2026", T3,
+                [_m("B.3.5", "B.3.5/1", "planla", 3)], "kabul")})
     res = R.run(ws, referans=ref, out=tmp_path / "o")
     g = res["gecen"][0]
     assert g["durum"] == VAR and g["karsilama"]["olcut"] == "B.3.5" and "başka belgeyle" in g["karsilama"]["neden"]
-    assert not any("Seminer Duyurulari" in m for m in _metinler(res, "B.3.5"))
-    # aynı yuva yalnız zayıf kanıtla doluysa kapanmaz
-    ws2 = _ws(tmp_path / "g2", 2026, {"cal": ("faaliyet_raporu", True, "2026-03-01", "Calistay", T3,
-                                              [{**_m("B.3.5", "B.3.5/2", "uygula", 3), "alinti": "Çalıştay yapıldı."}],
+    assert g["karsilama"]["ad"] == "Bolum Genel Seminer Duyurusu Mart 2026"
+    # yalnız başka türden belgeler: yuva dolu da olsa kapanmaz
+    ws2 = _ws(tmp_path / "g2", 2026, {
+        "yon": ("yonerge", None, "2024-01-01", "Akademik Atama Kosullari Yonergesi", T4,
+                [_m("B.3.5", "B.3.5/2", "planla", 2)], "kabul"),
+        "cal": ("faaliyet_raporu", True, "2026-03-01", "Sentetik Calistay Programi", T3,
+                [_m("B.3.5", "B.3.5/2", "uygula", 3)], "kabul")})
+    res2 = R.run(ws2, referans=ref, out=tmp_path / "o2")
+    assert res2["gecen"][0]["durum"] != VAR
+    assert any("Bolum Seminerleri" in m for m in _metinler(res2, "B.3.5"))
+    # aynı türden ama yalnız zayıf kanıt: kapanmaz
+    ws3 = _ws(tmp_path / "g3", 2026, {"sem": ("etkinlik_duyurusu", True, "2026-03-27", "Bolum Seminer Duyurusu", T3,
+                                              [{**_m("B.3.5", "B.3.5/2", "uygula", 3), "alinti": "Seminer yapıldı."}],
                                               "kabul")})
-    assert R.run(ws2, referans=ref, out=tmp_path / "o2")["gecen"][0]["durum"] != VAR
+    assert R.run(ws3, referans=ref, out=tmp_path / "o3")["gecen"][0]["durum"] != VAR
+
+
+def test_c2_tur_ifadesi_zorunlu_karsilayan_belge_dogru_secilir(tmp_path):
+    """Sınıflandırma aynı (anket_sonucu) olsa da adı başka tür söyleyen belge (toplantı haberi) anket sonucu
+    değildir; tür ifadesi ortak belgeler arasından adı en yakın olan gösterilir. İş akışları listesi tek bir iş
+    akışıyla, fotoğraf isteği iş akışıyla kapanmaz. Kapanan istek kendi satırında işaretli; not o satırda."""
+    ref = _ref(tmp_path, "A.4.2,anket_sonucu,MATH407 Ders Degerlendirme Anketi Sonucu 2024-2025,A.4.2/2\n"
+                         "A.3.4,is_akisi,GTU Kalite Ofisi Is Akislari Listesi,A.3.4/1\n"
+                         "B.3.4,altyapi_listesi,Bolum Fiziki Olanaklar Fotograflari,B.3.4/1\n"
+                         "B.1.4,ders_bilgi_formu,MAT308 Olasilik Teorisi Ders Bilgi Formu,B.1.4/1\n")
+    ws = _hedef(tmp_path, {
+        "hab": ("anket_sonucu", True, "2026-02-01", "2025 Yonetimin Gozden Gecirmesi Toplantisi Haberi", T1,
+                [_m("A.4.2", "A.4.2/2", "kontrol_et", 3)], "kabul"),
+        "ank": ("anket_sonucu", True, "2026-02-01", "Ders Degerlendirme Anketi Sonuclari", T2,
+                [_m("A.4.2", "A.4.2/2", "uygula", 3)], "kabul"),
+        "bas": ("is_akisi", None, "2025-01-01", "Bolum Baskani Secimi Is Akisi", T3,
+                [_m("A.3.4", "A.3.4/1", "planla", 2)], "kabul"),
+        "eng": ("is_akisi", None, "2025-01-01", "Engelli Ogrenci Basvuru Is Akisi", T4,
+                [_m("B.3.4", "B.3.4/1", "planla", 2)], "kabul"),
+        "muf": ("mufredat", True, "2026-01-01", "Bolum Yuzde Yuz Ingilizce Mufredati", T1,
+                [_m("B.1.4", "B.1.4/1", "uygula", 3)], "kabul"),
+        "dbf": ("bilinmiyor", True, "2026-01-01", "MATH113 Lineer Cebir I Ders Bilgi Formu", T2,
+                [_m("B.1.4", "B.1.4/1", "uygula", 3)], "kabul")})
+    res = R.run(ws, referans=ref, out=tmp_path / "o")
+    by = {g["olcut"]: g for g in res["gecen"]}
+    assert by["A.4.2"]["durum"] == VAR and by["A.4.2"]["karsilama"]["ad"] == "Ders Degerlendirme Anketi Sonuclari"
+    assert "Toplantisi" not in by["A.4.2"]["karsilama"]["metin"]
+    assert by["A.3.4"]["durum"] != VAR                      # tek iş akışı, iş akışları listesi değil
+    assert by["B.3.4"]["durum"] != VAR                      # fotoğraf isteği iş akışıyla kapanmaz
+    assert by["B.1.4"]["durum"] == VAR and by["B.1.4"]["karsilama"]["ad"] == "MATH113 Lineer Cebir I Ders Bilgi Formu"
+    # Excel: kapanan istek kendi satırında ☑, notu aynı satırda; başka satırda "İstenmedi" yok
+    wb = load_workbook(res["paths"]["sade"])[S.SHEETS[0]]
+    rows = [[c.value for c in row] for row in wb.iter_rows(min_row=S.BASLIK_SATIRI + 1)]
+    a42 = [x for x in rows if x[0] and str(x[0]).startswith("A.4.2") and x[1] in (S.BOS, S.DOLU)]
+    hit = [x for x in a42 if x[1] == S.DOLU]
+    assert len(hit) == 1 and "Herhangi bir dersin" in hit[0][3]
+    assert "Dosyada var: «Ders Degerlendirme Anketi Sonuclari»" in hit[0][5]
+    assert not any("İstenmedi" in str(x[5] or "") for x in rows)
+    assert S.bilgi_denetimi(res["sade"], res["paths"]["sade"]) == []
+
 
 
 def test_d_zayif_kanit_yuvayi_kismen_doldurur_istek_somut_kalir(tmp_path):

@@ -361,8 +361,9 @@ def satirlar_kur(cs, tags, sor, talepler: list[dict], satirlar: list[dict], gece
     olur. `ornekler`: kılavuz eki örnek uygulamaları (`ornekler_yukle`; vars. paket verisi).
     `karsilama` (`karsilama.Karsilama`): kurum belgesi dosyada (herhangi bir ölçütte) kabul edilmişse
     istenmez. `etkinlik` (`etkinlik.etkinlik_istekleri`): etkinlik adıyla istekler (elle isteklerden
-    sonra). Kapanan istekler (geçen yılın `karsilama`lı belgeleri, dosyadaki kurum belgeleri) ve kısmen
-    dolu yuvanın zayıf kanıtı "Var olan kanıt" sütununda gösterilir."""
+    sonra). Geçen yılın dosyada karşılığı bulunan (`karsilama`lı) belgesi kendi satırında, işaretli (☑)
+    durur; "Var olan kanıt" hücresinde karşılayan belge (`bulundu`, `dosyada`). Dosyadaki kurum belgeleri
+    (`karsilanan`) ve kısmen dolu yuvanın zayıf kanıtı da "Var olan kanıt" sütununda gösterilir."""
     from .katalog_esle import madde_metni, olcut_belgeleri
     k_by = olcut_belgeleri(kurum)
     k_hepsi = list((kurum or {}).get("ogeler") or [])
@@ -376,23 +377,21 @@ def satirlar_kur(cs, tags, sor, talepler: list[dict], satirlar: list[dict], gece
     for t in talepler:
         tal_by.setdefault(t["olcut"], []).append(t)
     ref_by: dict[str, list[dict]] = {}
+    kap_by: dict[str, list[dict]] = {}           # dosyada karşılığı bulunan geçen yıl belgeleri: işaretli satır
     for g in gecen:
         if g.get("durum") in (YOK, ESKI):
             ref_by.setdefault(g["olcut"], []).append(g)
+        elif g.get("karsilama"):
+            kap_by.setdefault(g["olcut"], []).append(g)
     ist_by: dict[str, list[dict]] = {}
     for x in istekler:
         ist_by.setdefault(_madde_anahtar(x["madde"], cs), []).append(x)
     etk_by: dict[str, list[dict]] = {}
     for x in etkinlik or []:
         etk_by.setdefault(x["olcut"], []).append(x)
-    kap_by: dict[str, list[str]] = {}            # kapanan istekler: "«geçen yılın belgesi» → dosyada «…»"
-    for g in gecen:
-        k = g.get("karsilama")
-        if k:
-            kap_by.setdefault(g["olcut"], []).append(f"«{g.get('kanit_adi') or ''}» yerine {k['metin']}")
 
     out = []
-    for cid in sorted(set(tal_by) | set(ist_by) | set(etk_by),
+    for cid in sorted(set(tal_by) | set(ist_by) | set(etk_by) | set(kap_by),
                       key=lambda c: (c == "Genel", _guvenli_key(c))):
         tal = sorted(tal_by.get(cid, []), key=lambda t: -t["puan"])
         sat = sat_by.get(cid)
@@ -401,13 +400,13 @@ def satirlar_kur(cs, tags, sor, talepler: list[dict], satirlar: list[dict], gece
         maddeler: list[dict] = []
 
         kismen = (sat or {}).get("kismen_yuvalar") or {}
-        karsilanan = list(kap_by.get(cid, []))
+        karsilanan: list[str] = []
 
-        def ekle(metin: str, kimden: str, tur: str, dosyada: str = ""):
+        def ekle(metin: str, kimden: str, tur: str, dosyada: str = "", bulundu: bool = False):
             metin = _yil(metin, yil)
             if metin and metin not in {m["metin"] for m in maddeler}:
                 maddeler.append({"metin": metin, "kimden": kimden, "tur": tur,
-                                 **({"dosyada": dosyada} if dosyada else {})})
+                                 **({"dosyada": dosyada} if dosyada else {}), **({"bulundu": True} if bulundu else {})})
 
         def kismen_notu(ys) -> str:
             xs = [x for y in ys for x in kismen.get(y, [])]
@@ -461,6 +460,19 @@ def satirlar_kur(cs, tags, sor, talepler: list[dict], satirlar: list[dict], gece
             else:
                 m = f"«{ad}» ya da güncel hâli (geçen yılki raporda vardı, bu yılki dosyalarda bulunamadı)"
             ekle(m, _kim_ref(sor, g, cid), "gecen")
+        # 2b. geçen yılın dosyada karşılığı bulunan belgeleri: isteğin kendi satırı, işaretli (☑)
+        kap_ders: dict[str, list[dict]] = {}
+        for g in kap_by.get(cid, []):
+            k = _ders_anahtari(g)
+            if k:
+                kap_ders.setdefault(k, []).append(g)
+                continue
+            ad = g.get("kanit_adi") or ""
+            m = (f"«{ad}» belgesinin bu yılki ({yil or 'güncel'}) hâli (geçen yılki raporda vardı)" if g.get("tekrarlayan")
+                 else f"«{ad}» ya da güncel hâli (geçen yılki raporda vardı)")
+            ekle(m, _kim_ref(sor, g, cid), "gecen", _kapali_not([g]), bulundu=True)
+        for k, xs in kap_ders.items():
+            ekle(ders_istegi(k, xs, yil), _kim_ref(sor, xs[0], cid), "gecen", _kapali_not(xs), bulundu=True)
         # 3–4. karşılanmamış kılavuz maddeleri: önce komisyon önerileri, sonra somut karşılıklar
         ref_yuva = {y for t in tal if t["kaynak"].startswith("geçen yıl") for y in _yuva_ids(t["yuvalar"])}
         acik = [y for y in (sat or {}).get("karsilanmamis_yuvalar") or []]
@@ -584,6 +596,12 @@ def satirlar_kur(cs, tags, sor, talepler: list[dict], satirlar: list[dict], gece
     return out
 
 
+def _kapali_not(xs: list[dict]) -> str:
+    """Kapanan geçen yıl isteğinin "Var olan kanıt" notu: karşılayan belge(ler) ve ölçütü."""
+    ms = list(dict.fromkeys(g["karsilama"]["metin"] for g in xs))
+    return "Dosyada var: " + "; ".join(ms)
+
+
 def _sozcukler(s: str) -> set[str]:
     from .tablolar import norm
     return {w[:5] for w in re.findall(r"[a-z0-9]+", norm(s)) if len(w) > 2 and w not in _DOLGU}
@@ -703,19 +721,22 @@ def kurum_satiri(n: int) -> str:
 
 def belge_satirlari(r: dict) -> list[dict]:
     """Maddenin işaretlenebilir satırları: her istenen belge bir satır; kurum belgeleri tek satır."""
-    xs = [{"metin": m["metin"], "kimden": m["kimden"], "dosyada": m.get("dosyada") or ""} for m in r["maddeler"]]
+    xs = [{"metin": m["metin"], "kimden": m["kimden"], "dosyada": m.get("dosyada") or "",
+           "bulundu": bool(m.get("bulundu"))} for m in r["maddeler"]]
     if r.get("kurum"):
-        xs.append({"metin": kurum_satiri(r.get("kurum_n") or len(r["kurum"])),
+        xs.append({"metin": kurum_satiri(r.get("kurum_n") or len(r["kurum"])), "kurum": True,
                    "kimden": "\n".join(dict.fromkeys(m["kimden"] for m in r["kurum"] if m["kimden"]))})
     return xs or [{"metin": "—", "kimden": r.get("kimden") or ""}]
 
 
 def dosyada_hucresi(r: dict, bel: dict, ilk: bool) -> str | None:
-    """"Var olan kanıt" hücresi: ilk satırda maddenin dosyadaki kanıtları ve karşılığı dosyada olduğu için
-    istenmeyenler; her satırda o isteği kısmen karşılayan (ya da etkinliğin) belge."""
+    """"Var olan kanıt" hücresi: ilk satırda maddenin dosyadaki kanıtları; kurum belgeleri satırında (yoksa ilk
+    satırda) karşılığı dosyada olduğu için istenmeyen kurum belgeleri; her satırda o isteği karşılayan, kısmen
+    karşılayan (ya da etkinliğin) belge."""
     xs = []
     if ilk:
         xs.append(r.get("dosyada") or "—")
+    if bel.get("kurum") or (ilk and not r.get("kurum")):
         xs += [f"İstenmedi (dosyada var): {x}" for x in r.get("karsilanan") or []]
     if bel.get("dosyada"):
         xs.append(f"Bu istek için: {bel['dosyada']}")
@@ -818,7 +839,8 @@ def write_xlsx(path: Path, rows: list[dict], *, baslik: str = "") -> Path:
                x["kilavuz"] or "—", x["sira"]]
         for j, bel in enumerate(bs):
             rr, ilk = r0 + j, j == 0
-            vals = [madde, BOS, durum_f if ilk else None, bel["metin"], bel["kimden"] or None,
+            vals = [madde, DOLU if bel.get("bulundu") else BOS, durum_f if ilk else None, bel["metin"],
+                    bel["kimden"] or None,
                     dosyada_hucresi(x, bel, ilk)]
             for i, v in enumerate(vals + (det if ilk else [None] * len(det)), 1):
                 c = ws.cell(rr, i, v)
@@ -963,7 +985,8 @@ def bilgi_denetimi(rows: list[dict], path: Path) -> list[str]:
                 if n.startswith(on) and n[len(on):] != (satirlar(ilk[idx[col]]) or [None])[0]:
                     eksik.append(f"{ad} not: {n}")
             on = "Dosyada karşılığı olduğu için istenmeyen: "
-            if n.startswith(on) and f"İstenmedi (dosyada var): {n[len(on):]}" not in satirlar(ilk[idx["dosyada"]]):
+            if n.startswith(on) and not any(f"İstenmedi (dosyada var): {n[len(on):]}" in satirlar(s[idx["dosyada"]])
+                                            for s in b):
                 eksik.append(f"{ad} not: {n}")
     # kişi sayfası: (kimden, madde, istek) üçlüsü aynı satırda (kurum belgeleri: kurum satırında)
     by_sira = {r["sira"]: r for r in rows}

@@ -7,10 +7,19 @@ orta/yüksek ya da incelemede kabul/düzelt). Bir istek şu sırayla kapanır (i
      bir ölçütte kabul edilmiş.
   2. **Tür düzeyi:** derse özgü geçen yıl belgesi ("MATH407 anket sonucu") bu yıl tür düzeyinde istenir;
      aynı türden kabul edilmiş herhangi bir belge (herhangi bir dersin, herhangi bir ölçütte) kapatır.
-  3. **Aynı ölçüt, aynı yuva ya da tür:** ölçütte geçen yılın belgesinin yuvası kabul edilmiş bir belgeyle
-     tam dolu (zayıf değil) ya da aynı türden kabul edilmiş belge var ("başka belgeyle" karşılandı).
+  3. **Aynı ölçüt, aynı tür:** ölçütte aynı türden kabul edilmiş, zayıf olmayan başka bir belge var
+     ("başka belgeyle" karşılandı). Yuvanın başka türden bir belgeyle dolu olması kapatmaz.
   4. **Kurum belgesi başka ölçütte:** kurum düzeyi belge (yönetmelik, yönerge, iş akışı, form; ya da kurum/
-     fakülte geneli satır) adıyla dosyada başka ölçütün kanıtı: istenmez, "dosyada var (X ölçütünde)".
+     fakülte geneli satır) adıyla ve türüyle dosyada başka ölçütün kanıtı: istenmez, "dosyada var (X ölçütünde)".
+
+**Tür zorunlu** (`tur_uyumlu`): karşılayan belge isteğin türünden olmalı. Tür, belgenin adındaki tür
+ifadesinden (`TUR_IFADE`: anket sonucu, ders bilgi formu / çıktı matrisi, müfredat, seminer, çalıştay, iş
+akışı, iş akışları listesi, fotoğraf, yönerge…) ve sınıflandırmanın türünden (`belge_turu`) okunur: iki ad da
+tür ifadesi taşıyorsa ortak ifade gerekir (sınıflandırma aynı olsa bile: "toplantı haberi" anket sonucu
+değildir); yalnız biri taşıyorsa sınıflandırma birebir aynı olmalı, hiçbiri taşımıyorsa aynı ya da aynı grupta
+(`DERS_GRUP`); her durumda adlar aynı belgeyi anlatıyorsa (`ad_ayni`) de uyar. Tür tutmazsa istek kapanmaz. Uyan adaylar arasından gösterilen belge: önce aynı
+ölçüt, sonra adın geçen yılki belgeyle ortak sözcük kökü çok olan, sonra tam (zayıf olmayan) kanıt, sonra
+aynı yuva (`_sec`; en çok `GOSTER_EN_COK` belge).
 
 Yuva doluluğu: yuvayı karşılayan satırların hepsi zayıfsa (alıntı tek soru ya da en çok `ZAYIF_SOZCUK`
 sözcük) yuva **kısmen** doludur; kılavuz isteği somut biçimde kalır, "Var olan kanıt" sütununda zayıf
@@ -23,6 +32,28 @@ import re
 from .tablolar import norm
 
 ZAYIF_SOZCUK = 6
+GOSTER_EN_COK = 2
+# Belge adındaki tür ifadesi (norm'lu ad üzerinde; sıra önemsiz, bir ad birden çok ifade taşıyabilir).
+# "iş akışları listesi" tek tek iş akışı değildir: liste ifadesi varsa `is_akisi` yazılmaz.
+TUR_IFADE: tuple[tuple[str, str], ...] = (
+    ("is_akisi_listesi", r"\bis akis\w*\s+liste"),
+    ("is_akisi", r"\bis akis(?!\w*\s+liste)"),
+    ("anket_sonucu", r"\banket\w*\s+(?:sonuc|degerlendirme|analiz|rapor)|\bsurvey\w*\s+(?:result|report)"),
+    ("anket_formu", r"\banket\w*\s+form|\bsurvey\w*\s+form|\bquestionnaire"),
+    ("ders_bilgi", r"\bders bilgi (?:form|paket)|\bizlence|\bsyllabus|\bcourse (?:information|description)"
+                   r"|\bprogram ciktilar\w*\s+(?:iliski\s+)?matris|\bciktilar\w*\s+matris"),
+    ("mufredat", r"\bmufredat|\bders plani|\bogretim plani|\bcurricul|\bders katalog"),
+    ("seminer", r"\bsemine|\bkolokyum|\bcolloqui|\bseminar"),
+    ("calistay", r"\bcalistay|\bworkshop|\bsempozyum|\bsymposium|\bkongre|\bkonferans|\bconference"),
+    ("fotograf", r"\bfotograf|\bphoto"),
+    ("diploma_eki", r"\bdiploma (?:eki|supplement)"),
+    ("yonerge", r"\byonerge"),
+    ("yonetmelik", r"\byonetmelik"),
+    ("usul_esas", r"\busul ve esas|\buygulama esas"),
+    ("tutanak", r"\btutanak|\btoplanti"),
+    ("protokol", r"\bprotokol|\banlasma"),
+)
+_TUR_RE = tuple((k, re.compile(d)) for k, d in TUR_IFADE)
 KURUM_TURLER = frozenset({"yonetmelik", "yonerge", "usul_esas", "is_akisi", "senato_karari", "anket_formu",
                           "form_belgesi", "mevzuat"})
 GENEL_ILISKI = frozenset({"kurum_geneli", "fakulte_geneli"})
@@ -65,6 +96,27 @@ def ad(r: dict) -> str:
     return r.get("kanit_adi") or r.get("belge") or r.get("doc_id") or ""
 
 
+def tur_ifadeleri(s: str) -> frozenset[str]:
+    """Belge adındaki tür ifadeleri (`TUR_IFADE`)."""
+    t = norm(s)
+    return frozenset(k for k, rx in _TUR_RE if rx.search(t))
+
+
+def tur_uyumlu(g_ad: str, g_tur: str | None, r: dict) -> bool:
+    """Karşılayan aday `r`, geçen yılın belgesiyle (ad, tür) aynı türden mi (bkz. modül belgesi)."""
+    a, b = tur_ifadeleri(g_ad), tur_ifadeleri(ad(r))
+    if a and b:
+        return bool(a & b)
+    if a or b:              # yalnız biri tür söylüyor: sınıflandırma birebir aynı olmalı (grup yetmez)
+        bt = r.get("belge_turu")
+        return bool(g_tur) and g_tur == bt and bt != "bilinmiyor" or ad_ayni(g_ad, ad(r))
+    return tur_ayni(g_tur, r.get("belge_turu")) or ad_ayni(g_ad, ad(r))
+
+
+def ortak_kok(a: str, b: str) -> int:
+    return len(kok(a) & kok(b))
+
+
 def kurum_mu(r: dict) -> bool:
     return (r.get("belge_turu") in KURUM_TURLER or r.get("birim_iliskisi") in GENEL_ILISKI
             or "kurum_geneli" in (r.get("flags") or []))
@@ -99,44 +151,51 @@ class Karsilama:
         return {y: e["belgeler"] for y, e in self.yuva(cid).items() if e["durum"] == "kismen"}
 
     # -- geçen yılın belgesi -------------------------------------------------------------------
-    def _not(self, r: dict, cid: str, neden: str) -> dict:
-        return {"ad": ad(r), "olcut": r["olcut"], "doc_id": r.get("doc_id"), "neden": neden,
-                "metin": f"«{ad(r)}»" + ("" if r["olcut"] == cid else f" ({r['olcut']} ölçütünde)")}
+    def _not(self, xs: list[dict], cid: str, neden: str) -> dict:
+        """Karşılayan belge(ler): ilk aday asıl, en çok `GOSTER_EN_COK` farklı ad gösterilir."""
+        r = xs[0]
+        adlar = list(dict.fromkeys(ad(x) for x in xs))[:GOSTER_EN_COK]
+        oc: dict[str, str] = {}
+        for x in xs:
+            oc.setdefault(ad(x), x["olcut"])
+        return {"ad": ad(r), "adlar": adlar, "olcut": r["olcut"], "doc_id": r.get("doc_id"), "neden": neden,
+                "metin": "; ".join(f"«{a}»" + ("" if oc[a] == cid else f" ({oc[a]} ölçütünde)") for a in adlar)}
 
-    def _sec(self, xs: list[dict], cid: str) -> dict | None:
-        """Önce aynı ölçütün satırı, sonra en küçük ölçüt kimliği (kararlı)."""
-        if not xs:
-            return None
-        return sorted(xs, key=lambda r: (r["olcut"] != cid, r["olcut"], ad(r)))[0]
+    def _sec(self, xs: list[dict], cid: str, g: dict | None = None) -> list[dict]:
+        """Adaylar sıralı: aynı ölçüt, adın geçen yılki belgeyle ortaklığı, tam kanıt, aynı yuva, ölçüt kimliği
+        (kararlı)."""
+        ga = (g or {}).get("kanit_adi") or ""
+        gy = (g or {}).get("yuva")
+        return sorted(xs, key=lambda r: (r["olcut"] != cid, -ortak_kok(ga, ad(r)), zayif(r),
+                                         r.get("yuva") != gy, r["olcut"], ad(r)))
 
     def gecen(self, g: dict, tur_duzeyi: bool) -> dict | None:
         """Geçen yılın belgesinin (referans öğe + eşleştirme sonucu) dosyadaki karşılığı; yoksa None."""
         cid = g["olcut"]
         bt = g.get("belge_turu") or ""
+        ga = g.get("kanit_adi") or ""
         kd = g.get("karsilik_doc_id")
         if kd:
-            r = self._sec([r for r in self.rows if r.get("doc_id") == kd], cid)
-            if r:
-                return self._not(r, cid, "aynı belge kabul edilmiş")
+            xs = self._sec([r for r in self.rows if r.get("doc_id") == kd], cid, g)
+            if xs:
+                return self._not(xs, cid, "aynı belge kabul edilmiş")
+        uyan = [r for r in self.rows if tur_uyumlu(ga, bt, r)]
         if tur_duzeyi:
-            r = self._sec([r for r in self.rows if tur_ayni(bt, r.get("belge_turu"))], cid)
-            if r:
-                return self._not(r, cid, "aynı türden belge kabul edilmiş (tür düzeyinde istek)")
-        dolu = self.dolu(cid)
-        r = self._sec([r for r in self.rows if r["olcut"] == cid and (
-            (g.get("yuva") and r["yuva"] == g["yuva"] and r["yuva"] in dolu) or tur_ayni(bt, r.get("belge_turu"))
-            or ad_ayni(g.get("kanit_adi") or "", ad(r)))], cid)
-        if r:
-            return self._not(r, cid, "ölçütte aynı yuva/tür başka belgeyle karşılanmış")
+            xs = self._sec(uyan, cid, g)
+            if xs:
+                return self._not(xs, cid, "aynı türden belge kabul edilmiş (tür düzeyinde istek)")
+        xs = self._sec([r for r in uyan if r["olcut"] == cid and not zayif(r)], cid, g)
+        if xs:
+            return self._not(xs, cid, "ölçütte aynı türden başka belgeyle karşılanmış")
         if bt in KURUM_TURLER or g.get("kurum"):
-            r = self._sec([r for r in self.rows if kurum_mu(r) and ad_ayni(g.get("kanit_adi") or "", ad(r))], cid)
-            if r:
-                return self._not(r, cid, "kurum belgesi dosyada başka ölçütün kanıtı")
+            xs = self._sec([r for r in uyan if kurum_mu(r) and ad_ayni(ga, ad(r))], cid, g)
+            if xs:
+                return self._not(xs, cid, "kurum belgesi dosyada başka ölçütün kanıtı")
         return None
 
     def kurum(self, o: dict, cid: str) -> dict | None:
         """Kurum kataloğundaki belgenin (ad, kod) dosyada kabul edilmiş karşılığı (herhangi bir ölçütte)."""
         kod = norm(o.get("kod") or "")
         xs = [r for r in self.rows if (kod and kod in norm(ad(r))) or ad_ayni(o.get("ad") or "", ad(r))]
-        r = self._sec(xs, cid)
-        return self._not(r, cid, "kurum belgesi dosyada") if r else None
+        xs = self._sec(xs, cid, {"kanit_adi": o.get("ad") or ""})
+        return self._not(xs[:1], cid, "kurum belgesi dosyada") if xs else None
