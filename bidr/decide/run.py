@@ -924,6 +924,11 @@ def plan_members(ctx: Context, ids: list[str], recs: dict, stage: str) -> dict[s
     for a, b, v in scan:
         parent[find(a)] = find(b)
         sim[a], sim[b] = max(sim.get(a, 0), v), max(sim.get(b, 0), v)
+    tsim: dict[str, float] = {}          # metin kopyası (farklı adla yeniden yüklenmiş, taranmamış)
+    for a, b, v in D.text_copy_pairs(texts, dates, types):
+        parent[find(a)] = find(b)
+        tsim[a], tsim[b] = max(tsim.get(a, 0), v), max(tsim.get(b, 0), v)
+    reviewed = _reviewed_docs(ctx.ws)
     comps: dict[str, list[str]] = {}
     for d in ok:
         comps.setdefault(find(d), []).append(d)
@@ -932,7 +937,9 @@ def plan_members(ctx: Context, ids: list[str], recs: dict, stage: str) -> dict[s
         if len(mem) < 2:
             continue
         ntok = {x: len(groups[in_group[x]]["toks"][x]) if x in in_group else len(D.skeleton(texts[x])) for x in mem}
-        rep = min(mem, key=lambda x: (not stage_done(recs.get(x), stage), -ntok[x], x))
+        # temsilci: bu aşamada işlenmiş, sonra incelemede kararı verilmiş (insanın kararları temsilcinin
+        # satırlarında kalsın; kopya yeniden öneri olmasın), sonra en uzun metin
+        rep = min(mem, key=lambda x: (not stage_done(recs.get(x), stage), x not in reviewed, -ntok[x], x))
         for m in mem:
             if m == rep:
                 continue
@@ -942,12 +949,30 @@ def plan_members(ctx: Context, ids: list[str], recs: dict, stage: str) -> dict[s
                 if rel:
                     out[m] = {"temsilci": rep, "yontem": rel[0], "fark_sozcuk": rel[1]}
                     continue
-                if m not in sim:       # zincirle metin grubuna girmiş, temsilciden uzak: devralmaz
+                if m not in sim and m not in tsim:   # zincirle metin grubuna girmiş, temsilciden uzak
                     continue
-            # bileşen tarama kopyası bağlarıyla (metin + görüntü) ve aynı metin gruplarıyla kuruldu
-            out[m] = {"temsilci": rep, "yontem": "tarama_kopyasi",
-                      "benzerlik": sim.get(m) or max(sim.get(x, 0.0) for x in mem)}
+            if m in sim or not any(x in tsim for x in mem):
+                # bileşen tarama kopyası bağlarıyla (metin + görüntü) ve aynı metin gruplarıyla kuruldu
+                out[m] = {"temsilci": rep, "yontem": "tarama_kopyasi",
+                          "benzerlik": sim.get(m) or max(sim.get(x, 0.0) for x in mem)}
+            else:
+                out[m] = {"temsilci": rep, "yontem": "metin_kopyasi",
+                          "benzerlik": tsim.get(m) or max(tsim.get(x, 0.0) for x in mem)}
     return out
+
+
+KOPYA_YONTEMLERI = ("tarama_kopyasi", "metin_kopyasi")    # karar gruba ait; incelemede tek satır
+
+
+def _reviewed_docs(ws: Workspace) -> set[str]:
+    """İncelemede (review-decisions.jsonl) en az bir satırına insan kararı verilmiş belgeler."""
+    p = ws.root / "review-decisions.jsonl"
+    if not p.exists():
+        return set()
+    try:
+        return {str(r.get("satir") or "").split("|", 1)[0] for r in read_jsonl(p)} - {""}
+    except (OSError, ValueError):
+        return set()
 
 
 def _mark_member(ctx: Context, recs: dict, did: str, info: dict, stage: str) -> None:
@@ -1011,8 +1036,9 @@ def inherit(ctx: Context, recs: dict, stage: str, verify: Callable) -> dict:
             new["gorev"] = {**new.get("gorev", {}), FINE: rep.get("gorev", {}).get(FINE)}
             kayip = (sum(bool(m.get("kabul")) for m in rep.get("eslesmeler") or [])
                      - sum(m["kabul"] for m in new["eslesmeler"]))
-            if kayip > 0 and mk.get("yontem") == "tarama_kopyasi":
-                # aynı kâğıdın başka taraması (metin + görüntü): OCR farkı alıntıyı bozabilir; karar
+            if kayip > 0 and mk.get("yontem") in KOPYA_YONTEMLERI:
+                # aynı kâğıdın başka taraması (metin + görüntü) ya da farklı adla yeniden yüklenmiş kopyası
+                # (aynı tarih, metin ≥ TEXT_COPY_MIN): OCR/dışa aktarma farkı alıntıyı bozabilir; karar
                 # gruba aittir, inceleme tek satırdır (temsilcinin alıntısı temsilcinin metninde doğrulandı)
                 mk = {**mk, "alinti_tutmayan": kayip}
             elif kayip > 0:
@@ -1195,9 +1221,9 @@ def prepare(ws_root: Path, stage: str, *, profile: str | None = "akademik_bolum"
         rec = recs.get(did)
         forced = did in force
         done = stage_done(rec, stage)
-        if (done and not forced and (members.get(did) or {}).get("yontem") == "tarama_kopyasi"
+        if (done and not forced and (members.get(did) or {}).get("yontem") in KOPYA_YONTEMLERI
                 and (rec.get("mukerrer") or {}).get("durum") != "devralindi"):
-            # sonradan bulunan tarama kopyası (önceki koşuda kendisi işlenmiş): model çağrısı olmadan
+            # sonradan bulunan tarama/metin kopyası (önceki koşuda kendisi işlenmiş): model çağrısı olmadan
             # temsilcinin kararını devralır; inceleme tablosunda ayrı öneri kalmaz
             _mark_member(ctx, recs, did, members[did], stage)
             _drop_unanswered_pkg(d, did)

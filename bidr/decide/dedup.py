@@ -24,6 +24,12 @@ bayt, farklı OCR gürültüsü) yukarıdaki sözcük eşiğini geçmez. İki ko
     uzaklığı eşikte).
 Farklı tarihli/revizyonlu sürüm (metinde tarih ya da kimlik farkı) kopya sayılmaz; görüntüsü
 karmalanamayan belge (docx, kaynağı bulunamayan) bu yoldan kopya olmaz.
+
+Metin kopyası (`text_copy_pairs`, yöntem "metin_kopyasi"): farklı adla yeniden yüklenmiş, taranmamış
+belge (metni aynı ya da neredeyse aynı; dışa aktarma/sayfa altlığı farkı yukarıdaki sözcük eşiğini
+aşabilir). Görüntü koşulu yerine daha sıkı metin koşulu: birincil tarih İKİSİNDE DE var ve aynı,
+`CopyIndex.copy` bağı (türler uyumlu, baş bölge kimlikleri ayrık değil) ve şablon dışı parçacıklarda iki
+yönlü kapsama ≥ `TEXT_COPY_MIN`. Tarihsiz belge bu yoldan kopya olmaz (yalnız birebir/çok yakın metin).
 """
 from __future__ import annotations
 
@@ -39,6 +45,7 @@ NEAR_MAX_FRAC = 0.03
 SHINGLE = 5
 PREFILTER_JACCARD = 0.5
 SCAN_TEXT_MIN = 0.8        # tarama kopyası: OCR parçacıklarında iki yönlü kapsama (ölçülen gerçek çiftler 0,95–0,98)
+TEXT_COPY_MIN = 0.9        # metin kopyası (görüntü koşulu yok): iki yönlü kapsama
 
 _TOK = re.compile(r"[a-z0-9]+")
 
@@ -119,27 +126,41 @@ def relation(group: dict, rep: str, member: str) -> tuple[str, int] | None:
     return None
 
 
+def _copy_text_pairs(texts: dict[str, str], dates: dict[str, str | None], types: dict[str, str | None],
+                     esik: float, tarih_sart: bool):
+    """Metni kopya olan çiftler (iki yönlü kapsama ≥ `esik`, tarih/tür/kimlik uyumlu) → (a, b, benzerlik)
+    üreteci. `tarih_sart`: birincil tarih ikisinde de olmalı (ve aynı)."""
+    from bidr.identify import versions as V
+    from bidr.identify.text import collapse, fold
+    ft = {k: fold(collapse(v)) for k, v in texts.items() if v and v.strip()}
+    if len(ft) < 2:
+        return
+    ty = {k: v for k, v in types.items() if v}
+    ix = V.CopyIndex(ft)
+    for a, b, _ in V.copy_pairs(ft, dates, ty):
+        if tarih_sart and not (dates.get(a) and dates.get(a) == dates.get(b)):
+            continue
+        if ix.copy(a, b, dates.get(a), dates.get(b), ty.get(a), ty.get(b)) is None:
+            continue
+        lo, hi = V.containment(ix.inf[a], ix.inf[b])
+        if min(lo, hi) < esik:
+            continue
+        yield min(a, b), max(a, b), round(min(lo, hi), 3)
+
+
 def scan_copy_pairs(texts: dict[str, str], dates: dict[str, str | None], types: dict[str, str | None],
                     hashes: Callable[[str], list[str] | None]) -> list[tuple[str, str, float]]:
     """Aynı kâğıdın ayrı taramaları → [(a, b, metin benzerliği)]: OCR metni kopya (iki yönlü kapsama
     ≥ SCAN_TEXT_MIN, tarih/tür/kimlik uyumlu) VE sayfa karmaları aynı. `hashes(doc_id)` yalnız
     metin adayı çiftler için çağrılır (görüntü çizimi pahalı)."""
-    from bidr.identify import versions as V
     from bidr.identify.imghash import same_pages
-    from bidr.identify.text import collapse, fold
-    ft = {k: fold(collapse(v)) for k, v in texts.items() if v and v.strip()}
-    if len(ft) < 2:
-        return []
-    ty = {k: v for k, v in types.items() if v}
-    ix = V.CopyIndex(ft)
-    out = []
-    for a, b, _ in V.copy_pairs(ft, dates, ty):
-        if ix.copy(a, b, dates.get(a), dates.get(b), ty.get(a), ty.get(b)) is None:
-            continue
-        lo, hi = V.containment(ix.inf[a], ix.inf[b])
-        if min(lo, hi) < SCAN_TEXT_MIN:
-            continue
-        if not same_pages(hashes(a), hashes(b)):
-            continue
-        out.append((min(a, b), max(a, b), round(min(lo, hi), 3)))
+    out = [(a, b, v) for a, b, v in _copy_text_pairs(texts, dates, types, SCAN_TEXT_MIN, False)
+           if same_pages(hashes(a), hashes(b))]
     return sorted(set(out))
+
+
+def text_copy_pairs(texts: dict[str, str], dates: dict[str, str | None],
+                    types: dict[str, str | None]) -> list[tuple[str, str, float]]:
+    """Farklı adla yeniden yüklenmiş (taranmamış) belge → [(a, b, metin benzerliği)]: birincil tarih
+    ikisinde de var ve aynı, metin kopya bağı ve iki yönlü kapsama ≥ TEXT_COPY_MIN (görüntü gerekmez)."""
+    return sorted(set(_copy_text_pairs(texts, dates, types, TEXT_COPY_MIN, True)))

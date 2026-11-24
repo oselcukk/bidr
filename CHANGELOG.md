@@ -4,6 +4,11 @@ Her birleştirmede (main'e giren her değişiklik) buraya en üste bir satır ek
 açıklama ve kullanıcıyı ilgilendiriyorsa ne yapması gerektiği. `bidr guncelle` güncellemeden sonra
 bu dosyanın yeni satırlarını gösterir. Bu dosyadan önceki geçmiş için `git log`.
 
+- 2026-11-24: Farklı adla yeniden yüklenmiş, taranmamış kopya yeniden öneri üretmez (d1-metin-kopya): tarama kopyası
+  grubu metin tabanlı belgelere genişletildi (yöntem `metin_kopyasi`: birincil tarih ikisinde de var ve aynı, metinde
+  iki yönlü kapsama ≥ 0,9). Grupta tek paket, incelemede tek satır + "Kopyaları:"; önceden ayrı işlenmiş kopyalar
+  modelsiz bağlanır. Temsilci önce işlenmiş, sonra incelemede kararı verilmiş belgedir. BİR KEZ: sonraki `bidr decide
+  prepare` var olan metin kopyalarını gruplar; kopyanın inceleme satırları kaybolur, temsilcinin satırı ve kararı kalır.
 - 2026-11-24: Yazım kod denetimi takılırsa insan kararı (d1-write-karar): `bidr write apply`ın kod denetimini geçemeyen
   her ayrı cevap deneme sayılır (`write-kod-denemeleri.json`); ilk yazım + `rapor.yeniden_yazim_siniri` (vars. 2)
   yeniden yazımdan sonra hâlâ geçemeyen ölçütte `bidr next` `kim: insan` ve `karar_bekleyen` listesi verir (JSON'da

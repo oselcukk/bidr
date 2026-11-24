@@ -157,6 +157,11 @@ ok, score, span = verify_quote(quote, text)   # Türkçe katlama, boşluk, OCR t
   sürüm kopya değildir. Görüntü karmaları `work/_durum/goruntu-karma.json`'da (yalnız karma; görüntü
   saklanmaz). İnceleme tablosunda grup tek satırdır (temsilci; gizli "kopyaları" sütunu ve sade "Dikkat" hücresinde
   "Kopyaları: …"); satır kararı dosyalamada bütün gruba uygulanır (tek kanıt numarası).
+  Farklı adla yeniden yüklenmiş, taranmamış kopya (`dedup.text_copy_pairs`, yöntem `metin_kopyasi`):
+  görüntü koşulu yerine birincil tarih ikisinde de var ve aynı + metinde iki yönlü kapsama ≥ `TEXT_COPY_MIN`
+  0,9 (+ tür/kimlik uyumu); tarama kopyası gibi gruba bağlanır (alıntı tutmazsa da bölünmez). Önceki koşuda
+  ayrı işlenmiş kopyalar modelsiz bağlanır. Temsilci: bu aşamada işlenmiş, sonra incelemede kararı verilmiş
+  (`review-decisions.jsonl`), sonra en uzun metin — insanın verdiği kararlar temsilcinin satırında kalır.
 - `bidr decide -w WS [--profile P] [--only-labeled] [--limit N]` →
   `decisions.jsonl`.
 - `bidr compare-labels -w WS` → geçmiş etiketle karşılaştırma: aynı / ekliyor /
