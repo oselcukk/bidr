@@ -276,7 +276,7 @@ def test_write_package_has_activity_summary_and_rule(tmp_path):
     assert "İlgisiz Etkinlik" not in sec
     assert [f["id"] for f in pkg["meta"]["faaliyetler"]] == ["F001", "F002"]
     assert pkg["meta"]["faaliyetler"][0]["yalniz_duyuru"] is True
-    assert str(pkg["surum"]) == W.task_version() == "4"
+    assert str(pkg["surum"]) == W.task_version() == "5"
 
 
 def test_verify_prompt_announcement_rule():

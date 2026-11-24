@@ -204,7 +204,7 @@ def test_apply_writes_text_per_contract(tmp_path):
     assert t["kanitlar"] == [{"no": "1_OD2", "ad": "Ders Planı Güncelleme İş Akışı", "dosya": "B/B.1/B.1.1/1_OD2.pdf"},
                              {"no": "2_OD3", "ad": "Ders Bilgi Formu", "dosya": "B/B.1/B.1.1/2_OD3.pdf"}]
     assert t["eksikler"][0].startswith("OD4 için kontrol") and "örnek not" in t["eksikler"]
-    assert t["kaynak"]["model"] == "test:ajan" and t["kaynak"]["gorev_surumu"] == "4"
+    assert t["kaynak"]["model"] == "test:ajan" and t["kaynak"]["gorev_surumu"] == "5"
     assert W.apply(ws)["degismedi"] == 1                       # aynı cevap yeniden işlenmez
     assert W.prepare(ws)["zaten_tamam"] == 1                   # yazılmış metin yeniden paketlenmez
 

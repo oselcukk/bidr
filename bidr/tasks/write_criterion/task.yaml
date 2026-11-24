@@ -1,4 +1,4 @@
-version: 4
+version: 5
 description: >-
   Ölçüt açıklama metni. Ölçüt tanımı/rubrik, audit'in önerilen OD'si ve PUKÖ zinciri,
   eksikler, ölçütün kanıtları (no, ad, alıntı, belge bağlamı), varsa geçen yılın aynı
@@ -16,6 +16,10 @@ description: >-
   ve ilk sırada, bölümün değeri fakülte değerinden önce (ham veriden hesabıyla). Kod denetimi:
   `donem_ici_atlandi`, `fakulte_degeri` (bidr/write/text.py `content_issues`); doğrulanmış eski
   metinlere de `bidr verify prepare`'de uygulanır, takılan metin yeniden yazıma gider.
+  v5 (kör denetim 2026-11-24): pakette İLGİLİ AMA KANIT SAYILMAMIŞ BELGELER (ölçütte aday olup kanıt
+  listesine girmemiş belgelerin adı; bidr/write/ilgili.py); kural: bu listede konuyla ilgili belge varken
+  "kanıt bulunmamaktadır" denmez, "ilgili belge var ama ölçütün istediğini göstermiyor" ayrımı yapılır;
+  bu belgelere atıf yapılmaz. v4 metinleri geçerli kalır (girdileri değişmedikçe).
 inputs:
   hitap: "kurumsal özne (ör. Bölümümüzde)"
   olcut: "ölçüt kimliği, başlığı, tanımı, rubrik 1-5"
@@ -25,3 +29,4 @@ inputs:
   komisyon_bilgisi: "komisyonun bu ölçüt için verdiği bilgi (yoksa 'yok')"
   yazim_sorulari: "kılavuzdaki 'Açıklama Metni Yazımı' soruları"
   faaliyetler: "ölçütün kanıtlarının bağlı olduğu faaliyetler: ad, tarih, aşama → kanıt no, yalnız duyuru işareti (faaliyetler.json; yoksa 'yok')"
+  ilgili_belgeler: "ölçütte aday olup kanıt listesine girmemiş belgelerin adı, türü, tarihi (yoksa 'yok'); atıf yapılmaz"

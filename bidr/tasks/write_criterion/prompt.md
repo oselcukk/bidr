@@ -25,6 +25,9 @@ Olgunluk düzeyi:
 14. ÖNCEKİ YIL METNİ yalnız üslup örneği ve karşılaştırma içindir; oradaki iddiaları bu yılın kanıtı yoksa tekrar etme, eski kanıt numaralarını ([B.1.1-2-OD3] gibi) kullanma.
 15. "onceki_yila_gore": bu yılın kanıtlarında olup önceki yıl metninde ya da kanıt listesinde yer almayan uygulamaları 1-3 cümleyle belirt; her cümle bu yılın kanıtına atıf yapar ("Önceki yıldan farklı olarak … [4_OD3]."). Önceki yıl metni yoksa ya da açık bir fark yoksa boş dize ("") ver.
 
+Yokluk hükmü:
+16. Bir konu için "kanıt bulunmamaktadır / belge yoktur / izlenmemektedir" yazmadan önce İLGİLİ AMA KANIT SAYILMAMIŞ BELGELER listesine bak. Orada o konuyla ilgili görünen bir belge varsa yokluk cümlesi yazma (eksiklik komisyon için ayrıca listelenir; ilgili belgenin ölçütün istediğini gösterip göstermediğine komisyon bakar). Bu listedeki belgelere atıf yapma, adlarını metne yazma, içerikleri hakkında hüküm kurma; liste kanıt değildir, yalnız yokluk hükmünü önlemek içindir.
+
 Kılavuzun sorduğu sorular (kanıtın yettiği kadarıyla cevapla):
 {{yazim_sorulari}}
 
@@ -47,6 +50,9 @@ FAALİYETLER (kanıtların bağlı olduğu toplantı/etkinlikler; kod gruplar, a
 
 KOMİSYON BİLGİSİ
 {{komisyon_bilgisi}}
+
+İLGİLİ AMA KANIT SAYILMAMIŞ BELGELER (atıf yapılmaz; yalnız kural 16 için)
+{{ilgili_belgeler}}
 
 Yalnız şu biçimde tek bir JSON nesnesi döndür:
 {"paragraflar": [{"metin": "{{hitap}} … tanımlanmıştır [1_OD2]. … yürütülmektedir [2_OD3]."}], "onceki_yila_gore": ""}

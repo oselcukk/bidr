@@ -32,6 +32,7 @@ from bidr.common import Workspace, read_jsonl
 from bidr.criteria.loader import load_criteria
 from bidr.criteria.model import id_key
 
+from . import ilgili as IL
 from . import karar as KR
 from . import packages as K
 from . import sources as S
@@ -107,6 +108,14 @@ class Sources:
         self.faaliyetler = load_activities(self.ws.root)
         self.donem = period_of(self.ws.root)
         self.birim = S.unit_name(self.ws.root)[0]
+        self._related: IL.Related | None = None
+
+    def related(self, olcut: str) -> list[dict]:
+        """Ölçütte aday olup kanıt listesine girmemiş belgeler (bidr/write/ilgili.py)."""
+        if self._related is None:
+            self._related = IL.Related(self.ws.root)
+        used = {r.get("doc_id") for r in self.index.get(olcut, []) if r.get("doc_id")}
+        return self._related.for_criterion(olcut, used)
 
     def doc_text(self, did: str) -> str | None:
         if did not in self._texts:
@@ -334,15 +343,18 @@ def write_inputs(src: Sources, olcut: str, hitap: str) -> tuple[dict, dict]:
     gaps = src.gaps(olcut)
     ev = src.evidence(olcut)
     acts = src.activities(olcut)
+    rel = src.related(olcut)
     inputs = {"hitap": hitap, "olcut": render_criterion(src.cs, olcut),
               "od_bilgisi": render_od(a, gaps), "kanitlar": render_evidence(ev, src.cs, src.donem),
               "onceki_metin": src.previous_text(olcut), "komisyon_bilgisi": src.notes_text(olcut),
-              "yazim_sorulari": writing_questions(), "faaliyetler": render_activities(acts)}
+              "yazim_sorulari": writing_questions(), "faaliyetler": render_activities(acts),
+              "ilgili_belgeler": IL.render(rel)}
     meta = {"olcut": olcut, "od_onerisi": src.od(olcut), "eksikler": gaps,
             "kanitlar": [{"no": e["no"], "ad": e["ad"], "dosya": e["dosya"], "doc_id": e["doc_id"]} for e in ev],
             "komisyon": bool(src.notes.get(olcut)), "onceki": src.previous_name if olcut in src.previous else None,
             "faaliyetler": [{"id": f["id"], "ad": f["ad"], "yalniz_duyuru": f["yalniz_duyuru"]} for f in acts],
-            "donem": src.donem, "donem_ici": in_period_nos(ev, src.donem)}
+            "donem": src.donem, "donem_ici": in_period_nos(ev, src.donem),
+            "ilgili": [r["doc_id"] for r in rel]}
     return inputs, meta
 
 
