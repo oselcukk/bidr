@@ -103,7 +103,10 @@ Düşük kaliteli (taranmış/görsel) belge yoksa aşama kendiliğinden "atland
 `bidr transcribe prepare -w WS --all-low-quality` → `work/transcribe/README.md`'yi oku; her
 `<doc_id>/` klasöründeki görüntüleri kendin oku ve yalnız gördüğünü `<doc_id>.out.json`'a
 yaz (okunamayan yeri uydurma, README'nin işaretleme kuralına uy) → `bidr transcribe apply -w WS
---model <ajan adı>`. `work/transcribe/GECERSIZ.md`'deki paketleri yeniden yap; `bidr next`.
+--model <ajan adı>`. Görüntüde yazı yoksa her sayfa `okunabilirlik: bos`, `metin: ""` (`[okunamadı]`
+değil); cevapta yalnız şemadaki alanlar. apply reddettiği cevabı kenara alır (paket yeniden cevapsız):
+`work/transcribe/GECERSIZ.md`'deki gerekçeyle yeniden oku ve yaz; `bidr next`. Aynı nedenle ikinci kez
+reddedilen belge `ELLE-BAKILMALI.md`'ye girer (metni OCR'da kalır, aşama beklemez); kullanıcıya bildir.
 
 ## Birimi belirsiz OCR'lı belgeler (belirsiz_okuma)
 

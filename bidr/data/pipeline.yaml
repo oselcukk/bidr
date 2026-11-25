@@ -71,7 +71,9 @@ asamalar:
       denetim: transcribe_tamam
       metin: >-
         Düşük kaliteli (görsel/PDF) belge yoksa atlanır. Varsa her biri ajanın görsel okumasıyla
-        yazıya geçirilmiş ve apply ile işlenmiş; geçersiz/şüpheli cevap yok.
+        yazıya geçirilmiş ve apply ile işlenmiş; geçersiz/şüpheli cevap yok. Reddedilen cevap kenara
+        alınıp yeniden okunur; aynı nedenle iki kez reddedilen belge elle bakılmalı işaretlenir (metni
+        OCR'da kalır, ELLE-BAKILMALI.md) ve aşamayı bekletmez.
     onay: yok
     skill: bidr-rapor
     paralel:

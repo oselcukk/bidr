@@ -1,8 +1,9 @@
 """`bidr transcribe prepare|apply`.
 
 Çıkış kodları: 0 tamam (apply'da cevapsız ya da eski sürüm paket hata sayılmaz; aşamanın bitip
-bitmediğini `bidr next` söyler) · 1 apply'da en az bir geçersiz ya da şüpheli cevap uygulanmadı
-(work/transcribe/GECERSIZ.md) · 2 eksik/yanlış argüman · 3 önkoşul aşaması bitmemiş (kapı)."""
+bitmediğini `bidr next` söyler; elle bakılmalı işaretlenen belge de hata sayılmaz: karar verilmiştir,
+ELLE-BAKILMALI.md) · 1 apply'da en az bir geçersiz ya da şüpheli cevap uygulanmadı, kenara alındı ve
+yeniden okunacak (work/transcribe/GECERSIZ.md) · 2 eksik/yanlış argüman · 3 önkoşul aşaması bitmemiş."""
 from __future__ import annotations
 
 
@@ -41,7 +42,9 @@ def _cmd(args) -> int:
                   f"{s['cok_sayfa']}, zaten görsel okundu {s['okundu']}, insan birim kararı {s['insan_karari']}, "
                   f"önceden paketlenemedi {s['paketlenemedi']})")
         print(f"{st['paket']} paket ({st['yeni']} yeni/değişen), zaten_tamam={st['zaten_tamam']}, "
-              f"bekleyen {st['bekleyen']} → {st['klasor']}")
+              f"bekleyen {st['bekleyen']} → {st['klasor']}"
+              + (f" (yalnız talimat metni değişen {st['cevap_korundu']} paketin cevabı korundu)"
+                 if st.get("cevap_korundu") else ""))
         for did, why in st["atlandi"].items():
             print(f"  atlandı {did}: {why}")
         print(f"Ajan: {st['klasor']}/README.md")
@@ -52,11 +55,16 @@ def _cmd(args) -> int:
                  only=_ids(args.only))
     print(f"işlenen={st['islenen']} değişmedi={st['degismedi']} bekleyen={len(st['bekleyen'])} "
           f"geçersiz={len(st['gecersiz'])} şüpheli={len(st['supheli'])} eski sürüm={len(st['eski_surum'])}"
-          + (f" metni aynı (karar korunur)={len(st['metin_ayni'])}" if st["metin_ayni"] else ""))
+          + (f" metni aynı (karar korunur)={len(st['metin_ayni'])}" if st["metin_ayni"] else "")
+          + (f" elle bakılmalı={len(st['elle_bakilmali'])}" if st["elle_bakilmali"] else "")
+          + (f" metinsiz (hepsi [okunamadı] → bos)={len(st['normallestirilen'])}" if st["normallestirilen"] else ""))
     for did, c in sorted(st["tutarlilik"].items()):
         print(f"  {did}: {c['durum']} örtüşme={c['oran']} [okunamadı]={c['okunamadi']}")
     for did, errs in st["gecersiz"].items():
         print(f"  geçersiz {did}: {'; '.join(errs)}")
+    for did, r in sorted(st["elle_bakilmali"].items()):
+        print(f"  elle bakılmalı {did}: {r.get('neden')} ({r.get('deneme')} deneme; metni değişmedi) "
+              "→ work/transcribe/ELLE-BAKILMALI.md")
     if st["degisen"]:
         g = st["gecersiz_kilinan"]
         print(f"metni değişen {len(st['degisen'])} belge: documents -{g['documents']}, candidates "
@@ -73,6 +81,7 @@ def _exit(st: dict) -> int:
     if not (g or s):
         return 0
     print(f"çıkış 1: {g} geçersiz, {s} şüpheli cevap uygulanmadı → work/transcribe/GECERSIZ.md"
+          + (" (cevap kenara alındı, paket yeniden okunacak)" if st.get("yeniden") else "")
           + (" (şüpheli: görüntüye bak; okuma doğruysa apply --kabul-supheli)" if s else ""))
     return 1
 

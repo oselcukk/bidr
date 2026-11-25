@@ -156,19 +156,181 @@ def test_apply_replaces_text_and_invalidates(tmp_path):
 
 @pytest.mark.skipif(not HAS_PDFTOPPM, reason="pdftoppm yok")
 def test_apply_rejects_invalid(tmp_path):
+    """Her ret bir deneme: cevap kenara alınır (paket yeniden cevapsız), metin değişmez; nedeni ne olursa
+    olsun DENEME_SINIRI'nda belge elle bakılmalı olur."""
     ws, src, ids = _ws(tmp_path, {"pdf": (".pdf", OCR_TEXT, 2)})
     did = ids["pdf"]
     R.prepare(ws, only=[did], source=src)
     d = ws / "work" / "transcribe" / did
-    for bad in ('{"sayfalar": [{"sayfa": 1, "metin": "x"}]}',   # şema
-                json.dumps({"sayfalar": [{"sayfa": 1, "metin": GOOD, "okunabilirlik": "iyi"}]}),  # sayfa eksik
-                json.dumps({"sayfalar": [{"sayfa": i, "metin": "[okunamadı]", "okunabilirlik": "kotu"}
-                                         for i in (1, 2)]})):
+    for n, bad in enumerate(('{"sayfalar": [{"sayfa": 1, "metin": "x"}]}',   # şema
+                             json.dumps({"sayfalar": [{"sayfa": 1, "metin": GOOD, "okunabilirlik": "iyi"}]})), 1):
         (d / f"{did}.out.json").write_text(bad, encoding="utf-8")
         st = R.apply(ws)
-        assert did in st["gecersiz"] and st["islenen"] == 0
+        assert did in st["gecersiz"] and st["islenen"] == 0 and st["yeniden"][did]["deneme"] == n
+        assert not (d / f"{did}.out.json").exists() and (d / f"{did}.out.json.red{n}.eski").read_text() == bad
         assert (ws / "text" / f"{did}.txt").read_text(encoding="utf-8") == OCR_TEXT
         assert did in (ws / "work" / "transcribe" / "GECERSIZ.md").read_text(encoding="utf-8")
+    # cevap beklerken apply: gerekçe GECERSIZ.md'de kalır
+    st = R.apply(ws)
+    assert st["bekleyen"] == [did] and "önceki deneme" in (ws / "work/transcribe/GECERSIZ.md").read_text()
+    # hepsi [okunamadı] → normalleşir (bos) ama OCR'da sağlıklı sözcükler var: şüpheli, üçüncü ret → elle
+    (d / f"{did}.out.json").write_text(json.dumps(
+        {"sayfalar": [{"sayfa": i, "metin": "[okunamadı]", "okunabilirlik": "kotu"} for i in (1, 2)]}))
+    st = R.apply(ws)
+    assert st["elle_bakilmali"][did]["neden"] == "supheli" and not st["gecersiz"] and not st["supheli"]
+    assert (d / f"{did}.out.json").exists()                      # son cevap yerinde (kabul edilebilir)
+    assert (ws / "text" / f"{did}.txt").read_text(encoding="utf-8") == OCR_TEXT
+    assert not (ws / "work/transcribe/GECERSIZ.md").exists()
+    assert did in (ws / "work/transcribe" / R.ELLE_MD).read_text(encoding="utf-8")
+    log = next(read_jsonl(ws / "transcribe.jsonl"))
+    assert log["durum"] == R.ELLE and log["deneme"] == 3
+
+
+def test_all_unreadable_normalized_to_empty(tmp_path):
+    """Metni olmayan görsel (OCR çöp): model her yere [okunamadı] yazmış → bos, metin boş; reddedilmez."""
+    ws, src, ids = _ws(tmp_path, {"foto": (".png", "x7 ;; ~", 1)})
+    did = ids["foto"]
+    R.prepare(ws, only=[did], source=src)
+    (ws / "work/transcribe" / did / f"{did}.out.json").write_text(json.dumps(
+        {"sayfalar": [{"sayfa": 1, "metin": " [okunamadı] ", "okunabilirlik": "kotu"}], "notlar": "fotoğraf"}))
+    st = R.apply(ws)
+    assert st["islenen"] == 1 and not st["gecersiz"] and st["normallestirilen"] == [did]
+    assert (ws / "text" / f"{did}.txt").read_text(encoding="utf-8") == ""
+    log = next(read_jsonl(ws / "transcribe.jsonl"))
+    assert log["metin_yok"] is True and log["okunabilirlik"] == ["bos"]
+    assert log["normallestirme"] == "hepsi_okunamadi→bos"
+    out = {"sayfalar": [{"sayfa": 1, "metin": "Karar [okunamadı]", "okunabilirlik": "kotu"},
+                        {"sayfa": 2, "metin": "[okunamadı]", "okunabilirlik": "kotu"}]}
+    assert R.normalize_no_text(out) is False and out["sayfalar"][1]["metin"] == "[okunamadı]"
+
+
+@pytest.mark.skipif(not HAS_PDFTOPPM, reason="pdftoppm yok")
+def test_partial_unreadable_kept(tmp_path):
+    ws, src, ids = _ws(tmp_path, {"pdf": (".pdf", OCR_TEXT, 2)})
+    did = ids["pdf"]
+    R.prepare(ws, only=[did], source=src)
+    (ws / "work/transcribe" / did / f"{did}.out.json").write_text(json.dumps(
+        {"sayfalar": [{"sayfa": 1, "metin": GOOD, "okunabilirlik": "orta"},
+                      {"sayfa": 2, "metin": "[okunamadı]", "okunabilirlik": "kotu"}]}, ensure_ascii=False))
+    st = R.apply(ws)
+    assert st["islenen"] == 1 and not st["normallestirilen"]
+    assert (ws / "text" / f"{did}.txt").read_text(encoding="utf-8") == GOOD + "\f[okunamadı]\n"
+    assert next(read_jsonl(ws / "transcribe.jsonl"))["okunabilirlik"] == ["orta", "kotu"]
+
+
+def test_page_notes_allowed_required_fields_still_checked(tmp_path):
+    ws, src, ids = _ws(tmp_path, {"foto": (".png", OCR_TEXT, 1)})
+    did = ids["foto"]
+    R.prepare(ws, only=[did], source=src)
+    d = ws / "work/transcribe" / did
+    (d / f"{did}.out.json").write_text(json.dumps(   # zorunlu alan eksik: yine geçersiz
+        {"sayfalar": [{"sayfa": 1, "metin": GOOD, "notlar": "eğik taranmış"}]}, ensure_ascii=False))
+    assert did in R.apply(ws)["gecersiz"]
+    from bidr.llm import validate_output                       # şemada olmayan başka alan: geçersiz
+    assert validate_output(R.TASK, {"sayfalar": [{"sayfa": 1, "metin": "a", "okunabilirlik": "iyi",
+                                                  "guven": 0.9}]})[0] is None
+    (d / f"{did}.out.json").write_text(json.dumps(
+        {"sayfalar": [{"sayfa": 1, "metin": GOOD, "okunabilirlik": "orta", "notlar": "eğik taranmış"}]},
+        ensure_ascii=False))
+    st = R.apply(ws)
+    assert st["islenen"] == 1 and not st["gecersiz"]
+    log = next(read_jsonl(ws / "transcribe.jsonl"))
+    assert log["sayfa_notlari"] == {"1": "eğik taranmış"} and log["onceki_red"] == 1
+    assert "eğik" not in (ws / "text" / f"{did}.txt").read_text(encoding="utf-8")
+    assert not (d.parent / R.DENEMELER).exists()                 # başarıyla kapanan denemeler silinir
+
+
+def test_same_reason_twice_is_manual_and_does_not_block(tmp_path, capsys):
+    """Aynı belge iki denemede de aynı nedenle (şüpheli) reddedilir → elle bakılmalı; aşama biter, next
+    aynı cevabı yeniden istemez, apply çıkış 0."""
+    from bidr.cli import main
+    from bidr.common import Workspace
+    from bidr.pipeline.checks import Ctx
+    from bidr.pipeline.state import stage
+    from bidr.transcribe.check import transcribe_tamam
+
+    ws, src, ids = _ws(tmp_path, {"foto": (".png", OCR_TEXT, 1), "iyi": (".png", OCR_TEXT, 1)})
+    did, ok = ids["foto"], ids["iyi"]
+    ctx = Ctx(Workspace(ws), {}, lambda s: s, stage("transcribe"))
+    R.prepare(ws, all_low_quality=True, source=src)
+    _out(ws, did, [FAKE])
+    _out(ws, ok, [GOOD])
+    ck = transcribe_tamam(ctx)
+    assert ck.kim == "komut" and len(ck.komutlar) == 1 and "apply" in ck.komutlar[0]   # prepare değil
+    assert main(["transcribe", "apply", "-w", str(ws)]) == 1
+    ck = transcribe_tamam(ctx)
+    assert ck.kim == "ajan" and ck.bekleyen == [did] and "reddedildi" in ck.neden
+    assert any("apply" in k for k in ck.komutlar)
+    _out(ws, did, [FAKE])                                         # model aynısını yine yazdı
+    capsys.readouterr()
+    assert main(["transcribe", "apply", "-w", str(ws)]) == 0
+    assert "elle bakılmalı" in capsys.readouterr().out
+    ck = transcribe_tamam(ctx)
+    assert ck.bitti and ck.ilerleme["elle_bakilmali"] == 1 and ck.ilerleme["yaziya_gecirilen"] == 1
+    assert any(R.ELLE_MD in u for u in ck.uyarilar)
+    # tekrar apply / next: iş yok, döngü yok
+    for _ in range(3):
+        assert main(["transcribe", "apply", "-w", str(ws)]) == 0
+        assert transcribe_tamam(ctx).bitti
+    assert (ws / "text" / f"{did}.txt").read_text(encoding="utf-8") == OCR_TEXT
+    # komisyon/insan sonradan kabul edebilir
+    assert main(["transcribe", "apply", "-w", str(ws), "--kabul-supheli", "--only", did]) == 0
+    log = {r["doc_id"]: r for r in read_jsonl(ws / "transcribe.jsonl")}
+    assert log[did]["durum"] == "uygulandi" and log[did]["supheli_kabul"] is True
+    assert not (ws / "work/transcribe" / R.ELLE_MD).exists()
+
+
+def test_rejected_answer_not_restored_by_split_guard(tmp_path):
+    """Kenara alınan cevap parça bildiriminde 'önceden var olan' cevapsa sonraki denetim onu geri koymaz."""
+    from bidr.pipeline import paralel as PR
+    ws, src, ids = _ws(tmp_path, {"foto": (".png", OCR_TEXT, 1)})
+    did = ids["foto"]
+    R.prepare(ws, only=[did], source=src)
+    _out(ws, did, [FAKE])
+    d = ws / "work/transcribe"
+    pd = d / PR.PARCA
+    (pd / "yedek").mkdir(parents=True)
+    shutil.copy2(d / did / f"{did}.out.json", pd / "yedek" / f"{did}.out.json")
+    info = PR.bilgi("transcribe")
+    man = {"surum": 1, "asama": "transcribe", "dizin": info["dizin"], "duzen": info["duzen"], "parcalar": [],
+           "paket_izi": PR.paket_izi(R.Workspace(ws), info),
+           "onceki": {did: PR._sha(d / did / f"{did}.out.json")}}
+    (pd / PR.BILDIRIM).write_text(json.dumps(man), encoding="utf-8")
+    assert did in R.apply(ws)["supheli"]
+    assert PR.apply_oncesi(ws, "work/transcribe") == 0
+    assert not (d / did / f"{did}.out.json").exists()
+    _out(ws, did, [GOOD])                                         # yeniden yazılan cevap liste dışı sayılmaz
+    assert PR.apply_oncesi(ws, "work/transcribe") == 0
+    assert R.apply(ws)["islenen"] == 1
+
+
+def test_prepare_keeps_answer_when_only_prompt_text_changed(tmp_path):
+    """Talimat metni değişti, görüntüler aynı: verilmiş cevap korunur (yeniden model çağrısı yok); apply
+    reddederse paket bugünkü talimatla yenilenir."""
+    ws, src, ids = _ws(tmp_path, {"foto": (".png", OCR_TEXT, 1)})
+    did = ids["foto"]
+    R.prepare(ws, only=[did], source=src)
+    d = ws / "work/transcribe" / did
+    pkgp = d / f"{did}.json"
+    pkg = json.loads(pkgp.read_text(encoding="utf-8"))
+    img = R._gorsel_sha(d, pkg["sayfalar"])
+    old = pkg["istem"].replace("Başka alan ekleme.", "")         # eski sürüm talimat
+    pkg.update(istem=old, istem_sha=R._sha(old + img)[:16])
+    pkgp.write_text(json.dumps(pkg, ensure_ascii=False), encoding="utf-8")
+    _out(ws, did, [FAKE])
+    st = R.prepare(ws, only=[did], source=src)
+    assert st["yeni"] == 0 and st["cevap_korundu"] == 1 and (d / f"{did}.out.json").exists()
+    assert json.loads(pkgp.read_text(encoding="utf-8"))["istem"] == old
+    assert did in R.apply(ws)["supheli"]                           # ret: paket güncel talimatla yenilenir
+    new = json.loads(pkgp.read_text(encoding="utf-8"))
+    assert "Başka alan ekleme." in new["istem"] and new["istem_sha"] == R._sha(new["istem"] + img)[:16]
+    # görüntü değişirse eski cevap korunmaz (eski davranış)
+    _out(ws, did, [GOOD])
+    pkg = json.loads(pkgp.read_text(encoding="utf-8"))
+    pkg.update(istem=old, istem_sha=R._sha(old + "baska")[:16])
+    pkgp.write_text(json.dumps(pkg, ensure_ascii=False), encoding="utf-8")
+    assert R.prepare(ws, only=[did], source=src)["yeni"] == 1
+    assert (d / f"{did}.out.json.eski").exists() and not (d / f"{did}.out.json").exists()
 
 
 def test_apply_suspicious_held_unless_accepted(tmp_path):

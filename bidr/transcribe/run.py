@@ -16,6 +16,19 @@ Uydurma denetimi: OCR metninden güvenilir "çapa" belirteçleri (sağlıklı uz
 2+ haneli sayılar) çıkarılır; ajan metninde bulunma oranı düşükse çıktı `supheli`
 işaretlenir ve `--kabul-supheli` verilmedikçe uygulanmaz.
 
+Normalleştirme: hiçbir sayfasında okunabilen harf/rakam olmayan cevap (her yer `[okunamadı]`)
+"görselde okunur metin yok" demektir; reddedilmez, her sayfa `okunabilirlik: bos`, metin boş
+yapılır (kayıtta `normallestirme`). İçinde okunan metin olan cevaba dokunulmaz.
+
+Reddedilen cevap ve sınır (`denemeler.json`, `work/transcribe/` altında): geçersiz (şema, sayfa
+yapısı) ya da şüpheli cevap bir deneme sayılır, `<doc_id>.out.json.red<n>.eski` olarak kenara
+alınır (paket yeniden cevapsızdır: ajan GECERSIZ.md'deki gerekçeyle yeniden okur; var olan
+cevabın üstüne yazmak gerekmez). Aynı belge aynı nedenle iki kez (ya da hangi nedenle olursa olsun
+DENEME_SINIRI kez) reddedilirse belge `elle_bakilmali` olur: metni değişmez (OCR metni kalır),
+transcribe.jsonl'e `durum: elle_bakilmali` kaydı girer, ELLE-BAKILMALI.md'de ve `bidr next`
+uyarısında görünür; aşama onu beklemez. Sonradan kabul: şüpheli için `apply --kabul-supheli
+--only <doc_id>` son cevabı uygular; ya da yeni bir `<doc_id>.out.json` yazılıp apply.
+
 Belirsiz tur (`prepare --belirsiz`, aşama `belirsiz_okuma`): ince kararda `birim_iliskisi:
 belirsiz` kalan ve metni OCR'dan gelen (ya da low_quality=1) belgeler bir kez görsel okumayla
 yeniden okunur (`select_belirsiz`). Kayıt `tur: belirsiz` taşır; transcribe.jsonl'de kaydı olan
@@ -58,6 +71,12 @@ RENDERABLE = PDF_EXTS | DIRECT_IMG | CONVERT_IMG
 # Belirsiz turu (aşama belirsiz_okuma)
 BELIRSIZ = "belirsiz"
 BELIRSIZ_FILE = "belirsiz.json"   # work/transcribe/ altında: paketlenemeyen adaylar (neden)
+# Reddedilen cevaplar ve elle bakılacak belgeler
+DENEMELER = "denemeler.json"      # work/transcribe/ altında: {doc_id: {gorsel_sha, denemeler: [...]}}
+ELLE = "elle_bakilmali"           # transcribe.jsonl durum: iki denemede de aynı nedenle reddedildi
+ELLE_MD = "ELLE-BAKILMALI.md"
+AYNI_NEDEN_SINIRI = 2             # aynı nedenle bu kadar ret → elle bakılmalı
+DENEME_SINIRI = 3                 # nedeni ne olursa olsun bu kadar ret → elle bakılmalı (döngü yok)
 
 
 def work_dir(ws: Workspace) -> Path:
@@ -105,6 +124,38 @@ def load_log(ws: Workspace) -> dict[str, dict]:
 
 def save_log(ws: Workspace, recs: dict[str, dict]) -> None:
     write_jsonl(ws.root / LOG, [recs[k] for k in sorted(recs)])
+
+
+def elle_bakilmali(ws: Workspace, did: str, log: dict[str, dict]) -> bool:
+    """Belge iki denemede de reddedildi ve `elle_bakilmali` işaretlendi; paket o günden beri aynı
+    (yeniden prepare edilip değişmişse yeni paket yeniden cevap bekler)."""
+    r = log.get(did)
+    if not r or r.get("durum") != ELLE:
+        return False
+    p = work_dir(ws) / did / f"{did}.json"
+    try:
+        return json.loads(p.read_text(encoding="utf-8")).get("istem_sha") == r.get("istem_sha")
+    except (OSError, ValueError):
+        return False
+
+
+def load_denemeler(ws: Workspace) -> dict[str, dict]:
+    p = work_dir(ws) / DENEMELER
+    try:
+        return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_denemeler(ws: Workspace, den: dict[str, dict]) -> None:
+    p = work_dir(ws) / DENEMELER
+    if not den:
+        if p.exists():
+            p.unlink()
+        return
+    tmp = p.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(dict(sorted(den.items())), ensure_ascii=False, indent=1), encoding="utf-8")
+    tmp.replace(p)
 
 
 def is_done(ws: Workspace, did: str, log: dict[str, dict]) -> bool:
@@ -254,7 +305,12 @@ yaparsın.
    ve paketi değiştirme.
 4. Belgeler bağımsızdır; paralel alt ajanlar kullanabilirsin (her birine birkaç klasör).
 5. Bitince: `bidr transcribe apply -w <çalışma klasörü> --model <ajan/model adı>`.
-   Geçersiz ya da OCR'la hiç örtüşmeyen (şüpheli) cevaplar `GECERSIZ.md`'ye yazılır.
+   Geçersiz ya da OCR'la hiç örtüşmeyen (şüpheli) cevap kenara alınır (`.red<n>.eski`) ve
+   gerekçesi `GECERSIZ.md`'ye yazılır; o paket yeniden cevapsızdır, görüntüyü yeniden okuyup
+   yeni `<doc_id>.out.json` yaz. Aynı nedenle ikinci kez reddedilen belge yeniden istenmez:
+   `ELLE-BAKILMALI.md`'ye girer, metni OCR'da kalır.
+6. Görüntüde yazı yoksa (fotoğraf, çizim) her sayfa `okunabilirlik: bos`, `metin: ""`; cevapta
+   şemadakinden başka alan olmasın.
 
 Bekleyen paket: {n}
 """
@@ -382,6 +438,36 @@ def select_belirsiz(ws: Workspace, *, max_pages: int = MAX_PAGES) -> tuple[list[
     return out, info
 
 
+def _same_input(old: dict, new: dict, img_sha: str) -> bool:
+    """Eski paket aynı görüntülerle, aynı sayfa listesi ve görev sürümüyle mi hazırlanmış (talimat
+    metni farklı olabilir). Eski paketin `istem_sha`'sı kendi istem metni + görüntü özetinden üretilir:
+    bugünkü görüntülerle yeniden hesaplanınca tutuyorsa görüntüler değişmemiştir."""
+    return (str(old.get("surum")) == str(new["surum"]) and old.get("sayfalar") == new["sayfalar"]
+            and isinstance(old.get("istem"), str) and _sha(old["istem"] + img_sha)[:16] == old.get("istem_sha"))
+
+
+def _gorsel_sha(pdir: Path, names: list[str]) -> str | None:
+    try:
+        return _sha("".join(sha256_file(pdir / n) for n in names))
+    except OSError:
+        return None
+
+
+def _refresh_package(pkgp: Path, pkg: dict) -> dict:
+    """Reddedilen cevabın paketi eski talimat metniyle hazırlanmışsa bugünkü talimatla yenilenir
+    (görüntüler aynı): ajan yeniden okurken güncel kuralları görür. Değişmezse aynı paket döner."""
+    from bidr.llm import render_task
+    names = pkg.get("sayfalar") or []
+    listing = "\n".join(f"{i}. `{n}`" for i, n in enumerate(names, 1))
+    r = render_task(TASK, {"sayfa_sayisi": str(len(names)), "sayfa_dosyalari": listing})
+    img_sha = _gorsel_sha(pkgp.parent, names)
+    if r["prompt"] == pkg.get("istem") or img_sha is None or str(r["version"]) != str(pkg.get("surum")):
+        return pkg
+    new = {**pkg, "istem": r["prompt"], "sema": r["schema"], "istem_sha": _sha(r["prompt"] + img_sha)[:16]}
+    pkgp.write_text(json.dumps(new, ensure_ascii=False, indent=1), encoding="utf-8")
+    return new
+
+
 def _pending(d: Path) -> int:
     return sum(1 for p in d.glob("*/*.json") if not p.name.endswith(".out.json")
                and p.stem == p.parent.name and not (p.parent / f"{p.stem}.out.json").exists())
@@ -441,12 +527,16 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, all_low_quality: bo
                "sema": r["schema"], "dpi": dpi, **({"tur": BELIRSIZ} if belirsiz else {})}
         st["paket"] += 1
         old = json.loads(pkgp.read_text(encoding="utf-8")) if pkgp.exists() else None
-        if old and old.get("istem_sha") == isha:
-            if belirsiz and old.get("tur") != BELIRSIZ:   # aynı paket: yalnız tur işareti (cevap korunur)
+        outp = pdir / f"{did}.out.json"
+        if old and (old.get("istem_sha") == isha or (outp.exists() and _same_input(old, pkg, img_sha))):
+            # aynı paket ya da yalnız ortak talimat metni değişti (görüntüler, sayfa listesi, sürüm aynı):
+            # verilmiş cevap korunur, apply onu bugünkü şemayla doğrular (reddedilirse paket yenilenir)
+            if belirsiz and old.get("tur") != BELIRSIZ:   # yalnız tur işareti (cevap korunur)
                 pkgp.write_text(json.dumps({**old, "tur": BELIRSIZ}, ensure_ascii=False, indent=1),
                                 encoding="utf-8")
+            if old.get("istem_sha") != isha:
+                st["cevap_korundu"] = st.get("cevap_korundu", 0) + 1
             continue
-        outp = pdir / f"{did}.out.json"
         if outp.exists():
             outp.replace(pdir / f"{did}.out.json.eski")
         pkgp.write_text(json.dumps(pkg, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -461,6 +551,22 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, all_low_quality: bo
 
 
 # -- apply -----------------------------------------------------------------------------------
+
+def normalize_no_text(out: dict) -> bool:
+    """Cevabın hiçbir sayfasında okunabilen harf/rakam yoksa (her yer `[okunamadı]`, ya da `bos`
+    işaretsiz boş metin) bu "görselde okunur metin yok" demektir (ör. fotoğraf): her sayfa
+    `okunabilirlik: bos`, metin boş yapılır. Zaten öyleyse ya da herhangi bir sayfada okunan metin
+    varsa dokunulmaz (kısmen ya da tek sayfası tümüyle okunamayan belge olduğu gibi kalır).
+    Döner: normalleştirildi mi."""
+    pages = out.get("sayfalar") or []
+    if not pages or all(p["okunabilirlik"] == "bos" and not p["metin"].strip() for p in pages):
+        return False
+    if any(c.isalnum() for p in pages for c in p["metin"].replace(UNREADABLE, "")):
+        return False
+    for p in pages:
+        p["okunabilirlik"], p["metin"] = "bos", ""
+    return True
+
 
 def assemble(out: dict, n_pages: int) -> tuple[str | None, list[str]]:
     """Sayfaları `\\f` ile birleştirir; yapı hatalarını döndürür."""
@@ -529,6 +635,24 @@ def invalidate_downstream(ws: Workspace, ids: set[str], neden: str = "transcribe
     return st
 
 
+def _supheli_msg(c: dict) -> str:
+    return (f"OCR'ın okunabilen parçalarıyla örtüşme {c['oran']} ({c['bulunan_sozcuk']}/{c['capa_sozcuk']} "
+            f"sözcük, {c['bulunan_sayi']}/{c['capa_sayi']} sayı)")
+
+
+def _restore_suspicious(pdir: Path, outp: Path, e: dict | None) -> bool:
+    """`--kabul-supheli`: son deneme şüpheli diye kenara alındıysa o cevap geri konur (uygulanır)."""
+    son = ((e or {}).get("denemeler") or [None])[-1]
+    if not son or son.get("neden") != "supheli" or not son.get("dosya"):
+        return False
+    src = pdir / son["dosya"]
+    if not src.is_file():
+        return False
+    src.replace(outp)
+    son["dosya"] = None
+    return True
+
+
 def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", accept_suspicious: bool = False,
           only: list[str] | None = None) -> dict:
     from bidr.llm import validate_output
@@ -538,11 +662,14 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", accept_suspicious
     fields, rows = read_inventory(ws)
     prim = _primary(rows)
     log = load_log(ws)
+    den = load_denemeler(ws)
     ver = _task_version()
     st = {"islenen": 0, "degismedi": 0, "bekleyen": [], "gecersiz": {}, "supheli": {},
-          "eski_surum": [], "tutarlilik": {}, "gecersiz_kilinan": {}, "metin_ayni": []}
+          "eski_surum": [], "tutarlilik": {}, "gecersiz_kilinan": {}, "metin_ayni": [],
+          "elle_bakilmali": {}, "yeniden": {}, "normallestirilen": []}
     changed: set[str] = set()
-    log_dirty = False
+    cekilen: set[str] = set()
+    log_dirty = den_dirty = False
     pkgs = sorted(p for p in d.glob("*/*.json")
                   if p.stem == p.parent.name and not p.name.endswith(".out.json")) if d.exists() else []
     for p in pkgs:
@@ -551,6 +678,8 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", accept_suspicious
         if only and did not in only:
             continue
         outp = p.parent / pkg["cikti_dosyasi"]
+        if not outp.exists() and accept_suspicious and _restore_suspicious(p.parent, outp, den.get(did)):
+            den_dirty = True
         if not outp.exists():
             st["bekleyen"].append(did)
             continue
@@ -561,19 +690,62 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", accept_suspicious
             st["gecersiz"][did] = ["envanterde yok"]
             continue
         raw = outp.read_text(encoding="utf-8")
-        out, errs = validate_output(TASK, raw)
-        if out is None:
-            st["gecersiz"][did] = errs[:5]
-            continue
-        text, errs = assemble(out, len(pkg["sayfalar"]))
-        if text is None:
-            st["gecersiz"][did] = errs
-            continue
         out_sha = _sha(raw)
         prev = log.get(did)
+        if (prev and prev.get("durum") == ELLE and prev.get("cikti_sha") == out_sha
+                and not (accept_suspicious and prev.get("neden") == "supheli")):
+            st["elle_bakilmali"][did] = prev   # karar verilmiş: aynı cevap yeniden denenmez
+            continue
+
+        def reject(kod: str, errs: list[str], cons: dict | None = None) -> None:
+            """Ret bir denemedir. Sınırın altındaysa cevap kenara alınır (paket yeniden cevap bekler);
+            aynı nedenle AYNI_NEDEN_SINIRI (ya da toplam DENEME_SINIRI) ret → elle bakılmalı."""
+            nonlocal log_dirty, den_dirty, pkg
+            g = _gorsel_sha(p.parent, pkg["sayfalar"])
+            e = den.get(did)
+            if not e or e.get("gorsel_sha") != g:   # yeni görüntüler: sayaç baştan
+                e = den[did] = {"gorsel_sha": g, "denemeler": []}
+            e["denemeler"].append({"cevap_sha": out_sha, "neden": kod, "hatalar": errs, "model": model,
+                                   "zaman": time.strftime("%Y-%m-%dT%H:%M:%S"), "dosya": None})
+            den_dirty = True
+            n = len(e["denemeler"])
+            ayni = sum(1 for x in e["denemeler"] if x["neden"] == kod)
+            if ayni >= AYNI_NEDEN_SINIRI or n >= DENEME_SINIRI:
+                rec = {"doc_id": did, "durum": ELLE, "neden": kod, "hatalar": errs, "deneme": n,
+                       "gorev": {TASK: ver}, "model": model, "kip": "ajan", "istem_sha": pkg["istem_sha"],
+                       "cikti_sha": out_sha, "sayfa": len(pkg["sayfalar"]),
+                       **({"tutarlilik": cons} if cons else {}), **({"tur": pkg["tur"]} if pkg.get("tur") else {}),
+                       **({"onceki": prev} if prev and prev.get("durum") == "uygulandi" else {}),
+                       "zaman": time.strftime("%Y-%m-%dT%H:%M:%S")}
+                log[did] = rec
+                log_dirty = True
+                st["elle_bakilmali"][did] = rec
+                return
+            name = f"{outp.name}.red{n}.eski"
+            outp.replace(p.parent / name)
+            e["denemeler"][-1]["dosya"] = name
+            cekilen.add(did)
+            pkg = _refresh_package(p, pkg)
+            st["yeniden"][did] = {"neden": kod, "deneme": n, "dosya": name}
+            if kod == "supheli":
+                st["supheli"][did] = cons
+            else:
+                st["gecersiz"][did] = errs
+
+        out, errs = validate_output(TASK, raw)
+        if out is None:
+            reject("sema", errs[:5])
+            continue
+        norm = normalize_no_text(out)
+        text, errs = assemble(out, len(pkg["sayfalar"]))
+        if text is None:
+            reject("yapi", errs)
+            continue
         if prev and prev.get("cikti_sha") == out_sha and is_done(ws, did, log):
             st["degismedi"] += 1
             continue
+        if norm:
+            st["normallestirilen"].append(did)
         ocr_p = ocr_text_path(ws, did)
         cur = ws.text_path(did)
         ocr_text = (ocr_p if ocr_p.exists() else cur).read_text(encoding="utf-8", errors="replace") \
@@ -581,15 +753,19 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", accept_suspicious
         cons = consistency(ocr_text, text)
         st["tutarlilik"][did] = cons
         if cons["durum"] == "supheli" and not accept_suspicious:
-            st["supheli"][did] = cons
+            reject("supheli", [_supheli_msg(cons)], cons)
             continue
+        ek = {"normallestirme": "hepsi_okunamadi→bos"} if norm else {}
+        if (e := den.pop(did, None)) is not None:
+            den_dirty = True
+            ek["onceki_red"] = len(e.get("denemeler") or [])
         tur = {"tur": pkg["tur"]} if pkg.get("tur") else {}
         cur_text = cur.read_text(encoding="utf-8", errors="replace") if cur.exists() else None
         if cur_text is not None and _norm(cur_text) == _norm(text):
             # okuma var olan metni doğruladı: metin yazılmaz, türetilmiş kayıtlar (karar) geçerli kalır
             log[did] = {"doc_id": did, "durum": "uygulandi", "gorev": {TASK: ver}, "model": model,
                         "kip": "ajan", "istem_sha": pkg["istem_sha"], "cikti_sha": out_sha,
-                        "metin_sha": _sha(cur_text), "metin_ayni": True, **tur,
+                        "metin_sha": _sha(cur_text), "metin_ayni": True, **tur, **ek,
                         "sayfa": len(pkg["sayfalar"]), "tutarlilik": cons,
                         "supheli_kabul": cons["durum"] == "supheli",
                         "zaman": time.strftime("%Y-%m-%dT%H:%M:%S")}
@@ -612,13 +788,14 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", accept_suspicious
         for r in rows:
             if r.get("doc_id") == did:
                 r.update(method=METHOD, chars=len(text), quality=q, low_quality=lowq, ocr_conf="")
+        sn = {str(x["sayfa"]): x["notlar"] for x in out["sayfalar"] if (x.get("notlar") or "").strip()}
         log[did] = {"doc_id": did, "durum": "uygulandi", "gorev": {TASK: ver}, "model": model,
                     "kip": "ajan", "istem_sha": pkg["istem_sha"], "cikti_sha": out_sha,
                     "metin_sha": _sha(text), "ocr_metni": f"{OCR_DIR}/{did}.txt",
                     "sayfa": len(pkg["sayfalar"]), "metin_yok": not text,
                     "okunabilirlik": [x["okunabilirlik"] for x in sorted(out["sayfalar"], key=lambda x: x["sayfa"])],
-                    "notlar": out.get("notlar", ""), "tutarlilik": cons,
-                    "supheli_kabul": cons["durum"] == "supheli",
+                    "notlar": out.get("notlar", ""), **({"sayfa_notlari": sn} if sn else {}), **ek,
+                    "tutarlilik": cons, "supheli_kabul": cons["durum"] == "supheli",
                     "onceki_envanter": before, **tur, "zaman": time.strftime("%Y-%m-%dT%H:%M:%S")}
         changed.add(did)
         st["islenen"] += 1
@@ -626,29 +803,61 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", accept_suspicious
         write_inventory(ws, fields, rows)
     if changed or log_dirty:
         save_log(ws, log)
+    if den_dirty:
+        _save_denemeler(ws, den)
+    if cekilen:
+        # kenara alınan cevap parça bildirimindeki "önceden var olan cevap" değildir: geri konmasın
+        from bidr.pipeline.paralel import cevap_cekildi
+        cevap_cekildi(ws.root, "work/transcribe", cekilen)
     if changed:
         st["gecersiz_kilinan"] = invalidate_downstream(ws, changed)
     st["degisen"] = sorted(changed)
-    _write_report(d, st)
+    _write_report(d, st, den, log, set(st["bekleyen"]))
     return st
 
 
-def _write_report(d: Path, st: dict) -> None:
+def _write_report(d: Path, st: dict, den: dict | None = None, log: dict | None = None,
+                  bekleyen: set[str] = frozenset()) -> None:
     if not d.exists():
         return
     lines = ["# Yeniden yapılacak (transcribe)", ""]
+
+    def kenar(did: str) -> str:
+        y = st["yeniden"].get(did)
+        return (f" (deneme {y['deneme']}; cevap `{did}/{y['dosya']}` olarak kenara alındı: paket yeniden "
+                f"cevap bekliyor, görüntüyü yeniden oku ve yeni `{did}.out.json` yaz)") if y else ""
     for did, errs in st["gecersiz"].items():
-        lines.append(f"- `{did}/{did}.json` — geçersiz cevap: " + "; ".join(errs))
+        lines.append(f"- `{did}/{did}.json` — geçersiz cevap: " + "; ".join(errs) + kenar(did))
     for did, c in st["supheli"].items():
-        lines.append(f"- `{did}/{did}.json` — şüpheli: OCR'ın okunabilen parçalarıyla örtüşme "
-                     f"{c['oran']} ({c['bulunan_sozcuk']}/{c['capa_sozcuk']} sözcük, "
-                     f"{c['bulunan_sayi']}/{c['capa_sayi']} sayı). Görüntüyü yeniden oku; yazdığın "
-                     f"doğruysa `apply --kabul-supheli`.")
+        lines.append(f"- `{did}/{did}.json` — şüpheli: {_supheli_msg(c)}{kenar(did)}. Görüntüyü yeniden oku; "
+                     f"yazdığın doğruysa `apply --kabul-supheli` (kenara alınan son cevabı uygular).")
+    # önceki apply'larda reddedilip hâlâ yeni cevap bekleyenler: gerekçe ajana kaybolmasın
+    for did in sorted(bekleyen):
+        son = (((den or {}).get(did) or {}).get("denemeler") or [None])[-1]
+        if son and son.get("dosya") and did not in st["gecersiz"] and did not in st["supheli"]:
+            tur = "şüpheli" if son["neden"] == "supheli" else "geçersiz cevap"
+            lines.append(f"- `{did}/{did}.json` — {tur} (önceki deneme, `{did}/{son['dosya']}`): "
+                         + "; ".join(son.get("hatalar") or []) + f". Yeni `{did}.out.json` bekleniyor.")
     g = d / "GECERSIZ.md"
     if len(lines) > 2:
         g.write_text("\n".join(lines) + "\n", encoding="utf-8")
     elif g.exists():
         g.unlink()
+    elle = sorted((did, r) for did, r in (log or {}).items() if r.get("durum") == ELLE)
+    e = d / ELLE_MD
+    if elle:
+        rep = ["# Elle bakılmalı (transcribe)", "",
+               "Görsel okuma cevabı aynı nedenle iki kez (ya da sınır kadar) reddedildi; yeniden istenmez. Belgenin "
+               "metni değişmedi (OCR metni kullanılıyor). Görüntüye bakıp okuma doğruysa şüpheli için "
+               "`bidr transcribe apply -w <ws> --kabul-supheli --only <doc_id>`, değilse doğru cevabı "
+               "`<doc_id>/<doc_id>.out.json`'a yazıp apply.", ""]
+        neden = {"supheli": "şüpheli (OCR'la örtüşme düşük)", "sema": "şemaya uymuyor", "yapi": "sayfa yapısı"}
+        for did, r in elle:
+            rep.append(f"- `{did}` — elle bakılmalı: {neden.get(r.get('neden'), r.get('neden'))}, "
+                       f"{r.get('deneme')} deneme: " + "; ".join(r.get("hatalar") or []))
+        e.write_text("\n".join(rep) + "\n", encoding="utf-8")
+    elif e.exists():
+        e.unlink()
     if st["tutarlilik"]:
         rep = ["# Tutarlılık (ajan metni ↔ OCR metni)", "",
                "| doc_id | durum | örtüşme | sözcük | sayı | [okunamadı] | OCR harf → yeni harf |",

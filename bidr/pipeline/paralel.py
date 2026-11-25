@@ -323,7 +323,8 @@ def denetle(ws_root: Path, sid: str, *, duzelt: bool = True) -> dict:
                 "neden": "paketler bölmeden sonra değişti (yeniden prepare): parça listeleri geçersiz, denetim yok"}
     d = _dizin(ws, info)
     pd = d / PARCA
-    listed = {k for p in man["parcalar"] for k in p["paketler"]}
+    # serbest: bölmeden sonra apply'ın reddedip kenara aldığı cevaplar; paket yeniden açıktır
+    listed = {k for p in man["parcalar"] for k in p["paketler"]} | set(man.get("serbest") or [])
     onceki: dict = man.get("onceki") or {}
     now = cevaplar(ws, info)
     ihlal = []
@@ -352,6 +353,30 @@ def denetle(ws_root: Path, sid: str, *, duzelt: bool = True) -> dict:
                 shutil.copy2(y, p)
                 x["geri_kondu"] = True
     return {"durum": "ihlal" if ihlal else "temiz", "ihlaller": ihlal}
+
+
+def cevap_cekildi(ws_root: Path, dizin: str, keys) -> int:
+    """Aşamanın apply'ı reddettiği cevabı kenara aldı (paket yeniden cevap bekler; ör. transcribe). Açık
+    bildirimde bu cevap "bölmeden önce var olan liste dışı cevap" olarak duruyorsa oradan ve `yedek/`'ten
+    düşer (yoksa sonraki denetim onu "silindi" sayıp reddedilmiş cevabı geri koyardı) ve paket `serbest`
+    olur: bölme bildirimi dururken yazılan yeni cevabı "liste dışı" sayılmaz. Döner: işaretlenen sayısı."""
+    p = Path(ws_root) / dizin / PARCA / BILDIRIM
+    if not p.exists():
+        return 0
+    try:
+        man = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return 0
+    onceki = man.get("onceki") or {}
+    serbest = set(man.get("serbest") or [])
+    keys = set(keys)
+    for k in keys & set(onceki):
+        onceki.pop(k)
+        (p.parent / "yedek" / f"{k}.out.json").unlink(missing_ok=True)
+    if keys - serbest:
+        man["onceki"], man["serbest"] = onceki, sorted(serbest | keys)
+        p.write_text(json.dumps(man, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    return len(keys)
 
 
 def apply_oncesi(ws_root: Path, dizin: str, log=None) -> int:

@@ -10,7 +10,8 @@
         "properties": {
           "sayfa": {"type": "integer", "minimum": 1},
           "metin": {"type": "string"},
-          "okunabilirlik": {"enum": ["iyi", "orta", "kotu", "bos"]}
+          "okunabilirlik": {"enum": ["iyi", "orta", "kotu", "bos"]},
+          "notlar": {"type": "string"}
         },
         "required": ["sayfa", "metin", "okunabilirlik"],
         "additionalProperties": false

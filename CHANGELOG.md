@@ -4,6 +4,13 @@ Her birleştirmede (main'e giren her değişiklik) buraya en üste bir satır ek
 açıklama ve kullanıcıyı ilgilendiriyorsa ne yapması gerektiği. `bidr guncelle` güncellemeden sonra
 bu dosyanın yeni satırlarını gösterir. Bu dosyadan önceki geçmiş için `git log`.
 
+- 2026-11-26: Görsel okuma (transcribe) takılmaz (canlı olay): her yeri `[okunamadı]` olan cevap reddedilmez,
+  "görselde metin yok" olarak normalleşir (`bos`, boş metin); sayfa başına isteğe bağlı `notlar` şemada (görev sürümü
+  artmadı). Geçersiz/şüpheli cevap kenara alınır (`.red<n>.eski`), paket yeniden okunur; aynı nedenle ikinci ret
+  (ya da üçüncü ret) belgeyi `elle_bakilmali` yapar: metni OCR'da kalır, `work/transcribe/ELLE-BAKILMALI.md` ve
+  `bidr next` uyarısında görünür, aşama ilerler. Şüpheli belge sonradan `apply --kabul-supheli --only <id>` ile
+  kabul edilebilir. Talimat metni netleşti; yalnız talimatı değişen paketin verilmiş cevabı korunur (yeniden model
+  çağrısı yok). Yapılacak bir şey yok: sıradaki `bidr transcribe apply` var olan cevapları yeniden işler.
 - 2026-11-24: Faaliyet kaydında dosya serisi bölünmez, adı seriyle uyumlu (prova düzeltmesi): tarihsiz belge aynı
   dosya serisinden üyesi olan kayda önce bağlanır ("ulusal staj 2026-1…5" tek kayıt); kayıt adı belgelerin
   çoğunluğunun adı, eşitlikte seriyle uyumlu ad (önceden uzunluk: "Gibbs Eşitsizliği Semineri"). `faaliyetler.json`
