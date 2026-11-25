@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Iterable
 
+from . import suanki
+
 KINDS = ("tc_no", "iban", "eposta", "telefon", "ogrenci_no", "ad")
 PLACEHOLDERS = {"tc_no": "[TC_NO]", "iban": "[IBAN]", "eposta": "[EPOSTA]", "telefon": "[TELEFON]",
                 "ogrenci_no": "[OGRENCI_NO]", "ad": "[AD]",
@@ -299,6 +301,7 @@ def _raw(text: str, rules: MaskRules) -> list[tuple[int, int, int, str]]:
 
 def detect(text: str, rules: MaskRules | None = None) -> list[Finding]:
     """Çakışmasız bulgular, metin sırasında. Çakışmada öncelik, sonra uzunluk kazanır."""
+    suanki.metin(text)                # ad metni kaydı (yalnız yan etki; sonucu ve önbellek kod izini değiştirmez)
     if not text:
         return []
     rules = rules or MaskRules()

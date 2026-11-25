@@ -806,6 +806,7 @@ def _isle(job: dict) -> dict:
     import tempfile
     from . import onbellek
     from .eski import LEGACY_EXT, ConvertError
+    from .kaynak import kaynak_sonucu_kisayollu, onbellekli_maske   # önbellek kısayolları (kod izinin dışında)
     if job.get("onbellek"):
         os_env = __import__("os").environ
         os_env[onbellek.ENV] = job["onbellek"]
@@ -852,8 +853,8 @@ def _isle(job: dict) -> dict:
             if k2 == "pdf":
                 rec["motor"] = eng
             temiz = _temiz_yolu(job, out)
-            rec.update(mask_cached(conv, out, rules, eng, model_text=mt, kararlar=job.get("kararlar"), sha=sha, kind=k2,
-                                   temiz=temiz, yalniz_oneri=bool(job.get("yalniz_oneri"))))
+            rec.update(onbellekli_maske(conv, out, rules, eng, model_text=mt, kararlar=job.get("kararlar"), sha=sha,
+                                        kind=k2, temiz=temiz, yalniz_oneri=bool(job.get("yalniz_oneri"))))
             _teslim_kopya(rec, job, temiz)
             return rec
     rec["bicim"] = kind or (src.suffix.lower().lstrip(".") or "?")
@@ -868,10 +869,11 @@ def _isle(job: dict) -> dict:
     temiz = _temiz_yolu(job, dst)
     oneri = bool(job.get("yalniz_oneri"))
     # yalnız öneri: kaynak kipin (kapatılmış) sonucu paylaşılmaz
-    hit = None if oneri else kaynak_sonucu(src, sha, dst, rules, eng, mt, kararlar=job.get("kararlar"), temiz=temiz)
+    hit = None if oneri else kaynak_sonucu_kisayollu(src, sha, dst, rules, eng, mt, kararlar=job.get("kararlar"),
+                                                    temiz=temiz)
     rec.update(hit if hit is not None else
-               mask_cached(src, dst, rules, eng, model_text=mt, kararlar=job.get("kararlar"), sha=sha, kind=kind,
-                           temiz=temiz, yalniz_oneri=oneri))
+               onbellekli_maske(src, dst, rules, eng, model_text=mt, kararlar=job.get("kararlar"), sha=sha, kind=kind,
+                                temiz=temiz, yalniz_oneri=oneri))
     _teslim_kopya(rec, job, temiz)
     return rec
 

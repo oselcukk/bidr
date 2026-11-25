@@ -231,8 +231,8 @@ def _mask_one(src: Path, rel: str, hedef: str, dst: Path, ctx: _Ctx, kind: str) 
     from .onbellek import aktif
     with tempfile.TemporaryDirectory(prefix="bidr-temiz-") as td:
         temiz = Path(td) / f"temiz{dst.suffix}" if aktif() is not None else None
-        rec.update(mask_cached(src, dst, ctx.rules, ctx.eng, model_text=mt, kararlar=ctx.kararlar, sha=sha, kind=kind,
-                               temiz=temiz, cikti_kaydet=temiz is not None))
+        rec.update(onbellekli_maske(src, dst, ctx.rules, ctx.eng, model_text=mt, kararlar=ctx.kararlar, sha=sha,
+                                    kind=kind, temiz=temiz, cikti_kaydet=temiz is not None))
     if rec["durum"] == "hata":
         _copy_as_is(src, dst)
         rec["neden"] = rec["neden"] + " — özgün dosya olduğu gibi kopyalandı (kişisel veri içerebilir)"
@@ -240,6 +240,200 @@ def _mask_one(src: Path, rel: str, hedef: str, dst: Path, ctx: _Ctx, kind: str) 
         rec["neden"] = rec["neden"] + " — maskeli kopya ağaçta (eksik maskeleme)"
     _record(ctx, rel, hedef, **rec)
     return dst
+
+
+# ---------------------------------------------------------------- önbellek kısayolları (karar → yalnız o belge)
+# Bir panel kararı (ya da modelin okuma metninin gelmesi, ad listesine ad eklenmesi) yalnız sonucu gerçekten
+# değişebilecek belgeleri yeniden maskeletir; diğerleri `aday` önbelleğinden saniyeler içinde gelir.
+#
+# 1. Modelin okuma metni (`text/<doc_id>.txt`, `inventory.csv`): `mask_and_check` onu yalnız el yazısı denetiminde
+#    (`run.model_text_gaps`) kullanır. Metinde (bütününde ve sayfa sayfa) denetimin aradığı türden (`MODEL_KINDS`)
+#    hiçbir bulgu yoksa ve sayfa sayısı uyuşuyorsa denetim boş döner: sonuç metinsiz sonuçla bayt bayt aynıdır;
+#    metin anahtara girmez (`model_metni_etkisiz`). Aksi hâlde (bulgu ya da uyuşmazlık) belge metinle işlenir.
+#    Ölçüm (canlı, Veri Bilimi 26.11): transkripsiyondan sonra 760 belgenin metni geldi, `aday` anahtarı hepsinde
+#    değişti (ilk koşu anahtarları metinsiz, ikinci koşununkiler metinli; kurallar ve OCR önbelleği aynı): karar
+#    sonrası koşu bu yüzden bütün bölümü yeniden maskeliyordu.
+# 2. Ad listesi (`privacy.maskeleme.ad_listesi`, `--ad-listesi`; "bu adı her yerde kapat"): belgenin işlenişinde
+#    taramaya giren bütün metinler (`suanki.metin_kaydi_*`, `detect.detect` girdisi) önbellekte "ad metni" olarak
+#    tutulur. Belgenin anahtarına yalnız bu metinlerde deseni (`detect.name_pattern`, tespitin kendi deseni) geçen
+#    adlar girer: geçmeyen ad hiçbir taramada eşleşmediğinden sonucu değiştiremez. Ad metni bilinmeyen belge (önceki
+#    sürümle işlenmiş) bütün listeyle anahtarlanır; ama önbellekte daha önceki (tam ya da süzülmüş listeyle) sonucu
+#    varsa o kullanılır (`_kural_adaylari`).
+#
+# Bunlar `run._KOD_MODULLERI` dışındadır (kaynak.py kaynak kip yönetimi): önbellek kod izi değişmez, kısayolu
+# getiren sürüm canlıda bir kez bütün bölümü yeniden maskeletmez. Sonucu belirleyen kodun kendisi (maskeleme, el
+# yazısı denetimi, ad deseni) izdedir; kısayolların eşdeğerliği testlerle zorlanır (tests/test_mask_karar_onbellek.py).
+
+AD_METNI = "ad_metni"
+KAPSAMSIZ = ("docx", "xlsx", "metin", "html")     # sonucu sayfa kapsamı (`sayfa_kapsam`) taşımayan biçimler
+
+
+def _sayfa_sayisi(src: Path) -> int | None:
+    try:
+        from .formats import _fitz
+        with _fitz().open(str(src)) as doc:
+            return None if doc.needs_pass else int(doc.page_count)
+    except Exception:                                  # noqa: BLE001 — bilinmiyor: kısayol yok
+        return None
+
+
+def model_metni_etkisiz(model_text: str, rules: MaskRules, kind: str | None, src: Path, eng: str) -> bool:
+    """`mask_and_check(model_text=…)` sonucu metinsiz sonuçla aynı mı (el yazısı denetimi kesin boş döner mi)?
+    `run.model_text_gaps` ile aynı bölme; şüphede False (belge metinle işlenir)."""
+    from .run import MODEL_KINDS
+
+    def bulgu(t: str) -> bool:
+        return any(f.kind in MODEL_KINDS for f in detect(t, rules))
+
+    if bulgu(model_text):
+        return False
+    pages = model_text.split("\f")
+    if any(bulgu(t) for t in pages):
+        return False
+    if kind in KAPSAMSIZ:
+        return True                                    # belge bütünü karşılaştırılır: bulgu yok → eksik yok
+    if len(pages) > 1 and not pages[-1].strip():
+        pages = pages[:-1]
+    if kind == "gorsel":
+        return len(pages) == 1
+    if kind == "pdf":
+        if eng != "pymupdf":
+            return True                                # pypdf: sayfa kapsamı yok, belge bütünü
+        return _sayfa_sayisi(src) == len(pages)        # uyuşmazlık uyarısı metne bağlı: metinle işlenir
+    return False
+
+
+def ad_metni_anahtari(sha: str, rules: MaskRules, eng: str, mine: dict, kind: str | None,
+                      yalniz_oneri: bool = False) -> str:
+    """Belgenin ad metninin anahtarı: ad listesi ve model metni dışında `aday` anahtarının bütün parçaları (içerik,
+    kod izi, diğer kurallar, motor, bu belgenin kararları)."""
+    from dataclasses import replace
+
+    from . import onbellek
+    from .run import aday_anahtari
+    return onbellek.anahtar(AD_METNI, aday_anahtari(sha, replace(rules, names=()), eng, mine, None, kind,
+                                                    yalniz_oneri=yalniz_oneri))
+
+
+def _ad_metni_oku(ob, key: str) -> list[str] | None:
+    import zlib
+    b = ob.get(AD_METNI, key)
+    if b is None:
+        return None
+    try:
+        v = json.loads(zlib.decompress(b).decode("utf-8"))
+    except (zlib.error, ValueError, UnicodeDecodeError):
+        return None
+    return v if isinstance(v, list) else None
+
+
+def _ad_metni_yaz(ob, key: str, metinler: list[str]) -> None:
+    import zlib
+    ob.put(AD_METNI, key, zlib.compress(json.dumps(metinler, ensure_ascii=False).encode("utf-8"), 6))
+
+
+def gecen_adlar(names, metinler: list[str]) -> tuple[str, ...]:
+    """Ad metninde deseni geçen adlar (tespitin kendi deseniyle; desen üretmeyen ad tespitte de yoktur)."""
+    from .detect import name_pattern
+    birlesik = "\n\x00\n".join(metinler)
+    out = []
+    for n in names:
+        rx = name_pattern(n) if n else None
+        if rx is not None and rx.search(birlesik):
+            out.append(n)
+    return tuple(out)
+
+
+def _onbellekte(ob, sha: str, rules: MaskRules, eng: str, mine: dict, model_text: str | None, kind: str | None,
+                yalniz_oneri: bool) -> bool:
+    """`run.mask_cached` bu girdilerle önbellekten mi döner (anahtar var mı; sayaçlara dokunmaz)."""
+    from . import onbellek
+    from .run import aday_anahtari, sablon_parcasi
+
+    def var(katman, key):
+        try:
+            with onbellek._LOCK:
+                return ob._c().execute("SELECT deger FROM k WHERE katman=? AND anahtar=?", (katman, key)).fetchone()
+        except Exception:                              # noqa: BLE001 — okunamadı: işlenir
+            return None
+    temel = aday_anahtari(sha, rules, eng, mine, model_text, kind, yalniz_oneri=yalniz_oneri)
+    row = var("aday_iz", temel)
+    try:
+        dep = json.loads(bytes(row[0]).decode("utf-8")) if row else None
+    except ValueError:
+        dep = None
+    if not isinstance(dep, dict) or not isinstance(dep.get("izler"), list):
+        return False
+    return var("aday", onbellek.anahtar(temel, sablon_parcasi(dep["izler"]))) is not None
+
+
+def _kural_adaylari(rules: MaskRules, metinler: list[str] | None) -> list[MaskRules]:
+    """Bu belge için eşdeğer kural takımları (tercih sırasıyla; ilki önbellekte yoksa işlenir): ad metni biliniyorsa
+    yalnız geçen adlar, sonra bütün liste (ad metni yokken bütün listeyle işlenmiş sonuç); bilinmiyorsa bütün liste."""
+    from dataclasses import replace
+    if not rules.names:
+        return [rules]
+    if metinler is None:
+        return [rules]
+    alt = replace(rules, names=gecen_adlar(rules.names, metinler))
+    return [alt] if sorted(alt.names) == sorted(rules.names) else [alt, rules]
+
+
+def onbellekli_maske(src: Path, dst: Path, rules: MaskRules, eng: str, model_text: str | None = None, *,
+                     kararlar: dict[str, dict] | None = None, sha: str | None = None, kind: str | None = None,
+                     temiz: Path | None = None, cikti_kaydet: bool = False, yalniz_oneri: bool = False) -> dict:
+    """`run.mask_cached` + kısayollar (yukarıda): etkisiz model metni anahtardan düşer, ad listesi belgede geçen
+    adlara süzülür; belge gerçekten işlenirse ad metni önbelleğe yazılır."""
+    from . import bolge as BG
+    from . import onbellek, suanki
+    from .run import mask_cached
+    sha = sha or onbellek.sha256_file(src)
+    ob = onbellek.aktif()
+    mt = model_text
+    if ob is not None and mt is not None and not yalniz_oneri and model_metni_etkisiz(mt, rules, kind, src, eng):
+        mt = None
+    sec, tkey = rules, None
+    if ob is not None:
+        mine = BG.dosya_kararlari(kararlar or {}, sha[:8])
+        tkey = ad_metni_anahtari(sha, rules, eng, mine, kind, yalniz_oneri)
+        adaylar = _kural_adaylari(rules, _ad_metni_oku(ob, tkey) if rules.names else None)
+        sec = next((r for r in adaylar if _onbellekte(ob, sha, r, eng, mine, mt, kind, yalniz_oneri)), adaylar[0])
+    once = suanki.metin_kaydi_baslat()
+    try:
+        rec = mask_cached(src, dst, sec, eng, model_text=mt, kararlar=kararlar, sha=sha, kind=kind, temiz=temiz,
+                          cikti_kaydet=cikti_kaydet, yalniz_oneri=yalniz_oneri)
+    finally:
+        metinler = suanki.metin_kaydi_bitir(once)
+    if ob is not None and not rec.get("onbellek") and rec.get("durum") != "hata":
+        _ad_metni_yaz(ob, tkey, metinler)
+    return rec
+
+
+def kaynak_sonucu_kisayollu(src: Path, sha: str, dst: Path, rules: MaskRules, eng: str, model_text: str | None, *,
+                            kararlar: dict[str, dict] | None = None, temiz: Path | None = None) -> dict | None:
+    """`run.kaynak_sonucu` (kanıt kipi kaynak kipin sonucunu yeniden kullanır); kaynak kip belgeyi ad listesinin
+    süzülmüş hâliyle anahtarladıysa aynı süzme burada da yapılır (kaynak belgenin ad metniyle)."""
+    from dataclasses import replace
+
+    from . import bolge as BG
+    from . import onbellek
+    from .run import kaynak_sonucu
+    r = kaynak_sonucu(src, sha, dst, rules, eng, model_text, kararlar=kararlar, temiz=temiz)
+    ob = onbellek.aktif()
+    if r is not None or not rules.names or ob is None:
+        return r
+    v = ob.get_json("kaynak_cikti", onbellek.anahtar("kaynak_cikti", sha))
+    g = v.get("girdi") if isinstance(v, dict) else None
+    if not isinstance(g, dict) or not isinstance(g.get("sha"), str):
+        return None
+    mine = BG.dosya_kararlari(kararlar or {}, g["sha"][:8])
+    metinler = _ad_metni_oku(ob, ad_metni_anahtari(g["sha"], rules, eng, mine, g.get("kind")))
+    if metinler is None:
+        return None
+    alt = replace(rules, names=gecen_adlar(rules.names, metinler))
+    if sorted(alt.names) == sorted(rules.names):
+        return None
+    return kaynak_sonucu(src, sha, dst, alt, eng, model_text, kararlar=kararlar, temiz=temiz)
 
 
 WS_RAPOR = "maskeleme-kaynak-raporu.json"      # -w verilince çalışma alanına da yazılır (inceleme komutları okur)

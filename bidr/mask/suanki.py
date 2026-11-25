@@ -20,6 +20,7 @@ ARALIK = 2.0                 # saniye: işçi durum dosyası ve ilerleme dosyas�
 
 _durum: dict = {}
 _son = 0.0
+_metinler: dict | None = None     # metin kaydı (`metin_kaydi_baslat`): bu süreçte taramaya giren metinler (sıralı küme)
 
 
 def _dizin() -> Path | None:
@@ -62,6 +63,30 @@ def sayfa(n: int, toplam: int, asama: str = "maskeleme") -> None:
     yeni = _durum.get("asama") != asama          # belgenin ilk sayfası ya da yeni aşama: hemen görünsün
     _durum.update(sayfa=int(n), toplam_sayfa=int(toplam), asama=asama)
     _yaz(zorla=yeni)
+
+
+def metin_kaydi_baslat() -> dict | None:
+    """Bu süreçte kişisel veri taramasına (`detect.detect`) giren metinleri kaydetmeye başla → önceki kayıt
+    (`metin_kaydi_bitir`e geri verilir). Kayıt, belgenin "ad metni"dir (`kaynak.ad_metni_*`): ad listesine sonradan
+    eklenen ad bu metinlerin hiçbirinde geçmiyorsa belgenin sonucu o addan bağımsızdır (yeniden işlenmez)."""
+    global _metinler
+    once, _metinler = _metinler, {}
+    return once
+
+
+def metin_kaydi_bitir(once: dict | None = None) -> list[str]:
+    """Kaydı bitir → kaydedilen metinler (ilk görülme sırasıyla); önceki kayıt (varsa) bunları da içerir."""
+    global _metinler
+    kayit, _metinler = _metinler or {}, once
+    if once is not None:
+        once.update(kayit)
+    return list(kayit)
+
+
+def metin(t: str) -> None:
+    """Taramaya giren metin (kayıt açıksa kaydedilir; değilse hiçbir şey yapmaz). Sonucu etkilemez."""
+    if _metinler is not None and t:
+        _metinler[t] = None
 
 
 def bitir() -> None:
