@@ -581,14 +581,17 @@ WS/.bidr-teslim.json             özet (teslim_tamam): report_sha, index_sha, ev
   olan klasör yalnız bidr teslim'in işaret dosyasını (`.bidr-teslim`) taşıyorsa silinip yeniden
   yazılır, değilse ve boş değilse hata.
 
-**Hat aşaması `kanit_maskele`** (D; isteğe bağlı; önkoşul `file`; `denetle`den sonra görünür).
-`checks.kanit_maskele_tamam` (`teslim.run.kanit_maskele_durum`): bölüm kişisel veri maskelemesi kullanmıyorsa ya da
-`baglanti` modunda paket yoksa atlandi; kullanıyorsa maskeli kanıt kopyası yok / eksik / kanıt kümesinden eskiyse
-`bidr maskele -w WS` (modelsiz, otomatik komut); güncelse bitti (bkz. docs/PRIVACY.md "Teslim").
+**Hat aşaması `kanit_maskele`** (D; isteğe bağlı, öneri; önkoşul `file`; `denetle`den sonra görünür).
+`checks.kanit_maskele_tamam` (`teslim.run.kanit_maskele_durum`): bölüm kişisel veri maskelemesini şimdi seçmemişse
+ya da `baglanti` modunda paket yoksa atlandi; seçmişse ve maskeleme raporu / maskeli klasör yok, raporda olmayan ya
+da maskelemeden sonra değişen kanıt varsa `bidr maskele -w WS` (modelsiz, otomatik komut); yeniden koşunun
+gidermeyeceği eksik (karar beklemeyen kaydın maskeli kopyası yok) uyarıyla bitti; güncelse bitti (bkz.
+docs/PRIVACY.md "Teslim").
 
-**Hat aşaması `teslim`** (D; isteğe bağlı; önkoşul `denetle`, `kanit_maskele`). `checks.teslim_tamam`
+**Hat aşaması `teslim`** (D; isteğe bağlı; önkoşul `denetle`). `checks.teslim_tamam`
 (`teslim.run.durum`): `baglanti` modunda paket yoksa atlandi; `dekanlik`'ta paket yoksa ya da rapor,
-kanıt dizini, kanıt klasörü, maskeleme raporu ya da teslim modu değiştiyse `bidr teslim`; `--taslak` paketi bitmiş
+kanıt dizini, kanıt klasörü, maskeleme raporu, maskeleme seçimi ya da teslim modu değiştiyse `bidr teslim`;
+maskeleme eksik / kapalıysa paket yine üretilir, `maskeleme_uyarisi` aşamanın uyarısıdır; `--taslak` paketi bitmiş
 sayılmaz; eksik paket KULLANICI gerekli; tamamsa bitti, özgün adresi bulunamayan web kanıtı uyarı.
 Kapı: biçim denetimi geçmeden komut çıkış 3 ile durur; `--taslak` kapıyı atlar, paketi TASLAK işaretler.
 

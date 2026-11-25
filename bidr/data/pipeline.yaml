@@ -499,7 +499,7 @@ asamalar:
     skill: bidr-rapor
 
   - id: kanit_maskele
-    ad: Kanıt maskelemesi (teslim paketinden önce; yalnız kişisel veri maskelemesi kullanan bölümde)
+    ad: Kanıt maskelemesi (teslim paketinden önce önerilir; yalnız kişisel veri maskelemesini seçen bölümde)
     uygulandi: true
     istege_bagli: true
     katman: D
@@ -510,12 +510,13 @@ asamalar:
     sart:
       denetim: kanit_maskele_tamam
       metin: >-
-        Bölüm maskelemeyi kullanıyorsa (maskeleme-raporu.json, maskeleme-kaynak-raporu.json, config.yaml
-        privacy.maskeleme ya da kaynak klasör bölüm kaynak maskelemesinin kopyası): maskeleme-raporu.json ve
-        evidence-maskeli/ var, kanıt klasöründeki her dosya raporda, hiçbiri maskelemeden sonra değişmemiş ve
-        tamam/elle maskelenmiş her kaydın maskeli kopyası yerinde. Değilse bidr maskele (kanıt modu; model yok,
-        otomatik) çalışır; bidr teslim bu şart sağlanmadan durur (--taslak da). Maskeleme kullanılmıyorsa ya da
-        teslim modu baglanti iken paket yoksa atlanır. Bölge kararları teslim politikasınındır, bu şartın değil.
+        Bölüm şimdi maskelemeyi seçmişse (config.yaml privacy.maskeleme ya da privacy.mask_before_model; ya da
+        kaynak klasör bölüm kaynak maskelemesinin kopyası; çalışma alanındaki eski rapor dosyaları seçim sayılmaz):
+        maskeleme-raporu.json ve evidence-maskeli/ var, kanıt klasöründeki her dosya raporda, hiçbiri maskelemeden
+        sonra değişmemiş. Değilse bidr maskele (kanıt modu; model yok, otomatik) önerilir. Yeniden koşunun
+        gidermeyeceği eksik (karar beklemeyen kaydın maskeli kopyası yok) uyarıdır. Teslimin önkoşulu değildir:
+        bidr teslim maskeleme eksik ya da kapalı olsa da paketi üretir ve uyarır. Maskeleme seçili değilse ya da
+        teslim modu baglanti iken paket yoksa atlanır. Bölge kararları teslim politikasınındır.
     onay: yok
     skill: bidr-rapor
 
@@ -524,7 +525,7 @@ asamalar:
     uygulandi: true
     istege_bagli: true
     katman: D
-    onkosul: [denetle, kanit_maskele]
+    onkosul: [denetle]
     girdi: [report.docx, evidence/, evidence-index.csv, config.yaml rapor.teslim, evidence-maskeli/]
     cikti: [teslim/ (report.docx, kanitlar/, kanit-dizini.xlsx, kanit-dizini.csv), teslim.zip, .bidr-teslim.json]
     komut: ["bidr teslim -w {ws}"]

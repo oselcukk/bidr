@@ -6,8 +6,8 @@ PDF kopyaları ve kanıt dizini (bidr/teslim/run.py). Maskeleme kararı bekleyen
 maskeli hâliyle (maskelenemediyse özgünüyle) girer, konsolda ve MASKELEME-UYARI.txt'de listelenir (çıkış
 kodunu değiştirmez). Çıkış kodu: 0 paket eksiksiz; 1 paket eksik ya da (`--kararsizlari-disla` ile)
 kararı bekleyen kanıt pakete girmedi (EKSIK.txt; listelenir); 2 girdi hatası ya da PDF aracı yok (hiçbir şey yazılmaz);
-3 kapı (biçim denetimi geçmedi; `--taslak` ile taslak paket üretilebilir; ya da bölüm kişisel veri maskelemesi
-kullanıyor ama maskeli kanıt kopyası yok / eksik / kanıtlardan eski: önce `bidr maskele`, `--taslak` bunu aşmaz)."""
+3 kapı (biçim denetimi geçmedi; `--taslak` ile taslak paket üretilebilir). Kişisel veri maskelemesi teslimi
+durdurmaz: eksik / eski ya da kapalıysa paket yine üretilir, uyarı konsolda ve paketteki MASKELEME-UYARI.txt'de."""
 from __future__ import annotations
 
 import sys
@@ -15,9 +15,9 @@ from pathlib import Path
 
 
 def _run(args) -> int:
-    from bidr.pipeline.gate import GATE_EXIT, check_gate
+    from bidr.pipeline.gate import check_gate
 
-    from .run import MaskeKapisi, TeslimError, build, ozet_json
+    from .run import TeslimError, build, ozet_json
     from .web import PdfAraciYok
 
     ws = Path(args.workspace).expanduser().resolve()
@@ -27,19 +27,21 @@ def _run(args) -> int:
     try:
         res = build(ws, Path(args.out) if args.out else None, docx_path=Path(args.docx) if args.docx else None,
                     tarih=args.tarih, zip_yap=not args.zip_yok, arac=args.pdf_araci, canli=args.canli,
-                    taslak=args.taslak, kararsizlari_disla=args.kararsizlari_disla)
+                    taslak=args.taslak, kararsizlari_disla=args.kararsizlari_disla,
+                    oldugu_gibi=True if args.oldugu_gibi else None)
     except PdfAraciYok as e:
         print(f"HATA {e}", file=sys.stderr)
         return 2
-    except MaskeKapisi as e:
-        print(f"HATA kapı: {e}", file=sys.stderr)
-        return GATE_EXIT
     except (TeslimError, ValueError) as e:
         print(f"HATA {e}", file=sys.stderr)
         return 2
     for u in res.uyarilar:
         print(f"uyarı: {u}")
     print(ozet_json(res))
+    if res.maskeleme_uyarisi:
+        print(f"UYARI kişisel veri: {res.maskeleme_uyarisi}", file=sys.stderr)
+        for x in res.maskesiz:
+            print(f"  - {x['olcut']} [{x['kanit_no']}] {x['dosya']} (MASKELENMEDİ)", file=sys.stderr)
     pakette = [x for x in res.karar_bekleyen if x["pakette"]]
     if pakette:
         from .run import KARAR_BASLIK, MASKE_OZGUN
@@ -93,4 +95,8 @@ def register(sub):
     p.add_argument("--kararsizlari-disla", action="store_true",
                    help="maskeleme kararı bekleyen (ya da maskelenemeyen) kanıtı pakete alma (eski davranış; "
                         "varsayılan: o anki maskeli hâliyle girer ve listelenir)")
+    p.add_argument("--oldugu-gibi", action="store_true",
+                   help="olduğu gibi devam: maskeleme kararı bekleyen kanıtlar incelenmeden o anki (kendiliğinden "
+                        "maskelenmiş) hâlleriyle girer, 'incelenmemiş öneri vardı, olduğu gibi eklendi' diye listelenir "
+                        "(panel bölümün seçimini <ws>/maskeleme-oldugu-gibi.json'a yazar)")
     p.set_defaults(func=_run)

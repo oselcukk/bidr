@@ -257,13 +257,24 @@ kanıt paketine otomatik girmez" kuralının yerine): maskeleme kararı bekleyen
 Kararı verilmemiş öneri bölgesi olan ya da maskelemesi eksik kalan (`basarisiz`, `taranamadi`) kanıt o anki
 maskeli hâliyle girer (kesin kapatmalar uygulanmış, kararsız öneriler açık; `maskeleme-bekleyen/` çerçevesiz
 kopyası), kanıt dizininde Maskeleme `karar bekliyor`. Maskelenemeyen (`hata`, `desteklenmiyor`) kanıt ÖZGÜN
-hâliyle girer, Maskeleme `maskelenmedi`. **Kapı** (hat aşaması `kanit_maskele`, `teslim`in önkoşulu;
-`teslim.run.maske_eksigi`): bölüm maskelemeyi kullanıyorsa (`maskeleme-raporu.json`,
-`maskeleme-kaynak-raporu.json`, `config.yaml` `privacy.maskeleme`/`privacy.mask_before_model` ya da kaynak klasörün
-bölüm kaynak maskelemesinin kopyası olması) maskeleme raporu ya da `evidence-maskeli/` yoksa, bir kanıt raporda
-yoksa, kanıt kümesi maskelemeden sonra değiştiyse ya da `tamam`/`elle_maskelendi` kaydın maskeli kopyası yoksa
-`bidr teslim` (`--taslak` dahil) hiçbir şey yazmadan çıkış 3 ile durur ve önce `bidr maskele` (kanıt modu) ister;
-özgün dosya bu yoldan pakete girmez. Maskeleme kullanılmayan çalışma alanında kapı yoktur.
+hâliyle girer, Maskeleme `maskelenmedi`. Kararı bekleyen kanıt için aşırı kapatma ölçümü eşiğini aşan (`tamam` +
+`asiri_kapatma_bekliyor`) kayıt da sayılır (`bidr.mask.run.bekliyor`). **Kapı yok, uyarı var** (karar 2026-11-25;
+`teslim.run.maskeleme_secimi`, `maske_eksigi`): maskelemenin açık olup olmadığını bölümün ŞİMDİKİ seçimi belirler:
+`config.yaml` `privacy.maskeleme` (açıkça `false` ise kapalı; her şeyden önce gelir), `privacy.mask_before_model`
+ya da kaynak klasörün bölüm kaynak maskelemesinin kopyası olması ya da kanıt maskelemesinin (`bidr maskele -w`)
+bugünkü kanıt kümesi üzerinde koşturulmuş olması (rapor kanıtlardan yeni). Kanıtlardan eski `maskeleme-raporu.json`
+ve `maskeleme-kaynak-raporu.json` geçmiş izdir, seçim sayılmaz. Maskeleme açıkken maskeleme raporu ya da
+`evidence-maskeli/` yoksa, bir kanıt raporda yoksa, kanıt kümesi maskelemeden sonra değiştiyse ya da kaydın maskeli
+kopyası yoksa `bidr teslim` (`--taslak` dahil) yine paketi üretir: o kanıtlar ÖZGÜN hâliyle girer ve adıyla
+listelenir (konsol, `MASKELEME-UYARI.txt`, `.bidr-teslim.json` `maskeleme_uyarisi`/`maskesiz`/`karar_bekleyen`).
+Maskeleme kapalıyken (ya da seçilmemişken) karar bekleyen kuralları uygulanmaz; paket "kanıtlar maskelenmeden
+paketlendi, kişisel veri içerebilir" uyarısıyla üretilir. Açıkça kapalıysa maskeleme çıktısı kullanılmaz; seçim
+yoksa ve kanıt maskeleme raporu varsa (panelin yalnız öneri kipi) maskeli kopyalar kullanılır. Hat aşaması
+`kanit_maskele` yalnız maskeleme açıkken görünür ve teslimin önkoşulu değildir.
+**Olduğu gibi devam** (`bidr teslim --oldugu-gibi` ya da bölümün seçimi `<ws>/maskeleme-oldugu-gibi.json`
+{kim, zaman}; panel işleyicisi yazar/siler): karar bekleyen kanıtlar incelenmeden o anki (kendiliğinden
+maskelenmiş) hâlleriyle girer, `--kararsizlari-disla` uygulanmaz; `MASKELEME-UYARI.txt` ve manifest "N dosyada
+incelenmemiş öneri vardı, olduğu gibi eklendi" diye listeler. Seçim eklenince/kalkınca paket eskir (yeniden üretilir).
 Hepsi teslim özetinde ve `.bidr-teslim.json`'da `karar_bekleyen` (ölçüt, kanıt no, kanıt, paketteki dosya,
 maskeleme, neden) ve `karar_bekleyen_uyarisi`, pakette `MASKELEME-UYARI.txt` ("maskeleme kararı bekleyen
 belgeler") ve konsolda uyarıyla listelenir; paket eksik sayılmaz, hat aşaması uyarıyla biter. Eski davranış

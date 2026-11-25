@@ -21,14 +21,16 @@ Kişisel veri maskeleme (`bidr maskele` çıktısı; yalnız okunur): `maskeleme
 HTML'den basılır; eski biçimden çevrilen kanıtın maskeli kopyası yeni uzantısıyla). Politika
 (2026-11-22, ikinci karar; "maskelenecek yeri çözülmemiş dosya pakete girmez" kuralının yerine):
 maskeleme kararı bekleyen kanıt paketten DIŞLANMAZ:
-  - kararı verilmemiş öneri bölgesi olan ya da maskelemesi eksik kalan (`basarisiz`, `taranamadi`)
-    kanıt o anki maskeli hâliyle girer: kesin kapatmalar uygulanmış, kararsız öneriler açık
+  - kararı verilmemiş öneri bölgesi olan, aşırı kapatma ölçümü eşiği aşan (`asiri_kapatma_bekliyor`) ya da
+    maskelemesi eksik kalan (`basarisiz`, `taranamadi`) kanıt (`bidr.mask.run.bekliyor`) o anki maskeli hâliyle girer: kesin kapatmalar uygulanmış, kararsız öneriler açık
     (`maskeleme-bekleyen/` çerçevesiz kopya, yoksa `maskeleme-basarisiz/` kopyası); Maskeleme
     `karar bekliyor`;
   - maskelenemeyen (`hata`, `desteklenmiyor`) kanıt ÖZGÜN hâliyle girer; Maskeleme `maskelenmedi`.
-Kapı (`maske_eksigi`, hat aşaması `kanit_maskele`): bölüm maskelemeyi kullanıyorsa maskeleme raporunda
-olmayan, maskelemeden sonra değişen ya da maskeli kopyası bulunamayan kanıt pakete özgün hâliyle
-GİRMEZ: `bidr teslim` (`--taslak` dahil) hiçbir şey yazmadan durur ve önce `bidr maskele` ister.
+Maskeleme teslimi durdurmaz (karar 2026-11-25; bkz. `maskeleme_secimi`): bölüm maskelemeyi seçmişse
+maskeleme raporunda olmayan, maskelemeden sonra değişen ya da maskeli kopyası bulunamayan kanıt pakete ÖZGÜN
+hâliyle girer ve adıyla listelenir; maskeleme hiç yapılmadıysa ya da kapalıysa paket yine üretilir ve "kanıtlar
+maskelenmeden paketlendi, kişisel veri içerebilir" uyarısı konsola, `MASKELEME-UYARI.txt`'ye ve manifeste
+(`maskeleme_uyarisi`) yazılır. Aşağıdaki karar bekleyen kuralları yalnız maskeleme açıkken uygulanır.
 Bunlar özetin `karar_bekleyen` listesinde (makinece okunur: ölçüt, kanıt no, kanıt, paketteki dosya,
 maskeleme, neden), paketteki `MASKELEME-UYARI.txt`'de ("maskeleme kararı bekleyen belgeler") ve
 konsolda uyarıyla listelenir; paket eksik sayılmaz. `kararsizlari_disla=True`
@@ -80,6 +82,11 @@ KARAR_UYARI = "maskeleme kararı bekleyen belge: {n} (pakette, listelendi)"
 KARAR_BASLIK = "MASKELEME KARARI BEKLEYEN BELGELER: {n}"
 KONTROL_UYARI = "maskelenecek yeri var, kontrol bekliyor: {n} dosya"       # --kararsizlari-disla
 KONTROL_BASLIK = "MASKELENECEK YERİ VAR, KONTROL BEKLİYOR: {n} DOSYA"
+# "Olduğu gibi devam" (bölümün seçimi; panel işleyicisi yazar, CLI: `bidr teslim --oldugu-gibi`): karar bekleyen kanıt
+# incelenmeden o anki (kendiliğinden maskelenmiş) hâliyle girer, `--kararsizlari-disla` uygulanmaz, liste bu başlıkla
+OLDUGU_GIBI = "maskeleme-oldugu-gibi.json"      # <ws>/: {"kim": …, "zaman": …}
+OLDUGU_GIBI_UYARI = "{n} dosyada incelenmemiş öneri vardı, olduğu gibi eklendi"
+OLDUGU_GIBI_BASLIK = "İNCELENMEMİŞ ÖNERİSİ OLAN DOSYALAR (OLDUĞU GİBİ EKLENDİ): {n}"
 RE_DOSYA = re.compile(r"^\[(\d+)-OD([1-5])\]\. (.+)\.([A-Za-z0-9]+)$")
 RE_OLCUT = re.compile(r"^[A-D]\.\d+\.\d+$")
 
@@ -104,6 +111,11 @@ class Sonuc:
     # maskeleme kararı bekleyen: {olcut, kanit_no, kanit, dosya (paketteki; dışlandıysa ""), maskeleme, neden, pakette}
     karar_bekleyen: list[dict] = field(default_factory=list)
     kararsizlari_disla: bool = False
+    maskeleme_acik: bool | None = None        # bölümün şimdiki seçimi (`maskeleme_secimi`)
+    maskeleme_eksigi: str | None = None       # açıkken teslime hazır olmayış nedeni (`maske_eksigi`)
+    maskesiz: list[dict] = field(default_factory=list)   # açıkken maskeli kopyası olmadan (özgün) girenler
+    maskeleme_uyarisi: str | None = None      # kısa uyarı cümlesi (panel Durum / indirme yanı)
+    oldugu_gibi: dict | None = None           # "olduğu gibi devam" seçimi ({kim, zaman}); yoksa None
 
     @property
     def kontrol_bekliyor(self) -> list[dict]:
@@ -122,9 +134,13 @@ class Sonuc:
                                  for d in (MASKE_TAMAM, MASKE_ELLE_YUKLENDI, MASKE_KARAR, MASKE_OZGUN, MASKE_DISLANDI,
                                            MASKE_YOK)}},
                 "elle_bakilacak": self.elle_bakilacak, "karar_bekleyen": self.karar_bekleyen,
-                "karar_bekleyen_uyarisi": KARAR_UYARI.format(n=len(self.karar_bekleyen)) if self.karar_bekleyen else None,
+                "karar_bekleyen_uyarisi": ((OLDUGU_GIBI_UYARI if self.oldugu_gibi else KARAR_UYARI)
+                                           .format(n=len(self.karar_bekleyen)) if self.karar_bekleyen else None),
+                "oldugu_gibi": self.oldugu_gibi,
                 "kararsizlari_disla": self.kararsizlari_disla, "kontrol_bekliyor": self.kontrol_bekliyor,
-                "kontrol_uyarisi": KONTROL_UYARI.format(n=len(self.kontrol_bekliyor)) if self.kontrol_bekliyor else None}
+                "kontrol_uyarisi": KONTROL_UYARI.format(n=len(self.kontrol_bekliyor)) if self.kontrol_bekliyor else None,
+                "maskeleme_acik": self.maskeleme_acik, "maskeleme_eksigi": self.maskeleme_eksigi,
+                "maskesiz": self.maskesiz, "maskeleme_uyarisi": self.maskeleme_uyarisi}
 
 
 def sha(p: Path) -> str:
@@ -219,10 +235,11 @@ class Maske:
         r = self.kayit.get(unicodedata.normalize("NFC", rel))
         if r is None:
             return f, MASKE_OZGUN, "maskeleme raporunda yok (maskelemeden sonra dosyalandı mı? bidr maskele yeniden)", True
+        from bidr.mask.run import bekliyor
         d = r.get("durum")
         n = int(r.get("onay_bekleyen") or 0)
         eski = f.stat().st_mtime > self.zaman
-        if d in ("tamam", "elle_maskelendi") and not (d == "tamam" and n):
+        if d in ("tamam", "elle_maskelendi") and not bekliyor(r):
             m = self.klasor / (r.get("maskeli") or rel)
             if not m.is_file():
                 return f, MASKE_OZGUN, "maskeli kopya bulunamadı (bidr maskele yeniden)", True
@@ -230,6 +247,8 @@ class Maske:
                 return f, MASKE_OZGUN, "maskeli kopya eski (kanıt maskelemeden sonra yeniden dosyalandı; bidr maskele yeniden)", True
             return m, (MASKE_ELLE_YUKLENDI if d == "elle_maskelendi" else MASKE_TAMAM), "", False
         neden = (f"maskeleme {d or 'bilinmiyor'}" + (f", kararı verilmemiş öneri bölgesi {n}" if n else "")
+                 + (", aşırı kapatma ölçümü eşiği aştı (insan kararı bekliyor)" if r.get("asiri_kapatma_bekliyor")
+                    else "")
                  + f": {r.get('neden') or ''}").rstrip(": ")[:400]
         if eski:
             return f, MASKE_OZGUN, "maskeli kopya eski (kanıt maskelemeden sonra yeniden dosyalandı; bidr maskele "\
@@ -244,86 +263,131 @@ class Maske:
         return m, MASKE_KARAR, neden, True
 
 
-# -- kanıt maskelemesi kapısı ---------------------------------------------------------------------
-# Bölüm maskelemeyi kullanıyorsa (kanıt modu raporu, ön işlemenin kaynak raporu, config.yaml
-# `privacy.maskeleme` / `privacy.mask_before_model` ya da kaynağın bidr'in maskeli kopyası olması) teslim
-# paketi maskeli kopyalardan kurulur: maskeli kopya yok, eksik ya da kanıt kümesinden eskiyse `bidr teslim`
-# durur (panel teslimden önce maskelemeyi zaten çağırır; CLI'da `bidr next` aşamaları arasında yoktu).
-# Aynı denetim hattın `kanit_maskele` aşamasıdır (`teslim`in önkoşulu). Maskeleme kullanmayan çalışma alanında
-# davranış değişmez (`yapılmadı`).
+# -- kanıt maskelemesi: bölümün seçimi ve teslim uyarısı -------------------------------------------
+# Teslim maskeleme yüzünden DURMAZ (karar 2026-11-25): maskeleme eksik/eski ya da kapalı olsa da paket üretilir,
+# durum konsolda, `MASKELEME-UYARI.txt`'de ve manifestte (`maskeleme_uyarisi`) açıkça yazılır. Maskelemenin açık
+# olup olmadığını bölümün ŞİMDİKİ seçimi belirler (`maskeleme_secimi`): config.yaml `privacy.maskeleme` (true/false,
+# açıkça yazılmışsa her şeyden önce gelir), `privacy.mask_before_model` ya da kaynağın bidr'in maskeli kopyası olması
+# (panel: bölüm model öncesi maskelemeyi seçti) ya da kanıt maskelemesinin bugünkü kanıt kümesi üzerinde koşturulmuş
+# olması (`bidr maskele -w`; rapor kanıtlardan yeni). Kanıtlardan eski rapor ve kaynak raporu geçmiş izdir, seçim sayılmaz.
+# Açıkken: maskeli kopya varsa o kullanılır; yoksa/eskiyse özgün dosya girer ve adıyla listelenir; karar bekleyen
+# kanıt politika 2026-11-22 (ikinci karar) ile ele alınır. Kapalıyken bu kurallar uygulanmaz: açıkça kapatılmışsa
+# (`privacy.maskeleme: false`) özgün dosyalar girer; seçim yoksa ve kanıt maskeleme raporu varsa (ör. panelin yalnız
+# öneri kipi: yalnız bölümün "Kapat" dediği yerler kapalı) maskeli kopyalar kullanılır. Hattın `kanit_maskele`
+# aşaması yalnız maskeleme açıkken görünür ve teslimin önkoşulu değildir (öneri).
 MASKE_KAYNAK_RAPOR = "maskeleme-kaynak-raporu.json"     # bidr/mask/kaynak.py WS_RAPOR
 MASKE_ISARET = ".bidr-maskeleme.json"                    # bidr/mask/run.py MARKER
 MASKE_KOMUT = "bidr maskele -w {ws}"
-MASKE_KAPI = "önce `bidr maskele -w {ws}` (kanıt modu) çalıştırın"
+MASKESIZ_NOT = "kanıtlar maskelenmeden paketlendi, kişisel veri içerebilir"
+MASKESIZ_BASLIK = "MASKELİ KOPYASI OLMAYAN KANITLAR (ÖZGÜN HÂLİYLE PAKETTE): {n}"
+# `_maske_eksigi` türleri: bidr maskele yeniden koşunca giderilenler (hat aşaması bunlarda komut önerir)
+EKSIK_YENIDEN = frozenset({"rapor_yok", "klasor_yok", "raporda_yok", "eski"})
 
 
-class MaskeKapisi(TeslimError):
-    """Maskeleme kullanılan bölümde maskeli kanıt kopyası yok / eksik / eski."""
-
-
-def maskeleme_kullaniliyor(ws: Path) -> str | None:
-    """Bölüm kişisel veri maskelemesini kullanıyor mu → işaretin kısa açıklaması (kullanmıyorsa None)."""
+def maskeleme_secimi(ws: Path) -> tuple[bool | None, str]:
+    """Bölümün şimdiki kişisel veri maskelemesi seçimi → (True: açık | False: açıkça kapalı | None: seçim yok,
+    kapalı sayılır; kısa açıklama). Geçmiş izler (çalışma alanındaki rapor dosyaları) seçim değildir."""
     ws = Path(ws)
-    if (ws / MASKE_RAPOR).exists():
-        return f"{MASKE_RAPOR} var"
-    if (ws / MASKE_KAYNAK_RAPOR).exists():
-        return f"bölüm kaynak maskelemesi kullanılmış ({MASKE_KAYNAK_RAPOR})"
     try:
         from bidr.mask.detect import read_ws_config
         cfg = read_ws_config(ws)
-    except Exception:  # noqa: BLE001 — okunamayan yapılandırma işaret sayılmaz (başka denetimler yakalar)
+    except Exception:  # noqa: BLE001 — okunamayan yapılandırma seçim sayılmaz (başka denetimler yakalar)
         cfg = {}
     priv = cfg.get("privacy") if isinstance(cfg.get("privacy"), dict) else {}
-    if priv.get("maskeleme"):
-        return "config.yaml privacy.maskeleme"
+    if "maskeleme" in priv:
+        v = priv["maskeleme"]
+        kapali = v is False or v is None or (isinstance(v, str) and v.strip().lower() in
+                                               ("false", "hayir", "hayır", "kapali", "kapalı", "yok", "0"))
+        return (False, "config.yaml privacy.maskeleme: kapalı") if kapali else (True, "config.yaml privacy.maskeleme")
     if priv.get("mask_before_model"):
-        return "config.yaml privacy.mask_before_model"
+        return True, "config.yaml privacy.mask_before_model"
     try:
         k = _kaynak(ws)
     except Exception:  # noqa: BLE001
         k = None
     if k is not None and ((k / MASKE_ISARET).exists() or (k.parent / (k.name + ".maskeleme-raporu.json")).exists()):
-        return f"kaynak klasör bölüm kaynak maskelemesinin kopyası ({k.name})"
-    return None
+        return True, f"kaynak klasör bölüm kaynak maskelemesinin kopyası ({k.name})"
+    if _rapor_guncel(ws):
+        return True, f"kanıt maskelemesi bugünkü kanıt kümesinde koşturulmuş ({MASKE_RAPOR})"
+    return None, ""
 
 
-def maske_eksigi(ws: Path) -> str | None:
-    """Maskeleme kullanılan bölümde kanıt maskelemesi teslime hazır değilse nedeni; hazırsa ya da maskeleme
-    kullanılmıyorsa None. Hazır: `maskeleme-raporu.json` ve maskeli klasör var, kanıt klasöründeki her dosya
-    raporda, hiçbiri rapordan sonra değişmemiş, `tamam`/`elle_maskelendi` kayıtlarının maskeli kopyası yerinde.
-    Karar bekleyen bölgeler / maskelenemeyen dosyalar bu kapının değil teslim politikasının işidir."""
+def _rapor_guncel(ws: Path) -> bool:
+    """Kanıt maskeleme raporu bugünkü kanıt kümesinden yeni mi (kanıtlar maskelemeden sonra yeniden dosyalanmadı):
+    `bidr maskele -w` bu kanıtlar üzerinde koşturulmuş, yani şimdiki bir eylemdir. Kanıtlardan eski rapor geçmiş izdir,
+    seçim sayılmaz."""
+    rp, ev = ws / MASKE_RAPOR, ws / "evidence"
+    if not rp.is_file() or not ev.is_dir():
+        return False
+    t = rp.stat().st_mtime
+    isa = ev / ".bidr-evidence.json"
+    if isa.exists() and isa.stat().st_mtime > t:
+        return False
+    return not any(f.is_file() and f.stat().st_mtime > t for f in ev.rglob("*")
+                   if not any(x.startswith(".") for x in f.relative_to(ev).parts))
+
+
+def maskeleme_kullaniliyor(ws: Path) -> str | None:
+    """Bölüm şimdi kişisel veri maskelemesini seçmiş mi → seçimin kısa açıklaması (seçmemişse None)."""
+    acik, neden = maskeleme_secimi(ws)
+    return neden if acik else None
+
+
+def _maske_eksigi(ws: Path) -> tuple[str | None, str | None]:
+    """Maskeleme açıkken kanıt maskelemesinin teslime hazır olmayışı → (tür, açıklama); hazırsa ya da maskeleme
+    kapalıysa (None, None). Türler: `rapor_yok`, `klasor_yok`, `raporda_yok`, `eski` (bidr maskele yeniden koşunca
+    giderilir: `EKSIK_YENIDEN`) ve `kopya_yok` (karar beklemeyen tamam/elle kaydın maskeli kopyası yok). Karar
+    bekleyen kayıtlar (`bidr.mask.run.bekliyor`: kararı verilmemiş öneri bölgesi, aşırı kapatma ölçümü eşiği,
+    maskelenemeyen dosya) eksik değildir; teslim politikası onları listeler."""
     ws = Path(ws)
     isaret = maskeleme_kullaniliyor(ws)
     if isaret is None:
-        return None
+        return None, None
     ev = ws / "evidence"
     if not ev.is_dir():
-        return None                                  # kanıt yok: teslim zaten "önce bidr file" der
-    on = f"maskeleme kullanılıyor ({isaret}) ama "
+        return None, None                            # kanıt yok: teslim zaten "önce bidr file" der
+    on = f"maskeleme açık ({isaret}) ama "
     maske = Maske(ws, ev)
     if not maske.var:
-        return on + f"kanıt maskelemesi yapılmamış ({MASKE_RAPOR} yok ya da okunamıyor)"
+        return "rapor_yok", on + f"kanıt maskelemesi yapılmamış ({MASKE_RAPOR} yok ya da okunamıyor)"
     if not maske.klasor.is_dir():
-        return on + f"maskeli kanıt klasörü yok ({maske.klasor.name}/)"
+        return "klasor_yok", on + f"maskeli kanıt klasörü yok ({maske.klasor.name}/)"
     dosyalar = [f for f in ev.rglob("*") if f.is_file()
                 and not any(x.startswith(".") for x in f.relative_to(ev).parts)]
     rel = {f: unicodedata.normalize("NFC", f.relative_to(ev).as_posix()) for f in dosyalar}
     yok = sorted(r for r in rel.values() if r not in maske.kayit)
     if yok:
-        return on + f"{len(yok)} kanıt maskeleme raporunda yok (maskelemeden sonra dosyalandı): " \
-                    + ", ".join(yok[:3]) + (" …" if len(yok) > 3 else "")
+        return "raporda_yok", on + f"{len(yok)} kanıt maskeleme raporunda yok (maskelemeden sonra dosyalandı): " \
+            + ", ".join(yok[:3]) + (" …" if len(yok) > 3 else "")
     isa = ev / ".bidr-evidence.json"
     eski = sorted(rel[f] for f in dosyalar if f.stat().st_mtime > maske.zaman)
     if eski or (isa.exists() and isa.stat().st_mtime > maske.zaman):
-        return on + "maskeli kopyalar kanıt kümesinden eski (kanıtlar maskelemeden sonra yeniden dosyalandı)" \
-                    + (": " + ", ".join(eski[:3]) + (" …" if len(eski) > 3 else "") if eski else "")
+        return "eski", on + "maskeli kopyalar kanıt kümesinden eski (kanıtlar maskelemeden sonra yeniden dosyalandı)" \
+            + (": " + ", ".join(eski[:3]) + (" …" if len(eski) > 3 else "") if eski else "")
+    from bidr.mask.run import bekliyor         # karar bekleyen (öneri / aşırı kapatma): teslim politikası
     eksik = sorted(r for r in rel.values() if (k := maske.kayit[r]).get("durum") in ("tamam", "elle_maskelendi")
-                   and not (k.get("durum") == "tamam" and int(k.get("onay_bekleyen") or 0))
+                   and not bekliyor(k)
                    and not (maske.klasor / (k.get("maskeli") or r)).is_file())
     if eksik:
-        return on + f"{len(eksik)} kanıtın maskeli kopyası {maske.klasor.name}/ içinde yok: " \
-                    + ", ".join(eksik[:3]) + (" …" if len(eksik) > 3 else "")
-    return None
+        return "kopya_yok", on + f"{len(eksik)} kanıtın maskeli kopyası {maske.klasor.name}/ içinde yok: " \
+            + ", ".join(eksik[:3]) + (" …" if len(eksik) > 3 else "")
+    return None, None
+
+
+def maske_eksigi(ws: Path) -> str | None:
+    """`_maske_eksigi`nin açıklaması (hazırsa ya da maskeleme kapalıysa None). Teslimi durdurmaz; uyarıdır."""
+    return _maske_eksigi(ws)[1]
+
+
+def oldugu_gibi_secimi(ws: Path) -> dict | None:
+    """`<ws>/maskeleme-oldugu-gibi.json` → {kim, zaman} (bölüm "olduğu gibi devam" dedi); yoksa/okunamazsa None."""
+    try:
+        j = json.loads((Path(ws) / OLDUGU_GIBI).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(j, dict):
+        return None
+    return {"kim": str(j.get("kim") or ""), "zaman": str(j.get("zaman") or "")}
 
 
 def _tarih(s: str | None) -> dt.date:
@@ -374,10 +438,13 @@ def paket_adi(ws: Path) -> str:
 
 def build(ws: Path, out: Path | None = None, *, docx_path: Path | None = None, tarih: str | None = None,
           zip_yap: bool = True, arac: str | object = "otomatik", canli: bool = False,
-          taslak: bool = False, kararsizlari_disla: bool = False) -> Sonuc:
+          taslak: bool = False, kararsizlari_disla: bool = False, oldugu_gibi: bool | dict | None = None) -> Sonuc:
     """Teslim paketini yazar. `arac`: "otomatik" | "chrome" | "weasyprint" ya da `bas(html, pdf, ag=)`
     yöntemi olan nesne. Web kanıtı varken araç yoksa PdfAraciYok (hiçbir şey yazılmadan).
-    `kararsizlari_disla`: maskeleme kararı bekleyen kanıt pakete girmez (eski davranış)."""
+    `kararsizlari_disla`: maskeleme kararı bekleyen kanıt pakete girmez (eski davranış). `oldugu_gibi`: "olduğu gibi
+    devam" (None: `<ws>/maskeleme-oldugu-gibi.json`'a bakılır; True/dict: seçili): karar bekleyen kanıt incelenmeden o
+    anki hâliyle girer (`kararsizlari_disla` uygulanmaz) ve "incelenmemiş öneri vardı, olduğu gibi eklendi" diye
+    listelenir."""
     import docx
 
     from bidr.check.run import kanit_listeleri
@@ -391,8 +458,8 @@ def build(ws: Path, out: Path | None = None, *, docx_path: Path | None = None, t
     if not ev.is_dir():
         raise TeslimError(f"kanıt klasörü yok: {ev} (önce bidr file)")
     gun = _tarih(tarih)
-    if (e := maske_eksigi(ws)) is not None:          # taslak paket de maskesiz kurulmaz
-        raise MaskeKapisi(f"{e} — {MASKE_KAPI.format(ws=ws)}, sonra bidr teslim")
+    acik, secim_neden = maskeleme_secimi(ws)
+    eksik_maske = maske_eksigi(ws) if acik else None      # uyarı: teslim durmaz
     out = Path(out).expanduser().resolve() if out else ws / paket_adi(ws)
 
     listeler = kanit_listeleri(docx.Document(str(rep)))
@@ -400,7 +467,17 @@ def build(ws: Path, out: Path | None = None, *, docx_path: Path | None = None, t
     dizin = _dizin(index)
     res = Sonuc(str(out), None, gun.isoformat(), mod, taslak=taslak, kararsizlari_disla=kararsizlari_disla)
     maske = Maske(ws, ev)
+    if acik is False:                    # bölüm maskelemeyi açıkça kapattı: maskeleme çıktısı kullanılmaz
+        maske.var = False
     res.maskeleme = maske.var
+    res.maskeleme_acik = bool(acik)
+    res.maskeleme_eksigi = eksik_maske
+    if oldugu_gibi is None:
+        oldugu_gibi = oldugu_gibi_secimi(ws)
+    if oldugu_gibi:
+        res.oldugu_gibi = oldugu_gibi if isinstance(oldugu_gibi, dict) else {"kim": "", "zaman": dt.datetime.now()
+                                                                            .astimezone().isoformat(timespec="seconds")}
+        kararsizlari_disla = res.kararsizlari_disla = False
     if not any(listeler.values()):
         res.eksik.append("raporda tanınan kanıt listesi satırı yok ('[1-OD3]. Ad' ya da '1_OD3: Ad')")
 
@@ -440,6 +517,8 @@ def build(ws: Path, out: Path | None = None, *, docx_path: Path | None = None, t
         # paketteki adlar NFC (Windows'ta ayrışık Türkçe karakter bozuk görünür)
         rel = Path(unicodedata.normalize("NFC", f.relative_to(ev).as_posix()))
         kaynak, row["maskeleme"], elle, bekleyen = maske.sec(f)
+        if not acik:                    # karar bekleyen kuralları yalnız maskeleme açıkken
+            bekleyen = False
         kanit = rel.as_posix()
         if bekleyen and kararsizlari_disla:      # eski davranış: maskeleme kararı bekleyen pakete girmez
             row["maskeleme"] = MASKE_DISLANDI
@@ -453,11 +532,18 @@ def build(ws: Path, out: Path | None = None, *, docx_path: Path | None = None, t
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(kaynak, dst)
         row["dosya"] = f"{KANITLAR}/{rel.as_posix()}"
+        if acik and row["maskeleme"] == MASKE_YOK:      # maskeleme açık, rapor yok: özgün dosya
+            row["durum"] = "tamam; MASKELENMEDİ (kanıt maskelemesi yapılmamış; özgün dosya pakette)"
+            res.maskesiz.append({"olcut": k.olcut, "kanit_no": no, "kanit": kanit, "dosya": row["dosya"],
+                                 "neden": eksik_maske or "kanıt maskelemesi yapılmamış"})
         if bekleyen:
             row["durum"] = ("tamam; maskeleme kararı bekliyor (o anki maskeli hâli pakette)" if row["maskeleme"] == MASKE_KARAR
                             else "tamam; MASKELENMEDİ (özgün dosya pakette)")
             res.karar_bekleyen.append({"olcut": k.olcut, "kanit_no": no, "kanit": kanit, "dosya": row["dosya"],
-                                       "maskeleme": row["maskeleme"], "neden": elle, "pakette": True})
+                                       "maskeleme": row["maskeleme"], "neden": elle, "pakette": True,
+                                       **({"oldugu_gibi": True} if res.oldugu_gibi else {})})
+            if res.oldugu_gibi:
+                row["durum"] = "tamam; incelenmemiş öneri vardı, olduğu gibi eklendi"
         elif elle:
             res.elle_bakilacak.append({"dosya": row["dosya"], "neden": elle})
         url_dizin, src = (r.get("baglanti") or "").strip(), (r.get("baglanti_kaynagi") or "").strip()
@@ -487,12 +573,30 @@ def build(ws: Path, out: Path | None = None, *, docx_path: Path | None = None, t
                                 f"(dizinde '{BILINMIYOR}'; biliniyorsa review.xlsx 'bağlantı' sütununa yazın)")
 
     _dizin_yaz(out, res.satirlar)
+    _maske_uyarisi(res, acik, secim_neden, ws)
     if res.kontrol_bekliyor:
         res.uyarilar.append(KONTROL_UYARI.format(n=len(res.kontrol_bekliyor)) + " (pakete girmedi; bidr maskele "
                             "bolgeler -w WS ile bölgelere karar verin ya da maskeli sürümü yükleyin, sonra bidr "
                             "maskele ve bidr teslim yeniden)")
     pakette = [x for x in res.karar_bekleyen if x["pakette"]]
-    if pakette:
+    UL: list[str] = []
+    if res.maskeleme_uyarisi:
+        UL += ["KİŞİSEL VERİ MASKELEMESİ", "", res.maskeleme_uyarisi, ""]
+    if res.maskesiz:
+        UL += [MASKESIZ_BASLIK.format(n=len(res.maskesiz)), ""]
+        UL += [f"- {x['olcut']} [{x['kanit_no']}] {x['dosya']}" for x in res.maskesiz] + [""]
+    if pakette and res.oldugu_gibi:
+        kim = res.oldugu_gibi.get("kim") or ""
+        res.uyarilar.append(OLDUGU_GIBI_UYARI.format(n=len(pakette)) + f" (\"olduğu gibi devam\"{' — ' + kim if kim else ''}"
+                            f"; {MASKE_UYARI}): kendiliğinden maskelenmiş hâlleri pakette, kalan kişisel veri "
+                            "içerebilir")
+        UL += [OLDUGU_GIBI_BASLIK.format(n=len(pakette)), "",
+               f"Bölüm maskeleme önerilerini incelemeden devam etti (\"olduğu gibi devam\""
+               + (f", {kim}" if kim else "") + (f", {res.oldugu_gibi.get('zaman')}" if res.oldugu_gibi.get("zaman") else "")
+               + "). " + OLDUGU_GIBI_UYARI.format(n=len(pakette)) + ": kesin kapatmalar uygulanmış, incelenmemiş "
+               "öneriler AÇIK; kalan kişisel veri içerebilir.", ""]
+        UL += [f"- {x['olcut']} [{x['kanit_no']}] {x['dosya']} ({x['maskeleme']}): {x['neden']}" for x in pakette]
+    elif pakette:
         ozg = sum(1 for x in pakette if x["maskeleme"] == MASKE_OZGUN)
         res.uyarilar.append(KARAR_UYARI.format(n=len(pakette)) + (f"; {ozg} tanesi MASKELENMEDİ (özgün dosya)" if ozg else "")
                             + f" — {MASKE_UYARI}; karar: bidr maskele bolgeler/karar/yukle, sonra bidr maskele ve "
@@ -503,7 +607,9 @@ def build(ws: Path, out: Path | None = None, *, docx_path: Path | None = None, t
              "Teslimden önce gözden geçirin (bidr maskele bolgeler / karar / yukle, sonra bidr maskele ve bidr "
              "teslim):", ""]
         L += [f"- {x['olcut']} [{x['kanit_no']}] {x['dosya']} ({x['maskeleme']}): {x['neden']}" for x in pakette]
-        (out / MASKE_UYARI).write_text("\n".join(L) + "\n", encoding="utf-8")
+        UL += L
+    if UL:
+        (out / MASKE_UYARI).write_text("\n".join(UL).rstrip("\n") + "\n", encoding="utf-8")
     if res.eksik or taslak or res.kontrol_bekliyor:
         L = []
         if taslak:
@@ -527,6 +633,33 @@ def build(ws: Path, out: Path | None = None, *, docx_path: Path | None = None, t
            "evidence_sha": sha(ev / ".bidr-evidence.json"), "maske_sha": sha(ws / MASKE_RAPOR)}
     (ws / MANIFEST).write_text(json.dumps(man, ensure_ascii=False, indent=1), encoding="utf-8")
     return res
+
+
+def _maske_uyarisi(res: Sonuc, acik: bool | None, secim_neden: str, ws: Path) -> None:
+    """Maskeleme durumunun kısa uyarı cümlesi (`res.maskeleme_uyarisi`) ve konsol uyarısı. Karar bekleyen listesi
+    ayrıca (`KARAR_UYARI`)."""
+    girdi = [r for r in res.satirlar if r["dosya"]]
+    if not girdi:
+        return
+    if not acik:
+        if res.maskeleme:
+            m = ("kişisel veri maskelemesi bölümde seçili değil; mevcut maskeleme raporundaki maskeli kopyalar "
+                 "kullanıldı (yalnız raporda kapatılan yerler kapalı), maskeli kopyası olmayan kanıtlar özgün hâliyle "
+                 "pakette; kişisel veri içerebilir")
+        else:
+            m = ("kişisel veri maskelemesi " + ("kapalı (" + secim_neden + ")" if acik is False else "seçili değil")
+                 + f": {MASKESIZ_NOT}")
+        res.maskeleme_uyarisi = m
+        res.uyarilar.append(m)
+        return
+    ozgun = [r for r in girdi if r["maskeleme"] in (MASKE_OZGUN, MASKE_YOK)]
+    if res.maskeleme_eksigi or ozgun:
+        m = (f"kanıt maskelemesi tamamlanmadı ({res.maskeleme_eksigi}); " if res.maskeleme_eksigi else "") \
+            + (f"{len(ozgun)} kanıt maskelenmeden (özgün hâliyle) pakette, kişisel veri içerebilir — {MASKE_UYARI}; "
+               f"düzeltmek için {MASKE_KOMUT.format(ws=ws)}, sonra bidr teslim" if ozgun else
+               f"paket yine üretildi — {MASKE_UYARI}")
+        res.maskeleme_uyarisi = m
+        res.uyarilar.append(m)
 
 
 def _satirlar(plan, dizin):
@@ -623,9 +756,6 @@ def durum(c):
     except ValueError as e:
         return Check(kim=INSAN, neden=str(e))
     m = load_manifest(ws)
-    if (m or mod != BAGLANTI) and (e := maske_eksigi(ws)) is not None:
-        return Check(kim=KOMUT, komutlar=[MASKE_KOMUT.format(ws=ws), cmd],
-                     neden=f"{e} — {MASKE_KAPI.format(ws=ws)}")
     if not m:
         if mod == BAGLANTI:
             return Check(atlandi=True, neden="teslim modu baglanti: kanıtlar raporda bağlantıyla verilir; paket "
@@ -637,9 +767,11 @@ def durum(c):
         return Check(kim=KOMUT, komutlar=[cmd], neden="teslim paketi klasörü ya da zip'i yok: yeniden üret")
     if (m.get("report_sha") != sha(rep) or m.get("index_sha") != sha(ws / "evidence-index.csv")
             or m.get("evidence_sha") != sha(ws / "evidence" / ".bidr-evidence.json")
-            or m.get("teslim_modu") != mod or m.get("maske_sha", "") != sha(ws / MASKE_RAPOR)):
-        return Check(kim=KOMUT, komutlar=[cmd], neden="teslim paketi eski: rapor, kanıt klasörü, maskeleme raporu "
-                                                      "ya da teslim modu değişti")
+            or m.get("teslim_modu") != mod or m.get("maske_sha", "") != sha(ws / MASKE_RAPOR)
+            or m.get("maskeleme_acik", bool(maskeleme_secimi(ws)[0])) != bool(maskeleme_secimi(ws)[0])
+            or bool(m.get("oldugu_gibi")) != bool(oldugu_gibi_secimi(ws))):
+        return Check(kim=KOMUT, komutlar=[cmd], neden="teslim paketi eski: rapor, kanıt klasörü, maskeleme raporu, "
+                                                      "maskeleme seçimi (olduğu gibi devam dahil) ya da teslim modu değişti")
     prog = {k: m.get(k) for k in ("kanit", "web", "web_pdf", "baglanti_bilinmiyor")}
     if m.get("taslak"):
         return Check(kim=KOMUT, komutlar=[cmd], ilerleme=prog,
@@ -656,17 +788,20 @@ def durum(c):
                            + (" …" if len(e) > 3 else "") + " — bölge kararı (bidr maskele karar) ya da maskeli "
                            "sürüm (bidr maskele yukle), sonra bidr maskele ve bidr teslim")
     uy = []
+    if m.get("maskeleme_uyarisi"):
+        uy.append(m["maskeleme_uyarisi"])
     if m.get("karar_bekleyen"):
         e = m["karar_bekleyen"]
         ozg = sum(1 for x in e if x.get("maskeleme") == MASKE_OZGUN)
-        uy.append(KARAR_UYARI.format(n=len(e)) + (f" ({ozg} MASKELENMEDİ)" if ozg else "") + ": "
+        uy.append((OLDUGU_GIBI_UYARI if m.get("oldugu_gibi") else KARAR_UYARI).format(n=len(e))
+                  + (f" ({ozg} MASKELENMEDİ)" if ozg else "") + ": "
                   + ", ".join(x["kanit"] for x in e[:3]) + (" …" if len(e) > 3 else "")
                   + f" — {MASKE_UYARI}; bidr maskele bolgeler -w {ws}")
     if m.get("elle_bakilacak"):
         e = m["elle_bakilacak"]
         uy.append(f"{len(e)} kanıt için not (kanıt dizini 'Maskeleme'; {MANIFEST} elle_bakilacak): "
                   + ", ".join(x["dosya"] for x in e[:3]) + (" …" if len(e) > 3 else ""))
-    if (m.get("maskeleme") or {}).get("rapor") is False:
+    if (m.get("maskeleme") or {}).get("rapor") is False and not m.get("maskeleme_uyarisi"):
         uy.append("kişisel veri maskelemesi yapılmadı (kanıt dizini 'Maskeleme: yapılmadı'): bidr maskele")
     if m.get("baglanti_bilinmiyor"):
         uy.append(f"{m['baglanti_bilinmiyor']} web kanıtının özgün adresi bulunamadı (kanıt dizininde "
@@ -676,14 +811,17 @@ def durum(c):
 
 
 def kanit_maskele_durum(c):
-    """`kanit_maskele_tamam` (bidr/pipeline/checks.py): maskeleme kullanılan bölümde kanıtların maskeli kopyası
-    teslimden önce güncel mi. Kullanılmıyorsa ya da teslim modu `baglanti` iken paket yoksa atlanır."""
+    """`kanit_maskele_tamam` (bidr/pipeline/checks.py): bölüm maskelemeyi seçmişse kanıtların maskeli kopyası güncel mi.
+    Öneridir, teslimin önkoşulu değildir: maskeleme seçili değilse (ya da teslim modu `baglanti` iken paket yoksa)
+    atlanır; `bidr maskele` yeniden koşunca giderilecek eksikte (rapor yok, maskeli klasör yok, raporda olmayan ya da
+    maskelemeden sonra değişen kanıt) komut önerir; yeniden koşunun gidermeyeceği eksikte (karar beklemeyen kaydın
+    maskeli kopyası yok) uyarıyla biter (döngü yok; teslim o kanıtı özgün hâliyle koyar ve adıyla listeler)."""
     from bidr.pipeline.checks import INSAN, KOMUT, Check
     ws = c.ws.root
     isaret = maskeleme_kullaniliyor(ws)
     if isaret is None:
-        return Check(atlandi=True, neden="kişisel veri maskelemesi kullanılmıyor (maskeleme raporu ya da "
-                                         "config.yaml privacy.maskeleme yok)")
+        return Check(atlandi=True, neden="kişisel veri maskelemesi seçili değil (config.yaml privacy.maskeleme ya da "
+                                         "bölüm kaynak maskelemesi yok); teslim paketi uyarıyla maskesiz kurulur")
     try:
         mod = teslim_modu(ws)
     except ValueError as e:
@@ -691,10 +829,14 @@ def kanit_maskele_durum(c):
     if mod == BAGLANTI and not load_manifest(ws):
         return Check(atlandi=True, neden="teslim modu baglanti: paket üretilmiyor; paket istenirse önce bidr "
                                          "maskele, sonra bidr teslim")
-    e = maske_eksigi(ws)
-    if e is not None:
+    tur, e = _maske_eksigi(ws)
+    if tur in EKSIK_YENIDEN:
         return Check(kim=KOMUT, komutlar=[c.fmt(c.stage["komut"][0])], neden=e)
     m = Maske(ws, ws / "evidence")
+    if e:
+        return Check(bitti=True, ilerleme={"dosya": len(m.kayit)}, neden=f"kanıt maskelemesi koştu ({isaret})",
+                     uyarilar=[f"{e} — bidr maskele yeniden koşmak bunu gidermez; teslim paketi bu kanıtları "
+                               f"özgün hâliyle koyar ve {MASKE_UYARI}'de adıyla listeler"])
     return Check(bitti=True, ilerleme={"dosya": len(m.kayit)},
                  neden=f"maskeli kanıt kopyası güncel ({isaret}; {m.klasor.name}/)")
 
