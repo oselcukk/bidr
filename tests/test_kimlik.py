@@ -336,3 +336,38 @@ def test_metin_degisti_karari_geri_alinir(tmp_path):
     assert st["metin_degisti_geri"] == 1
     assert {r["doc_id"]: r["durum"] for r in read_jsonl(ws / "decisions.jsonl")}[a] == "ok"
     assert (ws / "work" / "coarse" / f"{a}.json").exists()
+
+
+def test_maskeli_kopyanin_bayti_degisince_ingest_tamam_ingest_ister(tmp_path):
+    """Maskeli kopyanın baytı ingest'ten sonra değişince (yeniden maskeleme) hat ingest ister; ingest metni
+    karşılaştırır: metni aynı kalan belgenin kararı korunur, değişenin kararı `metin_degisti` olur."""
+    import os
+    import time
+
+    from bidr.pipeline import checks as CH
+    _kur(tmp_path, maskeli=True)
+    inv = _ingest(tmp_path)
+    ws = tmp_path / "ws"
+    _kayit_yaz(ws, inv)
+    ctx = CH.Ctx(Workspace(ws), {"kaynak": str(tmp_path / "maskeli")}, lambda s: s.replace("{ws}", str(ws)), {})
+    assert CH.ingest_tamam(ctx).bitti
+    # yeniden maskeleme: a'nın metni değişti, b yalnız bayt (zip zaman damgası), c dokunulmadı
+    t = time.time() - 60
+    for rel in METIN:
+        os.utime(tmp_path / "maskeli" / rel, (t, t))
+    os.utime(ws / "inventory.csv", (t + 10, t + 10))
+    assert CH.ingest_tamam(ctx).bitti
+    _docx(tmp_path / "maskeli" / "a.docx", "Bölüm kurulu toplantı tutanağı [AD] gündem bir")
+    _docx(tmp_path / "maskeli" / "b.docx", METIN["b.docx"], yil=2026)
+    c = CH.ingest_tamam(ctx)
+    assert c.kim == CH.KOMUT and not c.bitti and "2 kaynak dosyanın baytı" in c.neden
+    assert "a.docx" in c.neden and "b.docx" in c.neden and "c.docx" not in c.neden
+    _ingest(tmp_path)
+    assert CH.ingest_tamam(ctx).bitti
+    dec = {r["doc_id"]: r for r in read_jsonl(ws / "decisions.jsonl")}
+    assert dec[inv["a.docx"]["doc_id"]]["durum"] == "metin_degisti"
+    assert dec[inv["b.docx"]["doc_id"]]["durum"] == "ok" and dec[inv["c.docx"]["doc_id"]]["durum"] == "ok"
+    # saat kayması: zamanı gelecekte ama baytı aynı dosya ingest'ten sonra döngü yaratmaz (sha ile doğrulanır)
+    g = time.time() + 3600
+    os.utime(tmp_path / "maskeli" / "c.docx", (g, g))
+    assert CH.ingest_tamam(ctx).bitti

@@ -86,6 +86,43 @@ def config_gecerli(c: Ctx) -> Check:
 
 # -- ingest ----------------------------------------------------------------------------
 
+def degisen_dosyalar(inventory: Path, rows: list[dict], ents) -> list[str]:
+    """inventory.csv yazıldıktan sonra baytı değişmiş kaynak dosyalar (rel_path). Ucuz ölçüt: boyut farklı ya da
+    değişiklik zamanı inventory'den yeni (ör. `bidr maskele --kaynak` maskeli kopyayı yeniden yazdı); zamanı
+    gelecekte olan dosya (saat kayması) sha256 ile doğrulanır, yoksa ingest'ten sonra da "değişti" kalırdı.
+    Baytı değişip metni aynı kalanı ingest kendisi ayırır (`_process`: önceki metinle karşılaştırma)."""
+    import time
+
+    from bidr.common import sha256_file
+    from bidr.ingest.pipeline import NOT_DOWNLOADED
+    inv_t = _mtime(inventory)
+    simdi = time.time_ns()
+    by = {r["rel_path"]: r for r in rows}
+    out = []
+    for e in ents:
+        if e.member is not None or e.placeholder:          # arşiv üyesi: kapsayıcısı denetlenir
+            continue
+        r = by.get(e.rel)
+        if not r or r.get("status") == NOT_DOWNLOADED or not r.get("sha256"):
+            continue
+        try:
+            st = e.path.stat()
+        except OSError:
+            continue
+        if str(st.st_size) != str(r.get("size") or ""):
+            out.append(e.rel)
+        elif st.st_mtime_ns > inv_t:
+            if st.st_mtime_ns <= simdi:
+                out.append(e.rel)
+            else:
+                try:
+                    if sha256_file(e.path) != r["sha256"]:
+                        out.append(e.rel)
+                except OSError:
+                    continue
+    return out
+
+
 def ingest_tamam(c: Ctx) -> Check:
     from bidr.ingest.pipeline import DONE_STATUSES, NOT_DOWNLOADED, scan
     ws = c.ws
@@ -103,7 +140,8 @@ def ingest_tamam(c: Ctx) -> Check:
                            "eski kimlikleri geri bağlar ya da belgelerin gerçekten değiştiğini onaylar")
     src = Path(c.sec["kaynak"])
     inv = {r["rel_path"] for r in rows}
-    cur = {e.rel for e in scan(src)}
+    ents = scan(src)
+    cur = {e.rel for e in ents}
     yeni, giden = cur - inv, inv - cur
     st = {}
     for r in rows:
@@ -118,6 +156,12 @@ def ingest_tamam(c: Ctx) -> Check:
         return Check(kim=INSAN, ilerleme=prog,
                      neden=f"{len(nd)} dosya iCloud'da, bu bilgisayara indirilmemiş ({_sample(nd)}). "
                            "Kullanıcı kaynak klasörü Finder'da 'Şimdi İndir' ile indirmeli; sonra ingest yeniden.")
+    degisen = degisen_dosyalar(ws.inventory, rows, ents)
+    if degisen:
+        return Check(kim=KOMUT, ilerleme=prog,
+                     neden=f"{len(degisen)} kaynak dosyanın baytı ingest'ten sonra değişti (maskeli kopya yeniden "
+                           f"üretildi mi?): {_sample(degisen)}. ingest metni yeniden çıkarıp öncekiyle karşılaştırır; "
+                           "metni aynı kalan belgenin kayıtları korunur, değişenin kararı `metin_degisti` olur")
     eksik = [r["doc_id"] for r in rows
              if r["status"] in DONE_STATUSES and not r.get("dup_of") and not ws.text_path(r["doc_id"]).exists()]
     if eksik:
