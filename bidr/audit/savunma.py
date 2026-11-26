@@ -157,6 +157,47 @@ def other_units(raw: str, names, own: str = "") -> set[str]:
     return found
 
 
+# Başka idari birimin iç süreci (kullanıcı kararı 2026-11-26 20:12, "Tarama sonrası kararlar" 1): kurum/fakülte
+# geneli belge OD2 tavanıyla sessizce kanıt sayılır, ama yalnız bütün akademik birimlere uygulanan düzenleme olarak.
+# Bölümün KENDİ yönetimini soran maddelerde (yönetişim, liderlik, dönüşüm, strateji/performans, süreç yönetimi, iç
+# paydaş ve öğrenci geri bildirimi) başka bir idari birimin (daire başkanlığı, ofis, koordinatörlük, merkez, fakülte
+# kurulları) iş akışı ya da o birimin kendi yönergesi, bölüm bu süreçte görev almıyorsa bölümün kanıtı değildir.
+# Hizmet maddelerinde (öğrenci kabulü, destek hizmetleri, uluslararasılaşma, mezun ilişkileri, araştırma) kurumun
+# öğrenciye/personele açık süreci bölümü de kapsar: OD2 kalır. Olay belgeleri (kurum ilanı, protokol, hizmet içi
+# eğitim) kodla ayrılmaz: model yönergesi (kanıt ilkesi `baska_idari_birim`).
+BOLUM_SURECI_MADDELERI = frozenset({"A.1.1", "A.1.2", "A.1.3", "A.2.1", "A.2.2", "A.2.3", "A.3.4", "A.4.1", "A.4.2"})
+DIS_SUREC_TURLERI = frozenset({"is_akisi"})                     # doğası gereği bir birimin iş akışı
+DIS_DUZENLEME_TURLERI = frozenset({"yonerge", "yonetmelik"})    # yalnız başlığı/baş bölgesi idari birimi adlıyorsa
+# başlıkta / baş bölgede idari (akademik olmayan) birim adı
+IDARI_BIRIM = re.compile(r"koordinatorlug|\bofis\w*|\bmerkez\w*|daire baskanlig|mudurlug|kutuphane|yabanci diller"
+                         r"|\bkagem\b|\bsks\b|saglik kultur|genel sekreterlig|teknoloji transfer|kariyer")
+# bölüm (ya da her akademik birim) süreçte görev alıyor: bölüm/anabilim dalı rolü, danışman, birim sorumlusu
+_ROL = r"(?:baskan\w*|kurul\w*|sekreter\w*|komisyon\w*|sorumlu\w*|koordinator\w*|temsilci\w*|yonetici\w*)"
+BOLUM_AKTOR = re.compile(r"\bbolum\w*(?:\s+[a-z]+){0,2}?\s+" + _ROL + r"|\bbolum\w*\s+tarafindan|\bbolum(?:ce|lerce)\b"
+                         r"|\banabilim\s*dal\w*|\bana\s+bilim\s+dal\w*|\bdanisman(?:i|in|a|lar\w*)?\b"
+                         r"|\bakademik\s+birim\w*|\bbirim(?:ler|lerin|in)?\s+(?:kalite\s+)?" + _ROL)
+# "Yabancı Diller Bölümü …": adı verilmiş başka birim; önündeki büyük harfli sözcük bunlardan biriyse ad değil
+_SERBEST_ON = frozenset({"ilgili", "her", "tum", "butun", "ve", "veya", "ile", "kendi", "ogrencinin", "bagli"})
+
+
+def bolum_aktor(raw: str) -> str:
+    """Süreçte bölümün (ya da her akademik birimin) görev aldığını gösteren ilk ifade; yoksa "". Satır satır:
+    "ilgili Bölüm Başkanı", "Bölüm Müfredat Komisyonu", "Anabilim Dalı", "Danışman", "birim kalite sorumlusu".
+    Önündeki sözcüğü (aynı satırda tek boşlukla) büyük harfle başlayan bir ad olan "Bölüm" ("Yabancı Diller Bölümü
+    Kalite Sorumlusu") başka bir birimin adıdır, sayılmaz. Bildirim alıcısı ("Bölüme yazı ile bildirilir") rol
+    değildir."""
+    for line in raw.splitlines():
+        fl = fold(line)
+        for m in BOLUM_AKTOR.finditer(fl):
+            s = m.start()
+            if fl.startswith("bolum", s):
+                pre = re.search(r"(\S+) $", line[:s])
+                if pre and pre.group(1)[:1].isupper() and fold(pre.group(1)).strip(",.;:'’") not in _SERBEST_ON:
+                    continue
+            return " ".join(m.group(0).split())
+    return ""
+
+
 # sayfa altlığı / adres satırındaki kurum adı ("© … Rektörlüğü, 41400 …"): belge kurum geneli değildir
 ADRES = re.compile(r"(?:©|\(c\)|copyright)[^|]{0,80}?rektorlug\w*|rektorlug\w*\s*,?\s*(?:p\.?\s?k\b|\d{5})")
 # ders kodu: 2-5 büyük harf önek + 3 hane ("MATH407", "MAT 113"); 4 haneli sayı (yıl, proje no) değil
@@ -513,6 +554,28 @@ class Savunma:
             return False
         s = self.sig(did)
         return self.own_name(s["bas"]) and not s["kurum"]
+
+    def dis_surec(self, did: str, dtype: str, olcut: str) -> str:
+        """Kurum/fakülte geneli sayılan belge bu maddede başka bir idari birimin iç süreci mi (bkz.
+        `BOLUM_SURECI_MADDELERI`): madde bölümün kendi yönetimini soruyor, belge bir iş akışı ya da başlığı idari
+        birimi adlayan yönerge/yönetmelik, metinde bölümün sinyali (adı, programı, ders kodu) ve bölümün süreçteki
+        rolü (`bolum_aktor`) yok. Gerekçe ya da ""."""
+        if olcut not in BOLUM_SURECI_MADDELERI:
+            return ""
+        if dtype in DIS_SUREC_TURLERI:
+            sahip = ""
+        elif dtype in DIS_DUZENLEME_TURLERI:
+            d = self.docs.get(did) or {}
+            m = IDARI_BIRIM.search(f(" ".join(x for x in (d.get("baslik") or "", self.text(did)[:400]) if x)))
+            if not m:
+                return ""                     # bütün akademik birimlere uygulanan düzenleme: OD2 kalır
+            sahip = m.group(0)
+        else:
+            return ""
+        if self.sig(did)["own"] or bolum_aktor(self.text(did)):
+            return ""
+        return ("başka idari birimin iç süreci" + (f" ({sahip})" if sahip else "")
+                + "; bölüm bu süreçte görev almıyor: bu maddede bölümün kanıtı değil")
 
     # -- yürürlükten kaldırma ------------------------------------------------------------------
     def _superseded(self) -> dict[str, str]:

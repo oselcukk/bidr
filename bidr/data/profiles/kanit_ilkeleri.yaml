@@ -11,6 +11,17 @@ ilkeler:
       düzenleme ya da faaliyette "fakulte_geneli") yaz; kod bu belgenin her eşleşmesini OD2 ile
       sınırlar ve "uygulama_kaniti_eksik" diye işaretler. Bölümün kendi usul ve esası/yönergesi
       "kendi"dir, kurum geneli değildir.
+  - kimlik: baska_idari_birim
+    metin: >-
+      Başka bir idari birimin (daire başkanlığı, ofis, koordinatörlük, merkez, fakülte kurulları)
+      iç süreci, ilanı, protokolü ya da kendi personeline verdiği eğitim, BİRİM bu süreçte görev
+      almıyorsa (belgede bölümün adı, rolü — bölüm başkanı, kurulu, komisyonu, danışman — ya da
+      bölüme özgü bir sonuç yoksa) BİRİM'in kanıtı değildir: bölümün kendi yönetimini soran
+      ölçütlere (yönetişim, strateji, süreç yönetimi, paydaş katılımı) bağlama, bölümün faaliyeti
+      gibi "uygula" verme; başka ölçüte de uymuyorsa "kanit_degil". Bütün akademik birimlere
+      uygulanan düzenleme (yönetmelik, yönerge, usul ve esas) ve öğrencinin ya da personelin
+      doğrudan yararlandığı kurum hizmeti (danışmanlık, kariyer, değişim programı) yukarıdaki
+      ilke gereği kurum geneli kanıttır (OD2).
   - kimlik: bilgisiz_ekran
     metin: >-
       Bölüm hakkında bilgi içermeyen ekranlar (ör. bilgi sistemi giriş ekranı, yalnız

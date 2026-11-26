@@ -331,7 +331,16 @@ anlaşılmıyordu. Dosya açılınca yalnız şu sayfalar görünür; teknik say
     `fakulte_geneli`: OD2 tavanıyla kanıt, `uygulama_kaniti_eksik` anlamı aynı) ve kodun hesapladığı aşama
     (`asama_yuva_etiketine_uymuyor`, `asama_dusuruldu`; `gerceklesme_kaniti_yok`: plan sayılır, Dikkat'te bilgi
     metni kalır, panel "etkinlik yapıldı mı" sorusunu bundan tanır) bilgidir; "yeniden bak" da tetiklemez
-    (`run.BILGI_ISARETLERI`; sayılan aşama/OD değişirse `kabul` satırı yine yeniden baktırır). Sorulmaya devam
+    (`run.BILGI_ISARETLERI`; sayılan aşama/OD değişirse `kabul` satırı yine yeniden baktırır). Başka idari birimin
+    iç süreci (kullanıcı kararı 2026-11-26 20:12; `baska_birim_sureci`): sessiz OD2 yalnız bütün akademik birimlere
+    uygulanan düzenlemelerdedir. Bölümün kendi yönetimini soran maddelerde (`savunma.BOLUM_SURECI_MADDELERI`:
+    A.1.1–A.1.3, A.2.x, A.3.4, A.4.1, A.4.2) kurum/fakülte geneli iş akışı (`is_akisi`) ya da başlığı idari birimi
+    (koordinatörlük, ofis, merkez, daire başkanlığı …) adlayan yönerge/yönetmelik, metinde bölümün sinyali ve
+    süreçteki rolü (`savunma.bolum_aktor`: bölüm başkanı/kurulu/komisyonu/sekreterliği, anabilim dalı, danışman,
+    birim sorumlusu; adı verilmiş başka "X Bölümü" ve bildirim alıcısı rol değildir) yoksa sayılmaz, sorulmaz
+    (`sade.SESSIZ_SAYILMAZ`; Dikkat'te bilgi, bölüm Kabul derse sayılır). Hizmet maddelerinde (öğrenci kabulü,
+    destek hizmetleri, uluslararasılaşma, mezun ilişkileri) kurum süreci OD2 kalır. Kurum ilanı, protokol, hizmet
+    içi eğitim gibi olay belgeleri kodla ayrılmaz: kanıt ilkesi `baska_idari_birim` (model yönergesi). Sorulmaya devam
     eden: geçmiş yıl belgesi (`gecmis_kanit`), sıralanamayan sürüm, düşük güven, OD4/5, elle bakılmalı, açık başka
     birim (`birim_onay_bekliyor`), başka birimin maddesi (`madde_baska_birim`: alıntının bulunduğu madde başka
     birimi konu alıyor; ölçüt bölümün doldurduğu ölçüt olabilir, "Doldurucu birim" kuralıyla ilgisi yok).

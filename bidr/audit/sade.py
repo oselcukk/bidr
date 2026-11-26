@@ -137,6 +137,10 @@ DIKKAT = {
                        "Uygunsa Kabul.", True),
     "fotograf_destekleyici": ("Fotoğraf tek başına kanıt sayılmadı. Bir etkinliğin fotoğrafıysa "
                               "\"Kabul — etkinlik yapıldı\", değilse Ret.", True),
+    # başka idari birimin iç süreci (kullanıcı kararı 2026-11-26 20:12): kural gereği sayılmaz, sorulmaz (bilgi)
+    "baska_birim_sureci": ("Başka bir idari birimin iç süreci; bölümünüz bu süreçte görev almıyor. Bu madde bölümün "
+                           "kendi yönetimini sorduğu için kanıt sayılmadı. Bölümünüz bu süreçte görev alıyorsa Kabul "
+                           "seçebilirsiniz.", False),
     "fotograf_fiziksel": ("Mekân/altyapı fotoğrafı: bu madde bölümün olanaklarını sorduğu için kanıt sayıldı.", False),
     "haric_tur": ("Bu belge raporun kendisi ya da taslağı; kanıt olamaz. Ret seçin.", True),
     "bilgisiz_ekran": ("Bilgi içermeyen bir ekran/bağlantı sayfası; kanıt sayılmadı. Genelde Ret.", True),
@@ -170,7 +174,8 @@ BILGI = frozenset({"belge_notu", "insan_reddetti", "insan_duzeltti", "birim_aitl
 # Kuralı gereği sayılmayan ama sorulmayan işaretler: "Şu an kanıt sayılmıyor" uyarısı yazılmaz, satır "Bakın" yapmaz;
 # 2. bölümün toplu kabulü (ve panelin varsayılan kabulü) bu satırlara uygulanmaz (kural geçerli kalır). Bölüm satırda
 # tek tek Kabul seçerse sayılır.
-SESSIZ_SAYILMAZ = frozenset({"surum_eski"})
+# Başka idari birimin iç süreci (`baska_birim_sureci`, kullanıcı kararı 2026-11-26 20:12) de böyledir.
+SESSIZ_SAYILMAZ = frozenset({"surum_eski", "baska_birim_sureci"})
 
 F_HEAD = PatternFill("solid", fgColor="DDE7F0")
 F_BOLUM = PatternFill("solid", fgColor="C9D6E3")

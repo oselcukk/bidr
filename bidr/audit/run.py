@@ -71,11 +71,12 @@ KARAR_ISARETLERI = frozenset({"insan_reddetti", "insan_duzeltti", "birim_aitligi
 # Kural belliyse sorulmaz (kullanıcı kararı 2026-11-26 17:57): eski sürüm (`surum_eski`), kurum/fakülte geneli düzenleme
 # (OD2 tavanı) ve kodun hesapladığı aşama (`asama_*`, `uygulama_kaniti_eksik`, `gerceklesme_kaniti_yok`) da bilgidir;
 # sayılan aşama/OD değişirse `kabul` satırı yine yeniden baktırır.
+# Başka idari birimin iç süreci (`baska_birim_sureci`, kullanıcı kararı 2026-11-26 20:12) de bilgidir (sayılmaz, sorulmaz).
 BILGI_ISARETLERI = frozenset({"belge_notu", "ret_hedefsiz_dustu", "birim_varsayildi", "tarih_varsayildi",
                               "yururluk_varsayildi", "birim_iliskisi_kod_bilgi", "etkinlik_gerceklesti",
                               "fotograf_fiziksel", "surum_eski", "kurum_geneli", "fakulte_geneli",
                               "uygulama_kaniti_eksik", "asama_dusuruldu", "asama_yuva_etiketine_uymuyor",
-                              "gerceklesme_kaniti_yok"})
+                              "gerceklesme_kaniti_yok", "baska_birim_sureci"})
 
 # Ret notunda başka ölçüt anılıyor mu ("B.2.2 konusu", "önceki turda B.3.5 olarak", "başka madde").
 # Hedef verilmeden reddedilip belge hiçbir satırda sayılmıyorsa belge rapor dışına düşmüştür:
@@ -268,6 +269,7 @@ def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | 
     donem_ici = doc.get("donem_ici")
     sayilir, karar = True, None
     sv_out = None
+    dis_surec = ""
     kod_ = (rec.get("ince") or {}).get("birim_iliskisi_kod")
     if kod_:
         # kodun düzeltmesi: model kurum/fakülte geneli dediyse birime sorulur; model belirsiz dediyse kodun
@@ -318,6 +320,12 @@ def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | 
             if etkin and etkin != "planla":
                 etkin = "planla"
                 flags.append("uygulama_kaniti_eksik")
+            # başka idari birimin iç süreci (kullanıcı kararı 2026-11-26 20:12): bölümün kendi yönetimini soran
+            # maddede bölüm taraf değilse kanıt sayılmaz, sorulmaz (bilgi); bölüm Kabul derse sayılır
+            if sv is not None and karar != "kabul":
+                dis_surec = sv.dis_surec(did, dtype, olcut)
+                if dis_surec:
+                    flags.append("baska_birim_sureci")
         if sv is not None:
             # kod tarafı savunmalar (tür/ifade/faaliyet); insan `kabul`ü metin sezgilerini aşar
             sv_out = sv.row(rec, m, dtype, etkin, human=karar == "kabul")
@@ -334,6 +342,8 @@ def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | 
         if karar != "kabul":
             sayilir = dz_["sayilir"]
     if sv_out and sv_out["sayilir"] is False:
+        sayilir = False
+    if dis_surec:
         sayilir = False
     od = STAGE_OD.get(etkin) if etkin else None
     if od is None:
@@ -380,6 +390,8 @@ def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | 
         vurgu.append("alıntı birleşik belgede birimin kendi sayfasından: tür (kurum geneli) tavanı uygulanmadı")
     if sv_out:
         vurgu.extend(sv_out["vurgu"])
+    if dis_surec:
+        vurgu.append(dis_surec)
     if dec and dec.get("elle"):
         vurgu.insert(0, "bölümün elle eklediği eşleşme")
         if dec.get("asama_varsayilan"):
@@ -604,6 +616,7 @@ EKSIK_NEDEN = {
     "yalniz_donem_disi": "yalnız dönem dışı belge (geçmiş, dönem sonrası ya da yürürlükte olmayan sürüm)",
     "tarihi_dogrulanmamis": "tarihi doğrulanmamış olay belgesi",
     "birim_dogrulanmamis": "birim aitliği doğrulanmamış belge",
+    "yalniz_baska_birim_sureci": "yalnız başka idari birimin iç süreci (bölüm bu süreçte görev almıyor)",
 }
 
 
@@ -627,6 +640,8 @@ def _missing_note(rows: list[dict], counted: list[dict], rs) -> dict | None:
         nedenler.append("tarihi_dogrulanmamis")
     if any("birim_onay_bekliyor" in f for f in off):
         nedenler.append("birim_dogrulanmamis")
+    if any("baska_birim_sureci" in f for f in off):
+        nedenler.append("yalniz_baska_birim_sureci")
     gereken = [GEREKEN[x] for x in rs.eksik if x in GEREKEN]
     if not live or not nedenler:
         durum = "kanitsiz"
