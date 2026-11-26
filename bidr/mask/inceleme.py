@@ -62,9 +62,45 @@ def _kaynak_modu(rap: dict) -> bool:
     return rap.get("mod") == "kaynak"
 
 
+# İmza önerileri varsayılan açık (kullanıcı kararı 2026-11-26 20:12, "Tarama sonrası kararlar"): imza önerisi (ve imza
+# izi uyarısı, taşan imza) karartılmaz ve sorulmaz; bölge açık bırakılmış (`birakildi`) görünür, `varsayilan: true`.
+# Bölüm isterse yine "kapat" diyebilir. Yalnız okuma/karar katmanı: maskeleme hesabı (bidr/mask/run.py `_kod_izi`
+# modülleri) ve rapor dosyası değişmez; kutusu hesapta kapatılmış imza (geri basma onayı) sorulmaya devam eder.
+IMZA_SORUN_ONEKLERI = ("imza: elle bakılmalı", "imza: kapatılamayan aday", "kişisel veri olabilir: imza benzeri iz")
+
+
+def imza_varsayilan_acik(b: dict, kararlar: dict | None = None) -> bool:
+    """Kararı verilmemiş, kutusu açık imza önerisi (tür `imza` ya da imza izi): varsayılan açık bırakılır."""
+    return (b.get("karar") == BG.ONAY and not b.get("kapali") and (b.get("tur") == "imza" or b.get("kaynak") == "imza_izi")
+            and b.get("id") not in (kararlar or {}))
+
+
+def dosya_gorunumu(rec: dict, kararlar: dict | None = None) -> dict:
+    """Dosya kaydının imza önerileri varsayılan açıkken görünen hâli (kopya): yalnız imza önerisi/sorunu yüzünden
+    `basarisiz` olan dosya `tamam`, kalan onay sayısı imza önerileri olmadan. Başka sorun varsa durum aynı kalır."""
+    bolgeler = rec.get("bolgeler") or []
+    acik = [b for b in BG.onay_bekleyen(bolgeler) if imza_varsayilan_acik(b, kararlar)]
+    sorunlar = [x for x in rec.get("kalan_sorunlar") or [] if not str(x).startswith(IMZA_SORUN_ONEKLERI)]
+    if not acik and len(sorunlar) == len(rec.get("kalan_sorunlar") or []):
+        return rec
+    out = dict(rec)
+    kalan_onay = [b for b in BG.onay_bekleyen(bolgeler) if b not in acik]
+    if rec.get("onay_bekleyen") is not None:
+        out["onay_bekleyen"] = len(kalan_onay)
+    out["imza_varsayilan_acik"] = len(acik)
+    if rec.get("durum") == "basarisiz" and not rec.get("kalan") and not sorunlar:
+        if rec.get("taranamadi"):
+            out.update(durum="taranamadi", neden="maskeleme eksik, elle bakılmalı: taranamadı ("
+                       + "; ".join(rec["taranamadi"]) + ")", elle_bakilmali=True)
+        else:
+            out.update(durum="tamam", elle_bakilmali=False,
+                       neden="imza önerileri açık bırakıldı (varsayılan; isterseniz kapatabilirsiniz)")
+    return out
+
+
 def _durum(rec: dict) -> str:
     d = rec.get("durum")
-    if d == "tamam" and not BG.onay_bekleyen(rec.get("bolgeler")):
+    if d == "tamam" and not [b for b in BG.onay_bekleyen(rec.get("bolgeler")) if not imza_varsayilan_acik(b)]:
         return "tamam"
     if d == ELLE:
         return "elle_maskeli"
@@ -112,9 +148,11 @@ def bekleyenler(ws: Path) -> dict:
     rap = _rapor(ws)
     kararlar = BG.kararlar_yukle(ws)
     bolgeler, verilmis, bolgesiz, tum, dosyalar = [], [], [], [], []
-    for r in rap.get("dosyalar") or []:
+    for r0 in rap.get("dosyalar") or []:
+        r = dosya_gorunumu(r0, kararlar)
         sha = r.get("sha256") or ""
-        onay = BG.onay_bekleyen(r.get("bolgeler"))
+        varsayilan = {b["id"] for b in r.get("bolgeler") or [] if imza_varsayilan_acik(b, kararlar)}
+        onay = [b for b in BG.onay_bekleyen(r.get("bolgeler")) if b["id"] not in varsayilan]
 
         def item(b, r=r, sha=sha):
             x = {"dosya": r["dosya"], "belge_kimligi": sha,
@@ -126,6 +164,8 @@ def bekleyenler(ws: Path) -> dict:
                     x[k] = b[k]
             ins = b.get("insan") or {}
             x["kim"], x["zaman"] = ins.get("kim"), ins.get("zaman")
+            if b.get("id") in varsayilan:             # imza önerisi: varsayılan açık, sorulmaz
+                x["karar"], x["varsayilan"] = BG.BIRAKILDI, True
             return x
         for b in onay:
             it = item(b)
@@ -155,7 +195,7 @@ def bekleyenler(ws: Path) -> dict:
         if sayfalar:
             d["sayfa_sayisi"], d["sayfalar"] = len(sayfalar), sayfalar
         dosyalar.append(d)
-        if bekliyor(r) and not onay:
+        if bekliyor({**r, "onay_bekleyen": len(onay)}) and not onay:
             bolgesiz.append({"dosya": r["dosya"], "durum": r.get("durum"), "neden": r.get("neden")})
     return {"bolgeler": bolgeler, "karar_verilmis": verilmis, "bolgesiz": bolgesiz,
             "dosya": len({x["dosya"] for x in bolgeler + bolgesiz}), "tum_bolgeler": tum, "dosyalar": dosyalar,
