@@ -149,7 +149,8 @@ def test_year_phrase_is_date_source(rule):
     assert later["zaman"] == D.SONRA and "donem_sonrasi" in later["flags"]
     # yalnız geçmiş yıl ifadesi ("1994 yılında kuruldu") belgenin tarihi değil
     past = D.apply_row(rule, _doc("faaliyet_raporu", yil_ifadeleri=[1994]), "faaliyet_raporu", "uygula")
-    assert past["zaman"] == D.BILINMIYOR and "tarih_dogrulanmali" in past["flags"]
+    # tarihsiz: aksi görülmedikçe dönem içi varsayılır (kullanıcı kararı 2026-11-26)
+    assert past["zaman"] == D.BILINMIYOR and past["sayilir"] and "tarih_varsayildi" in past["flags"]
     # metin içi tarih varsa yıl ifadesi kullanılmaz
     dated = _doc("faaliyet_raporu", "2024-05-01", yil_ifadeleri=[2025])
     assert D.apply_row(rule, dated, "faaliyet_raporu", "uygula")["zaman"] == D.ONCE
@@ -161,7 +162,7 @@ def test_page_updated_after_period_is_not_od3_basis(rule):
     assert not up["sayilir"] and {"tarih_dogrulanmali", "sayfa_donem_sonrasi"} <= set(up["flags"])
     assert "2026-11-11" in up["not"]
     pl = D.apply_row(rule, page, "gorev_dagilimi", "planla")         # tanım: güncellik uyarısıyla
-    assert pl["sayilir"] and {"guncellik_dogrulanmali", "sayfa_donem_sonrasi"} <= set(pl["flags"])
+    assert pl["sayilir"] and {"tarih_varsayildi", "sayfa_donem_sonrasi"} <= set(pl["flags"])
     web = D.apply_row(rule, _doc("web_sayfasi", guncelleme_tarihi="2026-07-06"), "web_sayfasi", "kontrol_et")
     assert not web["sayilir"] and "sayfa_donem_sonrasi" in web["flags"]
     # içerik rapor yılını açıkça gösteriyorsa kanıttır
@@ -185,9 +186,14 @@ def test_plan_in_force_is_in_period(rule):
     # eski kayıt: alan yok, başlıktan okunur
     old = _doc("stratejik_plan", "2014-11-04", baslik="2022- 2026 Stratejik Planı")
     assert D.apply_row(rule, old, "stratejik_plan", "planla")["zaman"] == D.ICI
-    # aralık rapor yılını kapsamıyor: eski davranış
+    # aralık rapor yılından önce bitiyor: açık çelişki, sorulur (yürürlük varsayılmaz)
     past = _doc("stratejik_plan", "2016-01-10", yururluk_araligi=[2017, 2021])
-    assert "guncellik_dogrulanmali" in D.apply_row(rule, past, "stratejik_plan", "planla")["flags"]
+    r = D.apply_row(rule, past, "stratejik_plan", "planla")
+    assert r["sayilir"] and {"guncellik_dogrulanmali", "yururluk_bitmis"} <= set(r["flags"])
+    assert "yururluk_varsayildi" not in r["flags"] and "2017-2021" in r["not"]
+    # aralığı olmayan eski tarihli plan: yürürlükte varsayılır, sorulmaz
+    eski = _doc("stratejik_plan", "2016-01-10")
+    assert D.apply_row(rule, eski, "stratejik_plan", "planla")["flags"] == ["yururluk_varsayildi"]
     # dönem sonrası tarih aralıkla aşılmaz (revizyon/sürüm kuralı geçerli)
     late = _doc("stratejik_plan", "2026-03-01", yururluk_araligi=[2022, 2026])
     assert D.apply_row(rule, late, "stratejik_plan", "planla")["zaman"] == D.SONRA

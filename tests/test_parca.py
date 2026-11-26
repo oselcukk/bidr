@@ -132,7 +132,9 @@ def test_uncertain_part_keeps_doc_date_with_flag(cat, finder):
     pv = part_view(doc2, Q_2020, BIRLESIK)
     assert pv["dogrulanmali"] and pv["alanlar"] == {} and "tarih yok" in pv["not"]
     r = D.apply_row(rule, doc2, "resmi_yazi", "uygula", parca=pv)
-    assert r["zaman"] == D.ICI and "tarih_dogrulanmali" in r["flags"] and "belge tarihi" in r["not"]
+    # parça tarihi yok: belge tarihiyle sayılır, aksi görülmedikçe dönem içi (sessiz işaret; kullanıcı kararı 2026-11-26)
+    assert r["zaman"] == D.ICI and r["sayilir"] and "tarih_varsayildi" in r["flags"] and "belge tarihi" in r["not"]
+    assert "tarih_dogrulanmali" not in r["flags"]
     # alıntının parçası bulunamadı
     pv = part_view(doc, "metinde olmayan bir cümle burada yazıyor", BIRLESIK)
     assert pv["dogrulanmali"] and pv["sayfa"] is None

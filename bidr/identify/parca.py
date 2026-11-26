@@ -16,7 +16,7 @@ Parça tarihi identify'ın belge tarihiyle aynı hesapla (`DateFinder.primary` v
 sayfalarından çıkarılır (`documents.jsonl` `parcalar`). Dönem kuralı (bidr/audit/donem.py) eşleşme
 başına alıntının parçasının tarih alanlarını kullanır (`part_view`). Parçanın tarihi emin değilse
 (tarih yok; ya da sınır yalnız ingest'in "konu değişti" sezgisinden ve tarih etiketsiz) ya da
-alıntı metinde bulunamazsa belge tarihi kalır, satır `tarih_dogrulanmali` işareti alır.
+alıntı metinde bulunamazsa belge tarihi kalır, satır sessiz `tarih_varsayildi` işareti alır.
 """
 from __future__ import annotations
 

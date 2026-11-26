@@ -128,7 +128,9 @@ def test_unit_relation_from_text(tmp_path):
     a = build(_ws(tmp_path, docs))
     k = a.by_key["kiyas|B.1.1/3"]
     assert k["birim_iliskisi"] == "belirsiz" and k["birim_onay_bekliyor"] and not k["sayilir"]
-    assert "birim_iliskisi_kod" in k["flags"] and any(x["doc_id"] == "kiyas" for x in a.birim["belirsiz"])
+    # kod modelin `kendi`sini düşürdü (başka birimin adı): açık çelişki; Dikkat "ifadeden çıkarıldı" demez
+    assert "birim_iliskisi_kod_bilgi" in k["flags"] and "birim_iliskisi_kod" not in k["flags"]
+    assert any(x["doc_id"] == "kiyas" for x in a.birim["belirsiz"])
     f = a.by_key["fak|B.1.4/4"]
     assert f["birim_iliskisi"] == "fakulte_geneli" and f["etkin_asama"] == "planla"
     assert not a.by_key["fyk|B.3.3/5"]["sayilir"] and "madde_baska_birim" in a.by_key["fyk|B.3.3/5"]["flags"]

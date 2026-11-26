@@ -56,20 +56,32 @@ def test_belirsiz_promoted_only_with_explicit_signal(tmp_path):
         # birimin kodu azınlıkta (başka bölümün müfredatında servis dersi) → sinyal değil
         "azinlik": ("mufredat", "2025-02-01", "KIY 101\nKIY 102\nKIY 201\nORN 101\n" + q,
                     [_m("B.1.3", "B.1.3/2", "uygula", q)], "belirsiz"),
-        # sinyal var ama başka birimin adı da geçiyor → belirsiz kalır
+        # sinyal var ama başka birimin adı da geçiyor → belirsiz kalır; kendi sinyali olduğundan çelişki değil
         "karisik": ("resmi_yazi", "2025-02-01", "Kıyas Bölümü Başkanlığına\nProgramı Örnek\n" + q,
                     [_m("B.1.3", "B.1.3/2", "uygula", q)], "belirsiz"),
-        # hiçbir açık ifade yok → belirsiz kalır (sinyal uydurulmaz)
+        # hiçbir açık ifade yok → belirsiz kalır (sinyal uydurulmaz), yükleyenin belgesi varsayılır
         "yok": ("bilinmiyor", "2025-02-01", "YAYINLAR 2025\n1. Bir makale.\n" + q,
                 [_m("B.1.3", "B.1.3/2", "uygula", q)], "belirsiz"),
+        # birimin hiçbir sinyali yok, başka birimin adı geçiyor → açık çelişki: sorulur
+        "baska": ("resmi_yazi", "2025-02-01", "Kıyas Bölümü Başkanlığına\n" + q,
+                  [_m("B.1.3", "B.1.3/2", "uygula", q)], "belirsiz"),
     }
     a = build(_cfg(_ws(tmp_path, docs), ders_kodlari=["ORN"]))
     k = a.by_key["kod|B.1.3/2"]
     assert k["birim_iliskisi"] == "kendi" and k["sayilir"] and not k["birim_onay_bekliyor"]
-    assert "birim_iliskisi_kod" in k["flags"] and "birim kodca önerildi" in k["vurgu"]
+    # model belirsiz dedi, kod birimi buldu: varsayımla aynı sonuç, sorulmaz (bilgi işareti)
+    assert "birim_iliskisi_kod_bilgi" in k["flags"] and "birim_iliskisi_kod" not in k["flags"]
+    assert "birim kodca bulundu" in k["vurgu"]
+    # yükleyen birimin belgesi varsayılır (kullanıcı kararı 2026-11-26): ilişki belirsiz kalır, satır sayılır
     for d in ("azinlik", "karisik", "yok"):
         r = a.by_key[f"{d}|B.1.3/2"]
-        assert r["birim_iliskisi"] == "belirsiz" and r["birim_onay_bekliyor"] and not r["sayilir"], d
+        assert r["birim_iliskisi"] == "belirsiz" and not r["birim_onay_bekliyor"] and r["sayilir"], d
+        assert "birim_varsayildi" in r["flags"], d
+    # birimin sinyali yokken başka birimin adı: açık çelişki, onaylanana dek sayılmaz
+    r = a.by_key["baska|B.1.3/2"]
+    assert r["birim_onay_bekliyor"] and not r["sayilir"] and "birim_varsayildi" not in r["flags"]
+    assert [x["doc_id"] for x in a.birim["belirsiz"]] == ["baska"]
+    assert [x["doc_id"] for x in a.birim_sayfa] == ["baska"]
     # ders kodu öneki yapılandırılmamışsa kod sinyal saymaz
     b = build(_cfg(_ws(tmp_path / "b", docs)))
     assert b.by_key["kod|B.1.3/2"]["birim_iliskisi"] == "belirsiz"
@@ -223,3 +235,28 @@ def test_gtu_profile_lists_departments(tmp_path):
     for ad in ("Matematik Bölümü", "Fizik Bölümü", "Kimya Bölümü", "Moleküler Biyoloji ve Genetik Bölümü",
                "Veri Bilimi ve Analitiği Bölümü", "Bilgisayar Mühendisliği Bölümü", "İşletme Bölümü"):
         assert ad in adlar
+
+
+def test_official_long_name_is_own_unit(tmp_path):
+    """Yapılandırmadaki ad kurum profilindeki resmî adın kısaltmasıysa ("Deneme Bölümü" ↔ "Deneme ve
+    Analiz Bölümü") resmî ad birim sinyalidir, başka birim sayılmaz; aday birden çoksa eşlenmez."""
+    from bidr.audit.savunma import own_aliases
+    adlar = ["Örnek Bölümü", "Deneme ve Analiz Bölümü", "Kıyas Bölümü"]
+    assert own_aliases("Deneme Bölümü", adlar) == ("deneme ve analiz",)
+    assert own_aliases("Örnek Bölümü", adlar + ["Örnek Mühendisliği Bölümü"]) == ()     # birebir ad var
+    assert own_aliases("Kıyas", ["Kıyas Mühendisliği Bölümü", "Kıyas Eğitimi Bölümü"]) == ()  # iki aday
+    q = "Ders kazanımları gözden geçirilmiştir."
+    docs = {
+        "resmi": ("resmi_yazi", "2025-02-01", "Deneme ve Analiz Bölümü Başkanlığına\n" + q,
+                  [_m("B.1.3", "B.1.3/2", "uygula", q)], "kendi"),
+        "baska": ("resmi_yazi", "2025-02-01", "Kıyas Bölümü Başkanlığına\n" + q,
+                  [_m("B.1.3", "B.1.3/2", "uygula", q)], "belirsiz"),
+    }
+    w = _ws(tmp_path, docs)
+    (w / "config.yaml").write_text(yaml.safe_dump({"bidr": {"birim": "Deneme Bölümü", "birim_adlari": adlar}},
+                                                  allow_unicode=True), encoding="utf-8")
+    a = build(w)
+    r = a.by_key["resmi|B.1.3/2"]
+    assert r["birim_iliskisi"] == "kendi" and r["sayilir"] and not r["birim_onay_bekliyor"]
+    r = a.by_key["baska|B.1.3/2"]
+    assert r["birim_onay_bekliyor"] and not r["sayilir"]

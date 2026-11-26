@@ -138,7 +138,7 @@ def test_old_events_are_continuity_only_and_capped_in_list(tmp_path):
         assert not r["sayilir"] and "gecmis_kanit" in r["flags"], d     # izleme halkası sayılmaz
     # dönemden önce alınmış, hâlâ yürürlükteki usul kararı plan halkasını kanıtlar (kullanıcı kararı)
     r = next(r for r in a.rows if r["doc_id"] == "plan_2016")
-    assert r["sayilir"] and "guncellik_dogrulanmali" in r["flags"] and "gecmis_kanit" not in r["flags"]
+    assert r["sayilir"] and "yururluk_varsayildi" in r["flags"] and "gecmis_kanit" not in r["flags"]
     assert _crit(a, "B.1.1")["od"] == 3                                  # plan (eski karar) + U
     out = tmp_path / "out"
     R.run(ws, out=out, source=src)
@@ -159,7 +159,7 @@ def test_previous_year_plan_rule_is_configurable(tmp_path, monkeypatch):
     assert rule.onceki_olay_plani
     doc = _doc("bolum_kurulu_karari", "2022-01-01")
     r = D.apply_row(rule, doc, "bolum_kurulu_karari", "planla")
-    assert r["sayilir"] and "guncellik_dogrulanmali" in r["flags"]
+    assert r["sayilir"] and "yururluk_varsayildi" in r["flags"]
     r = D.apply_row(rule, doc, "bolum_kurulu_karari", "uygula")
     assert not r["sayilir"] and "gecmis_kanit" in r["flags"]
     # kurum false seçerse planla da sayılmaz
@@ -203,8 +203,9 @@ def test_date_source_and_multiple_dates(tmp_path):
     r = by["tut_eski_ref|A.4.2/2"]
     assert not r["sayilir"] and "tarih_dogrulanmali" in r["flags"]
     assert by["tut_ref_once|A.4.2/3"]["sayilir"]
+    # tarih yalnız dosya adında (rapor yılı): aksi görülmedikçe dönem içi, sayılır (kullanıcı kararı 2026-11-26)
     r = by["anket_ad25|A.4.2/5"]
-    assert not r["sayilir"] and "tarih_dogrulanmali" in r["flags"] and "dosya adı" in r["tarih_kaynagi"]
+    assert r["sayilir"] and "tarih_varsayildi" in r["flags"] and "dosya adı" in r["tarih_kaynagi"]
     r = by["anket_ad26|A.4.2/4"]
     assert not r["sayilir"] and "donem_sonrasi" in r["flags"] and r["tarih_kaynagi"] == "dosya adı (anket-2026.pdf)"
     out = tmp_path / "out"
@@ -228,7 +229,7 @@ def test_regulation_versions_in_force_selected(tmp_path):
         for y in (2014, 2017, 2018, 2026)})
     a = build(ws)
     st = {r["doc_id"]: (r["sayilir"], r["flags"]) for r in a.rows}
-    assert st["cap_2018"][0] and "guncellik_dogrulanmali" in st["cap_2018"][1]
+    assert st["cap_2018"][0] and "yururluk_varsayildi" in st["cap_2018"][1]
     for y in (2014, 2017):
         assert not st[f"cap_{y}"][0] and "surum_yururlukten_kalkmis" in st[f"cap_{y}"][1]
     assert not st["cap_2026"][0] and "surum_donem_sonrasi" in st["cap_2026"][1]
@@ -265,12 +266,21 @@ def test_unconfirmed_unit_not_counted_nor_published(tmp_path):
         "kendi": (_doc("bolum_kurulu_karari", "2025-04-01"), [_m("A.4.2", "A.4.2/2", "uygula")]),
         "kimya_anket": (_doc("anket_sonucu", "2025-05-01"), [_m("A.4.2", "A.4.2/5", "kontrol_et")]),
         "kimya_tut": (_doc("komisyon_tutanagi", "2025-06-01"), [_m("A.4.2", "A.4.2/3", "onlem_al")]),
-    }, birim={"kendi": "kendi", "kimya_anket": "belirsiz", "kimya_tut": "belirsiz"})
+        # birimi belirsiz, metinde başka birimin adı yok: yükleyen birimin varsayılır, sayılır, yayımlanır
+        "sessiz": (_doc("komisyon_tutanagi", "2025-06-02"), [_m("A.4.2", "A.4.2/1", "planla")]),
+    }, birim={"kendi": "kendi", "kimya_anket": "belirsiz", "kimya_tut": "belirsiz", "sessiz": "belirsiz"})
+    import yaml
+    (ws / "config.yaml").write_text(yaml.safe_dump({"bidr": {"birim": "Örnek Bölümü", "birim_adlari": [
+        "Örnek Bölümü", "Kıyas Bölümü"]}}, allow_unicode=True), encoding="utf-8")
+    for d in ("kimya_anket", "kimya_tut"):       # açık çelişki: başka birimin adı, birimin adı yok
+        (ws / "text" / f"{d}.txt").write_text("Kıyas Bölümü Başkanlığına\nBelge metni.", encoding="utf-8")
     out = tmp_path / "out"
     a, paths = audit(ws, out=out)
     r = a.by_key["kimya_anket|A.4.2/5"]
     assert not r["sayilir"] and r["birim_onay_bekliyor"] and "birim_onay_bekliyor" in r["flags"]
     assert _crit(a, "A.4.2")["od"] == 3                          # K/Ö sayılmadı
+    r = a.by_key["sessiz|A.4.2/1"]
+    assert r["sayilir"] and not r["birim_onay_bekliyor"] and "birim_varsayildi" in r["flags"]
     # review.xlsx: onay bekleyenler önde; birim sayfasında belirsiz belgeler de var
     wb = load_workbook(paths["xlsx"])
     first = {wb[SHEET_ROWS].cell(row=i, column=1).value for i in (2, 3)}
@@ -281,7 +291,7 @@ def test_unconfirmed_unit_not_counted_nor_published(tmp_path):
     assert "`kimya_anket` (1 eşleşme; onay bekliyor: sayılmadı)" in g
     # inceleme yapılmadan "devam et": file da yayımlamaz
     R.run(ws, out=out, source=src, review_dir=out)
-    assert _index_ids(out) == {"kendi"}
+    assert _index_ids(out) == {"kendi", "sessiz"}
     assert {e["doc_id"]: e["neden"] for e in _secim(out)["elenen"]} == {
         "kimya_anket": "birim_dogrulanmali", "kimya_tut": "birim_dogrulanmali"}
 

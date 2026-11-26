@@ -358,3 +358,19 @@ def test_ret_cited_and_mark_dropped_units():
     uy: list[str] = []
     out = mark_dropped_rejections(rows, uy)
     assert [r["doc_id"] for r in out] == ["a"] and len(uy) == 1 and "1 belge rapor dışına düştü" in uy[0]
+
+
+def test_assumptions_do_not_ask():
+    """Yükleyen bölümün belgesi ve tarihsiz belgenin dönem içi olduğu varsayılır (kullanıcı kararı 2026-11-26):
+    varsayım işaretleri Dikkat yazmaz, Önerimiz'i "Bakın" yapmaz; açık çelişki yine sorulur."""
+    from bidr.audit.sade import dikkat
+    base = {"sayilir": True, "od": 2, "karar": "", "zayif": False}
+    for fl in (["birim_varsayildi"], ["tarih_varsayildi"], ["yururluk_varsayildi"],
+               ["birim_varsayildi", "tarih_varsayildi", "birim_iliskisi_kod_bilgi"]):
+        assert dikkat({**base, "flags": fl}, 2025) == ([], False), fl
+    for fl in (["birim_onay_bekliyor"], ["tarih_dogrulanmali"], ["gecmis_kanit"], ["surum_dogrulanmali"],
+               ["guncellik_dogrulanmali", "revizyon_donem_sonrasi"], ["guncellik_dogrulanmali", "yururluk_bitmis"]):
+        uy, bak = dikkat({**base, "flags": fl}, 2025)
+        assert bak and uy, fl
+    uy, _ = dikkat({**base, "flags": ["birim_onay_bekliyor"]}, 2025)
+    assert "başka bir birimin adı" in uy[0]

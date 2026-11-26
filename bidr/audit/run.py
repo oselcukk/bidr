@@ -65,7 +65,9 @@ KARAR_ISARETLERI = frozenset({"insan_reddetti", "insan_duzeltti", "birim_aitligi
                               "birim_onay_bekliyor", "birim_aitligi_dogrulanmali", "elle_eslesme"})
 # Yalnız bilgi veren işaretler: eklenmeleri verilmiş kararı "yeniden bak"a düşürmez. `belge_notu`: karar
 # yükleyenin notu görülerek verildi (not çelişkisi `not_uyusmuyor` ise yeniden baktırır).
-BILGI_ISARETLERI = frozenset({"belge_notu", "ret_hedefsiz_dustu"})
+# Varsayım işaretleri (`birim_varsayildi`, `tarih_varsayildi`, `yururluk_varsayildi`) de yalnız bilgidir.
+BILGI_ISARETLERI = frozenset({"belge_notu", "ret_hedefsiz_dustu", "birim_varsayildi", "tarih_varsayildi",
+                              "yururluk_varsayildi", "birim_iliskisi_kod_bilgi"})
 
 # Ret notunda başka ölçüt anılıyor mu ("B.2.2 konusu", "önceki turda B.3.5 olarak", "başka madde").
 # Hedef verilmeden reddedilip belge hiçbir satırda sayılmıyorsa belge rapor dışına düşmüştür:
@@ -225,6 +227,12 @@ def _lift(m: dict, tags: dict) -> dict:
     return {**m, "od_kabul": od, "denetim": den}
 
 
+def unit_conflict(rec: dict) -> bool:
+    """Birimi belirsiz belgede birime sorulacak açık çelişki var mı (build `birim_celiski`). Çelişkisiz
+    belirsiz belge yükleyen birimin sayılır (`birim_varsayildi`)."""
+    return record_unit_relation(rec) == BIRIM_BELIRSIZ and bool((rec.get("ince") or {}).get("birim_celiski"))
+
+
 def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | None = None,
          link: tuple | None = None, betimleme: bool = False, dosya: str | None = None,
          surum: dict | None = None, sv=None) -> dict:
@@ -232,6 +240,10 @@ def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | 
     doc = docs.get(did) or {}
     key = f"{did}|{m['yuva']}"
     rel = record_unit_relation(rec)
+    celiski = unit_conflict(rec)
+    # çelişkisiz belirsiz: yükleyen birimin belgesi (kendi) varsayılır; tür tavanı/birim sayfası kuralları
+    # `kendi` gibi işler, satır sessiz `birim_varsayildi` taşır
+    rel_k = "kendi" if rel == BIRIM_BELIRSIZ and not celiski else rel
     # birim aitliği işareti kaydın ilişkisinden yeniden kurulur (insan birim kararı kaldırır)
     flags = [f for f in (m.get("denetim") or {}).get("isaret") or [] if f != "birim_aitligi_dogrulanmali"]
     olcut, yuva, asama = m["olcut"], m["yuva"], m.get("asama")
@@ -242,8 +254,12 @@ def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | 
     donem_ici = doc.get("donem_ici")
     sayilir, karar = True, None
     sv_out = None
-    if (rec.get("ince") or {}).get("birim_iliskisi_kod"):
-        flags.append("birim_iliskisi_kod")
+    kod_ = (rec.get("ince") or {}).get("birim_iliskisi_kod")
+    if kod_:
+        # kodun düzeltmesi: model kurum/fakülte geneli dediyse birime sorulur; model belirsiz dediyse kodun
+        # `kendi`si varsayımla aynı (bilgi); kod `kendi`yi belirsize düşürdüyse çelişki (birim_onay_bekliyor)
+        model_ = (rec.get("ince") or {}).get("birim_iliskisi_model")
+        flags.append("birim_iliskisi_kod" if model_ in GENEL_ILISKI else "birim_iliskisi_kod_bilgi")
     if dec:
         karar = dec["karar"]
     if dec and dec.get("elle"):
@@ -265,10 +281,10 @@ def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | 
         # tavanına girmez: kurum geneli değildir (birim adı config.yaml'da biliniyorsa).
         tur_kg = dtype in KURUM_GENELI_TURLER and not (
             rel == "ust_birim_bu_birim_hakkinda" and dtype in KARAR_TURLERI) and not (
-            rel == "kendi" and dtype not in KARAR_TURLERI and sv is not None and sv.own_regulation(did))
+            rel_k == "kendi" and dtype not in KARAR_TURLERI and sv is not None and sv.own_regulation(did))
         # Birleşik PDF: tür (yönerge) bütün belgeye verilmiş ama alıntı birimin kendi belgesinin
         # sayfasından (ör. bölümün ders değerlendirme sonucu): tür tavanı o satıra uygulanmaz.
-        sayfa = (sv.unit_page(did, m.get("alinti") or "") if tur_kg and rel in ("kendi", "ust_birim_bu_birim_hakkinda")
+        sayfa = (sv.unit_page(did, m.get("alinti") or "") if tur_kg and rel_k in ("kendi", "ust_birim_bu_birim_hakkinda")
                  and sv is not None else "")
         if sayfa:
             tur_kg = False
@@ -328,11 +344,14 @@ def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | 
         if karar in ("kabul", "duzelt"):
             flags.append("birim_aitligi_onaylandi")
             vurgu.append("birim aitliği incelemede onaylandı")
-        elif karar != "ret":
+        elif karar != "ret" and celiski:
+            # açık çelişki (metinde başka birimin adı, birimin adı yok): onaylanana dek sayılmaz
             birim_bekler = True
             sayilir = False
             flags += ["birim_aitligi_dogrulanmali", "birim_onay_bekliyor"]
-            vurgu.insert(0, "BİRİM AİTLİĞİ DOĞRULANMALI: onaylanana dek sayılmaz")
+            vurgu.insert(0, "BİRİM AİTLİĞİ DOĞRULANMALI (belgede başka birimin adı): onaylanana dek sayılmaz")
+        elif karar != "ret":
+            flags.append("birim_varsayildi")
     ince_ = rec.get("ince") or {}
     if ince_.get("birim_iliskisi_kod") in ("kendi", "ust_birim_bu_birim_hakkinda") \
             and karar not in ("kabul", "duzelt", "ret"):
@@ -340,7 +359,7 @@ def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | 
         if ince_.get("birim_iliskisi_model") in GENEL_ILISKI:
             vurgu.insert(0, "birim kodca düzeltildi (model kurum/fakülte geneli dedi; metin birime özgü): doğrulanmalı")
         else:
-            vurgu.insert(0, "birim kodca önerildi (metinde birim sinyali; model belirsiz dedi): doğrulanmalı")
+            vurgu.append("birim kodca bulundu (metinde birim sinyali; model belirsiz dedi)")
     if "birim_sayfasi" in flags:
         vurgu.append("alıntı birleşik belgede birimin kendi sayfasından: tür (kurum geneli) tavanı uygulanmadı")
     if sv_out:
@@ -504,11 +523,11 @@ def _criterion(cs, tags, cid, rows, allowed, rule: D.Rule | None = None,
         notlar.append(f"gözden geçirme döngüsü tanımlı (son {cycle['yil']} yıl; `{cycle['belge']}`)"
                       + (f": {len(cycle['acilan'])} önceki yıl halkası sayıldı" if cycle["acilan"] else ""))
     if tarihsiz:
-        notlar.append(f"{len(tarihsiz)} eşleşme tarihi bilinmeyen olay belgesinden: sayılmadı (tarih doğrulanmalı)"
+        notlar.append(f"{len(tarihsiz)} eşleşmenin olay tarihi çelişkili ya da dönem sonrası güncellemeli: sayılmadı (tarih doğrulanmalı)"
                       + (f"; doğrulanırsa OD{rt.od}" if rt.od > rs.od else ""))
     gd = {r["doc_id"] for r in counted if "guncellik_dogrulanmali" in r["flags"]}
     if gd:
-        notlar.append(f"{len(gd)} belgenin rapor yılında yürürlükte olduğu doğrulanmalı (güncellik; tarih dönem dışı ya da yok)")
+        notlar.append(f"{len(gd)} belgenin rapor yılında yürürlükte olduğu doğrulanmalı (revizyon tarihi dönem sonrası)")
     if sonra:
         notlar.append(f"{len({r['doc_id'] for r in sonra})} belge dönem sonrasına ait ya da yürürlükteki sürüm değil: "
                       "bu dönemin kanıtı sayılmadı")
@@ -516,8 +535,8 @@ def _criterion(cs, tags, cid, rows, allowed, rule: D.Rule | None = None,
     if rv:
         notlar.append(f"{len(rv)} düzenlemenin revizyon tarihi dönem sonrası: dönemdeki sürüm aranmalı")
     if birim_bek:
-        notlar.append(f"{len({r['doc_id'] for r in birim_bek})} belgenin birim aitliği doğrulanmadı: "
-                      "onaylanana dek sayılmadı")
+        notlar.append(f"{len({r['doc_id'] for r in birim_bek})} belgede başka birimin adı geçiyor (birim aitliği "
+                      "doğrulanmadı): onaylanana dek sayılmadı")
     ek = ek or {}
     notlar.extend(ek.get("notlar") or [])
     od_onayli = (od_karar or {}).get("od")
@@ -680,7 +699,9 @@ def _unit_row(rec: dict, eff: dict, pin: dict | None, docs: dict, name: str) -> 
                     f": \"{_short(m.get('alinti'))}\"" for m in red)
     rel = (pin or {}).get("birim_iliskisi") or ""
     if not rel:
-        durum = ("model: birim aitliği belirsiz (onaylanana dek kanıt sayılmaz)" if belirsiz
+        durum = ("model: birim aitliği belirsiz, belgede başka birimin adı (onaylanana dek kanıt sayılmaz)"
+                 if belirsiz and unit_conflict(rec)
+                 else "model: birim aitliği belirsiz (bölümün belgesi varsayıldı)" if belirsiz
                  else "model: başka birim (kanıt sayılmadı)")
     elif rel == BIRIM_DISI:
         durum = "insan onayladı: başka birim"
@@ -808,12 +829,20 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
                 if old_rel in GENEL_ILISKI and ov[0] not in GENEL_ILISKI and not tur:
                     # model kurum/fakülte geneli dedi, kod birime özgü buldu: decide'ın tavanı kalkar
                     rec = orig = {**rec, "eslesmeler": [_lift(m, tags) for m in rec.get("eslesmeler") or []]}
-        if pin or record_unit_relation(orig) in (BIRIM_DISI, BIRIM_BELIRSIZ):
+        if not pin and record_unit_relation(rec) == BIRIM_BELIRSIZ:
+            # Yükleyen birimin belgesi varsayılır (kullanıcı kararı 2026-11-26): birimi belirsiz belge, metinde
+            # birimin sinyali yokken başka birim adı geçmedikçe (ya da kod modelin `kendi`sini bu yüzden
+            # düşürmedikçe) `kendi` gibi işlenir; çelişki varsa birime sorulur.
+            ince = rec.get("ince") or {}
+            baska = sv.other_unit(rec["doc_id"])
+            if baska or ince.get("birim_iliskisi_kod") == BIRIM_BELIRSIZ:
+                rec = orig = {**rec, "ince": {**ince, "birim_celiski": baska or True}}
+        if pin or record_unit_relation(orig) == BIRIM_DISI or unit_conflict(orig):
             sayfa.append(_unit_row(orig, rec, pin, docs, names(orig["doc_id"])[0]))
         rel = record_unit_relation(rec)
-        if rel not in (BIRIM_DISI, BIRIM_BELIRSIZ):
+        if rel != BIRIM_DISI and not unit_conflict(rec):
             own[rec["doc_id"]] = rec
-        if rel in (BIRIM_DISI, BIRIM_BELIRSIZ):
+        if rel == BIRIM_DISI or unit_conflict(rec):
             ince = rec.get("ince") or {}
             birim["baska_birim" if rel == BIRIM_DISI else "belirsiz"].append({
                 "doc_id": rec["doc_id"], "belge": (docs.get(rec["doc_id"]) or {}).get("calisma_adi") or rec["doc_id"],

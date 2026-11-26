@@ -119,7 +119,9 @@ def test_build_od_and_flags(ws):
     u = a.by_key["d_eski|A.1.1/2"]
     assert a11["od"] == 2 and not u["sayilir"] and "gecmis_kanit" in u["flags"]
     p = a.by_key["d_eski|A.1.1/1"]
-    assert p["sayilir"] and "guncellik_dogrulanmali" in p["flags"] and "gecmis_kanit" not in p["flags"]
+    # eski tarihli usul kararı rapor yılında yürürlükte varsayılır (sorulmaz; kullanıcı kararı 2026-11-26)
+    assert p["sayilir"] and "yururluk_varsayildi" in p["flags"] and "gecmis_kanit" not in p["flags"]
+    assert "guncellik_dogrulanmali" not in p["flags"]
     # boş ölçüt OD1, eksik yuvaları listeli
     a12 = _crit(a, "A.1.2")
     assert a12["od"] == 1 and a12["yuva_dolu"] == 0 and a12["bos_yuvalar"]
@@ -231,14 +233,17 @@ def test_relook_after_new_flag_keeps_decision(ws, tmp_path, eski_calisma_alani):
     if eski_calisma_alani:          # özellikten önce işlenmiş kararlar: görülen durum önceki tablodan
         (out / FILES["gorulen"]).unlink()
         audit(ws, out=out)
-    sid = "d_plan|B.1.1/1"
-    # yeni sürüm/yeni belge: aynı satırın belgesi artık önceki yıla ait (yeni işaret)
+    sid = "d_uyg|B.1.1/3"
+    # yeni sürüm/yeni belge: aynı satırın belgesi artık önceki yıla ait (yeni işaret). Eski tarihli plan
+    # (`yururluk_varsayildi`) varsayım işaretidir: yeniden baktırmaz.
+    _set_doc(ws, "d_uyg", donem_ici=False)
     _set_doc(ws, "d_plan", donem_ici=False)
     a, _ = audit(ws, out=out)
     r = a.by_key[sid]
     assert r["karar"] == "kabul"                                  # insan kararı ezilmez
-    assert r["yeniden_bak"] == "yeni işaret: guncellik_dogrulanmali"
-    assert not a.by_key["d_uyg|B.1.1/3"]["yeniden_bak"]           # değişmeyen satır işaretsiz
+    assert r["yeniden_bak"] == "yeni işaret: gecmis_kanit"
+    p = a.by_key["d_plan|B.1.1/1"]
+    assert "yururluk_varsayildi" in p["flags"] and not p["yeniden_bak"]   # varsayım: baktırmaz
     assert any("yeniden bakılmalı" in u for u in a.uyarilar)
     st = review_state(out, ws)
     assert st["yeniden_bak"] == 1 and st["uygulanmamis"] == 0

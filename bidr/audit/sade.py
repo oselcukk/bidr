@@ -66,12 +66,17 @@ DIKKAT = {
                            "seçip doğru maddeyi verin.", False),
     "ayni_alinti_kabul": ("Aynı alıntı {ayni} ölçütünde zaten kabul edildi (ikinci arama). Alıntı bu maddeye "
                           "AYRI ve özgül bir içerikle karşılık vermiyorsa Ret; başka maddeye aitse Düzelt.", True),
-    "birim_onay_bekliyor": ("Bu belgenin bölümünüze ait olduğundan emin değiliz; onaylanana dek kanıt "
-                            "sayılmıyor. Bölümünüzün belgesiyse Kabul, değilse Ret seçin.", True),
+    # Yüklenen belge bölümün sayılır (kullanıcı kararı 2026-11-26): yalnız belgede başka birimin adı geçip bölümün adı
+    # geçmiyorsa sorulur
+    "birim_onay_bekliyor": ("Bu belgenin bölümünüze ait olduğundan emin değiliz: belgede başka bir birimin adı "
+                            "geçiyor, bölümünüzün adı geçmiyor. Onaylanana dek kanıt sayılmıyor. Bölümünüzün "
+                            "belgesiyse Kabul, değilse Ret seçin.", True),
     "birim_iliskisi_kod": ("Bölüme ait olduğu belgedeki bir ifadeden çıkarıldı. Doğruysa Kabul.", True),
-    "tarih_dogrulanmali": ("Belgenin tarihi okunamadı. {yil} yılına aitse Kabul, değilse Ret seçin.", True),
-    "guncellik_dogrulanmali": ("Bu kural/plan belgesinin tarihi {yil} değil ya da yok. {yil} yılında "
-                               "yürürlükteyse Kabul, değilse Ret seçin.", True),
+    # tarihsiz belge dönem içi varsayılır (`tarih_varsayildi`, sorulmaz); bu işaret yalnız çelişkide kalır
+    "tarih_dogrulanmali": ("Belgenin hangi yıla ait olduğu kesin değil (belgede farklı yılların tarihleri var ya "
+                           "da sayfa sonradan güncellenmiş). {yil} yılına aitse Kabul, değilse Ret seçin.", True),
+    "yururluk_bitmis": ("Bu plan/kuralın yürürlük süresi {yil} yılından önce bitiyor. {yil} yılında hâlâ "
+                        "yürürlükteyse Kabul, değilse Ret seçin.", True),
     "gecmis_kanit": ("Belge önceki bir yıla ait{byil}; bu yılın kanıtı sayılmadı. Olay {yil} yılında da "
                      "yapıldıysa ya da tarih yanlışsa Kabul, değilse Ret seçin.", True),
     "donem_sonrasi": ("Belge {yil} yılından sonraya ait; bu raporun kanıtı sayılmadı. Tarih yanlışsa Kabul, "
@@ -130,7 +135,12 @@ BILGI = frozenset({"belge_notu", "insan_reddetti", "insan_duzeltti", "birim_aitl
                    "kurum_tavani_kaldirildi", "birim_sayfasi", "ikinci_arama", "asama_dusuruldu",
                    "asama_yuva_etiketine_uymuyor", "od_asamayla_tutarsiz", "fakulte_geneli",
                    "uygulama_kaniti_eksik", "madde_baska_fakulte", "birim_aitligi_dogrulanmali",
-                   "puko_zinciri", "puko_onlem"})
+                   "puko_zinciri", "puko_onlem",
+                   # varsayımlar (kullanıcı kararı 2026-11-26): yükleyen bölümün belgesi, tarihsiz belge dönem içi, eski
+                   # tarihli kural/plan yürürlükte; denetlenebilsin diye iç işarette kalır, baktırmaz.
+                   # `guncellik_dogrulanmali` yalnız revizyonla birlikte gelir (soruyu o işaretin metni sorar).
+                   "birim_varsayildi", "tarih_varsayildi", "yururluk_varsayildi", "birim_iliskisi_kod_bilgi",
+                   "guncellik_dogrulanmali"})
 
 F_HEAD = PatternFill("solid", fgColor="DDE7F0")
 F_BOLUM = PatternFill("solid", fgColor="C9D6E3")
@@ -221,8 +231,8 @@ NASIL = [
     "ikisi birden.",
     "\"Önerilen kanıt adı\" raporda görünecek addır; düzeltebilirsiniz (kişi adı, unvan, e-posta yazmayın). "
     "\"Not\" isteğe bağlıdır; Ret ya da taşıma nedenini kısaca yazmanız sonradan işe yarar.",
-    "\"Bölümünüze ait mi\" sayfası: aracın hangi birime ait olduğundan emin olamadığı ya da başka birime "
-    "ait saydığı belgeler. CEVABINIZ'ı seçin; boş bırakırsanız aracın kararı geçerli kalır.",
+    "\"Bölümünüze ait mi\" sayfası: içinde başka bir birimin adı geçtiği için aracın bölümünüze ait olduğundan "
+    "emin olamadığı ya da başka birime ait saydığı belgeler (yüklediğiniz öteki belgeler bölümünüzün sayılır). CEVABINIZ'ı seçin; boş bırakırsanız aracın kararı geçerli kalır.",
     "\"Maddeler\" sayfası: her madde için önerilen olgunluk düzeyi (1–5). Katılmıyorsanız \"Onayladığınız "
     "düzey\"i seçin; boş bırakırsanız öneri geçerlidir.",
     "Bitince dosyayı kaydedip kapatın ve hazırlayan kişiye haber verin. Sütun ya da sayfa silmeyin; gizli "
@@ -734,7 +744,8 @@ def _write_birim(sh, a, cs) -> None:
         if rel:
             neden = f"Cevabınız kayıtlı: \"{BIRIM_AD.get(rel, rel)}\"."
         elif (x.get("model_iliskisi") or "") == "belirsiz" or "belirsiz" in (x.get("durum") or ""):
-            neden = "Araç bu belgenin hangi birime ait olduğunu anlayamadı; onaylanana dek kanıt sayılmıyor."
+            neden = ("Belgede başka bir birimin adı geçiyor, bölümünüzün adı geçmiyor; onaylanana dek kanıt "
+                     "sayılmıyor.")
         else:
             neden = "Araç bu belgeyi başka bir birimin belgesi saydı ve kanıt listesine almadı."
         if x.get("gerekce"):

@@ -21,7 +21,8 @@ Akış (belge başına):
      Kurum/fakülte geneli belgenin (model `birim_iliskisi` ya da `kurum_geneli.yaml` türü)
      eşleşmeleri OD2 ile sınırlanır (`uygulama_kaniti_eksik`). Başka birime ait belgenin
      (`birim_iliskisi: baska_birim`) eşleşmeleri reddedilir; `belirsiz` kabul edilir,
-     `birim_aitligi_dogrulanmali` işaretlenir. İnsan birim kararı (`birim-kararlari.jsonl`)
+     `birim_aitligi_dogrulanmali` işaretlenir (audit bu işareti kaydın ilişkisinden yeniden kurar:
+     çelişkisiz belirsiz belge yükleyen birimin sayılır, `birim_varsayildi`). İnsan birim kararı (`birim-kararlari.jsonl`)
      varsa pakete sabit bilgi olarak girer ve modelinkinin önüne geçer.
 
 Yeniden işleme: `prepare --only` yalnız verilen belgeleri yeniden paketler. Görev sürümü ya

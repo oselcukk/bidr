@@ -35,7 +35,7 @@ surum: 2
 # Önceki yıl olayının planla eşleşmesi (usul tanımlayan eski karar) yapı gibi sayılsın mı.
 # true (vars., kullanıcı kararı 2026-11-19: "belgeler hâlâ uygulamada; her yıl müfredat
 # değişmez"): dönemden önce alınmış ama hâlâ yürürlükte olan usul/karar belgesi plan halkasını
-# kanıtlar (sayılır + `guncellik_dogrulanmali`). Eski olay belgesi uygulama/izleme/önlem
+# kanıtlar (sayılır + sessiz `yururluk_varsayildi`; kullanıcı kararı 2026-11-26: sorulmaz). Eski olay belgesi uygulama/izleme/önlem
 # halkalarını yine kanıtlamaz (`gecmis_kanit`, süreklilik; yayımlanan listede sınırlı).
 # false: eski olay belgesi hiçbir halkayı kanıtlamaz (planla dahil).
 onceki_olay_plani_sayilir: true

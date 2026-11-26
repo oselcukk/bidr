@@ -114,6 +114,20 @@ def unit_names(adlar) -> tuple[tuple[str, ...], ...]:
     return tuple(sorted((x for x in out if x), key=lambda x: (-len(x), x)))
 
 
+def own_aliases(birim: str, adlar) -> tuple[str, ...]:
+    """Birimin kurum profilindeki resmî adı, yapılandırmadaki ad ondan kısa yazılmışsa: config `birim`
+    ("Deneme Bölümü") bilinen birim adlarının hiçbiriyle birebir aynı değilse ve kökü (sözcük
+    dizisi) tek bir bilinen adın başıysa ("Deneme ve Analiz Bölümü") o ad birimin kendisidir:
+    metinde geçmesi birim sinyalidir, "başka birim" sayılmaz. Aday birden çoksa ("Matematik" →
+    "Matematik Bölümü", "Matematik Mühendisliği Bölümü") ya da birebir eşleşme varsa boş."""
+    own = tuple(_SOZ.findall(_stem(birim or "")))
+    names = unit_names(adlar)
+    if not own or own in names:
+        return ()
+    c = [n for n in names if len(n) > len(own) and n[:len(own)] == own]
+    return (" ".join(c[0]),) if len(c) == 1 else ()
+
+
 def other_units(raw: str, names, own: str = "") -> set[str]:
     """Metinde geçen bilinen başka birim adları (katlanmış kök, ör. "fizik"). `names`:
     `unit_names` çıktısı; `own`: birimin kendi kökü (`_stem`) hariç tutulur."""
@@ -270,6 +284,7 @@ class Savunma:
     _fak: dict = field(default_factory=dict)
     kaldirilan: dict = field(default_factory=dict)   # doc_id → kaldıran belgenin adı
     fmap: dict = field(default_factory=dict)         # doc_id → (faaliyet kaydı, belgenin aşaması)
+    resmi_adlar: tuple = ()                           # birimin kurum profilindeki uzun adı (own_aliases)
 
     @classmethod
     def load(cls, ws_root: Path, docs: dict, donem: int | None) -> "Savunma":
@@ -291,8 +306,22 @@ class Savunma:
         for k in (sv.faaliyet or {}).get("faaliyetler") or []:
             for b in k.get("belgeler") or []:
                 sv.fmap.setdefault(b.get("doc_id"), (k, b.get("asama")))
+        sv.resmi_adlar = own_aliases(birim, up.get("birim_adlari"))
         sv.kaldirilan = sv._superseded()
         return sv
+
+    def own_name(self, t: str) -> bool:
+        """Katlanmış metinde birimin adı (config adı ya da kurum profilindeki resmî adı) geçiyor mu."""
+        if not self.birim:
+            return False
+        return any(bool(bp and bp.search(t)) for bp in
+                   (birim_pattern(self.birim), *(birim_pattern(a + " bolumu") for a in self.resmi_adlar)))
+
+    def own_pats(self) -> list[tuple[str, re.Pattern]]:
+        """`own_patterns` birimin adıyla ve kurum profilindeki resmî adıyla."""
+        if not self.birim:
+            return []
+        return [*own_patterns(self.birim), *(x for a in self.resmi_adlar for x in own_patterns(a + " bolumu"))]
 
     # -- metin ------------------------------------------------------------------------------
     def text(self, did: str) -> str:
@@ -311,9 +340,8 @@ class Savunma:
         raw = self.text(did)
         t = f(raw)
         stem = _stem(self.birim) if self.birim else ""
-        bp = birim_pattern(self.birim) if self.birim else None
-        birim_var = bool(bp and bp.search(t))
-        others = other_units(raw, self.birim_adlari, stem) if stem else set()
+        birim_var = self.own_name(t)
+        others = (other_units(raw, self.birim_adlari, stem) - set(self.resmi_adlar)) if stem else set()
         lines = [x.strip() for x in raw.splitlines() if x.strip()]
         madde = [x for x in lines if re.match(r"^([-*•]|\w[\w.-]*\.(example|com|org|edu|tr)\b|https?://)", x)]
         kisa = [x for x in madde if len(x.split()) <= 7]
@@ -323,7 +351,7 @@ class Savunma:
         own = []
         if birim_var:
             own.append("birim adı")
-        for ad, pat in own_patterns(self.birim) if self.birim else []:
+        for ad, pat in self.own_pats():
             if pat.search(t):
                 own.append(ad)
         kod = self._course_codes(raw)
@@ -379,6 +407,14 @@ class Savunma:
             return rel2, "kod: metinde birimin adı yok; bütün birimleri kapsayan belge"
         return None
 
+    def other_unit(self, did: str) -> list[str]:
+        """Belgede birimin sinyali yokken geçen başka birim adları (birim adı bilinmiyorsa boş).
+        Birimi belirsiz belge yükleyen birimin sayılır; bu liste doluysa açık çelişki: sorulur."""
+        if not self.birim:
+            return []
+        s = self.sig(did)
+        return [] if s["own"] else list(s["baska"])
+
     # -- birime özgü odak (kurum/fakülte geneli dendiğinde) -------------------------------------
     def _hitap(self, raw: str) -> tuple[set[str], bool]:
         """(belgede "X Bölüm(ü) Başkanlığına" hitabı geçen birim kökleri, birimin hitabı baş
@@ -389,7 +425,8 @@ class Savunma:
             for m in HITAP.finditer(f(line)):
                 roots.add(m.group(1))
         lines = [x for x in raw.splitlines() if x.strip()][:HITAP_SATIR]
-        if stem and any(re.search(rf"\b{re.escape(stem)}\s+bolum\w*\s+baskanlig", f(x)) for x in lines):
+        kokler = [re.escape(k).replace(r"\ ", r"\s+") for k in (stem, *self.resmi_adlar) if k]
+        if kokler and any(re.search(rf"\b(?:{'|'.join(kokler)})\s+bolum\w*\s+baskanlig", f(x)) for x in lines):
             head = True
         return roots, head
 
@@ -408,7 +445,8 @@ class Savunma:
         if head and len(roots) == 1:
             out.append("hitap birime")
         lines = [x for x in raw.splitlines() if x.strip()]
-        lab = re.compile(rf"^{re.escape(stem)}\s+bolum\w*\s*:$")
+        kokler = [re.escape(k).replace(r"\ ", r"\s+") for k in (stem, *self.resmi_adlar) if k]
+        lab = re.compile(rf"^(?:{'|'.join(kokler)})\s+bolum\w*\s*:$")
         for i, x in enumerate(lines[:-1]):
             if lab.match(f(x)) and not BLOK_ETIKET.match(f(lines[i + 1])):
                 out.append("birimin kaydı (\"" + x.strip() + "\")")
@@ -418,7 +456,7 @@ class Savunma:
         if kod:
             out.append(f"baş bölgede ders kodu ({kod})")
         fb = f(bas)
-        for ad, pat in own_patterns(self.birim):
+        for ad, pat in self.own_pats():
             if ad == "program adı" and pat.search(fb):
                 out.append("baş bölgede program adı")
         return out
@@ -441,17 +479,16 @@ class Savunma:
             return ""                         # düzenleme sayfası (madde yapısı): kurum geneli kalır
         if KURUM_BELGE.search(ADRES.sub(" ", t)) or FAKULTE_BELGE.search(t) or GENEL_IFADE.search(t):
             return ""
-        if other_units(page, self.birim_adlari, _stem(self.birim)):
+        if other_units(page, self.birim_adlari, _stem(self.birim)) - set(self.resmi_adlar):
             return ""
         sig = []
         kod = self._course_codes(page)
         if kod:
             sig.append(f"ders kodu ({kod})")
-        for ad, pat in own_patterns(self.birim):
+        for ad, pat in self.own_pats():
             if pat.search(t):
                 sig.append(ad)
-        bp = birim_pattern(self.birim)
-        if bp and bp.search(t):
+        if self.own_name(t):
             sig.append("birim adı")
         return ", ".join(sig)
 
@@ -460,8 +497,7 @@ class Savunma:
         if not self.birim:
             return False
         s = self.sig(did)
-        bp = birim_pattern(self.birim)
-        return bool(bp and bp.search(s["bas"])) and not s["kurum"]
+        return self.own_name(s["bas"]) and not s["kurum"]
 
     # -- yürürlükten kaldırma ------------------------------------------------------------------
     def _superseded(self) -> dict[str, str]:
@@ -554,7 +590,7 @@ class Savunma:
             blk = self._block(did, q)
             if blk is not None:
                 bs = f(blk)
-                if not birim_pattern(self.birim).search(bs) and any(re.search(rf"\b{re.escape(w)} bolum", bs) for w in s["baska"]):
+                if not self.own_name(bs) and any(re.search(rf"\b{re.escape(w)} bolum", bs) for w in s["baska"]):
                     out["sayilir"] = False
                     fl.append("madde_baska_birim")
                     vu.append("alıntı başka birimi konu alan maddeden (madde ilkesi)")

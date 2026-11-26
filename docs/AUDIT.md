@@ -71,7 +71,11 @@ Tek yumuşatma (komisyon kararı, 2026-11-18): plan halkası eksik ama U/K/Ö va
    eşleşmeleri decide'da reddedilir, "Eşleşmeler" sayfasına gelmez; review.xlsx "Başka birime
    ait sayılanlar" sayfasında ve gaps.md "Başka birime ait sayılan belgeler" bölümünde
    gerekçesiyle listelenir; komisyon kararı geri alabilir (aşağıda "Birim ilişkisini geri
-   alma"). `belirsiz` belge **insan onaylayana dek sayılmaz** (kör test 2026-11-19: başka
+   alma"). `belirsiz` belge yükleyen birimin belgesi varsayılır (kullanıcı kararı
+   2026-11-26): sayılır, sorulmaz, iç işaret `birim_varsayildi`; birim sayfasına ve gaps.md'ye
+   girmez. Yalnız açık çelişkide (metinde birimin adı/sinyali yokken bilinen başka birimin adı
+   geçiyor, ya da kod modelin `kendi`sini bu yüzden `belirsiz`e düşürdü: `birim_celiski`) eski
+   kural geçerlidir: belge **insan onaylayana dek sayılmaz** (kör test 2026-11-19: başka
    bölümün anket/tutanakları bu işaretle kanıt sayılıyordu): satır `birim_aitligi_dogrulanmali`
    + `birim_onay_bekliyor` işareti, `birim_onay_bekliyor: true` alanı ve "BİRİM AİTLİĞİ
    DOĞRULANMALI" vurgusu alır, OD'ye katılmaz, yayımlanan kanıt listesine girmez (`bidr file`
@@ -104,14 +108,17 @@ bu bir tanıma kuralı değil komisyon/kurum politikasıdır (`kurum_geneli.yaml
 
 | Sınıf | Türler (örnek) | Rapor yılı | Önceki yıl | Tarih yok | Sonraki yıl |
 |---|---|---|---|---|---|
-| **yapı** | müfredat, ders kataloğu (bilgi paketi), ders bilgi formu, yönerge/yönetmelik, görev dağılımı, iş akışı, stratejik plan | sayılır | sayılır + `guncellik_dogrulanmali` | sayılır + `guncellik_dogrulanmali` | sayılmaz: `donem_sonrasi`; revizyon kanıtı varsa sayılır + `revizyon_donem_sonrasi` |
-| **olay** | kurul/komisyon kararı, tutanak, anket sonucu, faaliyet/değerlendirme raporu, yazışma, dönemlik ders kayıtları (ders programı, izlence, açılan dersler) | sayılır | planla sayılır + `guncellik_dogrulanmali`; U/K/Ö/Z sayılmaz: `gecmis_kanit` | sayılmaz: `tarih_dogrulanmali` | sayılmaz: `donem_sonrasi` |
+| **yapı** | müfredat, ders kataloğu (bilgi paketi), ders bilgi formu, yönerge/yönetmelik, görev dağılımı, iş akışı, stratejik plan | sayılır | sayılır + `yururluk_varsayildi` (sessiz); yürürlük aralığı rapor yılından önce bitiyorsa `guncellik_dogrulanmali` + `yururluk_bitmis` (sorulur) | sayılır + `tarih_varsayildi` (sessiz) | sayılmaz: `donem_sonrasi`; revizyon kanıtı varsa sayılır + `revizyon_donem_sonrasi` |
+| **olay** | kurul/komisyon kararı, tutanak, anket sonucu, faaliyet/değerlendirme raporu, yazışma, dönemlik ders kayıtları (ders programı, izlence, açılan dersler) | sayılır | planla sayılır + `yururluk_varsayildi` (sessiz); U/K/Ö/Z sayılmaz: `gecmis_kanit` | sayılır + `tarih_varsayildi` (sessiz); tarihler çelişiyorsa sayılmaz: `tarih_dogrulanmali` | sayılmaz: `donem_sonrasi` |
 | **karma** | web sayfası, ekran görüntüsü, form, anket formu; katalog dışı tür | aşama belirler: planla → yapı, U/K/Ö/Z → olay | | | |
 
 - **Yapı:** önemli olan rapor yılında yürürlükte olmasıdır. Yürürlükten kalktığı biliniyorsa
   kanıt değildir (kanıt ilkesi `yururlukten_kalkmis`: model `kanit_degil` der, satır gelmez).
-  Kod yürürlüğü bilemez: tarih rapor yılında değilse "güncellik doğrulanmalı" (gaps.md
-  "Güncelliği doğrulanacak belgeler"); yürürlükte değilse kullanıcı satırı `ret` eder.
+  Kod yürürlüğü bilemez: kullanıcı kararı (2026-11-26) önceki yıl tarihli ya da tarihsiz
+  kural/plan, daha yeni sürüm (`surum_*`) ya da yürürlükten kaldırma yoksa rapor yılında yürürlükte
+  varsayılır; sorulmaz, iç işaret `yururluk_varsayildi` / `tarih_varsayildi` kalır (Dikkat yazmaz,
+  "Bakın" yapmaz). Belgenin kendi yürürlük aralığı rapor yılından önce bitiyorsa açık çelişkidir:
+  `guncellik_dogrulanmali` + `yururluk_bitmis` (sorulur). Yürürlükte değilse kullanıcı satırı `ret` eder.
 - **Yapı, rapor yılından sonra** (kör test 2026-11-19: "Komisyonlar 2026-2027", 2026
   takvimleri bölümün tek yapı kanıtı olmuştu): dönemden sonra yürürlüğe girmiş, o dönemin
   kanıtı değil (`donem_sonrasi`, sayılmaz, yayımlanan listeye girmez). İstisna: tarih bir
@@ -132,17 +139,19 @@ bu bir tanıma kuralı değil komisyon/kurum politikasıdır (`kurum_geneli.yaml
   (kör test 2026-11-19: 2024'ten eski 26 satırın 20'si OD'ye girmişti). Plan halkası ise sayılır:
   dönemden önce alınmış ama hâlâ yürürlükte olan usul/karar belgesi (kullanıcı kararı 2026-11-19:
   "belgeler hâlâ uygulamada; her yıl müfredat değişmez"; `donem_kurali.yaml`
-  `onceki_olay_plani_sayilir: true`, satır `guncellik_dogrulanmali`; `false` planla dahil hiçbir
+  `onceki_olay_plani_sayilir: true`, satır `yururluk_varsayildi`; `false` planla dahil hiçbir
   halkayı saymaz). Sayılmayan satırlar gaps.md "Geçmiş kanıtlar (süreklilik)" bölümünde ayrı
   listelenir: OD5'in istediği sistematikliğin ve "bir önceki yıla göre ne değişti" sorusunun
   kanıtı. Yayımlanan kanıt listesinde ölçüt başına en çok `kanit_secimi.yaml`
   `gecmis_kanit_en_fazla` (vars. 1).
-- **Olay, tarih yok** (`donem_ici` bilinmiyor): hiçbir aşama sayılmaz, satır tabloda gri ama
-  görünür kalır ("tarih doğrulanmalı"; gaps.md "Tarihi doğrulanacak olay belgeleri"; ölçüt
-  notu "doğrulanırsa OD x"). Gerekçe: tarihsiz olay rapor yılında da, önce de, sonra da
-  olmuş olabilir; saymak OD'yi doğrulanmamış kanıtla şişirir (en ağır hata), satırı gizlemek
-  ise kullanıcının tek bakışta düzeltebileceği kanıtı kaybettirir. Kullanıcı tarihi
-  doğrularsa satırı `duzelt` + aşama ile sayar (insan kararı dönem kuralını aşar).
+- **Olay, tarih yok** (`donem_ici` bilinmiyor; tarih yalnız dosya adında rapor yılı; birleşik belgede
+  parçanın tarihi okunamadı): kullanıcı kararı (2026-11-26) aksini gösteren bir şey
+  yoksa rapor dönemine ait varsayılır ve sayılır; iç işaret `tarih_varsayildi` (Dikkat yazmaz,
+  "Bakın" yapmaz; OD4'e yükselten satır yine sorulur). Eski kural (sayılmaz, "tarih doğrulanmalı")
+  yalnız açık çelişkide kalır: birden çok yılın tarihi olayın yılını ayırt ettirmiyorsa ya da sayfa
+  dönem sonrası güncellemeliyse `tarih_dogrulanmali` (sayılmaz; gaps.md "Tarihi doğrulanacak olay
+  belgeleri"). Açık önceki yıl tarihi `gecmis_kanit`, birden çok sürüm `surum_dogrulanmali`,
+  dönem sonrası revizyon `revizyon_donem_sonrasi` bölüme sorulmaya devam eder.
 - **Karma:** web sayfası hem misyon metni hem haber, form boşken tanım doluyken kayıt
   olabilir; türü değil eşleşmenin aşaması belirler.
 - **Belgenin tarihi ve kaynağı** (`donem.doc_time`; satırda `tarih`, `tarih_kaynagi`,
@@ -570,7 +579,7 @@ kanıt listesine de girmez (`bidr file`, neden işaretin kendisi; gaps.md "Kanı
 | `bilgilendirme_onlem_degil` | onlem_al alıntısı "bilgisine sunulmuştur / bilgi verilmiştir" | uygula |
 | `surum_notu_onlem_degil` | onlem_al alıntısı sürüm notu ("revize edilmiş halidir"), izleme sözcüğü yok | uygula |
 | `yonlendirme_onlem_degil` | onlem_al alıntısı yalnız yönlendirme/talep: karardaki "-mesine/-masına" fiillerinin hepsi iletme/bildirme/gönderme ("Başkanlığa iletilmesine karar"), ya da üst yazı/talep ("gereğini arz ederiz") ve değişiklik sözcüğü yok (kanıt ilkesi `iyilestirme_kaniti`) | kontrol_et (izleme sözcüğü varsa), yoksa uygula |
-| `birim_iliskisi_kod` | birim adı biliniyor, model `kendi`/`ust_birim…` dedi, metinde birimin adı hiç yok: başka birim adı (yalnız bilinen birim adları: kurum profili `birimler:` + config `birim_adlari`; listede olmayan ad, ör. imza satırındaki soyad, hiçbir zaman başka birim sayılmaz) varsa `belirsiz` (insan onaylayana dek sayılmaz), bütün birimleri kapsayan belge ise (rektörlük, senato, "fakültemizin") `kurum_geneli`/`fakulte_geneli` (OD2 tavanı). Birim sayfasında modelin ilişkisi `birim_iliskisi_model` olarak görünür; insan birim kararı kodu aşar | ilişki değişir |
+| `birim_iliskisi_kod` | birim adı biliniyor, model `kendi`/`ust_birim…` dedi, metinde birimin adı hiç yok: başka birim adı (yalnız bilinen birim adları: kurum profili `birimler:` + config `birim_adlari`; listede olmayan ad, ör. imza satırındaki soyad, hiçbir zaman başka birim sayılmaz) varsa `belirsiz` (insan onaylayana dek sayılmaz), bütün birimleri kapsayan belge ise (rektörlük, senato, "fakültemizin") `kurum_geneli`/`fakulte_geneli` (OD2 tavanı). Birim sayfasında modelin ilişkisi `birim_iliskisi_model` olarak görünür; insan birim kararı kodu aşar. Yalnız model kurum/fakülte geneli dediyse ve kod birime özgü bulduysa satır sorulur (`birim_iliskisi_kod`); öteki düzeltmeler bilgi işaretidir (`birim_iliskisi_kod_bilgi`). Config `birim` adı kurum profilindeki tek bir uzun adın kısaltmasıysa (ör. "X Bölümü" ↔ "X ve Y Bölümü") uzun ad birimin kendi adı sayılır, başka birim değildir (`own_aliases`) | ilişki değişir |
 | `birim_iliskisi_kod` (ters yön) | model `kurum_geneli`/`fakulte_geneli` dedi ama belge birime özgü: (a) baş bölgede (ilk 12 satır) birime hitap ("Örnek Bölüm Başkanlığına") ve belgede başka bölüme hitap yok (dağıtım listesi hitap değildir), (b) üst birim yazısında birime ait kayıt ("Örnek Bölümü:" satırı ve altında içerik; madde ilkesi), ya da (c) baş bölgede (ilk 600 karakter) birimin ders kodu ya da program adı. Belge rektörlük/dekanlık yazısıysa `ust_birim_bu_birim_hakkinda`, değilse `kendi`; decide'ın OD2 tavanı (`uygulama_kaniti_eksik`) kalkar (`kurum_tavani_kaldirildi`), tür tavanı varsa kalır. Satır "birim kodca düzeltildi … doğrulanmalı" vurgusu alır | ilişki değişir |
 | `birim_sayfasi` | tür tavanlı belge (yönerge/yönetmelik/senato kararı) birleşik PDF (form feed ile ≥2 sayfa); alıntının sayfasında birimin ders kodu/program adı/adı var, madde yapısı ("MADDE n"), bütün birimleri kapsayan ifade ve başka birim adı yok: o satıra tür tavanı uygulanmaz, decide'ın OD2 tavanı kalkar (ör. kurum yönergesiyle birleşmiş bölüm ders değerlendirme sonucu) | tavan yok |
 

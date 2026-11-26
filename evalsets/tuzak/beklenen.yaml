@@ -31,7 +31,7 @@ olcutler:
           gerekce: "yalnız iki (çelişkili) sonuç belgesi: uygulama; plan örtük"}
   B.1.3: {od: 2, eksik: [uygula], gerekce: "inceleme kararı (P), web beyanı (P), komisyon incelemesi (K); ilişkilendirmenin uygulandığını gösteren belge yok"}
   B.1.4: {od: 2, eksik: [uygula], gerekce: "2025 staj esasları (P); 2024 staj kararı geçmiş kanıt; fakülte raporu OD2 tavanı"}
-  B.1.5: {od: 3, eksik: [kontrol_et, onlem_al], gerekce: "FYK madde 2 (U); 2026 kararı dönem sonrası; tarihsiz tutanak sayılmaz"}
+  B.1.5: {od: 3, eksik: [onlem_al], gerekce: "FYK madde 2 (U); 2026 kararı dönem sonrası; tarihsiz tutanak dönem içi varsayılır (K); plan halkası yok"}
   B.2.2: {od: 3, eksik: [kontrol_et, onlem_al], gerekce: "kurum yönergesi (P) + sınav takvimi (U, üç sürüm tek kanıt)"}
   B.3.2: {od: 3, eksik: [kontrol_et, onlem_al], gerekce: "danışmanlık yönergesi ve duyurular (P) + danışman atama kararı (U)"}
   B.3.5: {od: 3, eksik: [kontrol_et, onlem_al], gerekce: "duyuru (P) + sonuç raporu (U)"}
@@ -450,9 +450,11 @@ belgeler:
         - {olcut: B.1.3, yuva: B.1.3/4, asama: kontrol_et,
            alinti: "Program çıktıları ile ders kazanımları ilişkisi her yıl gözden geçirilmektedir."}
     kod_notu: >-
-      Web sayfası karma tür: K denince olay sayılır, tarihsiz olduğu için sayılmaz
-      (tarih_dogrulanmali); kod yakalar ama yalnız tarih yokluğu yüzünden: sayfa tarihli olsaydı
-      beyan izleme halkası sayılırdı.
+      Web sayfası karma tür: K denince olay sayılır. Eskiden tarihsiz olduğu için sayılmıyordu
+      (tarih_dogrulanmali); yalnız tarih yokluğu yüzünden yakalanıyordu.
+    bilinen_acik: >-
+      Tarihsiz belge dönem içi varsayıldığından (kullanıcı kararı 2026-11-26) beyan izleme halkası sayılır;
+      audit sayımda yakalamaz. İnceleme tablosunda OD4'e yükselten satır olarak "Bakın" ile sorulur.
     yazilmamali:
       - iddia: "Program çıktısı–kazanım ilişkisi her yıl (sistematik olarak) gözden geçirilmektedir."
         olcut: B.1.3
@@ -590,10 +592,13 @@ belgeler:
     tuzak: tarihsiz_olay
     belge_turu: komisyon_tutanagi
     tarih: null
-    kanit: dogrulanmali
+    kanit: evet
     birim_iliskisi: kendi
-    en_yuksek_od: 1
-    gerekce: "Tarihsiz olay: rapor yılına ait olduğu doğrulanmadan sayılmaz (doğrulanırsa K, OD4 halkası)."
+    en_yuksek_od: 4
+    gerekce: >-
+      Tarihsiz olay: aksi görülmedikçe rapor dönemine ait varsayılır ve sayılır (K, OD4 halkası;
+      `tarih_varsayildi`, kullanıcı kararı 2026-11-26). Eski kural (doğrulanmadan sayılmaz) kaldırıldı;
+      OD4'e yükselten satır olarak incelemede yine sorulur.
     eslesmeler:
       - {olcut: B.1.5, yuva: B.1.5/3, asama: kontrol_et,
          alinti: "PÇ3'e ulaşma düzeyinin hedefin altında kaldığı görülmüş"}

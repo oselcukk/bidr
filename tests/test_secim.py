@@ -116,7 +116,9 @@ def test_low_confidence_and_indirect_dropped_but_chain_kept(tmp_path):
 
 def test_uncounted_candidates_ranked_last(tmp_path):
     docs = [dict(_karar(i), donem_ici=True) for i in range(10)]
-    docs.append(dict(_karar(19), donem_ici=None, tarih=None))    # tarihsiz olay: OD'ye sayılmaz
+    # tarihi çelişkili olay (önceki yıl birincil, rapor yılı da geçiyor): OD'ye sayılmaz. Tarihsiz olay artık
+    # dönem içi varsayılır (kullanıcı kararı 2026-11-26), sayılmayan aday örneği değildir.
+    docs.append(dict(_karar(19), donem_ici=False, tarih="2023-05-10", tarihler=["2023-05-10", "2025-04-01"]))
     ws, src = _ws(tmp_path, docs)
     out = tmp_path / "out"
     R.run(ws, out=out, source=src)

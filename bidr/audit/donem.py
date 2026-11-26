@@ -1,14 +1,17 @@
 """Dönem kuralı: belge türüne göre (komisyon kararı, 2026-11-18). Veri:
 `bidr/data/profiles/donem_kurali.yaml`; gerekçe: `docs/AUDIT.md` "Dönem kuralı".
 
-yapı  → rapor yılında yürürlükte mi: dönem içi tam sayılır; aksi/bilinmiyor sayılır +
-        `guncellik_dogrulanmali`.
+yapı  → rapor yılında yürürlükte mi: dönem içi tam sayılır; önceki yıl tarihli ya da tarihsiz yapı
+        belgesi, daha yeni sürüm ya da yürürlükten kaldırma yoksa yürürlükte varsayılır ve sorulmadan
+        sayılır (`yururluk_varsayildi` / `tarih_varsayildi`, kullanıcı kararı 2026-11-26).
         Tarihi rapor yılından sonra: `donem_sonrasi` (sayılmaz) ya da revizyon kanıtı varsa
         sayılır + `revizyon_donem_sonrasi`. Sürüm grubunda yürürlükteki sürüm seçilir.
 olay  → rapor yılında mı gerçekleşti: önceki yıl U/K/Ö/Z sayılmaz (`gecmis_kanit`); planla
         hâlâ yürürlükteki usul/karar olarak yapı gibi sayılır (`onceki_olay_plani_sayilir`,
-        vars. true; false ile planla da sayılmaz); sonraki yıl `donem_sonrasi`,
-        tarihsiz ya da olay tarihi belirsiz `tarih_dogrulanmali`: sayılmaz, satır görünür.
+        vars. true; false ile planla da sayılmaz); sonraki yıl `donem_sonrasi`. Tarihsiz (ya da
+        tarihi yalnız dosya adından) olay belgesi aksi görülmedikçe dönem içi varsayılır ve sayılır
+        (`tarih_varsayildi`); olay tarihi çelişkili (birden çok yılın tarihi) `tarih_dogrulanmali`:
+        sayılmaz, satır görünür.
 karma → aşama belirler: planla yapı, üstü olay.
 Döngü: ölçütte sayılan bir eşleşmenin alıntısı döngü tanımlıyorsa (her N yılda vb.) son N
 yılın `gecmis_kanit` satırları o ölçütte sayılır (`dongu_halkasi`).
@@ -35,6 +38,9 @@ ETIKET = {
     "dongu_halkasi": "döngü halkası",
     "donem_sonrasi": "dönem sonrası",
     "tarih_dogrulanmali": "tarih doğrulanmalı",
+    "tarih_varsayildi": "tarih yok: dönem içi varsayıldı",
+    "yururluk_varsayildi": "rapor yılında yürürlükte varsayıldı",
+    "yururluk_bitmis": "yürürlük aralığı rapor yılından önce bitiyor",
     "revizyon_donem_sonrasi": "revizyon tarihi dönem sonrası; dönemdeki sürüm aranmalı",
     "surum_yururlukten_kalkmis": "sürüm dönemden önce yenilendi (kanıt değil)",
     "surum_donem_sonrasi": "dönem sonrası sürüm (kanıt değil)",
@@ -319,13 +325,13 @@ def apply_row(rule: Rule, doc: dict, dtype: str, stage: str | None, dosya: str |
     `surum`: belgenin sürüm grubundaki durumu (`version_status`).
     `parca`: birleşik belgede alıntının parçası (`bidr.identify.parca.part_view`): kural belgenin
     değil parçanın tarih alanlarıyla işler; parça tarihi bilinmiyorsa belge tarihiyle işler ve
-    satır `tarih_dogrulanmali` alır. Kuralın kendisi değişmez."""
+    satır sessiz `tarih_varsayildi` alır (aksi görülmedikçe dönem içi). Kuralın kendisi değişmez."""
     if parca:
         out = _apply_row(rule, {**doc, **parca["alanlar"]}, dtype, stage, dosya, surum)
         if parca.get("etiket") and out["kaynak"]:
             out["kaynak"] = f"{parca['etiket']}: {out['kaynak']}"
-        if parca.get("dogrulanmali") and "tarih_dogrulanmali" not in out["flags"]:
-            out["flags"].append("tarih_dogrulanmali")
+        if parca.get("dogrulanmali") and not {"tarih_dogrulanmali", "tarih_varsayildi"} & set(out["flags"]):
+            out["flags"].append("tarih_varsayildi")
             out["not"] = "; ".join(x for x in (out["not"], parca.get("not")) if x)
         return out
     return _apply_row(rule, doc, dtype, stage, dosya, surum)
@@ -361,8 +367,16 @@ def _apply_row(rule: Rule, doc: dict, dtype: str, stage: str | None, dosya: str 
             else:
                 say = False
                 flags.append("donem_sonrasi")       # dönemden sonra yürürlüğe girdi
+        elif zaman == BILINMIYOR:
+            flags.append("tarih_varsayildi")            # tarihsiz kural/plan: yürürlükte varsayılır
         elif zaman != ICI:
-            flags.append("guncellik_dogrulanmali")
+            # önceki yıl tarihli, yenisi yok: yürürlükte varsayılır; belgenin kendi yürürlük aralığı rapor
+            # yılından önce bittiyse açık çelişki: sorulur
+            sp = _span(doc)
+            ended = sp is not None and doc.get("donem") is not None and sp[1] < doc["donem"]
+            flags += ["guncellik_dogrulanmali", "yururluk_bitmis"] if ended else ["yururluk_varsayildi"]
+            if ended:
+                note = f"yürürlük aralığı {sp[0]}-{sp[1]}: rapor yılından önce bitiyor"
         if surum == "surum_dogrulanmali":
             flags.append(surum)
         elif surum == "surum_dogrulanmali_sayilmaz":
@@ -371,14 +385,17 @@ def _apply_row(rule: Rule, doc: dict, dtype: str, stage: str | None, dosya: str 
     elif zaman == SONRA:
         say = False
         flags.append("donem_sonrasi")
-    elif zaman == BILINMIYOR or note or (zaman == ICI and t["zayif"]):
-        say = False
+    elif note:
+        say = False                                 # birden çok yılın tarihi: olayın yılı çelişkili
         flags.append("tarih_dogrulanmali")
+    elif zaman == BILINMIYOR or (zaman == ICI and t["zayif"]):
+        # tarih yok ya da yalnız dosya adından: aksi görülmedikçe dönem içi (kullanıcı kararı 2026-11-26)
+        flags.append("tarih_varsayildi")
         if zaman == ICI and t["zayif"]:
-            note = note or "tarih yalnız dosya adından"
+            note = "tarih yalnız dosya adından"
     elif zaman == ONCE:
         if stage == "planla" and rule.onceki_olay_plani:
-            flags.append("guncellik_dogrulanmali")     # usul tanımlayan eski karar: yapı gibi
+            flags.append("yururluk_varsayildi")        # usul tanımlayan eski karar: yapı gibi, yürürlükte
         else:
             say = False
             flags.append("gecmis_kanit")

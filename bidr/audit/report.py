@@ -82,8 +82,8 @@ def _donem_sections(a) -> list[str]:
     td = [r for r in a.rows if "tarih_dogrulanmali" in r["flags"] and not _hum(r)]
     if td:
         L += ["", "## Tarihi doğrulanacak olay belgeleri", "",
-              "Belgede rapor yılını gösteren güvenilir tarih bulunamadı (tarih yok, yalnız dosya adında ya da birden "
-              "çok tarihten olayın tarihi ayrılamadı); olay belgesi olduğu için hiçbir aşaması sayılmadı "
+              "Belgedeki tarihler çelişiyor (birden çok yılın tarihinden olayın tarihi ayrılamadı ya da sayfa dönem "
+              "sonrası güncellemeli; tarihsiz belge dönem içi varsayılır: `tarih_varsayildi`); olay belgesi olduğu için hiçbir aşaması sayılmadı "
               "(satır tabloda gri). Tarih rapor yılındaysa tabloda `duzelt` + aşama ile sayın.", ""]
         by: dict[str, list] = {}
         nt: dict[str, str] = {}
@@ -96,8 +96,8 @@ def _donem_sections(a) -> list[str]:
     gd = sorted({r["belge"] for r in a.rows if "guncellik_dogrulanmali" in r["flags"] and r["sayilir"]})
     if gd:
         L += ["", "## Güncelliği doğrulanacak belgeler", "",
-              "Yapı belgesi (ya da usul tanımlayan eski karar) sayıldı, ama tarihi rapor yılında değil ya da yok: "
-              "rapor yılında yürürlükte olduğu doğrulanmalı. Yürürlükten kalkmışsa satırı `ret` edin.", ""]
+              "Yapı belgesi sayıldı, ama revizyon tarihi rapor yılından sonra: rapor yılında yürürlükteki sürümü "
+              "doğrulanmalı (eski tarihli ya da tarihsiz kural/plan yürürlükte varsayılır: `yururluk_varsayildi`). Yürürlükten kalkmışsa satırı `ret` edin.", ""]
         L += [f"- `{b}`" for b in gd]
     return L
 
@@ -166,8 +166,9 @@ def _birim_sections(a) -> list[str]:
     b = getattr(a, "birim", None) or {}
     if b.get("belirsiz"):
         L += ["", "## Birim aitliği doğrulanmalı", "",
-              "İnce karar belgenin bu birime ait olup olmadığını metinden anlayamadı (`birim_iliskisi: belirsiz`). "
-              "İnsan onaylamadıkça eşleşmeleri OD'ye sayılmaz ve yayımlanan kanıt listesine girmez (inceleme "
+              "İnce karar belgenin bu birime ait olup olmadığını metinden anlayamadı (`birim_iliskisi: belirsiz`) ve "
+              "metinde birimin adı yokken başka birimin adı geçiyor (açık çelişki; çelişkisiz belirsiz belge "
+              "yükleyen birimin sayılır: `birim_varsayildi`). İnsan onaylamadıkça eşleşmeleri OD'ye sayılmaz ve yayımlanan kanıt listesine girmez (inceleme "
               "yapılmadan devam edilse de). Birimin belgesiyse review.xlsx'te satırlarını `kabul` edin ya da birim "
               "sayfasında ilişkiyi seçin; değilse `ret`.", ""]
         for x in b["belirsiz"]:

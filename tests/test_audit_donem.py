@@ -106,7 +106,7 @@ def test_principle_in_prompt():
 @pytest.fixture
 def ws(tmp_path):
     return _ws(tmp_path, {
-        # yapı: eski tarihli müfredat yürürlükte sayılır, güncellik işaretlenir
+        # yapı: eski tarihli müfredat yürürlükte varsayılır (yenisi yoksa sorulmaz)
         "mufredat_eski": (_doc("mufredat", "2019-09-01"), [_m("B.1.2", "B.1.2/2", "uygula", 3)]),
         "dbf_ici": (_doc("ders_bilgi_formu", "2025-02-01"), [_m("B.1.2", "B.1.2/1", "planla", 2)]),
         "dbf_tarihsiz": (_doc("ders_bilgi_formu"), [_m("B.1.2", "B.1.2/1", "uygula", 3)]),
@@ -114,8 +114,10 @@ def ws(tmp_path):
         "anket_2023": (_doc("anket_sonucu", "2023-05-10"), [_m("A.4.2", "A.4.2/5", "kontrol_et", 4)]),
         "karar_2022": (_doc("bolum_kurulu_karari", "2022-03-01"),
                        [_m("A.4.2", "A.4.2/1", "planla", 2), _m("A.4.2", "A.4.2/2", "uygula", 3)]),
-        # olay: tarihsiz ve rapor yılından sonra
+        # olay: tarihsiz (dönem içi varsayılır), tarihleri çelişkili ve rapor yılından sonra
         "anket_tarihsiz": (_doc("anket_sonucu"), [_m("A.4.2", "A.4.2/2", "uygula", 3)]),
+        "anket_celiski": ({**_doc("anket_sonucu", "2023-05-10"), "tarihler": ["2023-05-10", "2025-04-01"]},
+                          [_m("A.4.2", "A.4.2/2", "uygula", 3)]),
         "tutanak_2026": (_doc("komisyon_tutanagi", "2026-01-15"), [_m("A.4.2", "A.4.2/3", "onlem_al", 4)]),
         # karma: tarihsiz web sayfası; plan yapı gibi, uygulama olay gibi
         "web": (_doc("web_sayfasi"), [_m("A.4.2", "A.4.2/4", "planla", 2), _m("B.1.2", "B.1.2/3", "uygula", 3)]),
@@ -125,12 +127,13 @@ def ws(tmp_path):
 def test_structure_documents_count_with_currency_flag(ws):
     a = build(ws)
     r = a.by_key["mufredat_eski|B.1.2/2"]
-    assert r["sayilir"] and "guncellik_dogrulanmali" in r["flags"]
-    assert r["donem_kurali"].startswith("yapı · önceki yıl (2019)") and "güncellik doğrulanmalı" in r["donem_kurali"]
+    # eski tarihli kural/plan: daha yeni sürüm ya da kaldırma yoksa yürürlükte varsayılır (kullanıcı kararı 2026-11-26)
+    assert r["sayilir"] and "yururluk_varsayildi" in r["flags"] and "guncellik_dogrulanmali" not in r["flags"]
+    assert r["donem_kurali"].startswith("yapı · önceki yıl (2019)") and "yürürlükte varsayıldı" in r["donem_kurali"]
     r = a.by_key["dbf_ici|B.1.2/1"]
     assert r["sayilir"] and not {"guncellik_dogrulanmali", "gecmis_kanit"} & set(r["flags"])
     r = a.by_key["dbf_tarihsiz|B.1.2/1"]
-    assert r["sayilir"] and "guncellik_dogrulanmali" in r["flags"]   # yapı tarihsiz: sayılır
+    assert r["sayilir"] and "tarih_varsayildi" in r["flags"]   # yapı tarihsiz: sayılır, sorulmaz
     assert _crit(a, "B.1.2")["od"] == 3
 
 
@@ -142,20 +145,25 @@ def test_event_documents(ws):
     assert not by["anket_2023|A.4.2/5"]["sayilir"] and "gecmis_kanit" in by["anket_2023|A.4.2/5"]["flags"]
     assert not by["karar_2022|A.4.2/2"]["sayilir"] and "gecmis_kanit" in by["karar_2022|A.4.2/2"]["flags"]
     r = by["karar_2022|A.4.2/1"]
-    assert r["sayilir"] and "guncellik_dogrulanmali" in r["flags"] and "gecmis_kanit" not in r["flags"]
-    # sonraki yıl ve tarihsiz: hiçbir aşama sayılmaz, satır var
+    assert r["sayilir"] and "yururluk_varsayildi" in r["flags"] and "gecmis_kanit" not in r["flags"]
+    # sonraki yıl: hiçbir aşama sayılmaz, satır var
     assert not by["tutanak_2026|A.4.2/3"]["sayilir"] and "donem_sonrasi" in by["tutanak_2026|A.4.2/3"]["flags"]
+    # tarihsiz: aksi görülmedikçe dönem içi varsayılır, sayılır (kullanıcı kararı 2026-11-26)
     r = by["anket_tarihsiz|A.4.2/2"]
+    assert r["sayilir"] and "tarih_varsayildi" in r["flags"] and "tarih_dogrulanmali" not in r["flags"]
+    assert "dönem içi varsayıldı" in r["donem_kurali"]
+    # çelişkili tarih (önceki yıl birincil, rapor yılı da geçiyor): sayılmaz, sorulur
+    r = by["anket_celiski|A.4.2/2"]
     assert not r["sayilir"] and "tarih_dogrulanmali" in r["flags"] and "tarih doğrulanmalı" in r["donem_kurali"]
-    # karma: tarihsiz web sayfasının planı sayılır, uygulaması tarih ister
-    assert by["web|A.4.2/4"]["sayilir"] and "guncellik_dogrulanmali" in by["web|A.4.2/4"]["flags"]
-    assert not by["web|B.1.2/3"]["sayilir"] and "tarih_dogrulanmali" in by["web|B.1.2/3"]["flags"]
+    # karma: tarihsiz web sayfasının planı da uygulaması da sayılır
+    assert by["web|A.4.2/4"]["sayilir"] and "tarih_varsayildi" in by["web|A.4.2/4"]["flags"]
+    assert by["web|B.1.2/3"]["sayilir"] and "tarih_varsayildi" in by["web|B.1.2/3"]["flags"]
     c = _crit(a, "A.4.2")
-    assert c["od"] == 2                               # yalnız plan halkaları sayıldı
-    assert c["od_tarih_dogrulanirsa"] == 3            # tarihsiz anket doğrulanırsa
+    assert c["od"] == 3                               # tarihsiz anketin uygulaması sayıldı
+    assert c["od_tarih_dogrulanirsa"] == 3
     assert {g["satir"] for g in c["gecmis_kanit"]} == {"anket_2023|A.4.2/5", "karar_2022|A.4.2/2"}
     assert any("geçmiş kanıt" in n and "2022, 2023" in n for n in c["notlar"])
-    assert any("doğrulanırsa OD3" in n for n in c["notlar"])
+    assert any("tarih doğrulanmalı" in n for n in c["notlar"])
 
 
 def test_outputs_show_period_marks(ws, tmp_path):
@@ -164,8 +172,9 @@ def test_outputs_show_period_marks(ws, tmp_path):
     g = (out / FILES["gaps"]).read_text(encoding="utf-8")
     assert "## Geçmiş kanıtlar (süreklilik) (rapor yılı 2025)" in g
     assert "A.4.2 `A.4.2/5` K 2023: `anket_2023`" in g
-    assert "## Tarihi doğrulanacak olay belgeleri" in g and "`anket_tarihsiz`: A.4.2/2 U" in g
-    assert "## Güncelliği doğrulanacak belgeler" in g and "`mufredat_eski`" in g
+    assert "## Tarihi doğrulanacak olay belgeleri" in g and "`anket_celiski`: A.4.2/2 U" in g
+    assert "`anket_tarihsiz`" not in g.split("## Tarihi doğrulanacak olay belgeleri")[1].split("##")[0]
+    assert "## Güncelliği doğrulanacak belgeler" not in g        # eski tarihli kural yürürlükte varsayıldı
     js = json.loads((out / FILES["json"]).read_text(encoding="utf-8"))
     assert js["donem"] == YIL
     wb = load_workbook(out / FILES["xlsx"])
@@ -173,16 +182,17 @@ def test_outputs_show_period_marks(ws, tmp_path):
     head = [c.value for c in sh[1]]
     col = head.index(dict((k, h) for k, h, _, _ in COLS)["donem_kurali"])
     cells = {sh.cell(row=i, column=1).value: sh.cell(row=i, column=col + 1).value for i in range(2, sh.max_row + 1)}
-    assert "tarih doğrulanmalı" in cells["anket_tarihsiz|A.4.2/2"]     # satır görünür
+    assert "tarih doğrulanmalı" in cells["anket_celiski|A.4.2/2"]      # satır görünür
+    assert "dönem içi varsayıldı" in cells["anket_tarihsiz|A.4.2/2"]
     assert "geçmiş kanıt" in cells["anket_2023|A.4.2/5"]
 
 
 def test_human_correction_overrides_date_rule(ws, tmp_path):
     out = tmp_path / "out"
-    dec = {"satir": "anket_tarihsiz|A.4.2/2", "doc_id": "anket_tarihsiz", "olcut": "A.4.2", "yuva": "A.4.2/2",
+    dec = {"satir": "anket_celiski|A.4.2/2", "doc_id": "anket_celiski", "olcut": "A.4.2", "yuva": "A.4.2/2",
            "karar": "duzelt", "duzelt": {"olcut": None, "yuva": None, "asama": "uygula"}, "etiket": None, "not": ""}
     a = build(ws, out=out, review={dec["satir"]: dec})
-    r = a.by_key["anket_tarihsiz|A.4.2/2"]
+    r = a.by_key["anket_celiski|A.4.2/2"]
     assert r["sayilir"] and "tarih_dogrulanmali" not in r["flags"] and "tarih doğrulanmalı" not in r["donem_kurali"]
     assert _crit(a, "A.4.2")["od"] == 3
 
