@@ -44,7 +44,11 @@ birimler:
     ders_kodlari: [CHEM, KİM, KIM]
   - {ad: Fizik Bölümü, fakulte: Temel Bilimler Fakültesi}
   - {ad: Moleküler Biyoloji ve Genetik Bölümü, fakulte: Temel Bilimler Fakültesi}
-  - {ad: Veri Bilimi ve Analitiği Bölümü, fakulte: Temel Bilimler Fakültesi}
+  - ad: Veri Bilimi ve Analitiği Bölümü
+    fakulte: Temel Bilimler Fakültesi
+    # öğretim planındaki ders kodları (bölümün yüklediği belgelerin çoğunluğu: DSA İngilizce, VBA Türkçe karşılık
+    # tablolarında; 2026-11-26 sayımı, bölüm klasöründe DSA 93 belgede, VBA 8 belgede)
+    ders_kodlari: [DSA, VBA]
   # Mühendislik Fakültesi
   - {ad: Bilgisayar Mühendisliği Bölümü, fakulte: Mühendislik Fakültesi}
   - {ad: Biyomühendislik Bölümü, fakulte: Mühendislik Fakültesi}

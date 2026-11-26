@@ -249,13 +249,18 @@ def _codes(v) -> list[str]:
     return [str(x).strip() for x in (v or []) if str(x).strip()]
 
 
-def unit_profile(ws_root) -> dict:
+def unit_profile(ws_root, *, tam_ad: bool = False) -> dict:
     """Birimin metinde aranacak açık sinyalleri: {"birim", "fakulte", "ders_kodlari", "birim_adlari"}.
     Kaynak: `config.yaml` `bidr:` (`birim`; isteğe bağlı `fakulte`, `ders_kodlari`, `birim_adlari`) —
     yoksa kurum profilinin `birimler:` listesinde aynı adlı birimin kaydı (ad karşılaştırması harf
     katlanmış). `birim_adlari`: kurumdaki bilinen birim adları (config `birim_adlari` + kurum
     profilinin `birimler[].ad`); "başka birim adı" tanısının tek kaynağı. Yalnız yapılandırmadan
-    gelir; bilinmeyen alan boş kalır (sinyal uydurulmaz)."""
+    gelir; bilinmeyen alan boş kalır (sinyal uydurulmaz).
+
+    Kurum kaydı önce adın birebir (katlanmış) eşiyle aranır; yoksa yapılandırmadaki ad resmî adın kısa
+    yazılışıysa ("Örnek Bölümü" → "Örnek ve Analiz Bölümü") audit'in `own_aliases` önek kuralıyla
+    (bidr/audit/savunma.py: kök tek bir bilinen adın başı) o kayıt kullanılır (`resmi_ad`). `tam_ad`: yalnız
+    birebir eşleşme (önek kuralından önceki davranış; parmak izi köprüsü `Context.unit_eski`)."""
     from bidr.identify.text import fold
     from bidr.init.config import load_section
     sec = load_section(ws_root) or {}
@@ -265,6 +270,16 @@ def unit_profile(ws_root) -> dict:
     kurum = _institution(sec.get("kurum")).get("birimler") or []
     if birim and not (out["fakulte"] and out["ders_kodlari"]):
         key = " ".join(fold(birim).split())
+        adlar_ = [str(b.get("ad") or "") for b in kurum if isinstance(b, dict)]
+        if not tam_ad and not any(" ".join(fold(a).split()) == key for a in adlar_):
+            from bidr.audit.savunma import own_aliases, unit_names
+            al = own_aliases(birim, adlar_)
+            if al:                              # tek resmî ad: katlanmış kökü bu olan kurum kaydı
+                hedef = tuple(al[0].split())
+                for a in adlar_:
+                    if unit_names([a]) == (hedef,):
+                        key, out["resmi_ad"] = " ".join(fold(a).split()), a
+                        break
         for b in kurum:
             if isinstance(b, dict) and " ".join(fold(str(b.get("ad") or "")).split()) == key:
                 out["fakulte"] = out["fakulte"] or str(b.get("fakulte") or "").strip()
@@ -276,7 +291,7 @@ def unit_profile(ws_root) -> dict:
     return out
 
 
-def unit_info(ws_root) -> dict:
+def unit_info(ws_root, *, tam_ad: bool = False) -> dict:
     """Karar paketlerine giren birim bilgisi: {"birim": ad|None, "kurum": ad|None} (+ biliniyorsa
     "fakulte"). Kaynak yalnız çalışma alanının `config.yaml` `bidr:` bölümü (birim adı, kurum
     profili) ve kurum profilinin `birimler:` kaydı."""
@@ -284,7 +299,7 @@ def unit_info(ws_root) -> dict:
     sec = load_section(ws_root) or {}
     birim = str(sec.get("birim") or "").strip() or None
     out = {"birim": birim, "kurum": _institution_name(sec.get("kurum"))}
-    fak = unit_profile(ws_root)["fakulte"] if birim else ""
+    fak = unit_profile(ws_root, tam_ad=tam_ad)["fakulte"] if birim else ""
     if fak:
         out["fakulte"] = fak
     return out

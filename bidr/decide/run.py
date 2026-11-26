@@ -419,6 +419,11 @@ class Context:
     unit: dict = None          # {"birim", "kurum"}: config.yaml'dan, ince karar paketine girer
     pins: dict = None          # {doc_id: insan birim kararı} (birim-kararlari.jsonl): sabit bilgi
     notes: dict = None         # {doc_id: [not]} (belge-notlari.yaml, bidr/notlar.py): ipucu, kanıt değil
+    # Önek kuralından önceki birim bilgisi (`P.unit_info(tam_ad=True)`; aynıysa None). Yapılandırmadaki kısa ad
+    # kurumun resmî adına önekle bağlanınca pakete "Fakülte:" satırı girer: bu satır bütün belgelerde ortaktır
+    # (kural metni gibi), belgeye özgü girdi değildir. Eski kararın birim girdisi bu bilgiyle üretilmiş metne
+    # eşitse belge "girdi_degisti" değil "kural_degisti" sayılır (model yeniden çalışmaz).
+    unit_eski: dict = None
 
     def __post_init__(self):
         if self.unit is None:
@@ -463,7 +468,8 @@ class Context:
         return cls(ws, cs, load_tags(cs), profile or None, allowed,
                    excluded_types() if exclude_types is None else exclude_types,
                    _documents(ws), _candidates(ws.root / candidates_name), k, max_aday,
-                   P.unit_info(ws.root), load_unit_pins(ws.root), N.load(ws.root))
+                   P.unit_info(ws.root), load_unit_pins(ws.root), N.load(ws.root),
+                   _unit_eski(ws.root))
 
     def text(self, did: str) -> str:
         return self.ws.text_path(did).read_text(encoding="utf-8", errors="replace")
@@ -560,6 +566,11 @@ def note_fields(meta: dict, out: dict) -> dict:
     return {"belge_notu": meta["belge_notu"], "not_uyusmuyor": N.conflict(out.get("gerekce"))}
 
 
+def _unit_eski(ws_root: Path) -> dict | None:
+    eski = P.unit_info(ws_root, tam_ad=True)
+    return None if eski == P.unit_info(ws_root) else eski
+
+
 def fine_inputs(ctx: Context, did: str, rec: dict, pin: bool = True,
                 komisyon: bool = True) -> tuple[dict, dict] | None:
     """Kaba kayıttan aday birleşimi; aday yoksa None. İnsan birim kararı varsa (`pin`) pakete
@@ -594,6 +605,8 @@ def fine_inputs(ctx: Context, did: str, rec: dict, pin: bool = True,
               "belge_metni": body,
               "kanit_ilkeleri": P.evidence_principles(),
               "birim": P.render_unit(ctx.unit, ctx.pin(did) if pin else None)}
+    if ctx.unit_eski is not None:             # önek kuralından önceki birim metni (parmak izi köprüsü)
+        meta["birim_eski"] = P.render_unit(ctx.unit_eski, ctx.pin(did) if pin else None)
     meta.update(metin=ex, istem_token_tahmini=P.approx_tokens("".join(inputs.values())))
     if ctx.note(did):
         meta["belge_notu"] = N.note_sha(ctx.note(did))
@@ -795,7 +808,10 @@ def doc_inputs_same(ctx: Context, did: str, stage: str, sec: dict, inputs: dict,
     keys = DOC_KEYS[stage]
     now = girdi_sha({k: inputs[k] for k in keys})
     old = sec.get("girdi_sha")
+    eski_birim = meta.get("birim_eski") if "birim" in keys else None
     if isinstance(old, dict) and all(k in old for k in keys):
+        if eski_birim is not None and old["birim"] != now["birim"] and old["birim"] == girdi_sha({"b": eski_birim})["b"]:
+            now = {**now, "birim": old["birim"]}       # yalnız ortak "Fakülte:" satırı eklendi: belgeye özgü değil
         return all(old[k] == now[k] for k in keys)
     p = work_dir(ctx.ws, stage) / f"{did}.json"
     try:
@@ -809,7 +825,7 @@ def doc_inputs_same(ctx: Context, did: str, stage: str, sec: dict, inputs: dict,
         if k in meta and pm.get(k) != meta[k]:
             return False
     istem = pkg.get("istem") or ""
-    return all(inputs[k] in istem for k in keys)
+    return all(inputs[k] in istem or (k == "birim" and eski_birim is not None and eski_birim in istem) for k in keys)
 
 
 def staleness(ctx: Context, did: str, rec: dict, stage: str, backend: Backend) -> str | None:

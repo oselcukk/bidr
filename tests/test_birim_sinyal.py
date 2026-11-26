@@ -260,3 +260,42 @@ def test_official_long_name_is_own_unit(tmp_path):
     assert r["birim_iliskisi"] == "kendi" and r["sayilir"] and not r["birim_onay_bekliyor"]
     r = a.by_key["baska|B.1.3/2"]
     assert r["birim_onay_bekliyor"] and not r["sayilir"]
+
+
+def test_kisa_ad_resmi_kayda_baglanir(tmp_path, monkeypatch):
+    """Yapılandırmadaki kısa ad ("Deneme Bölümü") kurum profilindeki resmî adın önekiyse ("Deneme ve Analiz
+    Bölümü") karar aşaması da o kaydın fakültesini ve ders kodlarını kullanır (audit'in `own_aliases` kuralı);
+    `tam_ad` eski (birebir) davranışı verir. Fakülte bilinince başka fakültenin maddesi sayılmaz."""
+    inst = tmp_path / "kurumlar"
+    inst.mkdir()
+    (inst / "ornek.yaml").write_text(yaml.safe_dump({
+        "kurum": "ornek", "ad": "Örnek Üniversitesi",
+        "birimler": [{"ad": "Deneme ve Analiz Bölümü", "fakulte": "Örnek Fakültesi", "ders_kodlari": ["DNA"]},
+                     {"ad": "Kıyas Bölümü", "fakulte": "Kıyas Fakültesi"}]}, allow_unicode=True), encoding="utf-8")
+    monkeypatch.setenv("BIDR_INSTITUTIONS_DIR", str(inst))
+    w = tmp_path / "w"
+    w.mkdir()
+    (w / "config.yaml").write_text(yaml.safe_dump({"bidr": {"birim": "Deneme Bölümü", "kurum": "ornek"}},
+                                                  allow_unicode=True), encoding="utf-8")
+    up = P.unit_profile(w)
+    assert up["fakulte"] == "Örnek Fakültesi" and up["ders_kodlari"] == ["DNA"]
+    assert up["resmi_ad"] == "Deneme ve Analiz Bölümü"
+    assert P.unit_profile(w, tam_ad=True)["fakulte"] == "" and "fakulte" not in P.unit_info(w, tam_ad=True)
+    assert P.unit_info(w)["fakulte"] == "Örnek Fakültesi"
+    from bidr.audit.savunma import Savunma
+    sv = Savunma.load(w, {}, 2025)                 # audit (fakülte maddesi denetimi, ders kodu sinyali) aynı kaydı görür
+    assert sv.fakulte == "Örnek Fakültesi" and sv.ders_kodlari == ("DNA",)
+
+
+def test_fakulte_satiri_karari_eskitmez(tmp_path, monkeypatch):
+    """Önek kuralıyla pakete eklenen ortak "Fakülte:" satırı belgeye özgü girdi değildir: eski kararın birim
+    girdisi eski bilgiyle üretilmiş metne eşitse belge `kural_degisti` (model yeniden çalışmaz)."""
+    from bidr.decide import run as R
+    old = R.girdi_sha({"birim": P.render_unit({"birim": "Deneme Bölümü", "kurum": "Örnek Üniversitesi"})})
+    yeni = {"birim": P.render_unit({"birim": "Deneme Bölümü", "kurum": "Örnek Üniversitesi",
+                                    "fakulte": "Örnek Fakültesi"}), "adaylar": "a", "belge_bilgisi": "b",
+            "belge_metni": "m"}
+    sec = {"girdi_sha": {**R.girdi_sha({k: yeni[k] for k in ("adaylar", "belge_bilgisi", "belge_metni")}), **old}}
+    meta = {"birim_eski": P.render_unit({"birim": "Deneme Bölümü", "kurum": "Örnek Üniversitesi"})}
+    assert R.doc_inputs_same(None, "d", "fine", sec, yeni, meta) is True
+    assert R.doc_inputs_same(None, "d", "fine", sec, yeni, {}) is False
