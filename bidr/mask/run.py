@@ -829,6 +829,17 @@ def _isle(job: dict) -> dict:
         rec.setdefault("uyarilar", []).append("elle maskelenmiş sürüm yok sayıldı: kanıt dosyası yüklemeden sonra değişti")
     kind = kind_of(src)
     mt = job.get("model_text")
+    if job.get("yalniz_kaynak"):
+        # "olduğu gibi devam" sonrası: yalnız var olan maske (kaynak kip / önbellek); hiçbir şey hesaplanmaz
+        from .kaynak import yalniz_var_olan
+        rec["bicim"] = kind or (src.suffix.lower().lstrip(".") or "?")
+        if kind == "pdf":
+            rec["motor"] = eng
+        temiz = _temiz_yolu(job, dst)
+        rec.update(yalniz_var_olan(src, sha, dst, rules, eng, mt, kararlar=job.get("kararlar"), kind=kind,
+                                   temiz=temiz))
+        _teslim_kopya(rec, job, temiz)
+        return rec
     if kind is None and src.suffix.lower() in LEGACY_EXT:
         with tempfile.TemporaryDirectory(prefix="bidr-eski-") as td:
             try:
@@ -892,10 +903,21 @@ def _teslim_kopya(rec: dict, job: dict, temiz: Path | None) -> None:
 
 def run(ws_root: Path, *, evidence: Path | None = None, out: Path | None = None, engine: str = "auto",
         names: list[str] | None = None, rules: MaskRules | None = None, workers: int = 1,
-        onbellek_kullan: bool = True, progress=None, yalniz_oneri: bool = False) -> dict:
+        onbellek_kullan: bool = True, progress=None, yalniz_oneri: bool = False, yalniz_kaynak: bool = False,
+        sure: dict | None | bool = None) -> dict:
     """`workers`: paralel işçi süreç (CLI varsayılanı 2; tesseract tek iş parçacığı). `onbellek_kullan`:
     çalışma alanının `.cache/maske.sqlite` önbelleği. `yalniz_oneri` (`--yalniz-oneri`): tespitler kendiliğinden
-    kapatılmaz, öneri olur (bkz. `mask_and_check`); insan kararları uygulanır."""
+    kapatılmaz, öneri olur (bkz. `mask_and_check`); insan kararları uygulanır. `yalniz_kaynak` (`--yalniz-kaynak`;
+    "olduğu gibi devam" sonrası): hiçbir maske hesaplanmaz, yalnız var olanlar kullanılır (`kaynak.yalniz_var_olan`).
+    `sure`: dosya başına süre sınırı (`havuz.sure_ayari`; True: ortam/varsayılan; None: sınırsız, işler bu süreçte —
+    kütüphane varsayılanı; komut satırı ayarı verir); aşan dosya `zaman_asimi` (maskelenemedi, elle bakılmalı;
+    teslimde olduğu gibi, listelenir)."""
+    if yalniz_oneri and yalniz_kaynak:
+        raise MaskRunError("--yalniz-oneri ile --yalniz-kaynak birlikte kullanılmaz")
+    if sure is True:
+        from bidr.havuz import sure_ayari
+        sure = sure_ayari()
+    sure = sure or None
     import time as _time
     from . import bolge as BG
     from . import onbellek
@@ -946,21 +968,22 @@ def run(ws_root: Path, *, evidence: Path | None = None, out: Path | None = None,
         jobs.append({"src": str(src), "rel": rel, "dst": str(dst_root / rel), "dst_root": str(dst_root),
                      "teslim_root": str(teslim_root),
                      "rules": rules, "eng": eng, "model_text": mt, "kararlar": kararlar, "elle": e,
-                     "elle_sha": elle_sha, "onbellek": ob_yol, "yalniz_oneri": yalniz_oneri})
-    if workers > 1 and len(jobs) > 1:
-        from concurrent.futures import ProcessPoolExecutor
-        with ProcessPoolExecutor(max_workers=workers) as ex:
-            recs = []
-            for i, r in enumerate(ex.map(_isle, jobs, chunksize=1), 1):
-                recs.append(r)
-                if progress:
-                    progress(i, len(jobs), r["dosya"])
+                     "elle_sha": elle_sha, "onbellek": ob_yol, "yalniz_oneri": yalniz_oneri,
+                     "yalniz_kaynak": yalniz_kaynak})
+    # iş başına süre sınırlı süreçler (bidr/havuz.py): takılan tek dosya koşuyu tutmaz, "maskelenemedi" olur;
+    # yalnız var olan maskeler kipinde hesap yok: sınır gerekmez
+    from bidr import havuz
+
+    from .kaynak import beklenmedik_bitis, sure_asildi
+    ayar = None if yalniz_kaynak else sure
+    if progress:
+        def bitti(i, k, r):
+            progress(i, len(jobs), (r or {}).get("dosya") or jobs[k]["rel"])
     else:
-        recs = []
-        for i, j in enumerate(jobs, 1):
-            recs.append(_isle(j))
-            if progress:
-                progress(i, len(jobs), j["rel"])
+        bitti = None
+    recs = havuz.calistir(_isle, jobs, isci=workers, bitti=bitti,
+                          sinir=(lambda j: havuz.dosya_siniri(j["src"], ayar)) if ayar else None,
+                          zaman_asimi=sure_asildi, beklenmedik=beklenmedik_bitis)
 
     kayitlar, yayimlanamaz = [], []
     toplam = {"bulunan": Counter(), "maskelenen": Counter(), "kalan": Counter()}
@@ -998,6 +1021,7 @@ def run(ws_root: Path, *, evidence: Path | None = None, out: Path | None = None,
     rapor = {
         "surum": SURUM, "zaman": datetime.now().astimezone().isoformat(timespec="seconds"),
         "kanit_klasoru": str(ev), "maskeli_klasor": str(dst_root), "pdf_motoru": eng, "yalniz_oneri": yalniz_oneri,
+        "yalniz_kaynak": yalniz_kaynak, "dosya_sure_siniri": sure,
         "kurallar": {"turler": list(rules.kinds), "ogrenci_no_desen_sayisi": len(rules.student_patterns),
                      "ad_listesi_sayisi": len(rules.names), "etiket_alani": rules.label_fields,
                      "kural_surumu": KURAL_SURUM},

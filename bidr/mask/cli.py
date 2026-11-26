@@ -1,8 +1,13 @@
 """`bidr maskele` iki kullanım:
 
 - teslim/yayın kopyası: `bidr maskele -w WS [--evidence DIR] [--out DIR] [--motor …] [--ad-listesi DOSYA]
-  [--yalniz-oneri]` (`--yalniz-oneri`: hiçbir tespit kendiliğinden kapatılmaz, hepsi öneri olur; yalnız insan
-  kararları — `karar kapat`, `ciz`, `yukle` — uygulanır; docx/xlsx/düz metin/html'de desen başına sayfasız öneri)
+  [--yalniz-oneri | --yalniz-kaynak]` (`--yalniz-oneri`: hiçbir tespit kendiliğinden kapatılmaz, hepsi öneri olur;
+  yalnız insan kararları — `karar kapat`, `ciz`, `yukle` — uygulanır; docx/xlsx/düz metin/html'de desen başına
+  sayfasız öneri. `--yalniz-kaynak`: "olduğu gibi devam" sonrası; hiçbir maske hesaplanmaz, yalnız kaynak kipin ve
+  önbelleğin var olan maskeleri kopyalanır, olmayan dosya "maskelenmedi" diye listelenir)
+- iki kipte de dosya başına süre sınırı (`--dosya-suresi`, `--sayfa-suresi`; ortam `BIDR_MASKE_DOSYA_SURESI`,
+  `BIDR_MASKE_SAYFA_SURESI`, `BIDR_MASKE_MB_SURESI`; varsayılan 120 sn + PDF'de sayfa başına 30 sn, başka biçimde MB
+  başına 10 sn; 0: sınırsız): aşan dosyanın süreci kesilir, dosya "maskelenemedi, elle bakılmalı" (`zaman_asimi`)
 - model öncesi kaynak maskeleme: `bidr maskele --kaynak BÖLÜM_KLASÖRÜ --out MASKELİ_KOPYA [-w WS]
   [--motor …] [--ad-listesi DOSYA] [--is N] [--rapor DOSYA] [--ayir]`
   (`-w` ile: çalışma alanı önbelleği `.cache/maske.sqlite`, ilerleme `<ws>/maskeleme-ilerleme.json`; işaret
@@ -53,7 +58,8 @@ def _run_source(args) -> int:
     try:
         r = run_source(Path(args.kaynak), Path(args.out), rules=_rules(args, ws), engine=args.motor,
                        workers=max(1, args.is_ or 1), report=Path(args.rapor) if args.rapor else None,
-                       progress=progress, ayir=args.ayir, ws=ws, onbellek_kullan=not args.onbellek_yok)
+                       progress=progress, ayir=args.ayir, ws=ws, onbellek_kullan=not args.onbellek_yok,
+                       sure=_sure(args))
     except (FileNotFoundError, MaskRunError, MaskError, ValueError) as e:
         print(f"HATA {e}", file=sys.stderr)
         return 2
@@ -69,6 +75,11 @@ def _run_source(args) -> int:
             print(f"  [{y['durum']}] {y['hedef'] or y['dosya']}: {y['neden']}")
         return 1
     return 0
+
+
+def _sure(args):
+    from bidr.havuz import sure_ayari
+    return sure_ayari(args.dosya_suresi, args.sayfa_suresi)
 
 
 def _ws_req(args) -> Path | None:
@@ -207,8 +218,8 @@ def _run(args) -> int:
     if islem == "yukle":
         return _yukle(args)
     if args.kaynak:
-        if args.yalniz_oneri:
-            print("HATA --yalniz-oneri yalnız kanıt kipinde (-w) kullanılır", file=sys.stderr)
+        if args.yalniz_oneri or args.yalniz_kaynak:
+            print("HATA --yalniz-oneri / --yalniz-kaynak yalnız kanıt kipinde (-w) kullanılır", file=sys.stderr)
             return 2
         return _run_source(args)
     from .detect import load_name_list
@@ -226,7 +237,8 @@ def _run(args) -> int:
         names = load_name_list(args.ad_listesi, ws) if args.ad_listesi else None
         r = run(ws, evidence=args.evidence, out=args.out, engine=args.motor, names=names,
                 workers=max(1, args.is_ if args.is_ is not None else 2), onbellek_kullan=not args.onbellek_yok,
-                progress=progress, yalniz_oneri=args.yalniz_oneri)
+                progress=progress, yalniz_oneri=args.yalniz_oneri, yalniz_kaynak=args.yalniz_kaynak,
+                sure=_sure(args))
     except (FileNotFoundError, MaskRunError, MaskError, ValueError) as e:
         print(f"HATA {e}", file=sys.stderr)
         return 2
@@ -273,6 +285,15 @@ def register(sub):
                    help="kanıt kipi: hiçbir tespit kendiliğinden kapatılmaz; hepsi onay bekleyen öneri olur (insan "
                         "kararları uygulanır); docx/xlsx/düz metin/html metni değiştirilmez, desen başına öneri yazılır; "
                         "üst veri temizliği yine yapılır")
+    p.add_argument("--yalniz-kaynak", action="store_true",
+                   help="kanıt kipi, \"olduğu gibi devam\" sonrası: hiçbir maske hesaplanmaz; kaynak kipin ve "
+                        "önbelleğin var olan maskeleri kullanılır, olmayan dosya olduğu gibi kalır ve 'maskelenmedi' "
+                        "diye listelenir")
+    p.add_argument("--dosya-suresi", type=float, default=None,
+                   help="dosya başına süre sınırı tabanı, sn (varsayılan BIDR_MASKE_DOSYA_SURESI ya da 120; 0: "
+                        "sınırsız); aşan dosya 'maskelenemedi, elle bakılmalı'")
+    p.add_argument("--sayfa-suresi", type=float, default=None,
+                   help="PDF'de sayfa başına ek süre, sn (varsayılan BIDR_MASKE_SAYFA_SURESI ya da 30)")
     p.add_argument("--onbellek-yok", action="store_true",
                    help="çalışma alanı önbelleğini (.cache/maske.sqlite) kullanma (kanıt modu; --kaynak modunda "
                         "-w verildiyse)")

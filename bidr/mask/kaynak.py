@@ -40,7 +40,6 @@ import tarfile
 import tempfile
 import zipfile
 from collections import Counter
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
@@ -434,6 +433,118 @@ def kaynak_sonucu_kisayollu(src: Path, sha: str, dst: Path, rules: MaskRules, en
     if sorted(alt.names) == sorted(rules.names):
         return None
     return kaynak_sonucu(src, sha, dst, alt, eng, model_text, kararlar=kararlar, temiz=temiz)
+
+
+# ---------------------------------------------------------------- yalnız var olan maskeler (`--yalniz-kaynak`)
+# Bölüm "olduğu gibi devam" dedikten sonra maskeleme biter (karar 2026-11-25): teslim kopyası yeniden HESAPLANMAZ.
+# Kanıt dosyası kaynak kipin maskeli çıktısıdır; geçerli kaynak sonucu (`kaynak_sonucu_kisayollu`) ya da aynı girdinin
+# önbellek sonucu (`aday`, bu dosyanın önceki kanıt koşusu) yalnız okunur. Hiçbiri yoksa kaynak kipin bu çıktıya ait
+# kaydı (girdisi o günden beri değişmiş: modelin okuma metni, karar, kod sürümü) ve çerçevesiz hâli kullanılır, dosya
+# "maskelenmedi" diye listelenir; o da yoksa dosya olduğu gibi (maskeli kopya yazılmadan) kalır ve listelenir. Maskeleme
+# kanıtı düşürmez: teslim, maskeli kopyası olmayan dosyayı olduğu gibi alır ve "maskelenmedi" diye yazar.
+
+YALNIZ_KAYNAK_DURUM = "maskelenmedi"
+
+
+def _aday_isabet(ob, src: Path, sha: str, dst: Path, rules: MaskRules, eng: str, model_text: str | None,
+                 kararlar: dict | None, kind: str | None, temiz: Path | None) -> dict | None:
+    """`run.mask_cached`'in önbellek isabeti yolu, hesaplamasız: isabet yoksa None (hiçbir şey yazılmaz)."""
+    from . import bolge as BG
+    from . import onbellek
+    from .run import aday_anahtari, sablon_parcasi
+    mine = BG.dosya_kararlari(kararlar or {}, sha[:8])
+    mts = [model_text]
+    if model_text is not None and model_metni_etkisiz(model_text, rules, kind, src, eng):
+        mts.insert(0, None)
+    tkey = ad_metni_anahtari(sha, rules, eng, mine, kind, False)
+    for r in _kural_adaylari(rules, _ad_metni_oku(ob, tkey) if rules.names else None):
+        for mt in mts:
+            temel = aday_anahtari(sha, r, eng, mine, mt, kind)
+            dep = ob.get_json("aday_iz", temel)
+            if not isinstance(dep, dict) or not isinstance(dep.get("izler"), list):
+                continue
+            key = onbellek.anahtar(temel, sablon_parcasi(dep["izler"]))
+            hit = ob.get_json("aday", key)
+            if not isinstance(hit, dict) or not isinstance(hit.get("rec"), dict):
+                continue
+            blob = ob.get("aday_cikti", key) if hit.get("cikti") else None
+            tblob = ob.get("aday_temiz", key) if hit.get("temiz") and temiz is not None else None
+            if (hit.get("cikti") and blob is None) or (hit.get("temiz") and temiz is not None and tblob is None):
+                continue
+            if blob is not None:
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                dst.write_bytes(blob)
+            if tblob is not None:
+                temiz.parent.mkdir(parents=True, exist_ok=True)
+                temiz.write_bytes(tblob)
+            rec = dict(hit["rec"])
+            rec["onbellek"] = True
+            return rec
+    return None
+
+
+def yalniz_var_olan(src: Path, sha: str, dst: Path, rules: MaskRules, eng: str, model_text: str | None, *,
+                    kararlar: dict | None = None, kind: str | None = None, temiz: Path | None = None) -> dict:
+    """Kanıt dosyasının maskesi yalnız var olan sonuçlardan (bkz. yukarı); hiçbir maskeleme hesaplanmaz. → kayıt."""
+    from . import onbellek
+    r = kaynak_sonucu_kisayollu(src, sha, dst, rules, eng, model_text, kararlar=kararlar, temiz=temiz)
+    if r is not None:
+        return r
+    ob = onbellek.aktif()
+    if ob is not None:
+        r = _aday_isabet(ob, src, sha, dst, rules, eng, model_text, kararlar, kind, temiz)
+        if r is not None:
+            return r
+        ck = onbellek.anahtar("kaynak_cikti", sha)
+        v = ob.get_json("kaynak_cikti", ck)
+        if isinstance(v, dict) and isinstance(v.get("rec"), dict):
+            tblob = ob.get("kaynak_cikti_temiz", ck) if v.get("temiz") and temiz is not None else None
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(src, dst)
+            if tblob is not None:
+                temiz.parent.mkdir(parents=True, exist_ok=True)
+                temiz.write_bytes(tblob)
+            rec = dict(v["rec"])
+            eski = rec.get("durum")
+            rec.update(onbellek=True, kaynak_kipten=True, kaynak_eski=True, kaynak_durum=eski,
+                       durum=YALNIZ_KAYNAK_DURUM, elle_bakilmali=True,
+                       neden="kaynak maskelemesinin sonucu kullanıldı, yeniden maskelenmedi (\"olduğu gibi devam\"; "
+                             "kaynak maskelemesinden sonra belgenin okuma metni, kararları ya da maskeleme sürümü "
+                             f"değişti; kaynakta: {eski or '?'}): elle bakılmalı")
+            return rec
+    return {"durum": YALNIZ_KAYNAK_DURUM, "elle_bakilmali": True,
+            "neden": "maskelenmedi: bu dosyanın kaynak maskelemesi yok, yeniden maskelenmedi (\"olduğu gibi devam\"); "
+                     "dosya olduğu gibi pakette, elle bakılmalı"}
+
+
+# ---------------------------------------------------------------- kanıt kipi: süre sınırı (bidr/havuz.py)
+
+ZAMAN_ASIMI = "zaman_asimi"
+
+
+def sure_asildi(job: dict, sn: float) -> dict:
+    """Süre sınırını aşan dosyanın kaydı (süreç öldürüldü): yarım yazılmış maskeli kopya silinir; teslim dosyayı
+    olduğu gibi alır ve "maskelenmedi" diye listeler (maskeleme kanıtı düşürmez)."""
+    from .run import _temiz_yolu, kind_of
+    dst = Path(job["dst"])
+    for p in {dst, *(dst.with_suffix(x) for x in (".pdf", ".docx", ".xlsx", ".eml"))}:
+        if p != Path(job["src"]) and p.is_file() and (p == dst or Path(job["src"]).suffix.lower() != p.suffix):
+            p.unlink(missing_ok=True)
+            t = _temiz_yolu(job, p)
+            if t is not None:
+                t.unlink(missing_ok=True)
+    src = Path(job["src"])
+    return {"dosya": job["rel"], "bicim": kind_of(src) or (src.suffix.lower().lstrip(".") or "?"),
+            "durum": ZAMAN_ASIMI, "elle_bakilmali": True, "sure_siniri_sn": round(sn),
+            "neden": f"maskelenemedi, elle bakılmalı: dosya başına süre sınırı ({round(sn)} sn) aşıldı; "
+                     "dosya olduğu gibi pakette"}
+
+
+def beklenmedik_bitis(job: dict, neden: str) -> dict:
+    from .run import kind_of
+    src = Path(job["src"])
+    return {"dosya": job["rel"], "bicim": kind_of(src) or (src.suffix.lower().lstrip(".") or "?"), "durum": "hata",
+            "elle_bakilmali": True, "neden": f"maskelenemedi, elle bakılmalı: {neden}"}
 
 
 WS_RAPOR = "maskeleme-kaynak-raporu.json"      # -w verilince çalışma alanına da yazılır (inceleme komutları okur)
@@ -912,7 +1023,7 @@ def _ilerleme_yaz(p: Path | None, **alan) -> None:
 
 def run_source(source: Path, out: Path, *, rules: MaskRules | None = None, engine: str = "auto",
                workers: int = 1, report: Path | None = None, progress=None, ayir: bool = False,
-               ws: Path | None = None, onbellek_kullan: bool = True) -> dict:
+               ws: Path | None = None, onbellek_kullan: bool = True, sure: dict | None | bool = None) -> dict:
     """`ws`: çalışma alanı verilirse ve kaynak daha önce okunmuşsa (`inventory.csv` + `text/<doc_id>.txt`)
     modelin okuma metniyle el yazısı denetimi yapılır (bkz. `run.model_text_gaps`); ayrıca çalışma alanının
     önbelleği (`.cache/maske.sqlite`, `onbellek_kullan`) kullanılır ve ilerleme `<ws>/maskeleme-ilerleme.json`'a
@@ -948,6 +1059,9 @@ def run_source(source: Path, out: Path, *, rules: MaskRules | None = None, engin
     if eng == "pypdf":
         uyarilar.append("PyMuPDF kurulu değil: PDF'ler pypdf ile en iyi çabayla maskelendi; taranmış "
                         "sayfalardaki veri ve imzalar kapatılamaz (`pip install 'bidr[maske]'`)")
+    if sure is True:                     # dosya başına süre sınırı: ortam/varsayılan (bidr/havuz.py)
+        from bidr.havuz import sure_ayari
+        sure = sure_ayari()
     files, skipped = _files(src)
     namer = _Namer(rules)
     from . import onbellek
@@ -967,7 +1081,7 @@ def run_source(source: Path, out: Path, *, rules: MaskRules | None = None, engin
         ilerleme_p = None
     try:
         records = _run_jobs(src, out, files, namer, mtexts, rules, eng, ayir_d, wsr, ob_yol, workers, progress,
-                            ilerleme_p, bas)
+                            ilerleme_p, bas, sure or None)
     finally:
         for k, v in env_once.items():
             if v is None:
@@ -978,7 +1092,7 @@ def run_source(source: Path, out: Path, *, rules: MaskRules | None = None, engin
 
 
 def _run_jobs(src, out, files, namer, mtexts, rules, eng, ayir_d, wsr, ob_yol, workers, progress, ilerleme_p,
-              bas) -> list[dict]:
+              bas, sure: dict | None = None) -> list[dict]:
     jobs = []
     for p in files:
         rel = p.relative_to(src).as_posix()
@@ -988,40 +1102,67 @@ def _run_jobs(src, out, files, namer, mtexts, rules, eng, ayir_d, wsr, ob_yol, w
                      str(mt) if mt else None, str(wsr) if wsr else None, ob_yol))
     n = len(jobs)
     if ilerleme_p is None:
-        return _jobs_loop(jobs, workers, progress, lambda i: None)
+        return _jobs_loop(jobs, workers, progress, lambda i: None, sure)
     from . import suanki
     with tempfile.TemporaryDirectory(prefix="bidr-suanki-") as td:
         os.environ[suanki.ENV] = td          # işçi süreçler ortamı devralır (geri alma: run_source)
         with suanki.Izleyici(Path(td), lambda **a: _ilerleme_yaz(ilerleme_p, **a)) as iz:
             iz.yaz(durum="suruyor", toplam=n, biten=0, baslangic=bas)
             records = _jobs_loop(jobs, workers, progress,
-                                 lambda i: iz.yaz(durum="suruyor", toplam=n, biten=i, baslangic=bas))
+                                 lambda i: iz.yaz(durum="suruyor", toplam=n, biten=i, baslangic=bas), sure)
         os.environ.pop(suanki.ENV, None)
     _ilerleme_yaz(ilerleme_p, durum="bitti", toplam=n, biten=n, baslangic=bas, suanki=[])
     return records
 
 
-def _jobs_loop(jobs, workers, progress, ilerle) -> list[dict]:
-    n = len(jobs)
-    sonuc: list[list[dict] | None] = [None] * n
+def _kaynak_sure_asildi(job, sn: float) -> list[dict]:
+    """Kaynak kipte süre sınırını aşan dosya (süreç öldürüldü): maskelenemeyen dosya gibi özgünü olduğu gibi kopyalanır
+    (`--ayir`: kopyanın dışına ayrılır), "elle bakılmalı" listesine girer. Maskeleme kanıtı düşürmez."""
+    src, rel, hedef, dst = Path(job[0]), job[1], job[2], Path(job[3])
+    ayir = Path(job[6]) if job[6] else None
+    rec = {"dosya": rel, "hedef": hedef, "bicim": C.full_ext(src.name).lstrip(".") or "?", "durum": "zaman_asimi",
+           "elle_bakilmali": True, "sure_siniri_sn": round(sn),
+           "neden": f"maskelenemedi, elle bakılmalı: dosya başına süre sınırı ({round(sn)} sn) aşıldı; "
+                    "özgün dosya olduğu gibi kopyalandı (kişisel veri içerebilir)"}
+    for p in {dst, *(dst.with_suffix(x) for x in (".zip", ".pdf", ".docx", ".xlsx", ".eml"))}:
+        if p.is_file():
+            p.unlink()
+    if ayir is not None:
+        t = ayir / hedef
+        t.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, t)
+        rec["ayrildi"] = hedef
+    else:
+        _copy_as_is(src, dst)
+    return [rec]
 
-    def bitti(i: int, k: int) -> None:
+
+def _kaynak_beklenmedik(job, neden: str) -> list[dict]:
+    src, rel, hedef, dst = Path(job[0]), job[1], job[2], Path(job[3])
+    _copy_as_is(src, dst)
+    return [{"dosya": rel, "hedef": hedef, "bicim": "?", "durum": "hata", "elle_bakilmali": True,
+             "neden": f"maskelenemedi ({neden}); olduğu gibi kopyalandı"}]
+
+
+def _jobs_loop(jobs, workers, progress, ilerle, sure: dict | None = None) -> list[dict]:
+    """Tamamlanma sırasıyla ilerleme (yavaş bir dosya sayacı tutmasın); rapor sırası iş sırasıdır. `sure`: dosya
+    başına süre sınırı (`havuz.sure_ayari`); aşan dosyanın süreci (OCR alt süreçleriyle) öldürülür."""
+    from bidr import havuz
+    n = len(jobs)
+
+    def bitti(i: int, k: int, recs) -> None:
         if progress:
-            recs = sonuc[k]
             progress(i, n, recs[0]["dosya"] if recs else jobs[k][1])
         ilerle(i)
-    if workers > 1 and n > 1:
-        # tamamlanma sırasıyla ilerleme (yavaş bir dosya sayacı tutmasın); rapor sırası iş sırasıdır
-        with ProcessPoolExecutor(max_workers=workers) as ex:
-            fut = {ex.submit(_work, j): k for k, j in enumerate(jobs)}
-            for i, f in enumerate(as_completed(fut), 1):
-                k = fut[f]
-                sonuc[k] = f.result()
-                bitti(i, k)
-    else:
-        for k, j in enumerate(jobs):
-            sonuc[k] = _work(j)
-            bitti(k + 1, k)
+    from . import suanki
+
+    def olduruldu(pid: int) -> None:          # öldürülen işçinin "o an işlenen belge" kaydı kalmasın
+        d = os.environ.get(suanki.ENV)
+        if d:
+            (Path(d) / f"{pid}.json").unlink(missing_ok=True)
+    sonuc = havuz.calistir(_work, jobs, isci=workers, bitti=bitti, olduruldu=olduruldu,
+                           sinir=(lambda j: havuz.dosya_siniri(j[0], sure)) if sure else None,
+                           zaman_asimi=_kaynak_sure_asildi, beklenmedik=_kaynak_beklenmedik)
     records: list[dict] = []
     for recs in sonuc:
         records += recs or []
