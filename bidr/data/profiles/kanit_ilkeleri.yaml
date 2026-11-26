@@ -84,3 +84,18 @@ ilkeler:
       ad serisindeki belgelerin etkinlik adı) bu yalnız ipucudur: belge içeriği o etkinlikle
       çelişmiyorsa (ör. adsız etkinlik fotoğrafı) "faaliyet" adını oradan aynen al; çelişiyorsa ya
       da emin değilsen alma. Alıntı yine yalnız bu belgeden.
+  - kimlik: katilimci_belirler
+    metin: >-
+      Programın katılımcısı ölçütü belirler. Kurum dışı katılımcılara açık programlar (lise
+      öğrencilerine, başka üniversitelerin öğrencilerine ya da halka yönelik staj programı, yaz
+      okulu, kamp, atölye) bölümün toplumsal katkı faaliyetidir: D.1.x (süreç ve kaynaklar) ya da
+      D.2.1 (performans). Bunlar bölüm öğrencilerinin stajı ya da akademik desteği (B.1.4, B.3.2)
+      değildir; B'ye yalnız katılımcıları bölümün kendi öğrencileri olan programlar girer.
+  - kimlik: olcut_sinirlari
+    metin: >-
+      Ölçüt sınırları. Yalnız bir liste satırı ya da başlık (menü öğesi, içindekiler, belge
+      listesindeki ad) alıntısı kanıt değildir: ölçütün istediği içeriği gösteren cümle ya da
+      tablo alıntılanmalı. Programa kabul, yatay geçiş, çift anadal, yandal ve önceki öğrenmenin
+      tanınması B.2.3'tür (sertifikalandırma ve diploma B.2.4 değil). Açılan dersler ve öğretim
+      elemanı listesi tek başına B.4.1'in uzmanlık–ders uyumunu göstermez; uyum ölçütü ya da
+      atama/görevlendirme kararı gerekir.
