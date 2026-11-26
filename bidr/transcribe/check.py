@@ -5,6 +5,14 @@ from __future__ import annotations
 import json
 
 
+def _paketli(p) -> bool:
+    """Görsel okuma paketi var ve belirsiz turunun paketi değil (o tur `belirsiz_okuma` aşamasınındır)."""
+    try:
+        return p.is_file() and json.loads(p.read_text(encoding="utf-8")).get("tur") != "belirsiz"
+    except (OSError, ValueError):
+        return False
+
+
 def transcribe_tamam(c):
     from bidr.pipeline.checks import AJAN, KOMUT, Check, _sample
 
@@ -18,6 +26,15 @@ def transcribe_tamam(c):
     log = R.load_log(ws)
     lowq = {d for d, r in prim.items() if str(r.get("low_quality", "")).strip() == "1"
             and (r.get("ext") or "").lower() in R.PDF_EXTS | R.DIRECT_IMG | R.CONVERT_IMG}
+    # OCR'lı belgeler (kullanıcı kararı 2026-11-20; `R.ocr_okunacak`): aşama yalnız paketi hazırlanmış olanı (bu
+    # iş/turda prepare seçti) ve henüz karara girmemiş (yeni yüklenen) olanı bekler. Kararı verilmiş eski belge
+    # tamamlanmış işi eskitmez (yenileme model işi doğurmaz); bir sonraki prepare onu da seçer.
+    ocr = set(R.ocr_okunacak(ws, prim, log))
+    if ocr:
+        from bidr.decide.run import load_decisions
+        karar = set(load_decisions(ws)) if (ws.root / "decisions.jsonl").exists() else set()
+        d_ = R.work_dir(ws)
+        lowq |= {x for x in ocr if x not in karar or _paketli(d_ / x / f"{x}.json")}
     done = {d for d in prim if R.is_done(ws, d, log)}
     # iki denemede de aynı nedenle reddedilen belge: karar verildi (metni OCR'da), aşama beklemez
     from bidr.pipeline import cevap as CV
@@ -41,7 +58,7 @@ def transcribe_tamam(c):
     pk = {x for x in todo if (d / x / f"{x}.json").exists()}
     if todo - pk:
         return Check(kim=KOMUT, ilerleme=prog, uyarilar=uy,
-                     neden=f"{len(todo - pk)} düşük kaliteli belgenin paketi yok")
+                     neden=f"{len(todo - pk)} düşük kaliteli ya da OCR'lı belgenin paketi yok")
     apply_ = c.fmt(c.stage["komut"][2]) if c.stage.get("komut") else None
     no_out = {x for x in pk if not (d / x / f"{x}.out.json").exists()}
     if no_out:

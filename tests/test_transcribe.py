@@ -59,7 +59,7 @@ def _ws(tmp: Path, docs: dict[str, tuple[str, str, int]]) -> tuple[Path, Path, d
         if name == "pdf":   # birebir kopya satırı da güncellenmeli
             rows.append({**base, "rel_path": "kopya/pdf.pdf", "dup_of": f"alt/{name}{ext}"})
     rows.append({**rows[0], "doc_id": "iyi0000000000000", "sha256": "x", "rel_path": "iyi.pdf",
-                 "low_quality": "", "dup_of": ""})
+                 "low_quality": "", "dup_of": "", "method": "pdftotext", "status": "ok"})   # metin katmanlı: seçilmez
     with open(ws / "inventory.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0]))
         w.writeheader()
@@ -526,3 +526,47 @@ def test_belirsiz_unpackable_is_not_waited(tmp_path, capsys):
     assert sel == [] and info["paketlenemedi"] == 1
     ck = belirsiz_okuma_tamam(_bctx(ws))
     assert ck.bitti and ck.ilerleme["paketlenemeyen"] == 1 and any("belirsiz.json" in u for u in ck.uyarilar)
+
+
+@pytest.mark.skipif(not HAS_PDFTOPPM, reason="pdftoppm yok")
+def test_ocrli_her_belge_gorsel_okunur(tmp_path):
+    """OCR'ı eşiği geçen belge de görsel okunur (kullanıcı kararı 2026-11-20): `prepare --all-low-quality` seçer.
+    Tamamlanmış işte (belge karara girmiş, paketi yok) aşama eskimez; yeni yüklenen (kararsız) OCR'lı belge ya da
+    paketi hazırlanmış olan beklenir. Paketlenemeyen OCR'lı belge bir daha seçilmez, aşamayı bekletmez."""
+    from bidr.common import Workspace
+    from bidr.pipeline.checks import Ctx
+    from bidr.pipeline.state import stage
+    from bidr.transcribe.check import transcribe_tamam
+
+    ws, src, ids = _ws(tmp_path, {"dusuk": (".png", OCR_TEXT, 1), "ocr": (".png", OCR_TEXT, 1)})
+    rows = _inv(ws)
+    for r in rows:
+        if r["doc_id"] == ids["ocr"]:
+            r["low_quality"] = ""                          # OCR eşiği geçti
+        if r["doc_id"] == "iyi0000000000000":
+            r.update(method="ocr", doc_id="yok0000000000000", rel_path="yok.png", ext=".png")   # kaynağı yok
+    with open(ws / "inventory.csv", "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0]))
+        w.writeheader()
+        w.writerows(rows)
+    prim = R._primary(_inv(ws))
+    assert R.ocr_okunacak(Workspace(ws), prim, {}) == sorted([ids["ocr"], "yok0000000000000"])
+    ctx = Ctx(Workspace(ws), {}, lambda s: s, stage("transcribe"))
+    # tamamlanmış iş: düşük kaliteli okunmuş, OCR'lılar karara girmiş → aşama bitti sayılır (yenileme model işi doğurmaz)
+    write_jsonl(ws / "decisions.jsonl", [{"doc_id": d, "durum": "ok"} for d in (ids["ocr"], ids["dusuk"],
+                                                                                 "yok0000000000000")])
+    R.prepare(ws, only=[ids["dusuk"]], source=src)
+    _out(ws, ids["dusuk"], [GOOD])
+    R.apply(ws)
+    assert transcribe_tamam(ctx).bitti
+    # yeni iş/tur: aşamanın komutu OCR'lıları da paketler; paketlenen beklenir, kaynağı olmayan ayrılır
+    st = R.prepare(ws, all_low_quality=True, source=src)
+    assert st["yeni"] == 1 and set(st["atlandi"]) == {"yok0000000000000"}
+    assert R.ocr_okunacak(Workspace(ws), prim, {}) == [ids["ocr"]]
+    ck = transcribe_tamam(ctx)
+    assert not ck.bitti and ck.bekleyen == [ids["ocr"]]
+    # karara girmemiş (yeni yüklenen) OCR'lı belge paket hazırlanmadan da beklenir
+    write_jsonl(ws / "decisions.jsonl", [{"doc_id": ids["dusuk"], "durum": "ok"}])
+    shutil.rmtree(ws / "work" / "transcribe" / ids["ocr"])
+    ck = transcribe_tamam(ctx)
+    assert not ck.bitti and "paketi yok" in ck.neden

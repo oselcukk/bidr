@@ -342,13 +342,63 @@ def resolve_source(ws: Workspace, source: Path | str | None) -> Path:
 
 
 def select(ws: Workspace, *, only: list[str] | None, all_low_quality: bool) -> list[str]:
+    """`all_low_quality` (aşamanın komutu): düşük kaliteli belgeler + görsel okumadan geçmemiş OCR'lı belgeler
+    (`ocr_okunacak`; kullanıcı kararı 2026-11-20 "OCR'lı her belge görsel okunur", uygulama 2026-11-26)."""
     _, rows = read_inventory(ws)
     prim = _primary(rows)
     if only:
         return list(dict.fromkeys(only))
     if all_low_quality:
-        return sorted(d for d, r in prim.items() if str(r.get("low_quality", "")).strip() == "1")
+        low = {d for d, r in prim.items() if str(r.get("low_quality", "")).strip() == "1"}
+        return sorted(low | set(ocr_okunacak(ws, prim, load_log(ws))))
     return []
+
+
+OCR_ATLANAN_FILE = "ocr-atlanan.json"   # work/transcribe/ altında: paketlenemeyen OCR'lı belgeler (neden)
+
+
+def ocr_atlanan(ws: Workspace) -> dict[str, str]:
+    p = work_dir(ws) / OCR_ATLANAN_FILE
+    try:
+        return (json.loads(p.read_text(encoding="utf-8")).get("atlandi") or {}) if p.exists() else {}
+    except (OSError, ValueError, AttributeError):
+        return {}
+
+
+def _save_ocr_atlanan(ws: Workspace, skipped: dict[str, str]) -> None:
+    allp = {**ocr_atlanan(ws), **skipped}
+    if allp:
+        p = work_dir(ws) / OCR_ATLANAN_FILE
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps({"atlandi": dict(sorted(allp.items()))}, ensure_ascii=False, indent=1),
+                     encoding="utf-8")
+
+
+def ocr_okunacak(ws: Workspace, prim: dict[str, dict], log: dict[str, dict], *, max_pages: int = MAX_PAGES
+                 ) -> list[str]:
+    """OCR'ı eşiği geçse de (el yazısı karar, form) görsel okunacak belgeler (kullanıcı kararı 2026-11-20): metni
+    OCR'dan gelmiş (`ocr_derived`; düşük kaliteliler ayrıca seçilir), sayfa görüntüsüne çevrilebilir, en çok
+    `max_pages` sayfa, hiçbir turda görsel okunmamış (transcribe.jsonl'de kaydı yok) ve önceki bir prepare'de
+    paketlenemedi diye ayrılmamış (`ocr-atlanan.json`). Salt okunur.
+
+    Tamamlanmış çalışma alanı bunlar yüzünden eskimez: aşama denetimi (`check.transcribe_tamam`) yalnız paketi
+    hazırlanmış ya da henüz karara girmemiş (yeni yüklenen) OCR'lı belgeyi bekler; eski belgeler aşamanın komutu
+    (`prepare --all-low-quality`) bir sonraki iş/turda çalışınca seçilir."""
+    out = []
+    atlanan = ocr_atlanan(ws)
+    for d, r in prim.items():
+        if str(r.get("low_quality", "")).strip() == "1" or d in log or d in atlanan or not ocr_derived(r):
+            continue
+        if (r.get("ext") or "").lower() not in RENDERABLE:
+            continue
+        try:
+            pages = int(float(r.get("pages") or 0))
+        except ValueError:
+            pages = 0
+        if pages > max_pages:
+            continue
+        out.append(d)
+    return sorted(out)
 
 
 def _norm(text: str) -> str:
@@ -536,6 +586,10 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, all_low_quality: bo
         st["yeni"] += 1
     if belirsiz:
         _save_belirsiz_state(ws, st["atlandi"])
+    else:
+        # paketlenemeyen OCR'lı (düşük kaliteli olmayan) belge bir daha seçilmez, aşama onu beklemez
+        low = {x for x, r in prim.items() if str(r.get("low_quality", "")).strip() == "1"}
+        _save_ocr_atlanan(ws, {x: w for x, w in st["atlandi"].items() if x not in low})
     n = _pending(d)
     (d / "README.md").write_text(README.format(task=TASK, version=_task_version(), n=n), encoding="utf-8")
     st["bekleyen"] = n
