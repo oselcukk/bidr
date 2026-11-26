@@ -11,6 +11,7 @@ ya da mürekkepli sayfada güvenilir kelime çok az / güven çok düşük) dosy
 from __future__ import annotations
 
 import io
+import math
 import re
 from collections import Counter
 from dataclasses import dataclass, field
@@ -23,6 +24,21 @@ from .ocr import OcrFailed, Word, find_pii_typed, ink_ratio, ocr_available, ocr_
 
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".webp"}
 SIG_DPI = 100                     # metin katmanlı sayfada imza çözümlemesi çözünürlüğü
+# Dev görüntü (canlı 26.11: 1800×2650 pt sayfa, 300 dpi'da ~77 MP; yol haritası: 90–105 MP fotoğraf): OCR sayfa başına
+# dakikalar sürer, koşuyu tutar. 300 dpi'da BUYUK_PIKSEL'i aşan PDF sayfası ve bundan büyük görsel A4'ün 300 dpi alanına
+# (HEDEF_PIKSEL, ~8,7 MP) küçültülerek işlenir: kısa kenar ~A4 genişliğinde ~300 ppi (bkz. `_ppi`). Olağan sayfa
+# (A2'ye kadar) ve görsel değişmez. Bölge kutuları puan biriminde kaldığından çizim/karar koordinatları geçerli kalır.
+BUYUK_PIKSEL = 40_000_000
+HEDEF_PIKSEL = 2480 * 3508
+
+
+def sayfa_dpi(page, dpi: int = 300) -> int:
+    """PDF sayfasının işlenme çözünürlüğü: `dpi`'da BUYUK_PIKSEL'i aşan sayfada HEDEF_PIKSEL'e inen dpi."""
+    r = page.rect
+    px = (r.width * dpi / 72.0) * (r.height * dpi / 72.0)
+    if px <= BUYUK_PIKSEL:
+        return dpi
+    return max(36, int(dpi * math.sqrt(HEDEF_PIKSEL / px)))
 MIN_GOOD_WORDS = 8                # mürekkepli sayfada OCR'ın "okudu" sayılması için
 MIN_CONF = 50.0
 INK_EMPTY = 0.004                 # bunun altı boş sayfa: OCR kalitesi aranmaz
@@ -592,6 +608,9 @@ def _open_image(path):
     im = Image.open(str(path) if isinstance(path, Path) else path)
     im.load()
     im = ImageOps.exif_transpose(im)
+    if im.width * im.height > BUYUK_PIKSEL:
+        f = math.sqrt(HEDEF_PIKSEL / (im.width * im.height))
+        im = im.resize((max(1, round(im.width * f)), max(1, round(im.height * f))), Image.LANCZOS)
     if im.mode not in ("RGB", "L"):
         bg = Image.new("RGB", im.size, (255, 255, 255))
         im = im.convert("RGBA")
@@ -1043,7 +1062,7 @@ def scan_pdf_page(page, rules: MaskRules) -> dict:
            "imza_kutular": [], "alanlar": [], "imza_aday_kutular": [], "ocr": bool(need_ocr), "bolgeler": []}
     if not need_ocr and has_text and _big_image(page)[1] >= 0.4:
         # yeterli metin katmanlı tarama: OCR yok; imza ve etiket alanı metin katmanı kelimeleriyle
-        dpi = 300
+        dpi = sayfa_dpi(page, 300)
         img = render(page, dpi)
         tw = text_words(page, dpi / 72.0)
         r = analyze_image(img, dpi, rules, ocr=False, extra_words=tw, need_text=False, yapi=yapi)
@@ -1059,7 +1078,7 @@ def scan_pdf_page(page, rules: MaskRules) -> dict:
         out["metin_yeterli"] = True
         return out
     if need_ocr:
-        dpi = 300
+        dpi = sayfa_dpi(page, 300)
         img = render(page, dpi)
         yapi["foto"] = renk_cesitliligi(img) >= FOTO_RENK
         tw = text_words(page, dpi / 72.0) if has_text else []
@@ -1188,16 +1207,17 @@ def imza_izi(path, kind: str) -> list[tuple[int, tuple]]:
                 continue                              # metin katmanlı sayfa (taranmış görüntü değil)
             if not has_text and not ocr_available():
                 continue
-            img = render(page, IZ_DPI)
+            d = sayfa_dpi(page, IZ_DPI)
+            img = render(page, d)
             if renk_cesitliligi(img) >= FOTO_RENK:
                 continue
             try:
-                words = text_words(page, IZ_DPI / 72.0) if has_text else ocr_words(img)
+                words = text_words(page, d / 72.0) if has_text else ocr_words(img)
             except OcrFailed:
                 continue
-            bs = adaylar(img, words, IZ_DPI)
+            bs = adaylar(img, words, d)
             if bs:
-                out.append((page.number + 1, tuple(to_page_rects(page, [birlesim(bs)], IZ_DPI / 72.0)[0])))
+                out.append((page.number + 1, tuple(to_page_rects(page, [birlesim(bs)], d / 72.0)[0])))
     finally:
         doc.close()
     return out
