@@ -43,7 +43,10 @@ SWOT_YER_TUTUCU = "Biriminizin bu ana ölçüt ve alt ölçütleri"
 DOGRULANMADI = "[doğrulanmadı]"
 BOS_ACIKLAMA_IPUCU = ("kanıt bulunamamıştır", "veri bulunmamaktadır")
 
-# Kılavuz "Kanıt Gösterimi": metin içinde `[1_OD3]`, ölçüt sonundaki listede `[1-OD3]. Ad.pdf`.
+# Kanıt gösterimi (kural 2026-11-19): kılavuz biçiminde metin içi atıf da liste satırı da `[1-OD3]`
+# (listede `[1-OD3]. Ad.pdf`); render iç biçimi `[1_OD3]`'ü rapora yazarken çevirir. `mat` biçiminde
+# ikisi de `1_OD3`. Denetim metin içi atıfların listeyle aynı gösterimde olmasını ister (atıf gösterimi
+# tutarlılığı); iki ayırıcıyı da tanır.
 RE_ATIF = re.compile(r"\[(\d+)([_-])OD([1-5])\]")
 RE_LISTE_KILAVUZ = re.compile(r"^\[(\d+)-OD([1-5])\]\.\s*(.+)$")
 RE_LISTE_MAT = re.compile(r"^(\d+)_OD([1-5])\s*:\s*(.+)$")          # render "mat" biçimi
@@ -561,6 +564,7 @@ def _olcutler(doc, d: Denetci, s: Sonuc, beklenen) -> dict[str, dict[int, int]]:
 
     listeler: dict[str, dict[int, int]] = {}
     bicimler: dict[str, int] = {"kilavuz": 0, "mat": 0}
+    ayiricilar: list[tuple[str, int, str, int]] = []       # (ölçüt, no, ayırıcı, OD): metin içi atıflar
     bos_olcut: list[str] = []
     for sid, b in blks.items():
         if b.aciklama_tc is None:
@@ -597,9 +601,7 @@ def _olcutler(doc, d: Denetci, s: Sonuc, beklenen) -> dict[str, dict[int, int]]:
             for m in RE_ATIF.finditer(t):
                 n, sep, od = int(m.group(1)), m.group(2), int(m.group(3))
                 atif.setdefault(n, set()).add(od)
-                if sep == "-":
-                    s.ekle(UYARI, "atif_gosterimi", sid,
-                           f"metin içi atıf [{n}-OD{od}]: kılavuz metin içinde [{n}_OD{od}] ister")
+                ayiricilar.append((sid, n, sep, od))
         liste: dict[int, int] = {}
         for t in k_txt:
             parsed = _liste_satiri(t)
@@ -617,11 +619,11 @@ def _olcutler(doc, d: Denetci, s: Sonuc, beklenen) -> dict[str, dict[int, int]]:
         for n, ods in sorted(atif.items()):
             if n not in liste:
                 s.ekle(KRITIK, "atif_listede_yok", sid,
-                       f"metindeki [{n}_OD{min(ods)}] kanıt listesinde yok")
+                       f"metindeki [{n}-OD{min(ods)}] kanıt listesinde yok")
                 continue
             for od in sorted(ods - {liste[n]}):
                 s.ekle(KRITIK, "atif_od_uyusmuyor", sid,
-                       f"metinde [{n}_OD{od}], listede {n}. kanıt OD{liste[n]}")
+                       f"metinde [{n}-OD{od}], listede {n}. kanıt OD{liste[n]}")
         for n in sorted(set(liste) - set(atif)):
             s.ekle(UYARI, "atifsiz_kanit", sid, f"listedeki {n}. kanıt (OD{liste[n]}) metinde atıf almıyor")
         if liste and sorted(liste) != list(range(1, len(liste) + 1)):
@@ -629,6 +631,20 @@ def _olcutler(doc, d: Denetci, s: Sonuc, beklenen) -> dict[str, dict[int, int]]:
                    f"kanıt numaraları 1..{len(liste)} sıralı değil: {sorted(liste)}")
 
     s.bilgi["kanit_listesi_bicimi"] = bicimler
+    # atıf gösterimi tutarlılığı: metin içi atıf listenin gösterimiyle (kılavuz `[n-ODk]`, mat `n_ODk`) aynı
+    bek = "_" if bicimler["mat"] and not bicimler["kilavuz"] else "-"
+    s.bilgi["metin_ici_atif"] = {"kilavuz": sum(1 for x in ayiricilar if x[2] == "-"),
+                                 "mat": sum(1 for x in ayiricilar if x[2] == "_")}
+    farkli: dict[str, list[str]] = {}
+    for sid, n, sep, od in ayiricilar:
+        if sep != bek:
+            farkli.setdefault(sid, []).append(f"[{n}{sep}OD{od}]")
+    for sid, xs in farkli.items():
+        ilk = xs[0]
+        s.ekle(UYARI, "atif_gosterimi", sid,
+               f"{len(xs)} metin içi atıf kanıt listesinin gösteriminde değil (ör. {ilk} yerine "
+               f"{ilk.replace('_' if bek == '-' else '-', bek)}); render kılavuz biçiminde iç [n_ODk] atıflarını "
+               "[n-ODk] yazar: rapor yeniden üretilmeli")
     s.bilgi["bos_olcut"] = bos_olcut
     if bos_olcut:
         s.ekle(UYARI, "bos_olcut", ", ".join(bos_olcut),
@@ -640,7 +656,7 @@ def _olcutler(doc, d: Denetci, s: Sonuc, beklenen) -> dict[str, dict[int, int]]:
     elif bicimler["mat"]:
         s.ekle(UYARI, "kanit_gosterimi_karar", "belge",
                f"KARAR GEREKLİ: kanıt listeleri 'n_ODk: ad' biçiminde ({bicimler['mat']} satır); kılavuzun "
-               "'Kanıt Gösterimi' örneği ölçüt sonunda '[n-ODk]. ad' ister (metin içinde '[n_ODk]'). "
+               "'Kanıt Gösterimi' örneği ölçüt sonunda '[n-ODk]. ad' ister (metin içinde de '[n-ODk]', kural 2026-11-19). "
                "render --kanit-bicimi kilavuz kılavuz gösterimini üretir")
     return listeler
 

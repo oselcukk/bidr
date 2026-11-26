@@ -4,6 +4,12 @@ Her birleştirmede (main'e giren her değişiklik) buraya en üste bir satır ek
 açıklama ve kullanıcıyı ilgilendiriyorsa ne yapması gerektiği. `bidr guncelle` güncellemeden sonra
 bu dosyanın yeni satırlarını gösterir. Bu dosyadan önceki geçmiş için `git log`.
 
+- 2026-11-26: Kanıt atıf gösterimi rapor boyunca kılavuz biçiminde: render (`--kanit-bicimi kilavuz`, vars.) metin
+  içi atıfları, önceki yıla göre metnini ve yön maddelerini de `[1-OD3]` yazar (liste satırı zaten `[1-OD3]. Ad`).
+  İç biçim `[n_ODk]` değişmedi (istem, write/verify doğrulaması, parmak izleri, görev sürümleri, `texts/*.json`):
+  model yeniden çalışmaz. Biçim denetimi metin içi atfın listenin gösterimiyle aynı olmasını ister (ölçüt başına bir
+  `atif_gosterimi` uyarısı, kritik değil); teslim paketi numaraları `1-OD3` yazar. Var olan rapor için: `bidr render`
+  (+ `bidr denetle`, teslim paketi varsa `bidr teslim`) — model yok.
 - 2026-11-26: Karar aşamalarının (kaba/ince) "eski olabilir" parmak izi kod dosyalarını sözdizimi olarak okur
   (`bidr/decide/parmak.py`, iz `v2-…`): belge dizgesi, yorum ya da biçim düzenlemesi aşamaları artık eskitmez
   (canlı olay: run.py'de yalnız açıklama değişti, karar_kaba "eski olabilir" deyip audit'i durdurdu). Görev/istem

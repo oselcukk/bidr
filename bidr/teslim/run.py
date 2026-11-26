@@ -504,7 +504,9 @@ def build(ws: Path, out: Path | None = None, *, docx_path: Path | None = None, t
     kok = out / KANITLAR
     damga_tarihi = gun.strftime("%d.%m.%Y")
     for k, f, r, neden in _satirlar(plan, dizin):
-        no = f"{k.no}_OD{k.od}"
+        # okura görünen numara raporun liste gösterimiyle aynı: kılavuz `[1-OD3]. Ad` → `1-OD3`, mat `1_OD3`
+        # (kanit-dizini, EKSIK.txt, MASKELEME-UYARI.txt); dizinle eşleşme (ölçüt, sıra) üzerinden, iç `n_ODk` değişmez
+        no = f"{k.no}{'-' if k.metin.startswith('[') else '_'}OD{k.od}"
         ad = (r.get("ad") or "").strip() or _ad_sade(k.ad, k.baglanti)
         row = {"olcut": k.olcut, "kanit_no": no, "od": k.od, "ad": ad, "dosya": "", "pdf_kopya": "",
                "ozgun_baglanti": "", "baglanti_kaynagi": "", "alinma_tarihi": "", "maskeleme": "",

@@ -179,8 +179,9 @@ def test_fill_cells_and_format(ws, tmp_path):
     write_audit(ws, {"A.1.1": 3, "A.1.2": 2})
     res, d, blocks = _run(ws, tmp_path)
     a = blocks["A.1.1"]
-    assert _lines(a.aciklama_tc) == ["Açıklamalar:", "A.1.1 sentetik paragraf bir [1_OD3].",
-                                     "A.1.1 sentetik paragraf iki [2_OD2].",
+    # metin içi atıf kılavuz gösterimiyle (iç biçim texts/*.json'da [n_ODk] kalır)
+    assert _lines(a.aciklama_tc) == ["Açıklamalar:", "A.1.1 sentetik paragraf bir [1-OD3].",
+                                     "A.1.1 sentetik paragraf iki [2-OD2].",
                                      "Önceki yıla göre sentetik fark."]
     assert _lines(a.kanit_tc) == ["Kanıtlar:", "[1-OD3]. Sentetik kanıt bir.pdf", "[2-OD2]. Sentetik kanıt iki.pdf"]
     # biçim: 10 pt, Times New Roman, kalın değil, önce 0 / sonra 0,6 nk (12 twip)
@@ -284,7 +285,7 @@ def test_draft_mark_and_unverified(ws, tmp_path):
     res, d, blocks = _run(ws, tmp_path)
     assert res.taslak and res.dogrulanmamis == ["A.1.1"] and res.reddedildi == ["A.1.2"]
     a = _lines(blocks["A.1.1"].aciklama_tc)
-    assert a[1].startswith(DOGRULANMADI) and a[2] == "A.1.1 sentetik paragraf bir [1_OD3]."
+    assert a[1].startswith(DOGRULANMADI) and a[2] == "A.1.1 sentetik paragraf bir [1-OD3]."
     r = _lines(blocks["A.1.2"].aciklama_tc)
     assert r[1].startswith(DOGRULANMADI) and BOS_IFADE in r and "sentetik paragraf" not in " ".join(r)
     sec = d.sections[0]
@@ -305,6 +306,24 @@ def test_cover_and_kilavuz_format(ws, tmp_path):
     assert "Yazım kuralları örneği 2547 sayılı kanun" in texts
     assert _lines(blocks["A.1.1"].kanit_tc)[1:] == ["[1-OD3]. Sentetik kanıt bir.pdf", "[2-OD2]. Sentetik kanıt iki.pdf"]
     assert res.kapak == {"birim": "Sentetik Bölüm", "yil": "2026"}
+
+
+def test_atif_gosterimi_render_aninda(ws, tmp_path):
+    """Kılavuz (vars.): rapordaki metin içi atıf, önceki yıla göre ve yön maddesi [n-ODk]; mat: [n_ODk] kalır.
+    İç biçim (texts/*.json) değişmez; uyarılar iç numarayla."""
+    from bidr.render.run import atif_gosterimi, no_gosterimi
+    assert atif_gosterimi("A [1_OD3], [12_OD5]; [komisyon] [6_OD9].") == "A [1-OD3], [12-OD5]; [komisyon] [6_OD9]."
+    assert atif_gosterimi("A [1_OD3].", "mat") == "A [1_OD3]."
+    assert no_gosterimi("3_OD2") == "3-OD2" and no_gosterimi("3_OD2", "mat") == "3_OD2" and no_gosterimi("x") == "x"
+    write_text(ws / "texts", "A.1.1", onceki_yila_gore="Fark [1_OD3].")
+    once = (ws / "texts" / "A.1.1.json").read_bytes()
+    res, d, blocks = _run(ws, tmp_path)
+    a = " ".join(_lines(blocks["A.1.1"].aciklama_tc))
+    assert "[1-OD3]" in a and "[2-OD2]" in a and "Fark [1-OD3]." in a and "_OD" not in a
+    assert (ws / "texts" / "A.1.1.json").read_bytes() == once
+    res, d, blocks = _run(ws, tmp_path, opts=Options(kanit_bicimi="mat"))
+    a = " ".join(_lines(blocks["A.1.1"].aciklama_tc))
+    assert "[1_OD3]" in a and "-OD" not in a
 
 
 def test_rest_of_template_untouched(ws, tmp_path):
