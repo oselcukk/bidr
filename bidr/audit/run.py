@@ -71,12 +71,13 @@ KARAR_ISARETLERI = frozenset({"insan_reddetti", "insan_duzeltti", "birim_aitligi
 # Kural belliyse sorulmaz (kullanıcı kararı 2026-11-26 17:57): eski sürüm (`surum_eski`), kurum/fakülte geneli düzenleme
 # (OD2 tavanı) ve kodun hesapladığı aşama (`asama_*`, `uygulama_kaniti_eksik`, `gerceklesme_kaniti_yok`) da bilgidir;
 # sayılan aşama/OD değişirse `kabul` satırı yine yeniden baktırır.
-# Başka idari birimin iç süreci (`baska_birim_sureci`, kullanıcı kararı 2026-11-26 20:12) de bilgidir (sayılmaz, sorulmaz).
+# Başka idari birimin iç süreci (`baska_birim_sureci`) ve geçmiş yıl belgesi (`gecmis_kanit`; kullanıcı kararı 2026-11-26
+# 20:12) de bilgidir (sayılmaz, sorulmaz).
 BILGI_ISARETLERI = frozenset({"belge_notu", "ret_hedefsiz_dustu", "birim_varsayildi", "tarih_varsayildi",
                               "yururluk_varsayildi", "birim_iliskisi_kod_bilgi", "etkinlik_gerceklesti",
                               "fotograf_fiziksel", "surum_eski", "kurum_geneli", "fakulte_geneli",
                               "uygulama_kaniti_eksik", "asama_dusuruldu", "asama_yuva_etiketine_uymuyor",
-                              "gerceklesme_kaniti_yok", "baska_birim_sureci"})
+                              "gerceklesme_kaniti_yok", "baska_birim_sureci", "gecmis_kanit"})
 
 # Ret notunda başka ölçüt anılıyor mu ("B.2.2 konusu", "önceki turda B.3.5 olarak", "başka madde").
 # Hedef verilmeden reddedilip belge hiçbir satırda sayılmıyorsa belge rapor dışına düşmüştür:

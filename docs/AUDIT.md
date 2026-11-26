@@ -340,8 +340,11 @@ anlaşılmıyordu. Dosya açılınca yalnız şu sayfalar görünür; teknik say
     birim sorumlusu; adı verilmiş başka "X Bölümü" ve bildirim alıcısı rol değildir) yoksa sayılmaz, sorulmaz
     (`sade.SESSIZ_SAYILMAZ`; Dikkat'te bilgi, bölüm Kabul derse sayılır). Hizmet maddelerinde (öğrenci kabulü,
     destek hizmetleri, uluslararasılaşma, mezun ilişkileri) kurum süreci OD2 kalır. Kurum ilanı, protokol, hizmet
-    içi eğitim gibi olay belgeleri kodla ayrılmaz: kanıt ilkesi `baska_idari_birim` (model yönergesi). Sorulmaya devam
-    eden: geçmiş yıl belgesi (`gecmis_kanit`), sıralanamayan sürüm, düşük güven, OD4/5, elle bakılmalı, açık başka
+    içi eğitim gibi olay belgeleri kodla ayrılmaz: kanıt ilkesi `baska_idari_birim` (model yönergesi). Geçmiş yıl
+    belgesi (`gecmis_kanit`, kullanıcı kararı 2026-11-26 20:12) de sorulmaz: geçen yılın raporuna girmiştir, bu dönem
+    için sayılmaz (`sade.SESSIZ_SAYILMAZ`, Dikkat yazmaz, "yeniden bak" yok); "geçmiş kanıt: süreklilik" listesi ve
+    yayımlanan listedeki sınırlı yeri değişmedi, bölüm Kabul derse sayılır. Sorulmaya devam
+    eden: sıralanamayan sürüm, düşük güven, OD4/5, elle bakılmalı, açık başka
     birim (`birim_onay_bekliyor`), başka birimin maddesi (`madde_baska_birim`: alıntının bulunduğu madde başka
     birimi konu alıyor; ölçüt bölümün doldurduğu ölçüt olabilir, "Doldurucu birim" kuralıyla ilgisi yok).
   - **Fotoğraflar** (kullanıcı kararı 2026-11-26; 1. bölümden hemen sonra, gizli bölüm değeri 4): kararsız

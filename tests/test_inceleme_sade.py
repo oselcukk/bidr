@@ -73,9 +73,10 @@ def test_sheets_sections_and_plain_text(ws):
     # düşük güven ve önceki yıl olayı: bakılacak (1. bölüm), düz Türkçe uyarı, kod adı yok
     low, old = rows["d_onlem|B.1.1/5"], rows["d_eski|A.1.1/2"]
     assert low["bolum"] == 1 and low["oneri"] == "Bakın" and "emin değil" in low["dikkat"]
-    assert old["bolum"] == 1 and "önceki bir yıla ait" in old["dikkat"]
+    # önceki yıl olayı (kullanıcı kararı 2026-11-26 20:12): sayılmaz, sorulmaz, Dikkat yazmaz
+    assert old["bolum"] == 2 and old["oneri"] == "Kabul" and not old["dikkat"]
     assert low["madde"].startswith("B.1.1 — ") and "Kılavuz" not in low["madde"]
-    assert "_" not in (low["dikkat"] + old["dikkat"])
+    assert "_" not in (low["dikkat"] + (old["dikkat"] or ""))
     assert low["kilavuz"] and "\n" not in (low["belge"] or "") and "(klasör:" not in (low["belge"] or "")
     # sorunsuz satır: 2. bölüm, öneri Kabul, karar boş
     ok = rows["d_plan|B.1.1/1"]
@@ -146,9 +147,11 @@ def test_bulk_accept_only_with_explicit_choice(ws):
     st = apply(ws)
     d = load_review_decisions(ws)
     assert d[one]["karar"] == "ret"                                  # tek tek seçilen önce gelir
-    for s in safe - {one}:
+    sessiz = {"d_eski|A.1.1/2"} & safe          # geçmiş yıl belgesi: toplu kabul uygulanmaz, kural geçerli
+    assert sessiz and not sessiz & set(d)
+    for s in safe - {one} - sessiz:
         assert d[s]["karar"] == "kabul" and S.TOPLU_NOT in d[s]["not"]
-    assert not look & set(d) and st["bos"] == len(look)              # bakılacaklar toplu kabul edilmez
+    assert not look & set(d) and st["bos"] == len(look) + len(sessiz)   # bakılacaklar toplu kabul edilmez
     assert not review_state(ws, ws)["uygulanmamis"]
 
 
@@ -368,7 +371,8 @@ def test_assumptions_do_not_ask():
     for fl in (["birim_varsayildi"], ["tarih_varsayildi"], ["yururluk_varsayildi"],
                ["birim_varsayildi", "tarih_varsayildi", "birim_iliskisi_kod_bilgi"]):
         assert dikkat({**base, "flags": fl}, 2025) == ([], False), fl
-    for fl in (["birim_onay_bekliyor"], ["tarih_dogrulanmali"], ["gecmis_kanit"], ["surum_dogrulanmali"],
+    assert dikkat({**base, "sayilir": False, "flags": ["gecmis_kanit"]}, 2025) == ([], False)   # 2026-11-26 20:12
+    for fl in (["birim_onay_bekliyor"], ["tarih_dogrulanmali"], ["surum_dogrulanmali"],
                ["guncellik_dogrulanmali", "revizyon_donem_sonrasi"], ["guncellik_dogrulanmali", "yururluk_bitmis"]):
         uy, bak = dikkat({**base, "flags": fl}, 2025)
         assert bak and uy, fl

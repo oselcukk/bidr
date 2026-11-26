@@ -104,5 +104,5 @@ def test_baska_birim_sureci_ucdan_uca(tmp_path):
 
 def test_toplu_kabul_uygulanmaz_ve_yeniden_baktirmaz():
     assert "baska_birim_sureci" in S.SESSIZ_SAYILMAZ
-    st = seen_state({"satir": "x|A.3.4/1", "flags": ["kurum_geneli", "baska_birim_sureci", "gecmis_kanit"]})
-    assert st["isaretler"] == ["gecmis_kanit"]
+    st = seen_state({"satir": "x|A.3.4/1", "flags": ["kurum_geneli", "baska_birim_sureci", "madde_baska_birim"]})
+    assert st["isaretler"] == ["madde_baska_birim"]

@@ -234,14 +234,19 @@ def test_relook_after_new_flag_keeps_decision(ws, tmp_path, eski_calisma_alani):
         (out / FILES["gorulen"]).unlink()
         audit(ws, out=out)
     sid = "d_uyg|B.1.1/3"
-    # yeni sürüm/yeni belge: aynı satırın belgesi artık önceki yıla ait (yeni işaret). Eski tarihli plan
-    # (`yururluk_varsayildi`) varsayım işaretidir: yeniden baktırmaz.
+    # yeni sürüm/yeni belge: aynı satıra sorulan yeni işaret geldi. Belgenin önceki yıla ait olması (`gecmis_kanit`,
+    # kullanıcı kararı 2026-11-26 20:12) ve eski tarihli plan (`yururluk_varsayildi`) bilgidir: yeniden baktırmaz.
     _set_doc(ws, "d_uyg", donem_ici=False)
     _set_doc(ws, "d_plan", donem_ici=False)
+    recs = [json.loads(x) for x in (ws / "decisions.jsonl").read_text(encoding="utf-8").splitlines() if x]
+    for rec in recs:
+        if rec["doc_id"] == "d_uyg":
+            rec["eslesmeler"][0]["denetim"]["isaret"] = ["ayni_alinti_kabul"]
+    (ws / "decisions.jsonl").write_text("".join(json.dumps(x) + "\n" for x in recs), encoding="utf-8")
     a, _ = audit(ws, out=out)
     r = a.by_key[sid]
     assert r["karar"] == "kabul"                                  # insan kararı ezilmez
-    assert r["yeniden_bak"] == "yeni işaret: gecmis_kanit"
+    assert "gecmis_kanit" in r["flags"] and r["yeniden_bak"] == "yeni işaret: ayni_alinti_kabul"
     p = a.by_key["d_plan|B.1.1/1"]
     assert "yururluk_varsayildi" in p["flags"] and not p["yeniden_bak"]   # varsayım: baktırmaz
     assert any("yeniden bakılmalı" in u for u in a.uyarilar)

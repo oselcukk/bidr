@@ -96,20 +96,23 @@ def test_kural_belli_isaretler_bakin_yapmaz():
     uy, bak = S.dikkat({**base, "flags": ["gerceklesme_kaniti_yok", "asama_yuva_etiketine_uymuyor"]}, YIL)
     assert not bak and "Yalnız duyuru ya da plan" in uy[0] and "etkinlik yapıldı" in uy[0]
     # karar verilmeyenler sorulmaya devam eder
-    for fl, say in ((["gecmis_kanit"], False), (["surum_dogrulanmali"], True), (["madde_baska_birim"], False),
+    # geçmiş yıl belgesi (kullanıcı kararı 2026-11-26 20:12): sayılmaz, sorulmaz, Dikkat yazmaz
+    assert S.dikkat({**base, "sayilir": False, "flags": ["gecmis_kanit"]}, YIL) == ([], False)
+    for fl, say in ((["surum_dogrulanmali"], True), (["madde_baska_birim"], False),
                     (["surum_donem_sonrasi"], False)):
         uy, bak = S.dikkat({**base, "sayilir": say, "flags": fl}, YIL)
         assert bak and uy, fl
     # sayılmayan başka nedenli satır eski sürüm işaretiyle susmaz
-    uy, bak = S.dikkat({**base, "sayilir": False, "flags": ["surum_eski", "gecmis_kanit"]}, YIL)
+    uy, bak = S.dikkat({**base, "sayilir": False, "flags": ["surum_eski", "madde_baska_birim"]}, YIL)
     assert bak
 
 
 def test_bilgi_isaretleri_yeniden_baktirmaz():
     st = seen_state({"satir": "x|A.1.1/1", "flags": ["kurum_geneli", "fakulte_geneli", "surum_eski",
                                                      "asama_yuva_etiketine_uymuyor", "gerceklesme_kaniti_yok",
-                                                     "uygulama_kaniti_eksik", "asama_dusuruldu", "gecmis_kanit"]})
-    assert st["isaretler"] == ["gecmis_kanit"]
+                                                     "uygulama_kaniti_eksik", "asama_dusuruldu", "gecmis_kanit",
+                                                     "madde_baska_birim"]})
+    assert st["isaretler"] == ["madde_baska_birim"]
 
 
 # -- uçtan uca: eski sürüm toplu kabulle sayılmaz --------------------------------------------------

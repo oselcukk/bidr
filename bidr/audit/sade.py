@@ -99,8 +99,6 @@ DIKKAT = {
                            "da sayfa sonradan güncellenmiş). {yil} yılına aitse Kabul, değilse Ret seçin.", True),
     "yururluk_bitmis": ("Bu plan/kuralın yürürlük süresi {yil} yılından önce bitiyor. {yil} yılında hâlâ "
                         "yürürlükteyse Kabul, değilse Ret seçin.", True),
-    "gecmis_kanit": ("Belge önceki bir yıla ait{byil}; bu yılın kanıtı sayılmadı. Olay {yil} yılında da "
-                     "yapıldıysa ya da tarih yanlışsa Kabul, değilse Ret seçin.", True),
     "donem_sonrasi": ("Belge {yil} yılından sonraya ait; bu raporun kanıtı sayılmadı. Tarih yanlışsa Kabul, "
                       "değilse Ret seçin.", True),
     "surum_donem_sonrasi": ("Belgenin {yil} yılından sonraki bir sürümü; {yil} sürümü varsa o kullanılmalı. "
@@ -170,12 +168,15 @@ BILGI = frozenset({"belge_notu", "insan_reddetti", "insan_duzeltti", "birim_aitl
                    # kural belliyse sorulmaz (kullanıcı kararı 2026-11-26 17:57): birden çok sürümde en yeni sürüm
                    # yürürlükte (eskisi `surum_eski`, sayılmaz); kurum/fakülte geneli düzenleme OD2 tavanıyla kanıt
                    # (`kurum_geneli`); kodun hesapladığı aşama esas (`asama_*`, `uygulama_kaniti_eksik` yukarıda)
-                   "surum_eski", "kurum_geneli"})
+                   "surum_eski", "kurum_geneli",
+                   # geçmiş yıl belgesi (kullanıcı kararı 2026-11-26 20:12): geçen yılın raporuna girmiştir, bu dönem
+                   # için sayılmaz, sorulmaz; süreklilik listesi (yayımlanan listede sınırlı) ve dönem sütunu aynı
+                   "gecmis_kanit"})
 # Kuralı gereği sayılmayan ama sorulmayan işaretler: "Şu an kanıt sayılmıyor" uyarısı yazılmaz, satır "Bakın" yapmaz;
 # 2. bölümün toplu kabulü (ve panelin varsayılan kabulü) bu satırlara uygulanmaz (kural geçerli kalır). Bölüm satırda
 # tek tek Kabul seçerse sayılır.
 # Başka idari birimin iç süreci (`baska_birim_sureci`, kullanıcı kararı 2026-11-26 20:12) de böyledir.
-SESSIZ_SAYILMAZ = frozenset({"surum_eski", "baska_birim_sureci"})
+SESSIZ_SAYILMAZ = frozenset({"surum_eski", "baska_birim_sureci", "gecmis_kanit"})
 
 F_HEAD = PatternFill("solid", fgColor="DDE7F0")
 F_BOLUM = PatternFill("solid", fgColor="C9D6E3")
