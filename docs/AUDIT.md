@@ -127,14 +127,23 @@ bu bir tanıma kuralı değil komisyon/kurum politikasıdır (`kurum_geneli.yaml
   yürürlükte olabilir: sayılır, `revizyon_donem_sonrasi` ("revizyon tarihi dönem sonrası;
   dönemdeki sürüm aranmalı"; gaps.md "Revizyon tarihi dönem sonrası olan düzenlemeler").
 - **Yapı sürümleri** (identify `surum_grubu`, yalnız yapı sınıfı türler; kör test: ÇAP
-  yönergesinin 2014/2017/2018/2026 sürümleri birlikte sayılmıştı): rapor yılında yürürlükte
-  olan sürüm seçilir: yılı rapor yılı ya da öncesi olan en yeni sürüm. Daha yeni sürümü rapor
-  yılından önce çıkmış sürüm dönemden önce yerini bırakmıştır (`surum_yururlukten_kalkmis`,
-  kanıt ilkesi `yururlukten_kalkmis`); rapor yılından sonraki sürüm de kanıt değildir
-  (`surum_donem_sonrasi`); ikisi de sayılmaz, yayımlanmaz. Yenisi rapor yılında çıkan önceki
-  sürüm dönemin bir kısmında yürürlükteydi: sayılır. Tarihsiz sürüm varsa hangisinin yürürlükte
-  olduğu belirlenemez: `surum_dogrulanmali` (tarihli aday sayılır, tarihsiz üye sayılmaz;
-  tarihli aday yoksa tarihsizler sayılır); gaps.md "Sürümü doğrulanacak düzenlemeler".
+  yönergesinin 2014/2017/2018/2026 sürümleri birlikte sayılmıştı). Kullanıcı kararı (2026-11-26 17:57,
+  "Kural belliyse sorulmaz"): rapor yılından sonra olmayan sürümlerin **en yenisi** rapor yılında yürürlükte
+  varsayılır ve sorulmadan sayılır; ondan eski her sürüm yerini bırakmıştır: `surum_eski` (sayılmaz,
+  yayımlanmaz; bilgi işareti, Dikkat yazmaz, "Bakın" yapmaz; Dönem sütununda "daha yeni sürümü var"). Rapor
+  yılında çıkan sürüm de öncülünü eskitir (eskiden ikisi sayılırdı). Rapor yılından sonraki sürüm eski kuralla
+  kanıt değildir ve sorulur (`surum_donem_sonrasi`). Sıra (`donem.version_cmp`, belirleyici): (1) ikisinin de
+  yılı varsa yıl (`doc_time`: metin içi tarih, akademik dönem, yıl ifadesi, dosya adı), (2) ikisinin de tam
+  tarihi (identify `tarih`, yılla tutarlı) varsa tarih, (3) ikisinin de kontrollü belge başlığında revizyon
+  numarası (`identify.versions.control_signature`) varsa revizyon. Hiçbir sürümün geçmediği adaylar "en yeni"dir;
+  tek değilse: aynı yıl/tarihli tarihli adaylar ikisi de sayılır (sorulmaz, eskisi gibi); sıralanamayan tarihsiz
+  aday sorulur: tarihli en yeni sürüm varken `surum_dogrulanmali_sayilmaz` (sayılmaz; tarihli en yeni sorulmadan
+  sayılır), yoksa `surum_dogrulanmali` (sayılır). Tek tarihsiz aday da dönem sonrası sürüm varken sorulur
+  (onun tarihsiz kopyası olabilir). gaps.md "Sürümü doğrulanacak düzenlemeler". Benzerlik grubu aynı şablonu
+  dolduran farklı belgeleri birleştirebilir: baş bölgedeki belge kimlikleri (ders kodu, doküman/iş akışı no;
+  `head_ids` "k:"/"d:") çelişen üyeler birbirinin sürümü sayılmaz (`donem._same_document`; tarih ve karar sayısı
+  kullanılmaz, sürümlerde zaten farklıdır). Bölüm eski sürümü tek tek `Kabul` ederse sayılır (insan kararı); 2.
+  bölümün toplu kabulü (panelin varsayılan kabulü) eski sürüme uygulanmaz (`sade.SESSIZ_SAYILMAZ`).
 - **Olay, önceki yıl** (eski olay belgesi): uygulama/izleme/önlem/özgün halkalarını kanıtlamaz
   (kör test 2026-11-19: 2024'ten eski 26 satırın 20'si OD'ye girmişti). Plan halkası ise sayılır:
   dönemden önce alınmış ama hâlâ yürürlükte olan usul/karar belgesi (kullanıcı kararı 2026-11-19:
@@ -150,7 +159,7 @@ bu bir tanıma kuralı değil komisyon/kurum politikasıdır (`kurum_geneli.yaml
   "Bakın" yapmaz; OD4'e yükselten satır yine sorulur). Eski kural (sayılmaz, "tarih doğrulanmalı")
   yalnız açık çelişkide kalır: birden çok yılın tarihi olayın yılını ayırt ettirmiyorsa ya da sayfa
   dönem sonrası güncellemeliyse `tarih_dogrulanmali` (sayılmaz; gaps.md "Tarihi doğrulanacak olay
-  belgeleri"). Açık önceki yıl tarihi `gecmis_kanit`, birden çok sürüm `surum_dogrulanmali`,
+  belgeleri"). Açık önceki yıl tarihi `gecmis_kanit`, sıralanamayan sürüm `surum_dogrulanmali`,
   dönem sonrası revizyon `revizyon_donem_sonrasi` bölüme sorulmaya devam eder.
 - **Karma:** web sayfası hem misyon metni hem haber, form boşken tanım doluyken kayıt
   olabilir; türü değil eşleşmenin aşaması belirler.
@@ -306,7 +315,15 @@ anlaşılmıyordu. Dosya açılınca yalnız şu sayfalar görünür; teknik say
     yükselten, sayılmayan, birim onayı bekleyen; ya da yeniden bakılacak — açık sarı), **2. Sorunsuz
     görünenler** (kararsız, işaretsiz), **3. Daha önce karar verdikleriniz**. Sıralama: bölüm, yeniden
     bak, birim onayı, madde kodu. Bilgi işaretleri (`sade.BILGI`, ör. `etkinlik_gerceklesti`, `elle_eslesme`,
-    varsayımlar) satırı "Bakın" yapmaz.
+    varsayımlar) satırı "Bakın" yapmaz. Kural belliyse sorulmaz (kullanıcı kararı 2026-11-26 17:57): eski sürüm
+    (`surum_eski`; sayılmaz ama "Şu an kanıt sayılmıyor" yazılmaz), kurum/fakülte geneli düzenleme (`kurum_geneli`,
+    `fakulte_geneli`: OD2 tavanıyla kanıt, `uygulama_kaniti_eksik` anlamı aynı) ve kodun hesapladığı aşama
+    (`asama_yuva_etiketine_uymuyor`, `asama_dusuruldu`; `gerceklesme_kaniti_yok`: plan sayılır, Dikkat'te bilgi
+    metni kalır, panel "etkinlik yapıldı mı" sorusunu bundan tanır) bilgidir; "yeniden bak" da tetiklemez
+    (`run.BILGI_ISARETLERI`; sayılan aşama/OD değişirse `kabul` satırı yine yeniden baktırır). Sorulmaya devam
+    eden: geçmiş yıl belgesi (`gecmis_kanit`), sıralanamayan sürüm, düşük güven, OD4/5, elle bakılmalı, açık başka
+    birim (`birim_onay_bekliyor`), başka birimin maddesi (`madde_baska_birim`: alıntının bulunduğu madde başka
+    birimi konu alıyor; ölçüt bölümün doldurduğu ölçüt olabilir, "Doldurucu birim" kuralıyla ilgisi yok).
   - **Fotoğraflar** (kullanıcı kararı 2026-11-26; 1. bölümden hemen sonra, gizli bölüm değeri 4): kararsız
     **gerçek fotoğraf** satırları (model türü `fotograf` ve dosya görsel: `bidr.faaliyet.dosya.fotograf_mi` ile aynı
     tanım; taranmış yazılı belge `bilinmiyor`/başka tür olur, tek tek kalır) madde başına, sahneye göre ayrı

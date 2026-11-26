@@ -62,7 +62,7 @@ def _donem_sections(a) -> list[str]:
     if ds:
         L += ["", f"## Dönem sonrası ve yürürlükte olmayan sürümler (kanıt sayılmadı){yil}", "",
               "Rapor yılından sonra tarihli olay belgeleri, rapor yılından sonra yürürlüğe giren düzenlemeler ve "
-              "aynı düzenlemenin rapor yılında yürürlükte olmayan sürümleri bu dönemin kanıtı değildir: OD'ye "
+              "aynı düzenlemenin eski sürümleri (en yeni sürüm yürürlükte sayılır) bu dönemin kanıtı değildir: OD'ye "
               "sayılmadı, yayımlanan kanıt listesine girmez. Tarih yanlışsa tabloda `duzelt` + aşama ile sayın.", ""]
         for c, g in ds:
             L.append(f"- {c['olcut']} `{g['yuva']}` {KISA.get(g['asama'], '?')} {g['yil'] or '?'}: `{g['belge']}` "
@@ -77,7 +77,8 @@ def _donem_sections(a) -> list[str]:
     if sv:
         L += ["", "## Sürümü doğrulanacak düzenlemeler", "",
               "Aynı düzenlemenin birden çok sürümü var ve rapor yılında hangisinin yürürlükte olduğu tarihlerden "
-              "belirlenemedi (tarihsiz sürüm). Yürürlükteki sürümü `kabul`, ötekileri `ret` edin.", ""]
+              "belirlenemedi (tarihsiz sürüm: tarih, tam tarih ve revizyon numarası sıra kurmuyor; sıra kurulabilen "
+              "gruplarda en yeni sürüm sorulmadan yürürlükte sayılır). Yürürlükteki sürümü `kabul`, ötekileri `ret` edin.", ""]
         L += [f"- `{b}`" for b in sv]
     td = [r for r in a.rows if "tarih_dogrulanmali" in r["flags"] and not _hum(r)]
     if td:

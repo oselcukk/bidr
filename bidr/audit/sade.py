@@ -109,19 +109,15 @@ DIKKAT = {
                             "yılını anlatıyorsa Kabul, değilse Ret.", True),
     "revizyon_donem_sonrasi": ("Belge {yil} yılından sonra yenilenmiş; mümkünse {yil} yılındaki sürümünü "
                                "ekleyin. Bu sürüm kullanılacaksa Kabul.", True),
-    "surum_yururlukten_kalkmis": ("Belgenin daha yeni bir sürümü var (bu sürüm yürürlükte değil); kanıt "
-                                  "sayılmadı. Genelde Ret.", True),
     "yururlukten_kalkmis": ("Belge başka bir belgeyle yürürlükten kaldırılmış; kanıt sayılmadı. Genelde Ret.", True),
     "surum_dogrulanmali": ("Aynı belgenin birden çok sürümü var; hangisinin {yil} yılında yürürlükte olduğu "
                            "anlaşılamadı. Bu sürüm yürürlükteyse Kabul, değilse Ret.", True),
     "surum_dogrulanmali_sayilmaz": ("Aynı belgenin tarihli başka bir sürümü var; bu tarihsiz sürüm sayılmadı. "
                                     "Bu sürüm {yil} yılında yürürlükteyse Kabul, değilse Ret.", True),
-    "kurum_geneli": ("Üniversitenin ya da fakültenin geneli için bir düzenleme: yalnız \"kural var\" "
-                     "(planlama) kanıtı sayılır. Fakültenizi/bölümünüzü kapsıyorsa Kabul, başka bir "
-                     "birimin maddesiyse Ret.", True),
-    "gerceklesme_kaniti_yok": ("Yalnız duyuru ya da plan görünüyor; etkinliğin yapıldığı belgede yok. Etkinlik "
-                               "yapıldıysa \"Kabul — etkinlik yapıldı\" seçin; yapılmadıysa Kabul (yalnız plan "
-                               "sayılır).", True),
+    # kodun hesapladığı aşama esastır (kullanıcı kararı 2026-11-26, "Kural belliyse sorulmaz"): plan sayılır, "Bakın"
+    # yapmaz; metin bilgi olarak kalır (panel "etkinlik yapıldı mı" sorusunu bu metinden tanır)
+    "gerceklesme_kaniti_yok": ("Yalnız duyuru ya da plan görünüyor; etkinliğin yapıldığı belgede yok: plan sayıldı. "
+                               "Etkinlik yapıldıysa \"Kabul — etkinlik yapıldı\" seçebilirsiniz.", False),
     "bos_form": ("Boş form/şablon: yalnız \"yöntem tanımlı\" (plan) sayılır. Uygunsa Kabul; doldurulmuş "
                  "örneği varsa ayrıca ekleyin.", True),
     "katilim_izleme_degil": ("Katılım/yapılma kaydı: \"yapıldı\" sayılır, \"izleme sonucu\" sayılmaz. "
@@ -166,7 +162,15 @@ BILGI = frozenset({"belge_notu", "insan_reddetti", "insan_duzeltti", "birim_aitl
                    "guncellik_dogrulanmali",
                    # kodun bilgisi: afiş, gerçekleşmesi aynı ölçütte kabul edilmiş etkinliğin (uygula sayıldı); bölümün
                    # elle eklediği eşleşme (karar zaten bölümün)
-                   "etkinlik_gerceklesti", "elle_eslesme"})
+                   "etkinlik_gerceklesti", "elle_eslesme",
+                   # kural belliyse sorulmaz (kullanıcı kararı 2026-11-26 17:57): birden çok sürümde en yeni sürüm
+                   # yürürlükte (eskisi `surum_eski`, sayılmaz); kurum/fakülte geneli düzenleme OD2 tavanıyla kanıt
+                   # (`kurum_geneli`); kodun hesapladığı aşama esas (`asama_*`, `uygulama_kaniti_eksik` yukarıda)
+                   "surum_eski", "kurum_geneli"})
+# Kuralı gereği sayılmayan ama sorulmayan işaretler: "Şu an kanıt sayılmıyor" uyarısı yazılmaz, satır "Bakın" yapmaz;
+# 2. bölümün toplu kabulü (ve panelin varsayılan kabulü) bu satırlara uygulanmaz (kural geçerli kalır). Bölüm satırda
+# tek tek Kabul seçerse sayılır.
+SESSIZ_SAYILMAZ = frozenset({"surum_eski"})
 
 F_HEAD = PatternFill("solid", fgColor="DDE7F0")
 F_BOLUM = PatternFill("solid", fgColor="C9D6E3")
@@ -408,7 +412,7 @@ def dikkat(r: dict, yil: int | None, foto: bool = False) -> tuple[list[str], boo
                    + ("izleme sonucu/iyileştirme" if r["od"] == 4 else "özgün, örnek gösterilebilir bir uygulama")
                    + " gösteriyorsa Kabul, değilse Ret.")
         bak = True
-    if not r.get("sayilir") and not r.get("karar") and not out:
+    if not r.get("sayilir") and not r.get("karar") and not out and not (set(fl) & SESSIZ_SAYILMAZ):
         out.append("Şu an kanıt sayılmıyor" + (f": {r['vurgu']}" if r.get("vurgu") else "") + ".")
         bak = True
     elif not out and bak and r.get("vurgu"):
@@ -984,6 +988,10 @@ def _karar_hucreleri(s: dict, xr: dict, cs, tags) -> dict:
     return {"sade_hata": f"KARARINIZ '{_s(s.get('karar'))}' geçersiz ({' · '.join(KARAR_SECENEK)})"}
 
 
+def _isaretler(xr: dict) -> set[str]:
+    return {x.strip() for x in _s(xr.get("isaretler")).split(",") if x.strip()}
+
+
 def merge_rows(xrows: list[dict], sade: tuple[dict[str, dict], bool] | None, cs=None,
                gruplar: dict[str, str] | None = None) -> list[dict]:
     """Teknik satırların üstüne sade sayfadaki değişiklikleri yazar (yerinde; listeyi döndürür). `gruplar`
@@ -1022,13 +1030,14 @@ def merge_rows(xrows: list[dict], sade: tuple[dict[str, dict], bool] | None, cs=
         if _s(s.get("ad")) != _s(w.get("a")):
             xr["kanit_adi"] = _s(s.get("ad"))
         if (toplu and _s(s.get("bolum")) == "2" and not _s(xr.get("karar")) and not rb
-                and not xr.get("sade_hata")):
+                and not xr.get("sade_hata") and not (_isaretler(xr) & SESSIZ_SAYILMAZ)):
             xr["karar"] = "kabul"
             xr["not"] = " ".join(x for x in (_s(xr.get("not")), TOPLU_NOT) if x)
         g = gruplar.get(_s(s.get("grup"))) if _s(s.get("grup")) else None
         if g not in (None, "kabul", "tek") and not _s(xr.get("karar")) and not xr.get("sade_hata"):
             xr["sade_hata"] = (f"Fotoğraf grubu kararı '{g}' geçersiz ({' · '.join(FOTO_SECENEK)})")
-        elif g == "kabul" and not _s(xr.get("karar")) and not rb and not xr.get("sade_hata"):
+        elif (g == "kabul" and not _s(xr.get("karar")) and not rb and not xr.get("sade_hata")
+              and not (_isaretler(xr) & SESSIZ_SAYILMAZ)):
             xr["karar"] = "kabul"
             xr["not"] = " ".join(x for x in (_s(xr.get("not")), FOTO_NOT) if x)
     return xrows

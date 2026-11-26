@@ -5,7 +5,8 @@ yapı  → rapor yılında yürürlükte mi: dönem içi tam sayılır; önceki 
         belgesi, daha yeni sürüm ya da yürürlükten kaldırma yoksa yürürlükte varsayılır ve sorulmadan
         sayılır (`yururluk_varsayildi` / `tarih_varsayildi`, kullanıcı kararı 2026-11-26).
         Tarihi rapor yılından sonra: `donem_sonrasi` (sayılmaz) ya da revizyon kanıtı varsa
-        sayılır + `revizyon_donem_sonrasi`. Sürüm grubunda yürürlükteki sürüm seçilir.
+        sayılır + `revizyon_donem_sonrasi`. Sürüm grubunda en yeni sürüm yürürlükte sayılır (eskisi
+        `surum_eski`, bilgi; kullanıcı kararı 2026-11-26).
 olay  → rapor yılında mı gerçekleşti: önceki yıl U/K/Ö/Z sayılmaz (`gecmis_kanit`); planla
         hâlâ yürürlükteki usul/karar olarak yapı gibi sayılır (`onceki_olay_plani_sayilir`,
         vars. true; false ile planla da sayılmaz); sonraki yıl `donem_sonrasi`. Tarihsiz (ya da
@@ -42,14 +43,14 @@ ETIKET = {
     "yururluk_varsayildi": "rapor yılında yürürlükte varsayıldı",
     "yururluk_bitmis": "yürürlük aralığı rapor yılından önce bitiyor",
     "revizyon_donem_sonrasi": "revizyon tarihi dönem sonrası; dönemdeki sürüm aranmalı",
-    "surum_yururlukten_kalkmis": "sürüm dönemden önce yenilendi (kanıt değil)",
+    "surum_eski": "daha yeni sürümü var: en yeni sürüm yürürlükte sayıldı (bu sürüm sayılmadı)",
     "surum_donem_sonrasi": "dönem sonrası sürüm (kanıt değil)",
     "surum_dogrulanmali": "sürüm doğrulanmalı",
     "yururlukten_kalkmis": "başka bir belgeyle yürürlükten kaldırılmış (kanıt değil)",
     "sayfa_donem_sonrasi": "sayfa dönem sonrası güncellemeli; içerikte rapor yılı tarihi yok",
 }
 # sayılmayan dönem işaretleri (satır görünür; yayımlanan listeye girmez: bidr/file/select.py)
-DONEM_DISI = ("donem_sonrasi", "surum_yururlukten_kalkmis", "surum_donem_sonrasi", "yururlukten_kalkmis")
+DONEM_DISI = ("donem_sonrasi", "surum_eski", "surum_donem_sonrasi", "yururlukten_kalkmis")
 KAYNAK = {"bas_en_sik": "baş bölgede en sık tarih", "bas_ilk": "baş bölgedeki ilk tarih",
           "metin_ilk": "metindeki ilk tarih", "yanit_zaman_damgasi": "yanıt zaman damgaları"}
 ARALIK_TABLOSU = 3      # en az bu kadar başlangıç–bitiş çifti: proje/sözleşme listesi
@@ -358,7 +359,7 @@ def _apply_row(rule: Rule, doc: dict, dtype: str, stage: str | None, dosya: str 
             return {"sinif": cls, "zaman": zaman, "yil": yil, "sayilir": False,
                     "flags": ["tarih_dogrulanmali", *flags], "kaynak": t["kaynak"], "not": note}
     if cls == YAPI:
-        if surum in ("surum_yururlukten_kalkmis", "surum_donem_sonrasi"):
+        if surum in ("surum_eski", "surum_donem_sonrasi"):
             say = False
             flags.append(surum)
         elif zaman == SONRA:
@@ -403,15 +404,50 @@ def _apply_row(rule: Rule, doc: dict, dtype: str, stage: str | None, dosya: str 
             "kaynak": t["kaynak"], "not": note}
 
 
-def version_status(docs: dict[str, dict], rule: Rule, inventory: dict[str, str] | None = None
-                   ) -> dict[str, str]:
-    """Yapı belgesi sürüm grupları (identify `surum_grubu`): rapor yılında yürürlükte olan sürüm
-    seçilir. doc_id → durum:
-    - `surum_yururlukten_kalkmis`: rapor yılından önce yerini daha yeni bir sürüme bırakmış
-      (yenisinin yılı < rapor yılı); kanıt değil (kanıt ilkesi `yururlukten_kalkmis`);
-    - `surum_donem_sonrasi`: dönemde yürürlükte bir sürüm varken rapor yılından sonraki sürüm;
-    - `surum_dogrulanmali`: yürürlükteki sürüm belirlenemedi (tarihsiz üye var); sayılır;
-    - `surum_dogrulanmali_sayilmaz`: tarihsiz üye, tarihli yürürlükteki aday varken.
+def _version_key(doc: dict, inventory: dict[str, str], did: str, text=None) -> dict:
+    """Sürüm sıralama anahtarı: {yil, tarih (YYYY-MM-DD, yılla tutarlıysa), rev (revizyon no)}.
+    Yıl `doc_time`'dan (metin içi tarih, akademik dönem, yıl ifadesi, dosya adı); tam tarih identify
+    `tarih`ından; revizyon numarası kontrollü belge başlığından (`identify.versions.control_signature`;
+    metin verilmişse)."""
+    t = doc_time(doc, inventory.get(did))
+    yil = t["yil"] if t["zaman"] != BILINMIYOR else None
+    ts = str(doc.get("tarih") or "")[:10]
+    tarih = ts if yil is not None and re.fullmatch(r"\d{4}-\d{2}-\d{2}", ts) and int(ts[:4]) == yil else None
+    rev = None
+    if text is not None:
+        from bidr.identify.versions import control_signature
+        sig = control_signature(text(did) or "")
+        no = sig[1].split("|", 1)[1] if sig else ""
+        rev = int(no) if no.isdigit() else None
+    return {"yil": yil, "tarih": tarih, "rev": rev}
+
+
+def version_cmp(a: dict, b: dict) -> int:
+    """İki sürüm anahtarını karşılaştırır: >0 a daha yeni, <0 b daha yeni, 0 sıralanamıyor. Sıra:
+    (1) ikisinin de yılı varsa yıl, (2) ikisinin de tam tarihi varsa tarih, (3) ikisinin de revizyon
+    numarası varsa revizyon. Hiçbiri ayırmıyorsa (aynı tarih, tarihsiz ve revizyonsuz) 0."""
+    for k in ("yil", "tarih", "rev"):
+        x, y = a.get(k), b.get(k)
+        if x is not None and y is not None and x != y:
+            return 1 if x > y else -1
+    return 0
+
+
+def version_status(docs: dict[str, dict], rule: Rule, inventory: dict[str, str] | None = None,
+                   text=None) -> dict[str, str]:
+    """Yapı belgesi sürüm grupları (identify `surum_grubu`). Kullanıcı kararı (2026-11-26, "Kural belliyse
+    sorulmaz"): rapor yılında EN YENİ sürüm yürürlükte varsayılır ve sayılır; ondan eski sürümler yerini
+    bırakmıştır. Sıra `version_cmp` (yıl, tam tarih, revizyon no). doc_id → durum:
+    - `surum_eski`: aynı grupta (rapor yılından sonra olmayan) daha yeni bir sürüm var; sayılmaz, satır
+      bilgi olarak görünür ("Bakın" yapmaz; eski `surum_yururlukten_kalkmis` bunun içindedir);
+    - `surum_donem_sonrasi`: dönemde ya da öncesinde tarihli bir sürüm varken rapor yılından sonraki
+      sürüm (eski kural, sorulur);
+    - `surum_dogrulanmali`: hiçbir sıra kurulamadı (bütün adaylar tarihsiz/revizyonsuz ya da aynı): sayılır,
+      sorulur;
+    - `surum_dogrulanmali_sayilmaz`: tarihsiz (sıralanamayan) üye, sırası belli en yeni tarihli sürüm
+      varken: sayılmaz, sorulur (tarihli en yeni sürüm sorulmadan sayılır).
+    Aynı yılın/tarihin iki tarihli sürümü sıralanamaz; ikisi de sayılır (eski davranış, sorulmaz).
+    `text(did)`: belge metni (revizyon numarası için; verilmezse yalnız tarihler).
     Yalnız katalogda yapı sınıfındaki türler (karma/olay sürümleri select.py birleştirir)."""
     inventory = inventory or {}
     groups: dict[str, list[str]] = {}
@@ -423,50 +459,75 @@ def version_status(docs: dict[str, dict], rule: Rule, inventory: dict[str, str] 
     units_all: dict[str, list[str]] = {}
     for g, mem_docs in groups.items():
         # Tek belgenin bölünmüş parçaları (ingest `parca_grubu`; identify sürüm grubuna katar)
-        # birbirinin sürümü değildir: parça grubu tek üye sayılır, yılı tarihli ilk parçanın yılı;
-        # durum bütün parçalara geçer.
+        # birbirinin sürümü değildir: parça grubu tek üye sayılır, anahtarı tarihli ilk parçanın
+        # anahtarı; durum bütün parçalara geçer.
         units: dict[str, list[str]] = {}
         for m in mem_docs:
             units.setdefault(docs[m].get("parca_grubu") or m, []).append(m)
         units_all.update(units)
-        mem = list(units)
-        if len(mem) < 2:
+        if len(units) < 2:
             continue
         period = next((docs[m].get("donem") for m in mem_docs if docs[m].get("donem") is not None), None)
         if period is None:
             continue
-        yrs = {}
-        for u, parts in units.items():
-            yrs[u] = None
-            for m in sorted(parts, key=lambda x: (docs[x].get("parca_sira") or 0, x)):
-                t = doc_time(docs[m], inventory.get(m))
-                if t["zaman"] != BILINMIYOR:
-                    yrs[u] = t["yil"]
-                    break
-        dated = {m: y for m, y in yrs.items() if y is not None}
-        undated = [m for m in mem if m not in dated]
-        le = {m: y for m, y in dated.items() if y <= period}
-        if le:
-            for m, y in le.items():
-                if any(y < y2 < period for y2 in le.values()):
-                    out[m] = "surum_yururlukten_kalkmis"
-            for m, y in dated.items():
-                if y > period:
-                    out[m] = "surum_donem_sonrasi"
-            if undated:
-                for m in le:
-                    out.setdefault(m, "surum_dogrulanmali")
-                for m in undated:
-                    out[m] = "surum_dogrulanmali_sayilmaz"
-        elif undated:
-            for m in undated:
-                out[m] = "surum_dogrulanmali"
+        for sub in _same_document(units, text):
+            _order_versions(sub, docs, inventory, text, period, out)
     for u, parts in units_all.items():          # parça grubu kimliği → parçaların her biri
         if u not in docs and u in out:
             st = out.pop(u)
             for m in parts:
                 out[m] = st
     return out
+
+
+def _same_document(units: dict[str, list[str]], text=None) -> list[dict[str, list[str]]]:
+    """Sürüm grubunu aynı belgenin sürümlerine böler. identify'ın benzerlik grubu aynı şablonu dolduran farklı
+    belgeleri (ör. iki dersin bilgi formu) birleştirebilir; baş bölgedeki belge kimlikleri (ders kodu, doküman/iş
+    akışı no; `identify.versions.head_ids` "k:"/"d:") çelişen üyeler birbirinin sürümü değildir. Tarih ve karar
+    sayısı kullanılmaz: sürümlerde zaten farklıdır. Grupta çelişen bir çift varsa üyeler kimlik kümelerine göre
+    ayrılır (kimliksizler kendi aralarında); yoksa grup olduğu gibi kalır. Metin verilmezse bölünmez."""
+    if text is None:
+        return [units]
+    from bidr.identify.versions import head_ids, ids_compatible
+    ids = {u: frozenset(x for x in head_ids(text(sorted(parts)[0]) or "") if x[:2] in ("k:", "d:"))
+           for u, parts in units.items()}
+    us = sorted(units)
+    if all(ids_compatible(ids[a], ids[b]) for i, a in enumerate(us) for b in us[i + 1:]):
+        return [units]
+    subs: dict[frozenset, dict[str, list[str]]] = {}
+    for u in us:
+        subs.setdefault(ids[u], {})[u] = units[u]
+    return [x for x in subs.values() if len(x) > 1]
+
+
+def _order_versions(units: dict[str, list[str]], docs: dict[str, dict], inventory: dict[str, str], text,
+                    period: int, out: dict[str, str]) -> None:
+    """Bir belgenin sürümlerine durum yazar (`version_status`)."""
+    key: dict[str, dict] = {}
+    for u, parts in units.items():
+        ks = [_version_key(docs[m], inventory, m, text)
+              for m in sorted(parts, key=lambda x: (docs[x].get("parca_sira") or 0, x))]
+        key[u] = next((k for k in ks if k["yil"] is not None), ks[0])
+    sonra = [u for u, k in key.items() if k["yil"] is not None and k["yil"] > period]
+    aday = sorted(u for u in key if u not in sonra)
+    if not aday:
+        return
+    if any(key[u]["yil"] is not None for u in aday):
+        for u in sonra:
+            out[u] = "surum_donem_sonrasi"           # dönemde yürürlükte bir sürüm varken sonraki sürüm
+    # en yeni: başka hiçbir aday tarafından geçilmeyenler. Geçilen her aday eskidir.
+    tepe = [u for u in aday if not any(version_cmp(key[v], key[u]) > 0 for v in aday if v != u)]
+    for u in aday:
+        if u not in tepe:
+            out[u] = "surum_eski"
+    tarihli = [u for u in tepe if key[u]["yil"] is not None]
+    tarihsiz = [u for u in tepe if key[u]["yil"] is None]
+    if len(tepe) < 2 and not (tarihsiz and sonra):
+        return                                       # en yeni sürüm belli: sorulmadan sayılır
+    # aynı yıl/tarihli tarihli adaylar: ikisi de sayılır (sorulmaz). Tarihsiz aday sıralanamaz (tek
+    # adaysa da dönem sonrası sürümün tarihsiz kopyası olabilir): sorulur.
+    for u in tarihsiz:
+        out[u] = "surum_dogrulanmali_sayilmaz" if tarihli else "surum_dogrulanmali"
 
 
 def describe(r: dict) -> str:

@@ -343,7 +343,7 @@ def test_donem_disi_reason_unit():
     r = lambda *f: {"flags": list(f)}        # noqa: E731
     assert S.donem_disi([r("yururlukten_kalkmis")]) == "yururlukten_kalkmis"
     assert S.donem_disi([r("donem_sonrasi"), r("surum_donem_sonrasi")]) == "sonra"
-    assert S.donem_disi([r("yururlukten_kalkmis", "surum_yururlukten_kalkmis")]) == "yururlukten_kalkmis"
+    assert S.donem_disi([r("yururlukten_kalkmis", "surum_eski")]) == "yururlukten_kalkmis"
     assert S.donem_disi([r("madde_baska_birim"), r("donem_sonrasi")]) == "madde_baska_birim"
     assert S.donem_disi([r("bilgisiz_ekran"), r("gecmis_kanit")]) == "gecmis"     # bir satır sayılabilir kanıt
     assert S.donem_disi([r("ozgun_kanitsiz")]) == ""                              # destekleyici kalabilir

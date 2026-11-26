@@ -145,7 +145,7 @@ def test_parts_skip_period_comparison_and_version_status():
     assert D.version_status(docs, rule) == {}                       # tarihsiz parça "sürüm doğrulanmalı" değil
     docs["eski"] = _doc("yonerge", "2019-01-01", surum_grubu="sg-p1")
     st = D.version_status(docs, rule)
-    assert st == {"eski": "surum_yururlukten_kalkmis"}              # parça grubu tek (2023) sürüm
+    assert st == {"eski": "surum_eski"}                             # parça grubu tek (2023) sürüm
 
 
 # -- 3: gaps.md işaretli bölümler + soru kapsamı ----------------------------------------------

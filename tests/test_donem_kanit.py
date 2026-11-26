@@ -231,7 +231,7 @@ def test_regulation_versions_in_force_selected(tmp_path):
     st = {r["doc_id"]: (r["sayilir"], r["flags"]) for r in a.rows}
     assert st["cap_2018"][0] and "yururluk_varsayildi" in st["cap_2018"][1]
     for y in (2014, 2017):
-        assert not st[f"cap_{y}"][0] and "surum_yururlukten_kalkmis" in st[f"cap_{y}"][1]
+        assert not st[f"cap_{y}"][0] and "surum_eski" in st[f"cap_{y}"][1]
     assert not st["cap_2026"][0] and "surum_donem_sonrasi" in st["cap_2026"][1]
 
 
@@ -244,10 +244,11 @@ def test_regulation_versions_same_year_and_undated(tmp_path):
     })
     a = build(ws)
     st = {r["doc_id"]: (r["sayilir"], r["flags"]) for r in a.rows}
-    # rapor yılında yenilenen sürümün öncülü dönemin bir kısmında yürürlükteydi
-    assert st["v_2024"][0] and st["v_2025"][0]
-    assert all("surum_dogrulanmali" in st[d][1] for d in st)
-    assert not st["v_tarihsiz"][0]
+    # en yeni (rapor yılında yenilenen) sürüm yürürlükte varsayılır (kullanıcı kararı 2026-11-26): öncülü sayılmaz
+    # (bilgi `surum_eski`), en yeni tarihli sürüm sorulmadan sayılır; sıralanamayan tarihsiz üye sorulur, sayılmaz
+    assert st["v_2025"][0] and not {"surum_dogrulanmali", "surum_eski"} & set(st["v_2025"][1])
+    assert not st["v_2024"][0] and "surum_eski" in st["v_2024"][1]
+    assert not st["v_tarihsiz"][0] and "surum_dogrulanmali" in st["v_tarihsiz"][1]
     audit(ws, out=tmp_path / "out")
     assert "## Sürümü doğrulanacak düzenlemeler" in (tmp_path / "out" / FILES["gaps"]).read_text(encoding="utf-8")
 

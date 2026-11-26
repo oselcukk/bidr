@@ -68,9 +68,14 @@ KARAR_ISARETLERI = frozenset({"insan_reddetti", "insan_duzeltti", "birim_aitligi
 # Varsayım işaretleri (`birim_varsayildi`, `tarih_varsayildi`, `yururluk_varsayildi`) de yalnız bilgidir.
 # `etkinlik_gerceklesti` (afiş, gerçekleşme aynı ölçütte kabul edildi: uygula) ve `fotograf_fiziksel` (fiziksel koşullar
 # maddesinde mekân fotoğrafı) kodun bilgisidir; aşama değişirse o ayrıca "yeniden bak" doğurur.
+# Kural belliyse sorulmaz (kullanıcı kararı 2026-11-26 17:57): eski sürüm (`surum_eski`), kurum/fakülte geneli düzenleme
+# (OD2 tavanı) ve kodun hesapladığı aşama (`asama_*`, `uygulama_kaniti_eksik`, `gerceklesme_kaniti_yok`) da bilgidir;
+# sayılan aşama/OD değişirse `kabul` satırı yine yeniden baktırır.
 BILGI_ISARETLERI = frozenset({"belge_notu", "ret_hedefsiz_dustu", "birim_varsayildi", "tarih_varsayildi",
                               "yururluk_varsayildi", "birim_iliskisi_kod_bilgi", "etkinlik_gerceklesti",
-                              "fotograf_fiziksel"})
+                              "fotograf_fiziksel", "surum_eski", "kurum_geneli", "fakulte_geneli",
+                              "uygulama_kaniti_eksik", "asama_dusuruldu", "asama_yuva_etiketine_uymuyor",
+                              "gerceklesme_kaniti_yok"})
 
 # Ret notunda başka ölçüt anılıyor mu ("B.2.2 konusu", "önceki turda B.3.5 olarak", "başka madde").
 # Hedef verilmeden reddedilip belge hiçbir satırda sayılmıyorsa belge rapor dışına düşmüştür:
@@ -793,7 +798,6 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
     surum: dict[str, str] = {}
     if any("donem_ici" in d for d in docs.values()):
         rule = D.load_rule()
-        surum = D.version_status(docs, rule, inv)
         from collections import Counter
         ps = Counter(d["donem"] for d in docs.values() if d.get("donem") is not None)
         period = ps.most_common(1)[0][0] if ps else None
@@ -801,6 +805,9 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
         uy.append("documents.jsonl'de dönem bilgisi yok (`bidr identify --period`): dönem kuralı uygulanmadı")
     from .savunma import Savunma
     sv = Savunma.load(ws.root, docs, period)
+    if rule is not None:
+        # en yeni sürüm yürürlükte (kullanıcı kararı 2026-11-26); revizyon numarası belge başlığından
+        surum = D.version_status(docs, rule, inv, text=sv.text)
     n_ince = 0
     recs = [r for r in read_jsonl(dpath) if r.get("doc_id")]
     names = _names(ws.root, out, docs, recs)

@@ -136,7 +136,9 @@ HELP = [
     "rapor yılında gerçekleşmiş olmalı: önceki yıl 'geçmiş kanıt (süreklilik)', tarihsiz 'tarih doğrulanmalı' "
     "(sayılmaz; tarih rapor yılındaysa duzelt + aşama ile sayın). Rapor yılından sonra tarihli belge o "
     "dönemin kanıtı değildir; düzenlemenin revizyon tarihi dönem sonrasıysa dönemdeki sürüm aranmalı. Aynı "
-    "düzenlemenin sürümlerinden yalnız rapor yılında yürürlükte olan sayılır. Ölçütte gözden geçirme döngüsü tanımlıysa "
+    "düzenlemenin sürümlerinden en yenisi (rapor yılından sonraki sürüm hariç) yürürlükte sayılır; eskileri sayılmaz "
+    "('daha yeni sürümü var', sorulmaz; o sürüm de yürürlükteyse KARAR kabul). Sıra kurulamazsa (tarihsiz sürüm) "
+    "'sürüm doğrulanmalı' sorulur. Ölçütte gözden geçirme döngüsü tanımlıysa "
     "döngü içindeki önceki yıl olayı 'döngü halkası' olarak sayılır.",
     "Önerilen OD kuralı: P→OD2, +U→OD3, +K ve Ö (ikisi)→OD4, +Z→OD5; zincir eksikse düşük düzey. "
     "Kurum geneli yönetmelik/yönerge yalnız P sayılır. Ayrıntı: docs/AUDIT.md.",

@@ -173,7 +173,7 @@ belgenin sürümleri listeyi şişirir. Ölçüt ölçüt iki adım:
    (`asama_yuva_etiketine_uymuyor`, `asama_dusuruldu`, `birim_aitligi_dogrulanmali`) birini
    taşımıyor; ölçüt başına `olcut_basina_en_fazla` (sıra: OD'ye sayılan önce, sonra OD, güven,
    tarih). (d) Bu dönemin kanıtı olmayan belge (audit `donem_sonrasi`,
-   `surum_yururlukten_kalkmis`, `surum_donem_sonrasi`: dönem sonrası olay/düzenleme,
+   `surum_eski`, `surum_donem_sonrasi`: dönem sonrası olay/düzenleme, eski sürüm,
    yürürlükteki sürüm olmayan düzenleme; neden `donem_sonrasi`), audit savunmasının kanıt
    saymadığı belge (`select.KANIT_DEGIL`: `haric_tur`, `yururlukten_kalkmis`, `bilgisiz_ekran`,
    `madde_baska_birim`; neden işaretin kendisi; insan `kabul`ü hariç tür ve yürürlükten kaldırmayı

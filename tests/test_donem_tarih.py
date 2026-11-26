@@ -206,4 +206,4 @@ def test_plan_in_force_wins_version_selection(rule):
     docs = {"a": {**_doc("stratejik_plan", "2020-06-15", yururluk_araligi=[2022, 2026]), "surum_grubu": "g"},
             "b": {**_doc("stratejik_plan", "2016-02-01", yururluk_araligi=[2017, 2021]), "surum_grubu": "g"}}
     st = D.version_status(docs, rule)
-    assert st.get("b") == "surum_yururlukten_kalkmis" and "a" not in st
+    assert st.get("b") == "surum_eski" and "a" not in st
