@@ -144,6 +144,17 @@ bu bir tanıma kuralı değil komisyon/kurum politikasıdır (`kurum_geneli.yaml
   `head_ids` "k:"/"d:") çelişen üyeler birbirinin sürümü sayılmaz (`donem._same_document`; tarih ve karar sayısı
   kullanılmaz, sürümlerde zaten farklıdır). Bölüm eski sürümü tek tek `Kabul` ederse sayılır (insan kararı); 2.
   bölümün toplu kabulü (panelin varsayılan kabulü) eski sürüme uygulanmaz (`sade.SESSIZ_SAYILMAZ`).
+- **Kopyalar tek belge** (kullanıcı kararı 2026-11-26 19:11; `bidr/audit/kopya.py`): aynı belgenin farklı
+  biçimleri (docx/pdf/…) ve aynı metnin yeniden kaydedilmiş dosyaları birbirinin sürümü değildir, sorulmaz.
+  decide'ın mükerrer devrine girmemiş (ör. her belgede panel notu olduğu için gruplanmamış) ince kayıtlar
+  denetimde karşılaştırılır: aynı uzantıda iskelet (`dedup.skeleton`) birebir aynı; farklı uzantıda bir-iki
+  haneli sayılar (otomatik liste/sayfa numarası) dışındaki sözcüklerin çoklu kümesi aynı, metindeki tarihler ve
+  belge kimlikleri (`head_ids`, bütün metin) aynı, farklı kısa sayı payı ≤ %5. Farklı ders/tarih/sözcük kopya
+  değildir; görsel dosya, parçalı belge, insan birim kararı olan belge aday olmaz. Temsilci: PDF önce, sonra
+  kabul edilmiş eşleşmesi çok olan, sonra yol. Sürüm grubunda kopyalar tek üyedir (`version_status(kopyalar=)`);
+  incelemede yuva başına grubun tek satırı kalır (kararlı satır düşmez; `run.collapse_copies`), satır öteki
+  kopyaları "kopyaları"nda taşır (Dikkat: "Kopyaları: …", bilgi), kararı dosyalamada bütün gruba uygulanır;
+  dosyalama aynı ölçütte grubu tek kanıt yapar (`kopya_temsilci`). decide parmak izi girdileri değişmez.
 - **Olay, önceki yıl** (eski olay belgesi): uygulama/izleme/önlem/özgün halkalarını kanıtlamaz
   (kör test 2026-11-19: 2024'ten eski 26 satırın 20'si OD'ye girmişti). Plan halkası ise sayılır:
   dönemden önce alınmış ama hâlâ yürürlükte olan usul/karar belgesi (kullanıcı kararı 2026-11-19:

@@ -755,6 +755,45 @@ def copy_members(recs: list[dict], pins: dict | None = None) -> dict[str, list[s
     return {k: sorted(v) for k, v in out.items()}
 
 
+def collapse_copies(rows: list[dict], gruplar: dict[str, list[str]], koru: set[str] | frozenset = frozenset()
+                    ) -> list[dict]:
+    """Aynı belgenin kopyaları (`kopya.gruplar`, temsilci → kopyalar) tek belge sayılır (kullanıcı kararı
+    2026-11-26 "Kopyalar tek belge"): bir yuvada (modelin yuvası) grubun yalnız bir satırı kalır: insan kararı
+    verilmiş satır, yoksa temsilcinin, yoksa sıradaki kopyanın. Kararlı satır (ve `koru`: tabloda olup henüz
+    uygulanmamış kararın satırı) düşürülmez. Kalan satır
+    grubun öteki belgelerini `_kopya` olarak taşır (build "kopyalar"a yazar; satır kararı dosyalamada bütün
+    gruba uygulanır) ve `kopya_temsilci` (dosyalama aynı ölçütün satırlarını tek kanıtta toplar)."""
+    if not gruplar:
+        return rows
+    grup = {m: rep for rep, ms in gruplar.items() for m in (rep, *ms)}
+
+    def kararli_mi(r):
+        return bool(r.get("karar")) or r["satir"] in koru
+
+    sira = {m: i for rep, ms in gruplar.items() for i, m in enumerate((rep, *ms))}
+    secim: dict[tuple, dict] = {}
+    for r in rows:
+        rep = grup.get(r["doc_id"])
+        if rep is None or kararli_mi(r):
+            continue
+        k = (rep, r.get("yuva_model") or r["yuva"])
+        if k not in secim or sira[r["doc_id"]] < sira[secim[k]["doc_id"]]:
+            secim[k] = r
+    kararli = {(grup[r["doc_id"]], r.get("yuva_model") or r["yuva"]) for r in rows
+               if r["doc_id"] in grup and kararli_mi(r)}
+    out = []
+    for r in rows:
+        rep = grup.get(r["doc_id"])
+        if rep is not None:
+            k = (rep, r.get("yuva_model") or r["yuva"])
+            if not kararli_mi(r) and (k in kararli or secim.get(k) is not r):
+                continue                        # aynı belgenin bu yuvadaki satırı başka kopyada
+            r["_kopya"] = [rep, *gruplar[rep]]
+            r["kopya_temsilci"] = rep
+        out.append(r)
+    return out
+
+
 def karar_verilemeyen(ws: Workspace, recs: list[dict], docs: dict, inv: dict) -> list[dict]:
     """Kaba/ince karar cevabı iki denemede de reddedilen (elle bakılmalı) ve ince kaydı olmayan belgeler."""
     from bidr.pipeline import cevap as CV
@@ -773,7 +812,7 @@ def karar_verilemeyen(ws: Workspace, recs: list[dict], docs: dict, inv: dict) ->
 
 def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
           criteria: CriteriaSet | None = None, review: dict[str, dict] | None = None,
-          pins: dict[str, dict] | None = None) -> Audit:
+          pins: dict[str, dict] | None = None, carried: set[str] | frozenset = frozenset()) -> Audit:
     ws = Workspace(ws_root)
     out = Path(out).expanduser().resolve() if out else ws.root
     dpath = ws.root / "decisions.jsonl"
@@ -805,19 +844,28 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
         uy.append("documents.jsonl'de dönem bilgisi yok (`bidr identify --period`): dönem kuralı uygulanmadı")
     from .savunma import Savunma
     sv = Savunma.load(ws.root, docs, period)
-    if rule is not None:
-        # en yeni sürüm yürürlükte (kullanıcı kararı 2026-11-26); revizyon numarası belge başlığından
-        surum = D.version_status(docs, rule, inv, text=sv.text)
     n_ince = 0
     recs = [r for r in read_jsonl(dpath) if r.get("doc_id")]
+    kopya = copy_members(recs, pins)            # temsilci → kararı devralan kopyaları (tek satır)
+    uye = {m for ms in kopya.values() for m in ms}
+    # aynı belgenin biçim/yeniden kayıt kopyaları (kullanıcı kararı 2026-11-26 "Kopyalar tek belge";
+    # bidr/audit/kopya.py): decide'ın devrine girmemiş olanlar burada tek belge olur
+    from . import kopya as K
+    ince_ok = [r for r in recs if r.get("durum") == "ok" and r.get("asama") == "ince"]
+    kopya_d = K.gruplar([r["doc_id"] for r in ince_ok if r["doc_id"] not in uye and not pins.get(r["doc_id"])],
+                        docs, sv.text, inv,
+                        {r["doc_id"]: sum(bool(m.get("kabul")) for m in r.get("eslesmeler") or []) for r in ince_ok})
+    kopya_uye = {m: rep for rep, ms in kopya_d.items() for m in ms}
+    if rule is not None:
+        # en yeni sürüm yürürlükte (kullanıcı kararı 2026-11-26); revizyon numarası belge başlığından;
+        # aynı belgenin kopyaları birbirinin sürümü değildir
+        surum = D.version_status(docs, rule, inv, text=sv.text, kopyalar=kopya_d)
     names = _names(ws.root, out, docs, recs)
     links = _links(ws, out)
     desc = _described(ws)
     birim: dict = {"baska_birim": [], "belirsiz": []}
     sayfa: list[dict] = []
     own: dict[str, dict] = {}                   # birime ait ince kayıtlar (PUKÖ zinciri)
-    kopya = copy_members(recs, pins)            # temsilci → kararı devralan kopyaları (tek satır)
-    uye = {m for ms in kopya.values() for m in ms}
     # bölümün elle eklediği yapay satırlar (bidr/audit/elle.py): o belge–ölçütte modelin karar bekleyen satırı
     # elle satırına katılır (alıntısı kullanılır), ayrı satır olarak sorulmaz
     elle_yapay = [r for r in review.values() if r.get("elle") and r.get("yapay")]
@@ -869,8 +917,8 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
         if pin or record_unit_relation(orig) == BIRIM_DISI or unit_conflict(orig):
             sayfa.append(_unit_row(orig, rec, pin, docs, names(orig["doc_id"])[0]))
         rel = record_unit_relation(rec)
-        if rel != BIRIM_DISI and not unit_conflict(rec):
-            own[rec["doc_id"]] = rec
+        if rel != BIRIM_DISI and not unit_conflict(rec) and rec["doc_id"] not in kopya_uye:
+            own[rec["doc_id"]] = rec            # PUKÖ zinciri: kopyanın atıfları temsilcininkiyle aynı
         if rel == BIRIM_DISI or unit_conflict(rec):
             ince = rec.get("ince") or {}
             birim["baska_birim" if rel == BIRIM_DISI else "belirsiz"].append({
@@ -905,8 +953,9 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
         rows.append(_row(cs, tags, docs, rec, m, e, rule, names(did), links(did), desc(did, m["alinti"]),
                          inv.get(did), surum, sv))
         var.add(e["satir"])
+    rows = collapse_copies(rows, kopya_d, carried)
     for r in rows:
-        ks = kopya.get(r["doc_id"])
+        ks = sorted({*kopya.get(r["doc_id"], []), *(x for x in r.pop("_kopya", []) if x != r["doc_id"])})
         r["kopyalar"] = "; ".join(ks) if ks else ""
         r["kopya_dosyalari"] = "; ".join(inv.get(x) or (docs.get(x) or {}).get("calisma_adi") or x
                                          for x in ks) if ks else ""
@@ -1052,7 +1101,7 @@ def audit(ws_root: Path, *, out: Path | None = None, profile: str | None = None)
         old.replace(outp / "review.onceki.xlsx")
     else:
         xrows = []
-    a = build(ws_root, out=outp, profile=profile, review=applied)
+    a = build(ws_root, out=outp, profile=profile, review=applied, carried=frozenset(carry))
     n_rb = _mark_relook(a, outp, applied, carry, {str(xr.get("satir")): xr for xr in xrows})
     if n_rb:
         uy.append(f"{n_rb} kararlı satır yeniden bakılmalı (karardan sonra yeni inceleme işareti ya da sayılan "

@@ -434,7 +434,7 @@ def version_cmp(a: dict, b: dict) -> int:
 
 
 def version_status(docs: dict[str, dict], rule: Rule, inventory: dict[str, str] | None = None,
-                   text=None) -> dict[str, str]:
+                   text=None, kopyalar: dict[str, list[str]] | None = None) -> dict[str, str]:
     """Yapı belgesi sürüm grupları (identify `surum_grubu`). Kullanıcı kararı (2026-11-26, "Kural belliyse
     sorulmaz"): rapor yılında EN YENİ sürüm yürürlükte varsayılır ve sayılır; ondan eski sürümler yerini
     bırakmıştır. Sıra `version_cmp` (yıl, tam tarih, revizyon no). doc_id → durum:
@@ -448,8 +448,11 @@ def version_status(docs: dict[str, dict], rule: Rule, inventory: dict[str, str] 
       varken: sayılmaz, sorulur (tarihli en yeni sürüm sorulmadan sayılır).
     Aynı yılın/tarihin iki tarihli sürümü sıralanamaz; ikisi de sayılır (eski davranış, sorulmaz).
     `text(did)`: belge metni (revizyon numarası için; verilmezse yalnız tarihler).
+    `kopyalar`: temsilci → aynı belgenin kopyaları (`bidr/audit/kopya.py`; kullanıcı kararı 2026-11-26
+    "Kopyalar tek belge"): kopyalar birbirinin sürümü değildir, grupta tek üye sayılır; durum hepsine geçer.
     Yalnız katalogda yapı sınıfındaki türler (karma/olay sürümleri select.py birleştirir)."""
     inventory = inventory or {}
+    kop = {m: rep for rep, ms in (kopyalar or {}).items() for m in (rep, *ms)}
     groups: dict[str, list[str]] = {}
     for did, d in docs.items():
         g = d.get("surum_grubu")
@@ -463,7 +466,8 @@ def version_status(docs: dict[str, dict], rule: Rule, inventory: dict[str, str] 
         # anahtarı; durum bütün parçalara geçer.
         units: dict[str, list[str]] = {}
         for m in mem_docs:
-            units.setdefault(docs[m].get("parca_grubu") or m, []).append(m)
+            u = docs[m].get("parca_grubu") or (f"kopya:{kop[m]}" if m in kop else m)
+            units.setdefault(u, []).append(m)
         units_all.update(units)
         if len(units) < 2:
             continue

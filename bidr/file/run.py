@@ -250,7 +250,8 @@ def plan(ws_root: Path, *, review_dir: Path | None = None, profile: str | None =
     for row in a.rows:
         if "insan_reddetti" in row["flags"]:
             continue
-        key = (row["olcut"], can.get(row["doc_id"], row["doc_id"]))
+        # aynı belgenin kopyaları (decide mükerrer devri ya da audit `kopya_temsilci`): ölçütte tek kanıt
+        key = (row["olcut"], row.get("kopya_temsilci") or can.get(row["doc_id"], row["doc_id"]))
         groups.setdefault(key, []).append(row)
     items: list[Item] = []
     for (olcut, root), rows in groups.items():
