@@ -76,6 +76,14 @@ def _maddeler(rec: dict) -> list[dict]:
     return out
 
 
+def elle(t: dict, rec: dict, human: list[dict]) -> bool:
+    """Alanın doğrulama cevabı iki kez reddedildi (`elle_bakilmali`) ve bölüm bu metin için `tekrar` demedi:
+    yeniden yazım turu değil, bölümün kararı."""
+    from .yonler import text_sha
+    return bool(rec.get("elle_bakilmali")) and not any(
+        h["alan"] == t.get("alan") and h["karar"] == "tekrar" and h.get("metin_sha") == text_sha(t) for h in human)
+
+
 def bekleyen(ws: Workspace, log: dict | None = None) -> list[dict]:
     """Bölüm kararı bekleyen alanlar: [{alan, tur, sinir, metin_sha, kabul_edilebilir, maddeler: [{yer, yon,
     metin, hukum, gerekce}]}]. `hukum`: doğrulayıcının kararı ("kismen" | "desteklenmiyor") ya da kod reddinde
@@ -86,13 +94,14 @@ def bekleyen(ws: Workspace, log: dict | None = None) -> list[dict]:
     out = []
     for a, t in sorted(Y.rejected(ws, log).items()):
         lim = sinir(ws, a, human)
-        if int(t.get("tur") or 0) < lim or kararli(t, human):
-            continue
         rec = log.get(a) or {}
+        if kararli(t, human) or (int(t.get("tur") or 0) < lim and not elle(t, rec, human)):
+            continue
         ms = _maddeler(rec)
+        # doğrulama cevabı iki kez geçersiz (elle bakılmalı): maddeler doğrulanamadı; bölüm olduğu gibi kabul edebilir
         out.append({"alan": a, "tur": int(t.get("tur") or 0), "sinir": lim, "metin_sha": Y.text_sha(t),
-                    "kabul_edilebilir": rec.get("asama") == "model" and bool(ms)
-                    and all(m["hukum"] == "kismen" for m in ms), "maddeler": ms})
+                    "kabul_edilebilir": rec.get("asama") == Y.ELLE_ASAMA or (rec.get("asama") == "model" and bool(ms)
+                    and all(m["hukum"] == "kismen" for m in ms)), "maddeler": ms})
     return out
 
 

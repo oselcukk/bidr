@@ -59,6 +59,9 @@ HUMAN = "verify-insan.jsonl"
 HUMAN_KARARLAR = ("cikar", "tekrar", "kabul")
 KABUL_IZI = "insan onayıyla kabul"
 FINAL = ("dogrulandi", "reddedildi")
+# doğrulama cevabı iki kez reddedildi (bidr/pipeline/cevap.py): metin doğrulanamadı, bölümün kararına gider
+# (`bidr verify karar … kabul | cikar | tekrar`; yeniden yazım turu beklemez)
+ELLE_ASAMA = "dogrulama_cevabi"
 RULE = ("Her cümleyi yalnız atıf yaptığı kanıtın alıntısı ve bağlamıyla karşılaştır "
         "(destekleniyor / kismen / desteklenmiyor + gerekçe); listedeki her cümleye bir karar ver. "
         "Beş soruya kapsam kararı ver (kanitla_cevaplandi / cevapsiz / uydurma_suphesi + cümle yerleri).")
@@ -142,7 +145,7 @@ def decide(ws_root: Path, olcut: str, karar: str, note: str = "") -> dict:
     if olcut not in rejected(ws, log, only=[olcut]):
         raise ValueError(f"{olcut} doğrulamada reddedilmiş (güncel kayıtlı) bir metin değil (durum: {t.get('durum')})")
     prev = log[olcut]
-    if karar == "kabul" and prev.get("asama") != "model":
+    if karar == "kabul" and prev.get("asama") not in ("model", ELLE_ASAMA):
         raise ValueError(f"{olcut} kod denetiminde reddedildi (atıf/alıntı/OD kusuru); insan onayıyla "
                          "kabul edilemez: `tekrar` ya da `cikar`")
     rec = {"olcut": olcut, "karar": karar, "metin_sha": W.text_sha(t), "tur": int(t.get("tur") or 0),
@@ -528,11 +531,14 @@ def write_summary(ws: Workspace, log: dict | None = None) -> Path:
 
 
 def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", backend: W.Backend | None = None) -> dict:
+    from bidr.pipeline import cevap as CV
     backend = backend or W.Backend()
     ws = Workspace(Path(ws_root))
     log = load_log(ws)
     d = W.work_dir(ws, STAGE)
-    st = {"dogrulandi": [], "reddedildi": {}, "bekleyen": [], "gecersiz": {}, "eski": [], "degismedi": 0}
+    den = CV.Denemeler(ws.root, f"work/{STAGE}")
+    st = {"dogrulandi": [], "reddedildi": {}, "bekleyen": [], "gecersiz": {}, "eski": [], "degismedi": 0,
+          "elle_bakilmali": {}, "yeniden": {}}
     version = W.task_version(TASK)
     human = load_human(ws)
     for p in K.pkg_paths(d):
@@ -555,15 +561,32 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", backend: W.Backen
         if str(pkg["surum"]) != version or not t or W.text_sha(t) != meta["metin_sha"]:
             st["eski"].append(c)
             continue
-        out, errs = backend.validate_output(TASK, raw)
-        if out is None:
-            st["gecersiz"][c] = errs[:5]
+        out, errs, _ = CV.dogrula(backend.validate_output, TASK, raw)
+        kod = "sema"
+        if out is not None:
+            durum, rows, errs = judge(meta, out)
+            kapsam, qerrs = judge_questions(meta, out)
+            errs, kod = (errs + qerrs, "karar") if durum is None or kapsam is None else ([], kod)
+        if errs:
+            # ret bir denemedir: cevap kenara alınır, paket yeniden cevap bekler; aynı nedenle ikinci ret → metin
+            # doğrulanamadı, bölümün kararına gider (yeniden yazım turu yok, döngü yok)
+            r = den.reddet(c, outp, kod, errs[:5], parmak=pkg["istem_sha"], model=model)
+            if r["sonuc"] != CV.ELLE:
+                st["gecersiz"][c] = errs[:5]
+                st["yeniden"][c] = r
+                continue
+            why = [f"bağımsız doğrulama cevabı {r['deneme']} denemede de geçersiz ({CV.neden_metni(kod)}): metin "
+                   "doğrulanamadı, bölüm karar verir"] + errs[:3]
+            log[c] = {"olcut": c, "durum": "reddedildi", "metin_sha": meta["metin_sha"], "asama": ELLE_ASAMA,
+                      "elle_bakilmali": True, "tur": int(t.get("tur") or 0), "kod_denetimi": [], "cumleler": [],
+                      "soru_kapsami": unchecked(), "gerekce": why, "model": model,
+                      "gorev_surumu": str(pkg["surum"]), "istem_sha": pkg["istem_sha"], "cevap_sha": csha,
+                      "zaman": K.now()}
+            _set_status(ws, t, "reddedildi", why, model)
+            st["elle_bakilmali"][c] = den.elle(c)
+            st["reddedildi"][c] = why
             continue
-        durum, rows, errs = judge(meta, out)
-        kapsam, qerrs = judge_questions(meta, out)
-        if durum is None or kapsam is None:
-            st["gecersiz"][c] = errs + qerrs
-            continue
+        den.basarili(c)
         why = [f"{r['yer']} ({r['karar']}): {r['gerekce']} — «{r['metin']}»" for r in rows
                if r["karar"] != "destekleniyor"]
         fab = [q for q in kapsam["sorular"] if q["durum"] == "uydurma_suphesi"]
@@ -582,7 +605,11 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", backend: W.Backen
             st["reddedildi"][c] = why
     save_log(ws, log)
     write_summary(ws, log)
-    K.write_invalid(d, TASK, st["gecersiz"])
+    den.kaydet()
+    K.write_invalid(d, TASK, st["gecersiz"], st["yeniden"],
+                    CV.onceki_red_satirlari(den, st["bekleyen"], set(st["gecersiz"]), lambda k: f"`{k}.json`"))
+    CV.elle_raporu(d, den, TASK, "Bu metinlerin bağımsız doğrulaması yapılamadı: metin `reddedildi`, bölümün kararını "
+                   "bekler (`bidr verify karar <ölçüt> kabul | cikar | tekrar`).")
     from bidr.write import yonler as Y
     st["yonler"] = Y.verify_apply(ws_root, model=model, backend=backend)
     return st

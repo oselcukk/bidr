@@ -73,3 +73,31 @@ def schema_errors(value, schema: dict, limit: int = 8) -> list[str]:
         if len(out) >= limit:
             break
     return out
+
+
+def normalize_enums(value, schema: dict, limit: int = 50) -> list[dict]:
+    """Şema enum'unda olmayan metin değeri, enum'da `diger` seçeneği varsa `diger`e çevrilir (yerinde).
+    Döner: [{"yol": "a/0/b", "deger": özgün}] (özgün değer kayıtta kalsın). `diger`siz enum'a dokunulmaz:
+    orada geçersiz kalır ve cevap yeniden sorulur."""
+    from jsonschema import Draft202012Validator
+    out: list[dict] = []
+    try:
+        v = Draft202012Validator(schema)
+    except Exception:
+        return out
+    for _ in range(limit):
+        hit = None
+        for e in v.iter_errors(value):
+            if (e.validator == "enum" and isinstance(e.instance, str) and isinstance(e.validator_value, list)
+                    and "diger" in e.validator_value and list(e.absolute_path)):
+                hit = e
+                break
+        if hit is None:
+            break
+        path = list(hit.absolute_path)
+        cur = value
+        for p in path[:-1]:
+            cur = cur[p]
+        out.append({"yol": "/".join(str(p) for p in path), "deger": hit.instance})
+        cur[path[-1]] = "diger"
+    return out

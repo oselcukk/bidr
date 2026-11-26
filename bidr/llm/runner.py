@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import LLMError, ModelConfig
-from .jsonx import ExtractError, extract_json, schema_errors
+from .jsonx import ExtractError, extract_json, normalize_enums, schema_errors
 from .providers import ProviderError, get_provider
 from .tasks import Task, load_task, render_prompt
 
@@ -134,15 +134,19 @@ def render_task(task: str | Path | Task, inputs: dict, *, tasks_dir: Path | None
             "schema": t.schema, "system": t.system or SYSTEM_PROMPT}
 
 
-def validate_output(task: str | Path | Task, raw, *, tasks_dir: Path | None = None) -> tuple[Any, list[str]]:
+def validate_output(task: str | Path | Task, raw, *, tasks_dir: Path | None = None,
+                    notlar: list | None = None) -> tuple[Any, list[str]]:
     """Sağlayıcısız (ajan modu): ham yanıt metni ya da hazır dict/list → `(çıktı | None, hatalar)`.
 
     `run_task` ile aynı JSON ayıklama ve şema doğrulaması. Geçerliyse
-    `(çıktı, [])`, değilse `(None, [hata, ...])`.
+    `(çıktı, [])`, değilse `(None, [hata, ...])`. Doğrulamadan önce şema enum'unda olmayan metin değeri,
+    enum'da `diger` seçeneği varsa `diger`e normalleşir (`jsonx.normalize_enums`); özgün
+    değerler `notlar` listesine eklenir ({"yol", "deger"}; kayda geçsin diye).
     """
     t = _as_task(task, tasks_dir)
     if isinstance(raw, (dict, list)):
-        value = raw
+        import copy
+        value = copy.deepcopy(raw)   # normalleştirme çağıranın nesnesini değiştirmesin
     elif isinstance(raw, str):
         try:
             value = extract_json(raw, _schema_want(t.schema))
@@ -150,6 +154,9 @@ def validate_output(task: str | Path | Task, raw, *, tasks_dir: Path | None = No
             return None, [str(e)]
     else:
         return None, [f"desteklenmeyen yanıt türü: {type(raw).__name__} (str, dict ya da list olmalı)"]
+    norm = normalize_enums(value, t.schema)
+    if notlar is not None:
+        notlar.extend(norm)
     errs = schema_errors(value, t.schema)
     return (None, errs) if errs else (value, [])
 

@@ -12,7 +12,11 @@ prepare: kanıtı olan her ölçüt için `work/write/<ölçüt>.json` paketi. G
     (`rapor-notlari.yaml`).
 apply: şema + kod denetimi (bidr/write/text.py: her cümlede atıf, atıf listede mi, OD aşımı,
 yasak ifade, uydurma gelecek vaadi). Geçemeyen cevap yazılmaz (GECERSIZ.md); geçen metin
-`texts/<ölçüt>.json` olur, `durum: taslak` (doğrulama `bidr verify`).
+`texts/<ölçüt>.json` olur, `durum: taslak` (doğrulama `bidr verify`). Geçemeyen cevap (şema ya da kod
+denetimi) bir denemedir (bidr/write/karar.py): yeniden yazım sınırının altında `<ölçüt>.out.json.red<n>.eski`
+olarak kenara alınır (bidr/pipeline/cevap.py; paket yeniden cevapsız, ajan üstüne yazmaz); sınırda son
+cevap yerinde kalır ve ölçüt bölümün kararına gider (`bidr write karar`; şemaya uymayan cevap için yalnız
+cikar | tekrar).
 
 Yeniden yazım döngüsü (`prepare --reddedilenler`): `bidr verify`'ın reddettiği her metin için
 yeni paket; istemin sonuna doğrulayıcının cümle bazlı gerekçesi ve reddedilen metin eklenir
@@ -732,7 +736,9 @@ def insan_metni(ws_root: Path, c: str, raw: str, karar: dict, backend: Backend |
     pkg = json.loads((work_dir(src.ws) / f"{c}.json").read_text(encoding="utf-8"))
     out, errs = backend.validate_output(TASK, raw)
     if out is None:
-        raise ValueError(f"{c}: son cevap şemaya uymuyor ({'; '.join(errs[:2])})")
+        if karar["karar"] != "cikar":
+            raise ValueError(f"{c}: son cevap şemaya uymuyor ({'; '.join(errs[:2])})")
+        out = {"paragraflar": [], "onceki_yila_gore": ""}   # çıkarılan metin: rapora girmez, gövdesi yok
     t = text_record(src, c, pkg, raw, out, karar.get("model") or "ajan:belirtilmemis")
     iz = {"karar": karar["karar"], "kayit": KR.HUMAN, "sorunlar": karar["sorunlar"], "not": karar["not"],
           "zaman": karar["zaman"]}
@@ -752,7 +758,10 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", index: Path | Non
     src = Sources(ws_root, index=sp["index"], audit=sp["audit"], onceki="", verify=backend.verify_quote)
     d = work_dir(src.ws)
     td = texts_dir(src.ws)
-    st = {"islenen": 0, "degismedi": 0, "bekleyen": [], "gecersiz": {}, "eski": [], "insan_gerekli": []}
+    from bidr.pipeline import cevap as CV
+    den = CV.Denemeler(src.ws.root, f"work/{STAGE}")
+    st = {"islenen": 0, "degismedi": 0, "bekleyen": [], "gecersiz": {}, "eski": [], "insan_gerekli": [],
+          "yeniden": {}}
     version = task_version()
     for p in K.pkg_paths(d):
         pkg = json.loads(p.read_text(encoding="utf-8"))
@@ -784,15 +793,19 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", index: Path | Non
         raw = outp.read_text(encoding="utf-8")
         out, errs = backend.validate_output(TASK, raw)
         if out is None:
-            st["gecersiz"][c] = errs[:5]
-            continue
-        paras, onceki = _answer_text(out)
-        issues = code_issues(src, meta, c, paras, onceki)
+            issues = [{"yer": "-", "kod": KR.SEMA, "ayrinti": e} for e in errs[:5]]
+        else:
+            paras, onceki = _answer_text(out)
+            issues = code_issues(src, meta, c, paras, onceki)
         if issues:
+            # geçemeyen cevap bir denemedir (karar.py): sınırın altında kenara alınır, paket yeniden cevap bekler
+            # (ajan var olanın üstüne yazmaz); sınırda cevap yerinde kalır, ölçüt bölümün kararına gider
             st["gecersiz"][c] = [f"{i['yer']} {i['kod']}: {i['ayrinti']}" for i in issues]
             n = KR.basarisiz(src.ws, c, pkg["istem_sha"], raw, issues, model)
             if n > KR.sinir(src.ws, c, pkg["istem_sha"]):
                 st["insan_gerekli"].append(c)
+            elif name := den.kenara_al(c, outp):
+                st["yeniden"][c] = {"deneme": n, "dosya": name}
             continue
         KR.gecti(src.ws, c)
         rec = text_record(src, c, pkg, raw, out, model)
@@ -802,5 +815,21 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", index: Path | Non
         td.mkdir(parents=True, exist_ok=True)
         (td / f"{c}.json").write_text(json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8")
         st["islenen"] += 1
-    K.write_invalid(d, TASK, st["gecersiz"])
+    den.kaydet()
+    K.write_invalid(d, TASK, st["gecersiz"], st["yeniden"], _onceki_red(src.ws, st["bekleyen"], st["gecersiz"]))
     return st
+
+
+def _onceki_red(ws: Workspace, bekleyen: list[str], yazilan: dict) -> list[str]:
+    """Önceki apply'da kenara alınıp hâlâ yeni cevap bekleyen ölçütlerin bulguları (GECERSIZ.md'de kalsın)."""
+    e = KR._load(ws)
+    out = []
+    for c in sorted(bekleyen):
+        x = e.get(c) or {}
+        if c in yazilan or not x.get("denemeler"):
+            continue
+        son = x["denemeler"][-1]
+        out.append(f"- `{c}.json`:")
+        out += [f"  - {i.get('yer', '-')} {i['kod']}: {i['ayrinti']}" for i in son.get("sorunlar") or []]
+        out.append(f"  - (önceki deneme {len(x['denemeler'])}: cevap kenara alındı, yeni `{c}.out.json` bekleniyor)")
+    return out

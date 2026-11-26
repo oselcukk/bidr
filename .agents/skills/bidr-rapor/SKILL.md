@@ -89,8 +89,15 @@ Model işini sen yaparsın; hiçbir API ya da `bidr decide run` / `bidr llm` kul
    `<ajan-adı>` yazıyorsa kendi adını koy, ör. `claude-code:sonnet`).
 6. Sonuç:
    - Çıkış 1 / "geçersiz": `work/<aşama>/GECERSIZ.md`'deki paketlerin cevabı şemaya uymuyor ya da
-     JSON değil. Yalnız onları hata mesajına göre yeniden yaz, 5'e dön. Aynı paket üç denemede
-     hâlâ geçersizse dur ve kullanıcıya bildir.
+     JSON değil. apply o cevabı kenara aldı (`<doc_id>.out.json.red<n>.eski`; paket yeniden cevapsız):
+     yalnız onları hata mesajına göre YENİ `<doc_id>.out.json` olarak yaz (var olanın üstüne yazma), 5'e
+     dön. Aynı nedenle ikinci kez reddedilen belge yeniden istenmez: `work/<aşama>/ELLE-BAKILMALI.md`'ye
+     girer, review.xlsx İnceleme sayfasının 1. bölümünde satır olur (insan incelemesi), aşama beklemez; kullanıcıya bildir.
+     Bu kural bütün model aşamalarında aynıdır (describe, transcribe, karar, ad, ikinci arama, yazım,
+     doğrulama, yönler, kör denetim): şema enum'unda olmayan değer `diger` seçeneği varsa `diger` olur.
+     Elle bakılmalı öğeler `bidr elle liste -w WS` ile görünür; kararı (`bidr elle karar … kabul|varsayilan|atla`)
+     yalnız KULLANICI verir (review.xlsx İnceleme satırı; panelde İncelemeniz), ajan vermez. Karar kesindir;
+     vermeden de hat sürer.
    - "alıntısı tutmayan": kod o eşleşmeyi reddetti ve kullanmaz. Bir kez yeniden dene: belgede
      birebir geçen cümleyi kopyala ya da eşleşmeyi çıkar. Uydurma alıntıyla geçirmeye çalışma.
    - Kaba `apply` çıktısındaki `olcut_var/olcut_yok/kanit_degil/eşleşme` sayaçları ince aşamadan
@@ -131,8 +138,12 @@ klasöründeki görüntülere kendin bak ve `<doc_id>.out.json` yaz:
 - kimseyi tanımaya çalışma; yüz/saç/kıyafet/cinsiyet/yaş betimlemesi yok (KVKK; kod reddeder).
   Kişiler yalnız sayı ve rolle: "~40 dinleyici", "1 konuşmacı";
 - görüntü aslında metin sayfasıysa `icerik: belge_sayfasi` (betimlenmez; aşağıya bak).
-→ `bidr describe apply -w WS --model <ajan adı>`. `work/describe/GECERSIZ.md`'deki paketleri
-yeniden yap.
+- `yer`/`icerik`/`kalabalik` yalnız şemadaki değerlerden; listede olmayan yer (pano, duvar …) `diger`;
+  gerçekten okuyamadığın yazıyı `gorunen_yazilar`'a yazma (kod OCR'la karşılaştırır).
+→ `bidr describe apply -w WS --model <ajan adı>`. apply reddettiği cevabı kenara alır (paket yeniden
+cevapsız): `work/describe/GECERSIZ.md`'deki gerekçeyle görüntüye yeniden bak ve yaz. Aynı nedenle ikinci
+kez reddedilen belge `ELLE-BAKILMALI.md`'ye girer (betimleme yok sayılır, metni OCR'da kalır, aşama
+beklemez); kullanıcıya bildir.
 
 **'Metin sayfası' sonucu (`icerik: belge_sayfasi`) engel değil, uyarıdır:** `bidr next` describe
 aşamasını bitti sayar ve `Uyarı: N belgeyi ajan 'metin sayfası' saydı … bidr transcribe prepare

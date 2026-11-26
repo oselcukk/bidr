@@ -242,6 +242,21 @@ def _gecersiz_ids(gfile: Path) -> set[str]:
     return out
 
 
+def _elle_paketli(ws: Workspace, dizin: str, d: Path, keys, rel) -> set[str]:
+    """`keys` içinden elle bakılmalı işaretli ve paketi o günden beri aynı (istem_sha) olanlar."""
+    from bidr.pipeline import cevap as CV
+    el = CV.elle_kayitlari(ws.root, dizin)
+    out = set()
+    for k in set(keys) & set(el):
+        try:
+            pkg = json.loads((d / rel(k)).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if el[k].get("parmak") == pkg.get("istem_sha"):
+            out.add(k)
+    return out
+
+
 def karar_tamam(c: Ctx) -> Check:
     from bidr.decide.run import (COARSE, FINE, _section, input_fingerprint, load_decisions, load_restale,
                                  load_unit_pins, pending_redecide, stage_done, stale_summary, task_version)
@@ -261,6 +276,18 @@ def karar_tamam(c: Ctx) -> Check:
     prog = {"belge": len(need), "tamam": len(done)}
     uy = []
     prep, apply_, = c.fmt(c.stage["komut"][0]), c.fmt(c.stage["komut"][2])
+    # model cevabı aynı nedenle iki kez reddedilen belge (bidr/pipeline/cevap.py): karar verildi — model kararı
+    # yok, insan incelemesine düşer (review.xlsx); aşama onu beklemez. Paket değişirse (yeniden prepare) yeniden istenir.
+    elle = _elle_paketli(ws, f"work/{stage}", d, missing, lambda k: f"{k}.json")
+    from bidr.pipeline import cevap as CV
+    kes = CV.Kesin(ws.root, "karar_kaba" if stage == "coarse" else "karar_ince")
+    elle |= {x for x in missing if kes.get(x)}      # bölümün kesin kararı: beklenmez
+    if elle:
+        missing -= elle
+        prog["elle_bakilmali"] = len(elle)
+        uy.append(f"{len(elle)} belgenin {stage} cevabı iki denemede de reddedildi; elle bakılmalı: model kararı yok, "
+                  f"insan incelemesine düşer (review.xlsx İnceleme 1. bölüm; "
+                  f"work/{stage}/ELLE-BAKILMALI.md): {_sample(elle)}")
     if stage == "fine":
         red = sorted(x for x in done if recs[x].get("reddedilen_eslesme"))
         if red:
@@ -545,6 +572,11 @@ def ikinci_arama_tamam(c: Ctx) -> Check:
     n_ia = _ikinci_arama_kabul(ws)
     prog = {"paket": len(pkgs), "kabul_eslesme": n_ia}
     eski, no_out, gecersiz, acik = [], [], [], []
+    from bidr.pipeline import cevap as CV
+    el = CV.elle_kayitlari(ws.root, f"work/{A.WORK}")
+    kes = CV.Kesin(ws.root, "ikinci_arama")
+    elle_ok = {p["doc_id"] for p in pkgs if (el.get(p.get("doc_id")) or {}).get("parmak") == p.get("istem_sha")
+               or kes.get(p.get("doc_id"))}
     for pkg in pkgs:
         did = pkg.get("doc_id")
         rec = recs.get(did)
@@ -555,6 +587,8 @@ def ikinci_arama_tamam(c: Ctx) -> Check:
         if durum == "eski":
             eski.append(did)
             continue
+        if did in elle_ok:
+            continue                         # cevap iki kez reddedildi / bölüm karar verdi: beklenmez
         if not outp.exists():
             no_out.append(did)
             continue
@@ -569,21 +603,26 @@ def ikinci_arama_tamam(c: Ctx) -> Check:
                 for x in adaylar)):
             acik.append(did)
     prog.update(cevapsiz=len(no_out), gecersiz=len(gecersiz), islenmemis=len(acik), eski=len(eski))
+    uy = []
+    if elle_ok:
+        prog["elle_bakilmali"] = len(elle_ok)
+        uy.append(f"{len(elle_ok)} ikinci arama cevabı iki denemede de reddedildi; elle bakılmalı, o belgelere eşleşme "
+                  f"eklenmedi (work/{A.WORK}/ELLE-BAKILMALI.md): {_sample(elle_ok)}")
     if eski:
-        return Check(kim=KOMUT, komutlar=[prep], ilerleme=prog,
+        return Check(kim=KOMUT, komutlar=[prep], ilerleme=prog, uyarilar=uy,
                      neden=f"{len(eski)} paket eski (görev sürümü değişti ya da ilk geçiş yeniden karara bağlandı): "
                            "prepare yeniler")
     if no_out or gecersiz:
         parts = [x for x in (f"{len(no_out)} paket cevapsız" if no_out else "",
                              f"{len(gecersiz)} cevap geçersiz (work/ikinci_arama/GECERSIZ.md)" if gecersiz else "") if x]
-        return Check(kim=AJAN, ilerleme=prog, bekleyen=sorted(set(no_out) | set(gecersiz)),
+        return Check(kim=AJAN, ilerleme=prog, uyarilar=uy, bekleyen=sorted(set(no_out) | set(gecersiz)),
                      komutlar=["(ajan) work/ikinci_arama/README.md'yi oku; cevapsız/geçersiz her <doc_id>.json için "
                                "<doc_id>.out.json yaz (ince karar kuralları; uymuyorsa olcut_yok/kanit_degil)", apply_],
                      neden=", ".join(parts) + ": model işi ajanda (work/ikinci_arama/)")
     if acik:
-        return Check(kim=KOMUT, komutlar=[apply_], ilerleme=prog,
+        return Check(kim=KOMUT, komutlar=[apply_], ilerleme=prog, uyarilar=uy,
                      neden=f"{len(acik)} cevap yazılmış ama işlenmemiş: apply (kabul edilen eşleşme audit'i yeniden ister)")
-    return Check(bitti=True, ilerleme=prog,
+    return Check(bitti=True, ilerleme=prog, uyarilar=uy,
                  neden=(f"{len(pkgs)} paket işlendi; ikinci arama {n_ia} kabul edilmiş eşleşme ekledi (audit'te incelendi)"
                         if pkgs else "ikinci arama çalıştı: zayıf ölçüt için aranacak belge yok"))
 
@@ -643,22 +682,37 @@ def name_tamam(c: Ctx) -> Check:
                f"{len(noted)} belgenin notu değişti (yükleyenin notu): ad yeniden sorulacak" if noted else ""]
         return Check(kim=KOMUT, ilerleme=prog, komutlar=[c.fmt(c.stage["komut"][0])],
                      neden=", ".join(x for x in why if x))
+    # ad cevabı aynı nedenle iki kez reddedilen belge (bidr/pipeline/cevap.py): kural adında kalır, beklenmez
+    elle = _elle_paketli(ws, "work/name", d, missing, lambda k: f"{k}.json")
+    from bidr.pipeline import cevap as CV
+    kes = CV.Kesin(ws.root, "name")
+    elle |= {x for x in missing if kes.get(x)}
+    uy = []
+    if elle:
+        missing = missing - elle
+        prog["elle_bakilmali"] = len(elle)
+        uy.append(f"{len(elle)} belgenin ad cevabı iki denemede de reddedildi; elle bakılmalı, kanıt adı kuraldan "
+                  f"(work/name/ELLE-BAKILMALI.md): {_sample(elle)}")
+        if not missing:
+            return Check(bitti=True, ilerleme=prog, uyarilar=uy,
+                         neden=f"{len(pool) - len(elle)} belgenin model/insan kanıt adı var, {len(elle)} belge "
+                               "kural adında (elle bakılmalı)")
     old = [x for x in missing if str(json.loads(pk[x].read_text(encoding="utf-8")).get("surum")) != task_version()]
     if old:
-        return Check(kim=KOMUT, ilerleme=prog,
+        return Check(kim=KOMUT, ilerleme=prog, uyarilar=uy,
                      komutlar=[c.fmt(c.stage["komut"][0]) + ("" if set(old) <= parca else " --redo")],
                      neden=f"{len(old)} paket görevin eski sürümüyle: prepare yeniler")
     no_out = {x for x in missing if not (d / f"{x}.out.json").exists()}
     bad = _invalid_keys(d / "GECERSIZ.md", r"^- `([^`]+)\.json`") & missing
     apply_ = c.fmt(c.stage["komut"][2])
     if no_out or bad:
-        return Check(kim=AJAN, ilerleme=prog, bekleyen=sorted(no_out | bad),
+        return Check(kim=AJAN, ilerleme=prog, bekleyen=sorted(no_out | bad), uyarilar=uy,
                      komutlar=["(ajan) work/name/README.md'yi oku; cevapsız/reddedilen her <doc_id>.json için "
                                "<doc_id>.out.json yaz (kişi adı/unvan/e-posta yok, 3-7 sözcük)", apply_],
                      neden=", ".join(x for x in (f"{len(no_out)} paket cevapsız" if no_out else "",
                                                   f"{len(bad)} ad reddedildi (work/name/GECERSIZ.md)" if bad else "")
                                      if x))
-    return Check(kim=KOMUT, ilerleme=prog, komutlar=[apply_], neden=f"{len(missing)} cevap işlenmemiş: apply")
+    return Check(kim=KOMUT, ilerleme=prog, uyarilar=uy, komutlar=[apply_], neden=f"{len(missing)} cevap işlenmemiş: apply")
 
 
 # -- file ------------------------------------------------------------------------------------------
@@ -858,7 +912,12 @@ def verify_tamam(c: Ctx) -> Check:
     orphan = sorted((k for k in rej if k not in out and k not in have), key=_crit_key)
     open_ = {k: t for k, t in rej.items() if k not in out and k in have}
     lims = {k: V.limit_for(ws, k, human) for k in open_}
-    under = sorted((k for k, t in open_.items() if int(t.get("tur") or 0) < lims[k]), key=_crit_key)
+    # doğrulama cevabı iki kez reddedildi (elle bakılmalı): yeniden yazım turu değil, bölümün kararı; bölüm bu
+    # metin için `tekrar` dediyse olağan yeniden yazım turuna döner
+    elle = {k for k, t in open_.items() if (log.get(k) or {}).get("elle_bakilmali")
+            and not any(h.get("olcut") == k and h.get("karar") == "tekrar" and h.get("metin_sha") == W.text_sha(t)
+                        for h in human)}
+    under = sorted((k for k, t in open_.items() if int(t.get("tur") or 0) < lims[k] and k not in elle), key=_crit_key)
     over = sorted((k for k in open_ if k not in under), key=_crit_key)
     uy = []
     if orphan:
@@ -870,9 +929,13 @@ def verify_tamam(c: Ctx) -> Check:
                   c.fmt("bidr verify karar -w {ws}") + " <ölçüt> tekrar  # KULLANICI derse: bir tur daha",
                   c.fmt("bidr verify karar -w {ws}") + " <ölçüt> kabul   # KULLANICI derse: doğrulayıcının "
                   "itirazı yerinde değil, metin olduğu gibi rapora girer"]
-    if over:
-        uy.append(f"{len(over)} ölçüt yeniden yazım sınırından sonra hâlâ reddedildi, insan gerekli: "
-                  + ", ".join(f"{k} (tur {rej[k].get('tur') or 0}/{lims[k]})" for k in over))
+    if elle:
+        uy.append(f"{len(elle)} ölçütün bağımsız doğrulama cevabı iki denemede de geçersiz; elle bakılmalı, metin "
+                  f"doğrulanamadı, bölümün kararına gider (work/verify/ELLE-BAKILMALI.md): "
+                  + ", ".join(sorted(elle, key=_crit_key)))
+    if set(over) - elle:
+        uy.append(f"{len(set(over) - elle)} ölçüt yeniden yazım sınırından sonra hâlâ reddedildi, insan gerekli: "
+                  + ", ".join(f"{k} (tur {rej[k].get('tur') or 0}/{lims[k]})" for k in over if k not in elle))
     if under:
         return Check(kim=KOMUT, ilerleme=prog, uyarilar=uy,
                      komutlar=[c.fmt("bidr write prepare -w {ws} --reddedilenler")],
@@ -880,9 +943,13 @@ def verify_tamam(c: Ctx) -> Check:
                            + ", ".join(f"{k} (tur {int(rej[k].get('tur') or 0) + 1}/{lims[k]})" for k in under)
                            + ". Yeniden yazımı ve doğrulamayı ayrı, taze ajanlara ver")
     if over:
+        sinirli = [k for k in over if k not in elle]
         return Check(kim=INSAN, ilerleme=prog, komutlar=human_cmds,
-                     neden=f"{len(over)} ölçüt {min(lims[k] for k in over)} yeniden yazım turundan sonra hâlâ "
-                           f"reddedildi: insan gerekli ({', '.join(over)})")
+                     neden="; ".join(x for x in (
+                         f"{len(sinirli)} ölçüt {min(lims[k] for k in sinirli)} yeniden yazım turundan sonra hâlâ "
+                         f"reddedildi: insan gerekli ({', '.join(sinirli)})" if sinirli else "",
+                         f"{len(elle)} ölçütün metni bağımsız doğrulanamadı (doğrulama cevabı iki kez geçersiz): "
+                         f"bölümün kararı ({', '.join(sorted(elle, key=_crit_key))})" if elle else "") if x))
     if kabul:
         uy.append(f"{len(kabul)} ölçütün metni doğrulayıcı reddine rağmen insan onayıyla kabul edildi: {', '.join(kabul)}")
     if out:
@@ -941,8 +1008,22 @@ def yonler_tamam(c: Ctx) -> Check:
     v_todo = (yp["bekleyen"] - yp["paketli"]) - todo - pending
     v_agent = (yp["cevapsiz"] | yp["gecersiz"]) - todo - pending
     v_apply = yp["paketli"] - v_agent - todo - pending
-    under = sorted(a for a, t in rej.items() if int(t.get("tur") or 0) < lims[a] and a not in pending | todo)
-    over = sorted(a for a in rej if int(rej[a].get("tur") or 0) >= lims[a] and a not in pending | todo)
+    # doğrulama cevabı iki kez reddedilen alan (elle bakılmalı): yeniden yazım değil, bölümün kararı
+    v_elle = {a for a, t in rej.items() if YK.elle(t, log.get(a) or {}, human)}
+    under = sorted(a for a, t in rej.items() if int(t.get("tur") or 0) < lims[a] and a not in pending | todo
+                   and a not in v_elle)
+    over = sorted(a for a in rej if (int(rej[a].get("tur") or 0) >= lims[a] or a in v_elle) and a not in pending | todo)
+    # yazım cevabı iki kez reddedilen alan (elle bakılmalı): hücre şablon yönergesiyle kalır, aşama beklemez
+    y_elle = _elle_paketli(ws, Y.DIZIN, d, pending, lambda k: f"{k}.json")
+    from bidr.pipeline import cevap as CV
+    kes = CV.Kesin(ws.root, "yonler")
+    y_elle |= {a for a in pending if kes.get(a, (pkgs.get(a) or {}).get("istem_sha"))}
+    if y_elle:
+        pending = pending - y_elle
+        todo = todo - y_elle
+        prog["elle_bakilmali"] = len(y_elle)
+        uy.append(f"{len(y_elle)} alanın yön maddeleri cevabı iki denemede de reddedildi; elle bakılmalı, hücreler "
+                  f"şablon yönergesiyle kalır (work/yonler/ELLE-BAKILMALI.md): {', '.join(sorted(y_elle))}")
     kb = [x for x in YK.bekleyen(ws, log) if x["alan"] in over]
     if kb:
         prog["insan_karari_bekleyen"] = len(kb)

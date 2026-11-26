@@ -30,6 +30,7 @@ from bidr.common import Workspace, read_jsonl
 from . import packages as K
 
 DENEMELER = "write-kod-denemeleri.json"
+SEMA = "sema"        # şemaya uymayan cevabın bulgu kodu (deneme sayılır; kabul edilemez: cikar | tekrar)
 HUMAN = "write-insan.jsonl"
 KARARLAR = ("cikar", "tekrar", "kabul")
 USLUP_TURLERI = ("abartı", "slogan")      # yasak_ifade türleri (text.YASAK); koçluk/tahmin/meta değil

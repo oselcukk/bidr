@@ -102,6 +102,8 @@ asamalar:
         seyrek docx'in gömülü görseli yoksa atlanır. Varsa her biri ajanca betimlenmiş ve apply ile
         işlenmiş (ya da ajan 'metin sayfası' dedi: uyarı, transcribe önerilir); geçersiz/şüpheli cevap yok.
         transcribe ile sırası serbest: ikisi de uygulanırsa yazıya geçirilen metin betimlemenin altında kalır.
+        Reddedilen cevap kenara alınıp yeniden istenir; aynı nedenle iki kez reddedilen belge elle bakılmalı
+        işaretlenir (betimleme yok sayılır, metni OCR'da kalır, ELLE-BAKILMALI.md) ve aşamayı bekletmez.
     onay: yok
     skill: bidr-rapor
     paralel:
@@ -171,7 +173,9 @@ asamalar:
       asama: coarse
       metin: >-
         text/ altındaki her belgenin decisions.jsonl'de kaba kaydı var (ya da kodca
-        atlandı: öz-referans türü, boş metin); bekleyen ya da geçersiz cevap yok.
+        atlandı: öz-referans türü, boş metin); bekleyen ya da geçersiz cevap yok. Geçersiz cevap kenara
+        alınıp yeniden istenir; aynı nedenle iki kez reddedilen belge elle bakılmalı: model kararı yok,
+        insan incelemesine düşer (review.xlsx İnceleme 1. bölüm), aşamayı bekletmez.
     onay: yok
     skill: bidr-rapor
     paralel:
@@ -198,7 +202,8 @@ asamalar:
       metin: >-
         Kaba kaydı olan her belge ince aşamada (asama: ince); bekleyen ya da geçersiz
         cevap yok. Alıntısı belgede birebir tutmayan eşleşme kodca reddedilir ve
-        kullanılmaz (uyarı olarak gösterilir, bir kez yeniden denenir).
+        kullanılmaz (uyarı olarak gösterilir, bir kez yeniden denenir). Geçersiz cevap kaba karardaki
+        gibi kenara alınır; ikinci ret → elle bakılmalı (insan incelemesi), aşamayı bekletmez.
     onay: yok
     skill: bidr-rapor
     paralel:
@@ -282,6 +287,8 @@ asamalar:
         (görevin güncel sürümüyle model kaydı, `derleme: true`); `bidr name prepare` bunları kendiliğinden
         paketler, aday yoksa parça adı adımı kendiliğinden biter. config.yaml rapor.kanit_adi_modeli: false
         ise ya da adlandırılacak belge yoksa atlanır; ad önceliği insan > model parça adı > model > kural.
+        Reddedilen ad cevabı kenara alınıp yeniden istenir; aynı nedenle ikinci ret → belge kural adında
+        kalır (elle bakılmalı), aşamayı bekletmez.
     onay: yok
     skill: bidr-rapor
     paralel:
@@ -351,7 +358,8 @@ asamalar:
         config.yaml rapor.ikinci_arama: false ise atlanır (status'ta atlandi görünür). Değilse `arama prepare`
         çalışmış, her paket cevaplanmış ve apply ile işlenmiş; geçersiz, eski sürüm ya da eski paket (ilk geçiş
         yeniden karara bağlandı) yok. Kabul edilen eşleşme decisions.jsonl'i değiştirir: audit yeniden çalışır,
-        yeni satırları kullanıcı inceler; sonra bu aşama bitti olur.
+        yeni satırları kullanıcı inceler; sonra bu aşama bitti olur. Geçersiz cevap kenara alınıp yeniden
+        istenir; ikinci ret → o belgeye eşleşme eklenmez (elle bakılmalı), aşamayı bekletmez.
     onay: yok
     skill: bidr-rapor
     paralel:
@@ -397,7 +405,8 @@ asamalar:
         Kanıtı olan her ölçütün texts/<ölçüt>.json metni var, kanıt listesi ve önerilen OD'si güncel ve
         bekleyen (cevapsız, geçersiz ya da işlenmemiş) paket yok; yeniden yazım turu paketleri dahil.
         Yeniden yazım sınırından sonra kod denetimini hâlâ geçemeyen ölçüt için kullanıcı karar verir
-        (bidr write karar: cikar | tekrar | kabul; kabul yalnız üslup bulgularında).
+        (bidr write karar: cikar | tekrar | kabul; kabul yalnız üslup bulgularında). Şemaya uymayan cevap da
+        bir denemedir; sınırın altında geçemeyen cevap kenara alınır (ajan yeni cevap yazar, üstüne değil).
     onay: yok
     skill: bidr-rapor
     paralel:
@@ -426,7 +435,9 @@ asamalar:
         Her metnin güncel doğrulama kaydı var (dogrulandi ya da reddedildi). Reddedilen ölçüt
         `bidr write prepare --reddedilenler` ile doğrulayıcının cümle bazlı gerekçesiyle yeniden yazılır ve
         yeniden doğrulanır; config.yaml rapor.yeniden_yazim_siniri (vars. 2) turdan sonra hâlâ reddedilen ölçüt
-        için kullanıcı karar verir (bidr verify karar: cikar | tekrar | kabul).
+        için kullanıcı karar verir (bidr verify karar: cikar | tekrar | kabul). Geçersiz doğrulama cevabı kenara
+        alınıp yeniden istenir; aynı nedenle ikinci ret → metin doğrulanamadı, yeniden yazım turu olmadan bölümün
+        kararına gider.
     onay: yok
     skill: bidr-rapor
     paralel:
@@ -457,6 +468,8 @@ asamalar:
         Her madde ölçüt koduna atıf yapar; güçlü yön yalnız doğrulanmış metinden, gelişmeye açık yön yalnız audit
         bulgusundan çıkar (kod denetler). Reddedilen alan `bidr yonler prepare --reddedilenler` ile yeniden yazılır;
         rapor.yeniden_yazim_siniri turdan sonra hücreler şablon yönergesiyle kalır (rapor TASLAK, uyarı).
+        Geçersiz cevap kenara alınıp yeniden istenir; yazım cevabı aynı nedenle iki kez reddedilen alanın hücreleri
+        şablon yönergesiyle kalır, doğrulama cevabı iki kez reddedilen alan bölümün kararına gider.
     onay: yok
     skill: bidr-rapor
     paralel:
@@ -566,6 +579,7 @@ asamalar:
         bulgu "doğrulanamadı" olur ve işlenmez. Bulgular metin (kendiliğinden düzeltilir) | od | kanit (bölüm kararı)
         diye sınıflanır. Puan iç ölçümdür, kalite belgesi değildir. Tek tur: otomatik ikinci denetim yok;
         `bidr denetim prepare --ikinci` (ilk turun düzeltmesinden sonra) önce/sonra karşılaştırması veren bir ölçümdür.
+        Geçersiz cevap kenara alınıp yeniden istenir; aynı nedenle ikinci ret → o paket denetlenemedi (ölçüm onsuz).
     onay: yok
     skill: bidr-rapor
     paralel:

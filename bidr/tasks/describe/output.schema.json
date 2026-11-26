@@ -39,7 +39,8 @@
               "additionalProperties": false
             }
           },
-          "betimleme": {"type": "string", "minLength": 1, "maxLength": 800}
+          "betimleme": {"type": "string", "minLength": 1, "maxLength": 800},
+          "notlar": {"type": "string"}
         },
         "required": ["gorsel", "icerik", "sahne", "etkinlik", "kalabalik", "nesneler", "gorunen_yazilar", "betimleme"],
         "additionalProperties": false

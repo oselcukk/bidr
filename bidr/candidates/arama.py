@@ -52,6 +52,9 @@ Uymuyorsa "olcut_yok" ya da "kanit_degil" geçerli ve beklenen cevaptır; zorlam
 1. Paketi oku; `istem` görevin tamamı, `sema` cevabın JSON şeması.
 2. Cevabı YALNIZ JSON olarak aynı klasörde `<doc_id>.out.json` dosyasına yaz.
 3. Bitince: `bidr arama apply -w <çalışma klasörü> --model <ajan/model adı>`.
+   Geçersiz cevap kenara alınır (`.red<n>.eski`), gerekçesi `GECERSIZ.md`'de; o paket yeniden
+   cevapsızdır: yeni `<doc_id>.out.json` yaz. Aynı nedenle ikinci kez reddedilen paket yeniden
+   istenmez (`ELLE-BAKILMALI.md`): o belgeye ikinci aramadan eşleşme eklenmez.
 
 Bekleyen paket: {n}
 """
@@ -485,14 +488,17 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", backend=None, ctx
     from bidr.decide.run import FINE, Backend, Context, _load_pkg, _pkg_paths, load_decisions, \
         save_decisions, task_version, work_dir
 
+    from bidr.pipeline import cevap as CV
     backend = backend or Backend()
     if ctx is None:
         ctx = Context.load(ws_root, profile=None)
     recs = load_decisions(ctx.ws)
     review = load_review(ctx.ws.root)
     d = work_dir(ctx.ws, WORK)
+    den = CV.Denemeler(ctx.ws.root, f"work/{WORK}")
+    kesin = CV.Kesin(ctx.ws.root, "ikinci_arama")
     st = {"islenen": 0, "degismedi": 0, "bekleyen": [], "gecersiz": {}, "eski_surum": [],
-          "eski_paket": [], "eklenen_kabul": 0, "eklenen_red": 0}
+          "eski_paket": [], "eklenen_kabul": 0, "eklenen_red": 0, "elle_bakilmali": {}, "yeniden": {}}
     for p in _pkg_paths(d) if d.exists() else []:
         pkg = _load_pkg(p)
         if pkg is None:
@@ -515,18 +521,33 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", backend=None, ctx
                 first_pass_print(rec) != pkg["meta"]["ikinci_arama"]["ince_parmak"]:
             st["eski_paket"].append(did)        # ilk geçiş değişmiş: `arama prepare` yeniden paketler
             continue
-        out, errs = backend.validate_output(FINE, raw)
-        if out is None:
-            st["gecersiz"][did] = errs[:5]
+        if el := (kesin.get(did) or den.elle_ayni(did, cevap, pkg["istem_sha"])):
+            st["elle_bakilmali"][did] = el      # karar verilmiş (eşleşme eklenmez): aynı cevap yeniden denenmez
             continue
+        out, errs, _ = CV.dogrula(backend.validate_output, FINE, raw)
+        if out is None:
+            # ret bir denemedir: cevap kenara alınır; aynı nedenle ikinci ret → elle bakılmalı (eşleşme eklenmez)
+            r = den.reddet(did, outp, "sema", errs[:5], parmak=pkg["istem_sha"], model=model)
+            if r["sonuc"] == CV.ELLE:
+                st["elle_bakilmali"][did] = den.elle(did)
+            else:
+                st["gecersiz"][did] = errs[:5]
+                st["yeniden"][did] = r
+            continue
+        den.basarili(did)
         rec, new = merge(ctx, did, rec, out, pkg, model, backend.verify_quote, cevap, review=review)
         recs[did] = rec
         for m in new:
             st["eklenen_kabul" if m["kabul"] else "eklenen_red"] += 1
         st["islenen"] += 1
     save_decisions(ctx.ws, recs)
+    den.kaydet()
     if d.exists():
-        lines = [f"- `{did}.json` — geçersiz cevap: " + "; ".join(e) for did, e in st["gecersiz"].items()]
+        lines = [f"- `{did}.json` — geçersiz cevap: " + "; ".join(e) + CV.kenar_notu(st["yeniden"].get(did), did)
+                 for did, e in st["gecersiz"].items()]
+        lines += CV.onceki_red_satirlari(den, st["bekleyen"], set(st["gecersiz"]), lambda k: f"`{k}.json`")
+        CV.elle_raporu(d, den, "ikinci arama", "Bu belgelere ikinci aramadan eşleşme eklenmedi (ilk geçişin "
+                       "kararı geçerli).")
         g = d / "GECERSIZ.md"
         if lines:
             g.write_text("# Yeniden yapılacak (ikinci arama)\n\n" + "\n".join(lines) + "\n", encoding="utf-8")

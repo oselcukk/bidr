@@ -51,6 +51,7 @@ from bidr.write import run as W
 from . import od as OD
 
 STAGE = WORK = "kor_denetim"
+DIZIN = f"work/{WORK}"          # ret kayıtları (bidr/pipeline/cevap.py)
 TASK, YTASK = "kor_denetim", "kor_denetim_yon"
 OUT_JSON, OUT_MD = "kor-denetim.json", "kor-denetim.md"
 KARARLAR = OD.KARARLAR
@@ -610,11 +611,14 @@ def pending(ws: Workspace) -> dict:
     """Aşama denetimi ve apply için: {paket, cevapsiz, gecersiz, eski} (anahtar kümeleri)."""
     d = work_dir(ws)
     info = tur_info(ws) or {}
-    out = {"paket": set(), "cevapsiz": set(), "gecersiz": set(), "eski": set()}
+    out = {"paket": set(), "cevapsiz": set(), "gecersiz": set(), "eski": set(), "elle": set()}
     if not d.exists():
         return out
+    from bidr.pipeline import cevap as CV
     from bidr.pipeline.checks import _invalid_keys
     bad = _invalid_keys(d / "GECERSIZ.md", r"^- `([^`]+)\.json`")
+    el = CV.elle_kayitlari(ws.root, DIZIN)
+    kes = CV.Kesin(ws.root, "kor_denetim")
     v = None
     for p in K.pkg_paths(d, KEY):
         pkg = _read_json(p)
@@ -633,6 +637,8 @@ def pending(ws: Workspace) -> dict:
             continue
         if not p.with_name(f"{k}.out.json").exists():
             out["cevapsiz"].add(k)
+        elif (el.get(k) or {}).get("parmak") == pkg.get("istem_sha") or kes.get(k, pkg.get("istem_sha")):
+            out["elle"].add(k)               # cevap iki kez reddedildi: bu paket denetlenemedi, beklenmez
         elif k in bad:
             out["gecersiz"].add(k)
     return out
@@ -645,8 +651,12 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", backend: W.Backen
     info = tur_info(ws)
     if not info:
         raise DenetimHatasi("denetim istenmemiş: önce `bidr denetim prepare`")
+    from bidr.pipeline import cevap as CV
     v = View(ws.root)
-    st = {"tur": info["tur"], "bekleyen": [], "gecersiz": {}, "eski": [], "islenen": 0, "yazildi": False}
+    den = CV.Denemeler(ws.root, DIZIN)
+    kesin = CV.Kesin(ws.root, "kor_denetim")
+    st = {"tur": info["tur"], "bekleyen": [], "gecersiz": {}, "eski": [], "islenen": 0, "yazildi": False,
+          "elle_bakilmali": {}, "yeniden": {}}
     olc, yon, finds, msha, ysha = [], [], [], {}, {}
     for p in K.pkg_paths(d, KEY):
         pkg = json.loads(p.read_text(encoding="utf-8"))
@@ -663,34 +673,54 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", backend: W.Backen
         if not outp.exists():
             st["bekleyen"].append(k)
             continue
-        out, errs = backend.validate_output(task, outp.read_text(encoding="utf-8"))
+        raw = outp.read_text(encoding="utf-8")
+        if el := (kesin.get(k, pkg["istem_sha"]) or den.elle_ayni(k, CV.sha(raw), pkg["istem_sha"])):
+            st["elle_bakilmali"][k] = el        # karar verilmiş (denetlenemedi): aynı cevap yeniden denenmez
+            continue
+
+        def reject(kod: str, errs: list[str]) -> None:
+            """Ret bir denemedir: cevap kenara alınır; aynı nedenle ikinci ret → bu paket denetlenemedi (ölçüm
+            onsuz yazılır, `denetlenemedi`)."""
+            r = den.reddet(k, outp, kod, errs[:5], parmak=pkg["istem_sha"], model=model)
+            if r["sonuc"] == CV.ELLE:
+                st["elle_bakilmali"][k] = den.elle(k)
+            else:
+                st["gecersiz"][k] = errs[:5]
+                st["yeniden"][k] = r
+        out, errs, _ = CV.dogrula(backend.validate_output, task, raw)
         if out is None:
-            st["gecersiz"][k] = errs[:5]
+            reject("sema", errs)
             continue
         if is_yon(k):
             rows, fs, errs = judge_yon(v, k, meta, out)
             if errs:
-                st["gecersiz"][k] = errs
+                reject("karar", errs)
                 continue
             yon += rows
             ysha[meta["alan"]] = cur
         else:
             row, fs, errs = judge_criterion(v, k, meta, out)
             if errs:
-                st["gecersiz"][k] = errs
+                reject("karar", errs)
                 continue
             olc.append(row)
             msha[k] = cur
+        den.basarili(k)
         finds += fs
         st["islenen"] += 1
-    K.write_invalid(d, f"{TASK} + {YTASK}", st["gecersiz"])
-    if st["bekleyen"] or st["gecersiz"] or st["eski"] or not st["islenen"]:
+    den.kaydet()
+    K.write_invalid(d, f"{TASK} + {YTASK}", st["gecersiz"], st["yeniden"],
+                    CV.onceki_red_satirlari(den, st["bekleyen"], set(st["gecersiz"]), lambda k: f"`{k}.json`"))
+    CV.elle_raporu(d, den, "kör denetim", "Bu paketler denetlenemedi: ölçüm onlarsız yazılır (kor-denetim.json "
+                   "`denetlenemedi`).")
+    if st["bekleyen"] or st["gecersiz"] or st["eski"] or not (st["islenen"] or st["elle_bakilmali"]):
         return st
     olc.sort(key=lambda r: id_key(r["olcut"]))
     yon.sort(key=lambda r: (r["alan"], r["hucre"]))
     js = {"surum": SURUM, "ic_olcum": True, "id": info["id"], "tur": int(info["tur"]), "zaman": K.now(),
           "model": model, "aciklama": ACIKLAMA, "olcek": OLCEK, "olcutler": olc, "yonler": yon, "bulgular": finds,
-          "metin_sha": msha, "yon_sha": ysha, "paket_izi": _izi(d)}
+          "metin_sha": msha, "yon_sha": ysha, "paket_izi": _izi(d),
+          **({"denetlenemedi": sorted(st["elle_bakilmali"])} if st["elle_bakilmali"] else {})}
     js["ozet"] = summary(js)
     js["karsilastirma"] = compare(ws, js, info.get("onceki"))
     (ws.root / OUT_JSON).write_text(json.dumps(js, ensure_ascii=False, indent=1), encoding="utf-8")

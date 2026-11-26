@@ -20,7 +20,10 @@ def transcribe_tamam(c):
             and (r.get("ext") or "").lower() in R.PDF_EXTS | R.DIRECT_IMG | R.CONVERT_IMG}
     done = {d for d in prim if R.is_done(ws, d, log)}
     # iki denemede de aynı nedenle reddedilen belge: karar verildi (metni OCR'da), aşama beklemez
-    elle = {d for d in lowq - done if R.elle_bakilmali(ws, d, log)}
+    from bidr.pipeline import cevap as CV
+    kesin = CV.Kesin(ws.root, "transcribe")
+    # bölümün kesin kararı verilen belge de (içeriği değişmedikçe) beklenmez
+    elle = {d for d in lowq - done if R.elle_bakilmali(ws, d, log) or kesin.get(d)}
     todo = lowq - done - elle
     prog = {"dusuk_kalite": len(lowq | done), "yaziya_gecirilen": len(done)}
     uy = []
@@ -42,8 +45,8 @@ def transcribe_tamam(c):
     apply_ = c.fmt(c.stage["komut"][2]) if c.stage.get("komut") else None
     no_out = {x for x in pk if not (d / x / f"{x}.out.json").exists()}
     if no_out:
-        den = R.load_denemeler(ws)
-        red = {x for x in no_out if ((den.get(x) or {}).get("denemeler") or [{}])[-1].get("dosya")}
+        den = R.denemeler(ws)
+        red = {x for x in no_out if den.kenarda(x)}
         return Check(kim=AJAN, ilerleme=prog, uyarilar=uy, bekleyen=sorted(no_out),
                      komutlar=["(ajan) work/transcribe/README.md'yi oku; cevapsız her <doc_id>/ için görüntüleri "
                                "okuyup <doc_id>.out.json yaz (reddedilenlerin gerekçesi GECERSIZ.md'de)"]

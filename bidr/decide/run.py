@@ -1119,7 +1119,10 @@ Bu klasördeki her `<doc_id>.json` bir iş paketidir. Sağlayıcı/API çağrıl
 4. Paketler birbirinden bağımsızdır; paralel alt ajanlar kullanabilirsin (her alt ajana
    bir grup paket ver).
 5. Bitince: `bidr decide apply -w <çalışma klasörü> --stage {stage} --model <ajan/model adı>`.
-   Geçersiz cevaplar listelenir ve `GECERSIZ.md`'ye yazılır; onları yeniden yap.
+   Geçersiz cevap kenara alınır (`.red<n>.eski`), gerekçesi `GECERSIZ.md`'ye yazılır; o paket
+   yeniden cevapsızdır: yeni `<doc_id>.out.json` yaz (var olanın üstüne yazma). Aynı nedenle
+   ikinci kez reddedilen belge yeniden istenmez: `ELLE-BAKILMALI.md`'ye girer, model kararı
+   olmadan insan incelemesine düşer (review.xlsx).
 
 Bekleyen paket: {n}
 """
@@ -1238,10 +1241,15 @@ def prepare(ws_root: Path, stage: str, *, profile: str | None = "akademik_bolum"
         st["paket"] += 1
         st["yeni"] += _write_pkg(d, did, task, inputs, meta, backend, force=forced)
 
+    from bidr.pipeline import cevap as CV
+    kesin = CV.Kesin(ctx.ws.root, "karar_kaba" if stage == "coarse" else "karar_ince")
     for did in eligible:
         rec = recs.get(did)
         forced = did in force
         done = stage_done(rec, stage)
+        if not done and not forced and kesin.get(did):
+            st["zaten_tamam"] += 1          # bölümün kesin kararı (elle bakılmalı): yeniden sorulmaz
+            continue
         if (done and not forced and (members.get(did) or {}).get("yontem") in KOPYA_YONTEMLERI
                 and (rec.get("mukerrer") or {}).get("durum") != "devralindi"):
             # sonradan bulunan tarama/metin kopyası (önceki koşuda kendisi işlenmiş): model çağrısı olmadan
@@ -1353,14 +1361,18 @@ def apply(ws_root: Path, stage: str, *, model: str = "ajan:belirtilmemis",
     Paket meta'sı (profil, adaylar) paketten okunur; profil yeniden hesaplanmaz.
     Zaten işlenmiş kaba cevap yeniden işlenmez (`degismedi`): ince kayıt korunur.
     Sonda temsilcisi sonuçlanan mükerrer üyeler kararı devralır."""
+    from bidr.pipeline import cevap as CV
     backend = backend or Backend()
     task = STAGES[stage]
     if ctx is None:
         ctx = Context.load(ws_root, profile=None)
     recs = load_decisions(ctx.ws)
     d = work_dir(ctx.ws, stage)
+    den = CV.Denemeler(ctx.ws.root, f"work/{stage}")
+    kesin = CV.Kesin(ctx.ws.root, "karar_kaba" if stage == "coarse" else "karar_ince")
     st = {"islenen": 0, "degismedi": 0, "bekleyen": [], "gecersiz": {}, "alinti_tutmayan": {},
-          "eski_surum": [], "kanit_adi_red": {}, "baska_birim": [], "birim_belirsiz": [], "paket_degil": []}
+          "eski_surum": [], "kanit_adi_red": {}, "baska_birim": [], "birim_belirsiz": [], "paket_degil": [],
+          "elle_bakilmali": {}, "yeniden": {}, "enum_normallestirme": {}}
     for p in _pkg_paths(d) if d.exists() else []:
         pkg = _load_pkg(p)
         if pkg is None:                     # yardımcı/bozuk dosya: paket değil, atlanır
@@ -1375,11 +1387,25 @@ def apply(ws_root: Path, stage: str, *, model: str = "ajan:belirtilmemis",
             st["eski_surum"].append(did)
             continue
         raw = outp.read_text(encoding="utf-8")
-        out, errs = backend.validate_output(task, raw)
-        if out is None:
-            st["gecersiz"][did] = errs[:5]
+        if el := (kesin.get(did) or den.elle_ayni(did, CV.sha(raw), pkg["istem_sha"])):
+            st["elle_bakilmali"][did] = el     # karar verilmiş: aynı cevap yeniden denenmez
             continue
+        out, errs, enum_not = CV.dogrula(backend.validate_output, task, raw)
+        if out is None:
+            # ret bir denemedir: cevap kenara alınır, paket yeniden cevap bekler; aynı nedenle ikinci ret →
+            # elle bakılmalı (bu belge için model kararı yok, insan incelemesine düşer)
+            r = den.reddet(did, outp, "sema", errs[:5], parmak=pkg["istem_sha"], model=model)
+            if r["sonuc"] == CV.ELLE:
+                st["elle_bakilmali"][did] = den.elle(did)
+            else:
+                st["gecersiz"][did] = errs[:5]
+                st["yeniden"][did] = r
+            continue
+        den.basarili(did)
         extra = {"kip": "ajan", "istem_sha": pkg["istem_sha"], "cevap_sha": _sha(raw)}
+        if enum_not:
+            extra["enum_normallestirme"] = enum_not
+            st["enum_normallestirme"][did] = enum_not
         if isinstance(pkg.get("girdi_sha"), dict):
             extra["girdi_sha"] = pkg["girdi_sha"]
         rec = recs.get(did)
@@ -1422,9 +1448,12 @@ def apply(ws_root: Path, stage: str, *, model: str = "ajan:belirtilmemis",
     inh = inherit(ctx, recs, stage, backend.verify_quote)
     st["devralindi"], st["ayrildi"] = inh["devralindi"], inh["ayrildi"]
     save_decisions(ctx.ws, recs)
+    den.kaydet()
     lines = [f"# Yeniden yapılacak ({task})", ""]
     for did, errs in st["gecersiz"].items():
-        lines.append(f"- `{did}.json` — geçersiz cevap: " + "; ".join(errs))
+        lines.append(f"- `{did}.json` — geçersiz cevap: " + "; ".join(errs)
+                     + CV.kenar_notu(st["yeniden"].get(did), did))
+    lines += CV.onceki_red_satirlari(den, st["bekleyen"], set(st["gecersiz"]), lambda k: f"`{k}.json`")
     for did, bad in st["alinti_tutmayan"].items():
         lines.append(f"- `{did}.json` — reddedilen eşleşme (alıntı belgede birebir olmalı): "
                      + "; ".join(bad))
@@ -1436,6 +1465,10 @@ def apply(ws_root: Path, stage: str, *, model: str = "ajan:belirtilmemis",
             g.write_text("\n".join(lines) + "\n", encoding="utf-8")
         elif g.exists():
             g.unlink()
+    CV.elle_raporu(d, den, task, "Bu belgeler için model kararı yok: kanıt olarak değerlendirilmediler ve "
+                   "review.xlsx İnceleme sayfasının 1. bölümünde (Bakmanız gerekenler) insan incelemesine düşerler "
+                   "(uygunsa bölüm elle eşleşme ekler).",
+                   f"Doğru cevap `{d.name}/<doc_id>.out.json`'a yazılıp apply ile işlenebilir.")
     st["durum"] = stats_of(recs)
     return st
 

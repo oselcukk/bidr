@@ -185,6 +185,9 @@ class Audit:
     faaliyetler: list = field(default_factory=list)
     od_sha: str = ""                            # olcut-od-kararlari.jsonl özeti
     elle_sha: str = ""                          # elle eşleşme kayıtlarının özeti (bidr/audit/elle.py)
+    # model cevabı aynı nedenle iki kez reddedilen (elle bakılmalı) belgeler (bidr/pipeline/cevap.py `liste`):
+    # review.xlsx "İnceleme" sayfasının 1. bölümünde ("Bakmanız gerekenler") satır olur; karar `apply`'da kesinleşir
+    elle: list = field(default_factory=list)
 
     @property
     def by_key(self) -> dict[str, dict]:
@@ -715,6 +718,22 @@ def copy_members(recs: list[dict], pins: dict | None = None) -> dict[str, list[s
     return {k: sorted(v) for k, v in out.items()}
 
 
+def karar_verilemeyen(ws: Workspace, recs: list[dict], docs: dict, inv: dict) -> list[dict]:
+    """Kaba/ince karar cevabı iki denemede de reddedilen (elle bakılmalı) ve ince kaydı olmayan belgeler."""
+    from bidr.pipeline import cevap as CV
+    ince = {r["doc_id"] for r in recs if r.get("durum") == "ok" and r.get("asama") == "ince"}
+    out: dict[str, dict] = {}
+    for stage, ad in (("coarse", "kaba karar"), ("fine", "ince karar")):
+        kes = CV.Kesin(ws.root, "karar_kaba" if stage == "coarse" else "karar_ince")
+        for did, e in CV.elle_kayitlari(ws.root, f"work/{stage}").items():
+            if did in ince or not ws.text_path(did).exists() or (kes.get(did) or {}).get("karar") == CV.ATLA:
+                continue
+            out[did] = {"doc_id": did, "belge": (docs.get(did) or {}).get("calisma_adi") or did,
+                        "kaynak_dosya": inv.get(did, ""), "asama": ad, "neden": CV.neden_metni(e.get("neden")),
+                        "hatalar": "; ".join(e.get("hatalar") or [])[:500], "deneme": e.get("deneme")}
+    return sorted(out.values(), key=lambda x: x["belge"])
+
+
 def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
           criteria: CriteriaSet | None = None, review: dict[str, dict] | None = None,
           pins: dict[str, dict] | None = None) -> Audit:
@@ -857,9 +876,15 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
     crits = [_criterion(cs, tags, c, by_c.get(c, []), allowed, rule, cyc[c], ek[c], od_kar.get(c)) for c in ids]
     sayfa.sort(key=lambda x: x["belge"])
     from .elle import elle_sha
+    ky = karar_verilemeyen(ws, recs, docs, inv)
+    if ky:
+        uy.append(f"{len(ky)} belge için model kararı verilemedi (cevap iki denemede de reddedildi; kanıt olarak "
+                  "değerlendirilmedi): review.xlsx 'İnceleme' 1. bölüm")
+    from bidr.pipeline import cevap as CV
+    el = [x for x in CV.liste(ws.root) if x["asama"] in CV.INCELEME_ASAMALARI]
     return Audit(ws, out, profile, cs, tags, rows, crits, file_sha(dpath), uy, period, birim, sayfa,
                  file_sha(out / FILES["birim"]), sv.faaliyet_sha, sv.unrealized(),
-                 file_sha(out / FILES["od"]), elle_sha(review))
+                 file_sha(out / FILES["od"]), elle_sha(review), el)
 
 
 def _puko(cs, tags, ws, docs, own, sv, by_c, ek, review, rule, names, links, inv, surum, uy) -> list[dict]:
@@ -1381,6 +1406,7 @@ def apply(ws_root: Path, *, out: Path | None = None, profile: str | None = None)
             write_jsonl(op, [ods[k] for k in sorted(ods, key=id_key)])
         elif op.exists():
             op.unlink()
+    elle_oz, elle_hata = elle_kararlari(ws.root, x)
     a = build(ws.root, out=outp, profile=profile, review=merged, pins=pins)
     write_outputs(a, xlsx=False)
     n_rb = _update_seen(a, outp, prev, merged, xrows)
@@ -1391,7 +1417,33 @@ def apply(ws_root: Path, *, out: Path | None = None, profile: str | None = None)
             "kanit_adi": len(adlar), "kanit_adi_gecersiz": ad_hata,
             "baglanti": len(baglar), "baglanti_gecersiz": bag_hata,
             "birim": {k: v for k, v in birim_oz.items() if v}, "birim_gecersiz": birim_hata,
-            "od_onayli": len(load_od_decisions(outp)), "od_gecersiz": od_hata, "yeniden_bak": n_rb}
+            "od_onayli": len(load_od_decisions(outp)), "od_gecersiz": od_hata, "yeniden_bak": n_rb,
+            "elle": elle_oz, "elle_gecersiz": elle_hata}
+
+
+def elle_kararlari(ws_root: Path, x: Path) -> tuple[dict, dict]:
+    """İnceleme sayfasındaki elle bakılmalı satırların (satır kimliği `<doc_id>|elle:<aşama>`) bölüm kararı →
+    `bidr elle karar` (bidr/pipeline/cevap.py; kesin). KARARINIZ: Kabul → modelin son cevabı uygulanır (yalnız
+    şüpheli okuma/betimlemede), Ret → taramadaki metinle / model kararı olmadan kalır. Yalnız kullanıcının değiştirdiği
+    hücre (gizli "yazılan"dan farklı) karardır; boş satır karar değildir (varsayılan geçerli, yeniden sorulabilir)."""
+    from bidr.pipeline import cevap as CV
+    from . import sade
+    oz: dict[str, int] = {}
+    hata: dict[str, str] = {}
+    for (asama, did), (k, notu) in sade.read_elle(x).items():
+        karar = CV.KABUL if k == "kabul" else CV.VARSAYILAN if k == "ret" else None
+        if karar is None:
+            hata[f"{did}|elle:{asama}"] = "KARARINIZ yalnız Kabul ya da Ret olabilir"
+            continue
+        if (CV.Kesin(ws_root, asama).get(did) or {}).get("karar") == karar:
+            continue
+        try:
+            CV.karar_ver(ws_root, asama, did, karar, kim="inceleme (review.xlsx)", notu=notu)
+        except ValueError as e:
+            hata[f"{did}|elle:{asama}"] = str(e)
+            continue
+        oz[karar] = oz.get(karar, 0) + 1
+    return oz, hata
 
 
 def _name_edits(xrows: list[dict]) -> list[tuple[str, str, str]]:

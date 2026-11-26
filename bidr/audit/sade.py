@@ -440,15 +440,79 @@ def inceleme_satirlari(a, cs) -> list[dict]:
     from bidr.criteria.model import id_key
     # bölüm içinde madde madde (madde ayraç satırları); madde içinde önce yeniden bakılacak, birimi belirsiz
     out.sort(key=lambda x: (x["bolum"], id_key(x["_olcut"]), not x["_rb"], not x["_birim"], x["satir"]))
+    # elle bakılmalı belgeler: bölümün sonunda, kendi ayraçlarıyla (madde yok)
+    el = elle_satirlari(getattr(a, "elle", None) or [])
+    out = sorted(out + el, key=lambda x: x["bolum"])          # kararlı sıralama: bölüm içinde öncekiler önce
     for x in out:
         x["yazilan"] = json.dumps({"k": x["karar"], "m": x["dogru"], "n": x["not"], "a": x["ad"]}, ensure_ascii=False)
     return out
 
 
+ELLE_ALAN = "Z"
+ELLE_MADDE = "Aracın okuyamadığı ya da karar veremediği belgeler (madde yok)"
+ELLE_DIKKAT = {
+    True: ("Modelin okuduğu/betimlediği metin doğruysa Kabul (o metin kullanılır); taramadaki metinle kalsın derseniz "
+           "Ret. Karar vermezseniz belge taramadaki metniyle kalır. Kararınız kesindir: aynı belge bir daha sorulmaz."),
+    False: ("Bu adımda model kararı yok; belge bu adımın sonucu olmadan kalır (kanıt değerlendirmesine girmedi). Ret ya da "
+            "karar vermemek: böyle kalır. Belge bir maddenin kanıtıysa paneldeki \"Bu belgeyi bir maddeye ekle\" ile "
+            "ekleyin. Kararınız kesindir: aynı belge bir daha sorulmaz."),
+}
+
+
+def elle_satirlari(items: list[dict]) -> list[dict]:
+    """Elle bakılmalı öğeler (bidr/pipeline/cevap.py `liste`) → İnceleme satırları (satır kimliği
+    `<doc_id>|elle:<aşama>`). Karar verilmişse 3. bölüm (KARARINIZ dolu), değilse 1. bölüm."""
+    out = []
+    for x in items:
+        k = x.get("karar") or {}
+        kabul = any(s["karar"] == "kabul" for s in x.get("secenekler") or [])
+        lab = {"kabul": K_KABUL, "varsayilan": K_RET, "atla": K_RET}.get(k.get("karar"), "")
+        bolum = 3 if lab else 1
+        model = (x.get("model_cevabi") or "").strip()
+        dosya = (x.get("kaynak_dosya") or "").replace("\\", "/")
+        out.append({
+            "satir": f"{x['anahtar']}|elle:{x['asama']}", "bolum": bolum, "_rb": False, "_birim": False,
+            "_olcut": ELLE_ALAN, "madde": ELLE_MADDE, "belge": x.get("belge") or x["anahtar"], "ad": "",
+            "alinti": f"Modelin okuduğu: “{_kisalt(model, 600)}”" if model else "",
+            "alinti_kisa": f"Modelin okuduğu: “{_kisalt(model, 200)}”" if model else "",
+            "neden": x.get("neden_metni") or "", "dikkat": ELLE_DIKKAT[kabul], "oneri": "Bakın", "karar": lab,
+            "dogru": "", "not": (k.get("not") or "") if k else "", "kopyalar": "", "kilavuz": "",
+            "klasor": " · ".join(v for v in (dosya.rsplit("/", 1)[0] if "/" in dosya else "", dosya) if v),
+            "baglanti": "", "guven": "", "asama": "", "od": "", "donem": "",
+            "tur_birim": f"adım: {x['asama']}", "isaretler": f"elle_bakilmali:{x.get('neden')}",
+            "bolum_ad": BOLUM_AD[bolum]})
+    return out
+
+
+def read_elle(path) -> dict[tuple[str, str], tuple[str, str]]:
+    """İnceleme sayfasındaki elle bakılmalı satırların KULLANICI kararı: {(aşama, doc_id): ("kabul"|"ret"|başka, not)}.
+    Gizli "yazılan" ile aynı (kullanıcı değiştirmedi) ya da boş hücre karar değildir."""
+    from openpyxl import load_workbook
+    wb = load_workbook(path, read_only=True, data_only=True)
+    try:
+        if SH_INC not in wb.sheetnames:
+            return {}
+        out = {}
+        for r in _read(wb, SH_INC, INC_COLS):
+            sid = _s(r.get("satir"))
+            if "|elle:" not in sid:
+                continue
+            k = _s(r.get("karar"))
+            if not k or _key(k) == _key(_yazilan(r.get("yazilan")).get("k") or ""):
+                continue
+            did, asama = sid.split("|elle:", 1)
+            kk = "kabul" if _key(k) == _key(K_KABUL) else "ret" if _key(k) in (_key(K_RET), "red") else _key(k)
+            out[(asama, did)] = (kk, _s(r.get("not")))
+        return out
+    finally:
+        wb.close()
+
+
 GUVEN = {"yuksek": "yüksek", "orta": "orta", "dusuk": "düşük"}
 BOLUM_AD = {1: "1 · bakılacak", 2: "2 · sorunsuz görünen", 3: "3 · önceden karar verilmiş"}
 ALAN_AD = {"A": "A — Liderlik, Yönetişim ve Kalite", "B": "B — Eğitim ve Öğretim",
-           "C": "C — Araştırma ve Geliştirme", "D": "D — Toplumsal Katkı", "E": "E — Uluslararasılaşma"}
+           "C": "C — Araştırma ve Geliştirme", "D": "D — Toplumsal Katkı", "E": "E — Uluslararasılaşma",
+           "Z": "Aracın okuyamadığı ya da karar veremediği belgeler"}
 INC_NOT = ("Turuncu başlıklı sütunlar (KARARINIZ, Doğru madde, Kanıt adı, Not) sizin; açılır listeden seçin. "
            "Mavi altı çizili belge adına tıklayınca bağlantı açılır. Soluk mavi sütunlar ayrıntıdır; üstteki [–] ile "
            "katlanır. Gizli sütun/satırlar araç içindir: sütun ya da sayfa silmeyin. Ayrıntılı açıklama: «Nasıl doldurulur».")

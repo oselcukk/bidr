@@ -33,28 +33,36 @@ def kor_denetim_tamam(c: Ctx) -> Check:
         oz = js.get("ozet") or {}
         prog = {"tur": js.get("tur"), "ortalama": oz.get("ortalama"), "yon_ortalama": oz.get("yon_ortalama"),
                 **{f"bulgu_{k}": n for k, n in (oz.get("bulgu") or {}).items()}}
+        dn = js.get("denetlenemedi") or []
         return Check(bitti=True, ilerleme=prog,
+                     uyarilar=[f"{len(dn)} paket denetlenemedi (cevap iki kez reddedildi; "
+                               f"work/kor_denetim/ELLE-BAKILMALI.md): {', '.join(dn)}"] if dn else [],
                      neden=f"tur {js.get('tur')}: ölçüt puanı ortalaması {oz.get('ortalama')}, yön hücreleri "
                            f"{oz.get('yon_ortalama')} (iç ölçüm; {KD.OUT_MD})")
     p = KD.pending(ws)
     prog = {"tur": (info or {}).get("tur"), "paket": len(p["paket"]), "cevapsiz": len(p["cevapsiz"]),
             "gecersiz": len(p["gecersiz"]), "eski": len(p["eski"])}
+    uy = []
+    if p["elle"]:
+        prog["elle_bakilmali"] = len(p["elle"])
+        uy.append(f"{len(p['elle'])} denetim cevabı iki denemede de reddedildi; elle bakılmalı, bu paketler denetlenemedi "
+                  f"(work/kor_denetim/ELLE-BAKILMALI.md): {', '.join(sorted(p['elle']))}")
     if not p["paket"] or p["eski"]:
-        return Check(kim=KOMUT, komutlar=[prep], ilerleme=prog,
+        return Check(kim=KOMUT, komutlar=[prep], ilerleme=prog, uyarilar=uy,
                      neden=("denetim paketleri yok" if not p["paket"] else
                             f"{len(p['eski'])} paket eski (rapor paketten sonra değişti)") + ": prepare")
     if p["cevapsiz"] or p["gecersiz"]:
         parts = [x for x in (f"{len(p['cevapsiz'])} paket cevapsız" if p["cevapsiz"] else "",
                              f"{len(p['gecersiz'])} cevap geçersiz (work/kor_denetim/GECERSIZ.md)" if p["gecersiz"]
                              else "") if x]
-        return Check(kim=AJAN, ilerleme=prog, bekleyen=sorted(p["cevapsiz"] | p["gecersiz"]),
+        return Check(kim=AJAN, ilerleme=prog, uyarilar=uy, bekleyen=sorted(p["cevapsiz"] | p["gecersiz"]),
                      komutlar=["(metni YAZMAMIŞ ve doğrulamamış, taze ve bağımsız bir denetçi ajan; model Opus) "
                                "work/kor_denetim/README.md'yi oku; cevapsız/geçersiz her <anahtar>.json için "
                                "<anahtar>.out.json yaz (ölçüt: puan, OD görüşü, D/K/U cümleleri, bulgular, "
                                "kullanılmayan belgeler; yon_X: hücre puanları ve madde bulguları; bütün alıntılar "
                                "birebir)", apply_],
                      neden=", ".join(parts) + ": model işi ajanda (kör denetim)")
-    return Check(kim=KOMUT, komutlar=[apply_], ilerleme=prog, neden="denetim cevapları işlenmemiş: apply")
+    return Check(kim=KOMUT, komutlar=[apply_], ilerleme=prog, uyarilar=uy, neden="denetim cevapları işlenmemiş: apply")
 
 
 def duzelt_tamam(c: Ctx) -> Check:

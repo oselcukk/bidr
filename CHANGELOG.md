@@ -4,6 +4,23 @@ Her birleştirmede (main'e giren her değişiklik) buraya en üste bir satır ek
 açıklama ve kullanıcıyı ilgilendiriyorsa ne yapması gerektiği. `bidr guncelle` güncellemeden sonra
 bu dosyanın yeni satırlarını gösterir. Bu dosyadan önceki geçmiş için `git log`.
 
+- 2026-11-26: Model cevabı hiçbir aşamada işi kilitlemez (canlı olay: describe "13 cevap geçersiz/şüpheli"):
+  transcribe'daki kural ortak oldu (`bidr/pipeline/cevap.py`) ve bütün ajan aşamalarına uygulandı (describe, kaba/ince
+  karar, belirsiz okuma, ad, ikinci arama, yazım, doğrulama, yönler, kör denetim). Geçersiz/şüpheli cevap kenara alınır
+  (`.red<n>.eski`), paket yeniden cevapsız (ajan üstüne yazmaz; panelin cevap koruması yeniden yazımı geri almaz);
+  aynı nedenle ikinci ret (ya da üçüncü ret) → elle bakılmalı (`work/<aşama>/ELLE-BAKILMALI.md`, `bidr next` uyarısı),
+  aşama ilerler. Anlamı aşamaya göre: betimleme yok sayılır (metin OCR'da); karar yok; ad kural adında; ikinci arama eşleşme eklemez; yazım/doğrulama/yön doğrulaması
+  bölümün kararına (panel karar ekranı), yön yazımı şablon yönergesiyle; kör denetim paketi denetlenemedi. Şema
+  enum'unda bilinmeyen değer `diger` seçeneği varsa `diger` olur (ör. `yer: pano`; özgün değer kayıtta). Describe
+  talimatında enum listeleri açık; yalnız talimatı değişen paketin verilmiş cevabı korunur. Deneme kaydı ws kökünde
+  `cevap-denemeleri.json` (transcribe'ın eski kaydı oraya taşınır). Yapılacak bir şey yok: sıradaki apply var olan
+  cevapları yeni kuralla işler. Görev sürümü artmadı, şemalar yalnız genişledi: verilmiş cevaplar geçerli kalır.
+  Bölümün kararı: elle bakılmalı belgeler (görsel okuma, betimleme, kaba/ince karar, ad, ikinci arama) review.xlsx
+  "İnceleme" sayfasının 1. bölümünde öbür öneriler gibi satır olur (satır kimliği `<doc_id>|elle:<aşama>`; panelde
+  İncelemeniz); KARARINIZ Kabul = modelin okuduğunu kullan (yalnız şüpheli okuma/betimleme), Ret = taramadaki metinle /
+  model kararı olmadan kalsın. `bidr audit apply` kararı `work/<aşama>/elle-kararlar.jsonl`'e yazar; karar KESİNDİR:
+  belgenin içeriği değişmedikçe yeniden doğrulanmaz, sorulmaz (paket yenilense de). Karar verilmeyen belge raporu
+  durdurmaz (varsayılan: taramadaki metin). Komut satırı: `bidr elle liste|karar` (kararı yalnız kullanıcı verir).
 - 2026-11-26: Görsel okuma (transcribe) takılmaz (canlı olay): her yeri `[okunamadı]` olan cevap reddedilmez,
   "görselde metin yok" olarak normalleşir (`bos`, boş metin); sayfa başına isteğe bağlı `notlar` şemada (görev sürümü
   artmadı). Geçersiz/şüpheli cevap kenara alınır (`.red<n>.eski`), paket yeniden okunur; aynı nedenle ikinci ret

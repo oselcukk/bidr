@@ -73,9 +73,12 @@ def write_readme(d: Path, *, task: str, version: str, cmd: str, rule: str, patte
     return n
 
 
-def write_invalid(d: Path, task: str, items: dict[str, list[str]]) -> None:
+def write_invalid(d: Path, task: str, items: dict[str, list[str]], kenar: dict[str, dict] | None = None,
+                  ek: list[str] | None = None) -> None:
+    """GECERSIZ.md. `kenar`: kenara alınan cevaplar ({anahtar: {deneme, dosya}}; bidr/pipeline/cevap.py) —
+    satırın altına "kenara alındı, yeni cevap yaz" notu; `ek`: önceki denemelerden hâlâ bekleyenlerin satırları."""
     g = d / "GECERSIZ.md"
-    if not items:
+    if not items and not ek:
         if g.exists():
             g.unlink()
         return
@@ -83,4 +86,9 @@ def write_invalid(d: Path, task: str, items: dict[str, list[str]]) -> None:
     for k, errs in items.items():
         lines.append(f"- `{k}.json`:")
         lines += [f"  - {e}" for e in errs]
+        y = (kenar or {}).get(k)
+        if y and y.get("dosya"):
+            lines.append(f"  - (deneme {y.get('deneme', '?')}; cevap `{y['dosya']}` olarak kenara alındı: paket yeniden "
+                         f"cevap bekliyor, yeni `{k}.out.json` yaz)")
+    lines += ek or []
     g.write_text("\n".join(lines) + "\n", encoding="utf-8")

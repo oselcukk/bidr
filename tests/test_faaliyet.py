@@ -24,8 +24,12 @@ def test_schema_faaliyet_optional_and_validated():
     for t in ("2025-03-12", "2025-03", None):
         f = {"ad": "Kariyer Günü", "tarih": t, "asama": "duyuru"}
         assert validate_output(R.FINE, {**OK, "faaliyet": f})[0] is not None
+    # bilinmeyen aşama değeri `diger`e normalleşir (enum'da `diger` var; özgün değer notta: bidr/pipeline/cevap.py)
+    notlar: list = []
+    out, _ = validate_output(R.FINE, {**OK, "faaliyet": {"ad": "Kariyer Günü", "tarih": None, "asama": "yapildi"}},
+                             notlar=notlar)
+    assert out["faaliyet"]["asama"] == "diger" and notlar == [{"yol": "faaliyet/asama", "deger": "yapildi"}]
     bad = [{"ad": "Kariyer Günü", "tarih": "12.03.2025", "asama": "duyuru"},
-           {"ad": "Kariyer Günü", "tarih": None, "asama": "yapildi"},
            {"ad": "Kariyer Günü", "asama": "duyuru"},
            {"ad": "K", "tarih": None, "asama": "duyuru"},
            {"ad": "Kariyer Günü", "tarih": None, "asama": "duyuru", "yer": "amfi"}]

@@ -166,7 +166,10 @@ def test_full_pipeline_transitions_and_gates(kurulum, capsys):
     k = evaluate(ws).get("karar_kaba")
     assert k.durum == "bekliyor" and k.kim == "ajan" and k.ilerleme["gecersiz"] == 1
     assert main(["decide", "prepare", "-w", str(ws), "--stage", "fine"]) == GATE_EXIT
-    (ws / "work" / "coarse" / f"{ids[0]}.out.json").unlink()
+    # geçersiz cevap kenara alındı (bidr/pipeline/cevap.py): paket yeniden cevapsız, ajan üstüne yazmaz
+    assert not (ws / "work" / "coarse" / f"{ids[0]}.out.json").exists()
+    assert (ws / "work" / "coarse" / f"{ids[0]}.out.json.red1.eski").exists()
+    assert k.bekleyen == [ids[0]]
     _agent_answers(ws, "coarse")
     assert main(["decide", "apply", "-w", str(ws), "--stage", "coarse", "--model", "test-ajan"]) == 0
     d = _durum(ws)

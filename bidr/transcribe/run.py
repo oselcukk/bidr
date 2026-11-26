@@ -71,12 +71,16 @@ RENDERABLE = PDF_EXTS | DIRECT_IMG | CONVERT_IMG
 # Belirsiz turu (aşama belirsiz_okuma)
 BELIRSIZ = "belirsiz"
 BELIRSIZ_FILE = "belirsiz.json"   # work/transcribe/ altında: paketlenemeyen adaylar (neden)
-# Reddedilen cevaplar ve elle bakılacak belgeler
-DENEMELER = "denemeler.json"      # work/transcribe/ altında: {doc_id: {gorsel_sha, denemeler: [...]}}
-ELLE = "elle_bakilmali"           # transcribe.jsonl durum: iki denemede de aynı nedenle reddedildi
-ELLE_MD = "ELLE-BAKILMALI.md"
-AYNI_NEDEN_SINIRI = 2             # aynı nedenle bu kadar ret → elle bakılmalı
-DENEME_SINIRI = 3                 # nedeni ne olursa olsun bu kadar ret → elle bakılmalı (döngü yok)
+# Reddedilen cevaplar ve elle bakılacak belgeler: ortak kural bidr/pipeline/cevap.py (ws kökünde
+# cevap-denemeleri.json; 4ee6d1c'nin work/transcribe/denemeler.json'ı ilk yazımda oraya taşınır)
+from bidr.pipeline import cevap as CV  # noqa: E402
+
+DIZIN = "work/transcribe"
+DENEMELER = "denemeler.json"      # eski kayıt (work/transcribe/ altında; taşınır)
+ELLE = CV.ELLE                    # transcribe.jsonl durum: iki denemede de aynı nedenle reddedildi
+ELLE_MD = CV.ELLE_MD
+AYNI_NEDEN_SINIRI = CV.AYNI_NEDEN_SINIRI
+DENEME_SINIRI = CV.DENEME_SINIRI
 
 
 def work_dir(ws: Workspace) -> Path:
@@ -139,23 +143,8 @@ def elle_bakilmali(ws: Workspace, did: str, log: dict[str, dict]) -> bool:
         return False
 
 
-def load_denemeler(ws: Workspace) -> dict[str, dict]:
-    p = work_dir(ws) / DENEMELER
-    try:
-        return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
-    except (OSError, ValueError):
-        return {}
-
-
-def _save_denemeler(ws: Workspace, den: dict[str, dict]) -> None:
-    p = work_dir(ws) / DENEMELER
-    if not den:
-        if p.exists():
-            p.unlink()
-        return
-    tmp = p.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(dict(sorted(den.items())), ensure_ascii=False, indent=1), encoding="utf-8")
-    tmp.replace(p)
+def denemeler(ws: Workspace) -> CV.Denemeler:
+    return CV.Denemeler(ws.root, DIZIN)
 
 
 def is_done(ws: Workspace, did: str, log: dict[str, dict]) -> bool:
@@ -493,6 +482,7 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, all_low_quality: bo
     d = work_dir(ws)
     d.mkdir(parents=True, exist_ok=True)
     st = {"paket": 0, "yeni": 0, "zaten_tamam": 0, "atlandi": {}}
+    kesin = CV.Kesin(ws.root, "transcribe")
     if belirsiz:
         ids, st["secim"] = select_belirsiz(ws, max_pages=max_pages)
         st["secim"]["aday"] = len(ids)
@@ -504,6 +494,9 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, all_low_quality: bo
             if row is None:
                 raise Skip("envanterde_yok")
             if not redo and is_done(ws, did, log):
+                st["zaten_tamam"] += 1
+                continue
+            if not redo and kesin.get(did):     # bölümün kesin kararı: yeniden sorulmaz
                 st["zaten_tamam"] += 1
                 continue
             path = source_file(src_root, row, ws.root)
@@ -640,19 +633,6 @@ def _supheli_msg(c: dict) -> str:
             f"sözcük, {c['bulunan_sayi']}/{c['capa_sayi']} sayı)")
 
 
-def _restore_suspicious(pdir: Path, outp: Path, e: dict | None) -> bool:
-    """`--kabul-supheli`: son deneme şüpheli diye kenara alındıysa o cevap geri konur (uygulanır)."""
-    son = ((e or {}).get("denemeler") or [None])[-1]
-    if not son or son.get("neden") != "supheli" or not son.get("dosya"):
-        return False
-    src = pdir / son["dosya"]
-    if not src.is_file():
-        return False
-    src.replace(outp)
-    son["dosya"] = None
-    return True
-
-
 def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", accept_suspicious: bool = False,
           only: list[str] | None = None) -> dict:
     from bidr.llm import validate_output
@@ -662,14 +642,14 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", accept_suspicious
     fields, rows = read_inventory(ws)
     prim = _primary(rows)
     log = load_log(ws)
-    den = load_denemeler(ws)
+    den = denemeler(ws)
+    kesin = CV.Kesin(ws.root, "transcribe")
     ver = _task_version()
     st = {"islenen": 0, "degismedi": 0, "bekleyen": [], "gecersiz": {}, "supheli": {},
           "eski_surum": [], "tutarlilik": {}, "gecersiz_kilinan": {}, "metin_ayni": [],
-          "elle_bakilmali": {}, "yeniden": {}, "normallestirilen": []}
+          "elle_bakilmali": {}, "yeniden": {}, "normallestirilen": [], "enum_normallestirme": {}}
     changed: set[str] = set()
-    cekilen: set[str] = set()
-    log_dirty = den_dirty = False
+    log_dirty = False
     pkgs = sorted(p for p in d.glob("*/*.json")
                   if p.stem == p.parent.name and not p.name.endswith(".out.json")) if d.exists() else []
     for p in pkgs:
@@ -678,8 +658,11 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", accept_suspicious
         if only and did not in only:
             continue
         outp = p.parent / pkg["cikti_dosyasi"]
-        if not outp.exists() and accept_suspicious and _restore_suspicious(p.parent, outp, den.get(did)):
-            den_dirty = True
+        if (k := kesin.get(did)) and not (accept_suspicious and only):
+            st["elle_bakilmali"][did] = k    # bölümün kesin kararı: yeniden doğrulanmaz
+            continue
+        if not outp.exists() and accept_suspicious:
+            den.geri_koy(did, outp, "supheli")
         if not outp.exists():
             st["bekleyen"].append(did)
             continue
@@ -700,17 +683,10 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", accept_suspicious
         def reject(kod: str, errs: list[str], cons: dict | None = None) -> None:
             """Ret bir denemedir. Sınırın altındaysa cevap kenara alınır (paket yeniden cevap bekler);
             aynı nedenle AYNI_NEDEN_SINIRI (ya da toplam DENEME_SINIRI) ret → elle bakılmalı."""
-            nonlocal log_dirty, den_dirty, pkg
-            g = _gorsel_sha(p.parent, pkg["sayfalar"])
-            e = den.get(did)
-            if not e or e.get("gorsel_sha") != g:   # yeni görüntüler: sayaç baştan
-                e = den[did] = {"gorsel_sha": g, "denemeler": []}
-            e["denemeler"].append({"cevap_sha": out_sha, "neden": kod, "hatalar": errs, "model": model,
-                                   "zaman": time.strftime("%Y-%m-%dT%H:%M:%S"), "dosya": None})
-            den_dirty = True
-            n = len(e["denemeler"])
-            ayni = sum(1 for x in e["denemeler"] if x["neden"] == kod)
-            if ayni >= AYNI_NEDEN_SINIRI or n >= DENEME_SINIRI:
+            nonlocal log_dirty, pkg
+            r = den.reddet(did, outp, kod, errs, parmak=_gorsel_sha(p.parent, pkg["sayfalar"]), model=model)
+            n = r["deneme"]
+            if r["sonuc"] == ELLE:
                 rec = {"doc_id": did, "durum": ELLE, "neden": kod, "hatalar": errs, "deneme": n,
                        "gorev": {TASK: ver}, "model": model, "kip": "ajan", "istem_sha": pkg["istem_sha"],
                        "cikti_sha": out_sha, "sayfa": len(pkg["sayfalar"]),
@@ -721,21 +697,19 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", accept_suspicious
                 log_dirty = True
                 st["elle_bakilmali"][did] = rec
                 return
-            name = f"{outp.name}.red{n}.eski"
-            outp.replace(p.parent / name)
-            e["denemeler"][-1]["dosya"] = name
-            cekilen.add(did)
             pkg = _refresh_package(p, pkg)
-            st["yeniden"][did] = {"neden": kod, "deneme": n, "dosya": name}
+            st["yeniden"][did] = r
             if kod == "supheli":
                 st["supheli"][did] = cons
             else:
                 st["gecersiz"][did] = errs
 
-        out, errs = validate_output(TASK, raw)
+        out, errs, enum_not = CV.dogrula(validate_output, TASK, raw)
         if out is None:
             reject("sema", errs[:5])
             continue
+        if enum_not:
+            st["enum_normallestirme"][did] = enum_not
         norm = normalize_no_text(out)
         text, errs = assemble(out, len(pkg["sayfalar"]))
         if text is None:
@@ -756,9 +730,10 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", accept_suspicious
             reject("supheli", [_supheli_msg(cons)], cons)
             continue
         ek = {"normallestirme": "hepsi_okunamadi→bos"} if norm else {}
-        if (e := den.pop(did, None)) is not None:
-            den_dirty = True
-            ek["onceki_red"] = len(e.get("denemeler") or [])
+        if enum_not:
+            ek["enum_normallestirme"] = enum_not
+        if n_red := den.basarili(did):
+            ek["onceki_red"] = n_red
         tur = {"tur": pkg["tur"]} if pkg.get("tur") else {}
         cur_text = cur.read_text(encoding="utf-8", errors="replace") if cur.exists() else None
         if cur_text is not None and _norm(cur_text) == _norm(text):
@@ -803,12 +778,7 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", accept_suspicious
         write_inventory(ws, fields, rows)
     if changed or log_dirty:
         save_log(ws, log)
-    if den_dirty:
-        _save_denemeler(ws, den)
-    if cekilen:
-        # kenara alınan cevap parça bildirimindeki "önceden var olan cevap" değildir: geri konmasın
-        from bidr.pipeline.paralel import cevap_cekildi
-        cevap_cekildi(ws.root, "work/transcribe", cekilen)
+    den.kaydet()   # kenara alınan cevaplar parça bildiriminde "önceden var olan cevap" sayılmaz
     if changed:
         st["gecersiz_kilinan"] = invalidate_downstream(ws, changed)
     st["degisen"] = sorted(changed)
@@ -816,28 +786,23 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", accept_suspicious
     return st
 
 
-def _write_report(d: Path, st: dict, den: dict | None = None, log: dict | None = None,
+def _write_report(d: Path, st: dict, den: CV.Denemeler | None = None, log: dict | None = None,
                   bekleyen: set[str] = frozenset()) -> None:
     if not d.exists():
         return
     lines = ["# Yeniden yapılacak (transcribe)", ""]
 
     def kenar(did: str) -> str:
-        y = st["yeniden"].get(did)
-        return (f" (deneme {y['deneme']}; cevap `{did}/{y['dosya']}` olarak kenara alındı: paket yeniden "
-                f"cevap bekliyor, görüntüyü yeniden oku ve yeni `{did}.out.json` yaz)") if y else ""
+        return CV.kenar_notu(st["yeniden"].get(did), did, klasor=True)
     for did, errs in st["gecersiz"].items():
         lines.append(f"- `{did}/{did}.json` — geçersiz cevap: " + "; ".join(errs) + kenar(did))
     for did, c in st["supheli"].items():
         lines.append(f"- `{did}/{did}.json` — şüpheli: {_supheli_msg(c)}{kenar(did)}. Görüntüyü yeniden oku; "
                      f"yazdığın doğruysa `apply --kabul-supheli` (kenara alınan son cevabı uygular).")
     # önceki apply'larda reddedilip hâlâ yeni cevap bekleyenler: gerekçe ajana kaybolmasın
-    for did in sorted(bekleyen):
-        son = (((den or {}).get(did) or {}).get("denemeler") or [None])[-1]
-        if son and son.get("dosya") and did not in st["gecersiz"] and did not in st["supheli"]:
-            tur = "şüpheli" if son["neden"] == "supheli" else "geçersiz cevap"
-            lines.append(f"- `{did}/{did}.json` — {tur} (önceki deneme, `{did}/{son['dosya']}`): "
-                         + "; ".join(son.get("hatalar") or []) + f". Yeni `{did}.out.json` bekleniyor.")
+    if den is not None:
+        lines += CV.onceki_red_satirlari(den, bekleyen, set(st["gecersiz"]) | set(st["supheli"]),
+                                         lambda k: f"`{k}/{k}.json`", klasor=True)
     g = d / "GECERSIZ.md"
     if len(lines) > 2:
         g.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -851,9 +816,8 @@ def _write_report(d: Path, st: dict, den: dict | None = None, log: dict | None =
                "metni değişmedi (OCR metni kullanılıyor). Görüntüye bakıp okuma doğruysa şüpheli için "
                "`bidr transcribe apply -w <ws> --kabul-supheli --only <doc_id>`, değilse doğru cevabı "
                "`<doc_id>/<doc_id>.out.json`'a yazıp apply.", ""]
-        neden = {"supheli": "şüpheli (OCR'la örtüşme düşük)", "sema": "şemaya uymuyor", "yapi": "sayfa yapısı"}
         for did, r in elle:
-            rep.append(f"- `{did}` — elle bakılmalı: {neden.get(r.get('neden'), r.get('neden'))}, "
+            rep.append(f"- `{did}` — elle bakılmalı: {CV.neden_metni(r.get('neden'))}, "
                        f"{r.get('deneme')} deneme: " + "; ".join(r.get("hatalar") or []))
         e.write_text("\n".join(rep) + "\n", encoding="utf-8")
     elif e.exists():

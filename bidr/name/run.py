@@ -37,6 +37,7 @@ from .ground import _pages, coded_compilation, grounding, page_codes, quote_part
 from .resolve import NAMES, decision_name, load_names, part_grounding, upsert
 
 TASK = "name_evidence"
+DIZIN = "work/name"
 NAME_CHARS = 2500        # belge metni bütçesi (baş ağırlıklı)
 QUOTE_CHARS = 200
 MAX_MATCH = 6
@@ -49,7 +50,9 @@ Her `<doc_id>.json` bir iş paketidir: belgeye kanıt dosyası adı ver. Sağlay
 1. Paketi oku; `istem` görevin tamamıdır, `sema` cevabın şemasıdır.
 2. Cevabı YALNIZ JSON olarak aynı klasörde `<doc_id>.out.json`'a yaz.
 3. Bitince: `bidr name apply -w <çalışma klasörü> --model <ajan/model adı>`.
-   Reddedilen adlar `GECERSIZ.md`'de; düzeltip yeniden apply.
+   Reddedilen cevap kenara alınır (`.red<n>.eski`), gerekçesi `GECERSIZ.md`'de; o paket
+   yeniden cevapsızdır: yeni `<doc_id>.out.json` yaz (var olanın üstüne yazma). Aynı nedenle
+   ikinci kez reddedilen belge yeniden istenmez (`ELLE-BAKILMALI.md`): kural adında kalır.
 
 Bekleyen paket: {n}
 """
@@ -361,13 +364,16 @@ def _pending(d: Path) -> int:
 
 def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", only: list[str] | None = None,
           validate=None) -> dict:
+    from bidr.pipeline import cevap as CV
     if validate is None:
         from bidr.llm import validate_output as validate
     ws = Workspace(ws_root)
     d = work_dir(ws)
+    den = CV.Denemeler(ws.root, DIZIN)
+    kesin = CV.Kesin(ws.root, "name")
     ver = task_version()
     st = {"islenen": 0, "degismedi": 0, "bekleyen": [], "gecersiz": {}, "reddedilen": {}, "eski_surum": [],
-          "dogrulanmali": {}, "parca": {}, "parca_not": {}}
+          "dogrulanmali": {}, "parca": {}, "parca_not": {}, "elle_bakilmali": {}, "yeniden": {}}
     have = load_names(ws.root)
     dp = ws.root / "decisions.jsonl"
     recs = {r["doc_id"]: r for r in read_jsonl(dp) if r.get("doc_id")} if dp.exists() else {}
@@ -386,14 +392,28 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", only: list[str] |
             st["eski_surum"].append(did)
             continue
         raw = outp.read_text(encoding="utf-8")
-        out, errs = validate(TASK, raw)
-        if out is None:
-            st["gecersiz"][did] = errs[:5]
+        if el := (kesin.get(did) or den.elle_ayni(did, CV.sha(raw), pkg["istem_sha"])):
+            st["elle_bakilmali"][did] = el     # karar verilmiş (kural adında kalır): aynı cevap yeniden denenmez
             continue
-        ad, errs, notes = check_name_noted(out.get("kanit_adi"))
+        out, errs, enum_not = CV.dogrula(validate, TASK, raw)
+        kod = "sema"
+        if out is not None:
+            ad, errs, notes = check_name_noted(out.get("kanit_adi"))
+            kod = "ad"
         if errs:
-            st["reddedilen"][did] = {"oneri": out.get("kanit_adi"), "neden": errs}
+            # ret bir denemedir: cevap kenara alınır, paket yeniden cevap bekler; aynı nedenle ikinci ret →
+            # elle bakılmalı (belge kural adında kalır)
+            r = den.reddet(did, outp, kod, [str(e) for e in errs][:5], parmak=pkg["istem_sha"], model=model)
+            if r["sonuc"] == CV.ELLE:
+                st["elle_bakilmali"][did] = den.elle(did)
+            elif kod == "sema":
+                st["gecersiz"][did] = errs[:5]
+            else:
+                st["reddedilen"][did] = {"oneri": out.get("kanit_adi"), "neden": errs}
+            if r["sonuc"] != CV.ELLE:
+                st["yeniden"][did] = r
             continue
+        den.basarili(did)
         rec = {"doc_id": did, "ad": ad, "kaynak": "model", "model": model, "gorev": {TASK: ver},
                "istem_sha": pkg["istem_sha"], "cevap_sha": _sha(raw)[:16],
                "gerekce": out.get("gerekce", "")}
@@ -425,13 +445,18 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", only: list[str] |
     if new:
         upsert(ws.root / NAMES, new)
         save_derleme_cache(ws, cache)
+    den.kaydet()
     lines = [f"# Yeniden yapılacak ({TASK})", ""]
     for did, errs in st["gecersiz"].items():
-        lines.append(f"- `{did}.json` — geçersiz cevap: " + "; ".join(errs))
+        lines.append(f"- `{did}.json` — geçersiz cevap: " + "; ".join(errs)
+                     + CV.kenar_notu(st["yeniden"].get(did), did))
     for did, x in st["reddedilen"].items():
         lines.append(f"- `{did}.json` — ad reddedildi ({', '.join(x['neden'])}): "
                      + json.dumps(x["oneri"], ensure_ascii=False)
-                     + f". Kişi adı/unvan/e-posta yok; 3-7 sözcük; yasaklı karakter yok ({YASAKLI_GOSTERIM}).")
+                     + f". Kişi adı/unvan/e-posta yok; 3-7 sözcük; yasaklı karakter yok ({YASAKLI_GOSTERIM})."
+                     + CV.kenar_notu(st["yeniden"].get(did), did))
+    lines += CV.onceki_red_satirlari(den, st["bekleyen"], set(st["gecersiz"]) | set(st["reddedilen"]),
+                                     lambda k: f"`{k}.json`")
     if st["dogrulanmali"]:
         lines += ["", "## Kabul edildi, doğrulanmalı (ad belgede dayanaksız ya da başka parçayı anlatıyor)", ""]
         for did, x in st["dogrulanmali"].items():
@@ -444,5 +469,7 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", only: list[str] |
             g.write_text("\n".join(lines) + "\n", encoding="utf-8")
         elif g.exists():
             g.unlink()
+    CV.elle_raporu(d, den, TASK, "Bu belgeler model adı almadı: kanıt adı kuraldan (ya da incelemedeki insan "
+                   "adından) gelir.", "Doğru ad `name/<doc_id>.out.json`'a yazılıp apply ile işlenebilir.")
     st["dosya"] = str(ws.root / NAMES)
     return st
