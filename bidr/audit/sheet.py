@@ -394,6 +394,6 @@ def read_review(path: Path) -> tuple[dict, list[dict]]:
             r = {k: ("" if v is None else v) for k, v in r.items()}
             rows.append(r)
         from . import sade
-        return meta, sade.merge_rows(rows, sade.read_inceleme(wb))
+        return meta, sade.merge_rows(rows, sade.read_inceleme(wb), gruplar=sade.read_gruplar(wb))
     finally:
         wb.close()

@@ -18,8 +18,8 @@ belge kurum/fakülte geneli sayılır; model `belirsiz` dediyse ve metinde birim
 (başka birim adı, kurum geneli ifade yoksa) `kendi` önerilir. Fakülteye göre maddeli kurum
 düzenlemesinde başka fakültenin maddesinden alıntı sayılmaz (`madde_baska_fakulte`).
 Ölçüt düzeyi (`criterion`): iyileştirme–izleme bağı (K→Ö), özgünlük (bağımsız kanıt ve
-süreklilik), fotoğrafın sahnesine göre değeri (etkinlik sayılır; mekân/altyapı planla; belirsiz
-destekleyici), uygulamanın yayılımı (OD3 kısmi).
+süreklilik), fotoğrafın sahnesine göre değeri (etkinlik sayılır; mekân/altyapı planla, fiziksel koşullar
+maddesinde (B.3.1, B.3.3) sayılır; belirsiz destekleyici), uygulamanın yayılımı (OD3 kısmi).
 """
 from __future__ import annotations
 
@@ -39,6 +39,15 @@ FAALIYET = "faaliyetler.json"
 DUYURU_TURLER = frozenset({"etkinlik_duyurusu"})
 FORM_TURLER = frozenset({"anket_formu", "form_belgesi"})
 FOTOGRAF_TURLER = frozenset({"fotograf"})
+# Fiziksel koşullar maddeleri (kullanıcı kararı 2026-11-26): mekân/altyapı fotoğrafı süreç uygulaması değildir
+# ama bu maddelerin konusunun (olanağın kendisinin) kanıtıdır; burada `fotograf_mekan` düşürmesi uygulanmaz.
+# Kaynak: kılavuz (yokak-2025) B.3.1 "Sınıf, laboratuvar, kütüphane, stüdyo … uygun nitelik ve niceliktedir,
+# erişilebilirdir", B.3.3 "Tesis ve altyapılar (… teknoloji donanımlı çalışma alanları …) ihtiyaca uygun nitelik ve
+# niceliktedir, erişilebilirdir"; istenen kanıt önerisi "Bölüm olanakları: fiziki imkânları gösteren fotoğraflar"
+# → B.3.1/1, B.3.3/2, B.3.3/3 (bidr/data/ihtiyac_oneriler.yaml).
+FIZIKSEL_OLCUTLER = frozenset({"B.3.1", "B.3.3"})
+# Betimleme bloğunda modelin kendi anlatımı (görüntüde okunan yazı değil): fotoğrafta başka birim tanısına girmez
+BETIMLEME_ANLATIM = re.compile(r"^(?:Görsel türü|Sahne|Etkinlik|Kalabalık|Nesneler|Betimleme):")
 # Bilgisiz ekran denetimi yalnız bu türlerde (gerçek içerikli madde listelerini korumak için).
 EKRAN_TURLER = frozenset({"web_sayfasi", "ekran_goruntusu", "form_belgesi", "bilinmiyor", "", None})
 # Bölümün kendi tanıtım/öz beyan metinleri: özgünlüğün bağımsız kanıtı olamaz.
@@ -341,7 +350,13 @@ class Savunma:
         t = f(raw)
         stem = _stem(self.birim) if self.birim else ""
         birim_var = self.own_name(t)
-        others = (other_units(raw, self.birim_adlari, stem) - set(self.resmi_adlar)) if stem else set()
+        # Fotoğraf (kullanıcı kararı 2026-11-26: yüklenen fotoğraf bölümün sayılır): başka birim tanısı yalnız
+        # görüntüde okunan yazıdan ("Görünen yazı" satırları, betimleme öncesi metin); modelin betimleme anlatımı
+        # (sahne, etkinlik, betimleme) belgenin kendi yazısı değildir, aitlik sorusu doğurmaz.
+        kaynak = raw
+        if (self.docs.get(did) or {}).get("doc_type") in FOTOGRAF_TURLER:
+            kaynak = "\n".join(x for x in raw.splitlines() if not BETIMLEME_ANLATIM.match(x.strip()))
+        others = (other_units(kaynak, self.birim_adlari, stem) - set(self.resmi_adlar)) if stem else set()
         lines = [x.strip() for x in raw.splitlines() if x.strip()]
         madde = [x for x in lines if re.match(r"^([-*•]|\w[\w.-]*\.(example|com|org|edu|tr)\b|https?://)", x)]
         kisa = [x for x in madde if len(x.split()) <= 7]
@@ -736,13 +751,18 @@ class Savunma:
         # (`fotograf_destekleyici`). Fotoğraf: tür `fotograf` ya da görselli belgede alıntının bir
         # fotoğraf altyazısı olması. İnceleme `kabul`ü eşleşmeyi onaylar, fotoğrafı uygulama kanıtına
         # çevirmez; yalnız insanın aşamayı yerleştirdiği `duzelt` aşar.
+        # Fiziksel koşullar maddesinde (FIZIKSEL_OLCUTLER; kullanıcı kararı 2026-11-26) mekân/altyapı fotoğrafı
+        # maddenin konusunu (olanağın varlığı ve kullanıma sunulması) gösterir: düşürülmez, bilgi işareti
+        # `fotograf_fiziksel` taşır.
         u = [r for r in rows if r["sayilir"] and r["etkin_asama"] == "uygula" and not r["zayif"]]
         if u and all(self.photo_row(r) for r in u):
             for r in u:
                 if r.get("karar") == "duzelt":
                     continue
                 sh = sahne(r.get("alinti") or "", self.text(r["doc_id"]))
-                if sh == "mekan":
+                if sh == "mekan" and r["olcut"] in FIZIKSEL_OLCUTLER:
+                    r["flags"].append("fotograf_fiziksel")
+                elif sh == "mekan":
                     drop(r, "fotograf_mekan", "mekân/altyapı fotoğrafı süreç uygulaması kanıtlamaz: planla",
                          to="planla")
                 elif sh != "etkinlik":
@@ -807,6 +827,16 @@ class Savunma:
             r["isaretler"] = ", ".join(dict.fromkeys(r["flags"]))
         return {"notlar": notlar, "uygulama_yayilimi": yayilim,
                 "dongu_kapali": kapali, "dongu_ayri": ayri}
+
+    def foto_turu(self, r: dict) -> str:
+        """İnceleme gruplaması için: satırın belgesi gerçek fotoğraf mı (model türü `fotograf` VE dosya görsel;
+        `bidr.faaliyet.dosya.fotograf_mi` ile aynı tanım; taranmış yazılı belge `bilinmiyor`/başka tür olur, grup
+        dışında kalır) ve sahnesi: "etkinlik" | "mekan" | "diger"; fotoğraf değilse ""."""
+        from bidr.faaliyet.dosya import gorsel_mi
+        if r.get("belge_turu") not in FOTOGRAF_TURLER or not gorsel_mi(r.get("kaynak_dosya")):
+            return ""
+        sh = sahne(r.get("alinti") or "", self.text(r["doc_id"]))
+        return sh if sh in ("etkinlik", "mekan") else "diger"
 
     def photo_row(self, r: dict) -> bool:
         """Satırın uygulama dayanağı fotoğraf mı: tür `fotograf` (incelemede kabul edilmiş uzun metin

@@ -305,7 +305,19 @@ anlaşılmıyordu. Dosya açılınca yalnız şu sayfalar görünür; teknik say
   - Bölümler: **1. Bakmanız gerekenler** (kararsız ve: düşük güven, bakılmalı işaret, OD4/5'e
     yükselten, sayılmayan, birim onayı bekleyen; ya da yeniden bakılacak — açık sarı), **2. Sorunsuz
     görünenler** (kararsız, işaretsiz), **3. Daha önce karar verdikleriniz**. Sıralama: bölüm, yeniden
-    bak, birim onayı, madde kodu.
+    bak, birim onayı, madde kodu. Bilgi işaretleri (`sade.BILGI`, ör. `etkinlik_gerceklesti`, `elle_eslesme`,
+    varsayımlar) satırı "Bakın" yapmaz.
+  - **Fotoğraflar** (kullanıcı kararı 2026-11-26; 1. bölümden hemen sonra, gizli bölüm değeri 4): kararsız
+    **gerçek fotoğraf** satırları (model türü `fotograf` ve dosya görsel: `bidr.faaliyet.dosya.fotograf_mi` ile aynı
+    tanım; taranmış yazılı belge `bilinmiyor`/başka tür olur, tek tek kalır) madde başına, sahneye göre ayrı
+    gruplarda (etkinlik · mekân/altyapı · diğer; `savunma.foto_turu`) toplanır. Düşük güven, betimleme alıntısı ve
+    sahne değerlendirmesi (`fotograf_mekan`, `fotograf_destekleyici`, `fotograf_fiziksel`) tek başına "Bakın"
+    yapmaz (`sade.FOTO_YUMUSAK`); gerçek sorunu olan fotoğraf (görünen yazıda başka birim adı, önceki yıl, sürüm,
+    OD4+ …) ve yeniden bakılacak satır 1. bölümde tek tek kalır. Grup başlığının gizli kimliği `#foto:<madde>:<tür>`
+    (üyelerin gizli `grup` sütununda aynı), KARARINIZ: `Hepsini kabul` (o grubun boş satırları `kabul`, Not:
+    "toplu kabul (fotoğraflar)") ya da `Tek tek bakacağım` (değişiklik yok). Boş grup = kararsız satırlar (bugünkü
+    varsayılan: düşük güvenli satır OD'ye katılmaz, rapor durmaz). Tek tek verilen karar grup kararından önce gelir;
+    geçersiz grup değeri grubun kararsız satırlarını geçersiz yapar.
   - **Toplu kabul**: 2. bölüm başlık satırının KARARINIZ hücresinde `Hepsini kabul` seçilirse o
     bölümde kararı boş kalan satırlar `kabul` olur (Not: "toplu kabul (sade tablo, 2. bölüm)").
     Seçilmezse boş satır karar bekler: boş = kabul varsayılmaz, çünkü `apply` inceleme sırasında
@@ -612,7 +624,11 @@ tavanındadır (üst birim istisnası değişmedi). Birim adı yoksa bugünkü t
   (seminer, konuşma, sunum, toplantı, tören, katılımcılar/öğrenciler, ziyaret…) gerçekleşmeyi
   kanıtlar, satır `uygula` olarak sayılır; **mekân/altyapı/ekipman** (derslik, laboratuvar,
   koridor, tuvalet, cihaz…; "toplantı salonu" gibi mekân adları dahil) süreç uygulaması değildir,
-  satır `planla` olarak kalır (`fotograf_mekan`); **belirsiz** sahne destekleyicidir, sayılmaz
+  satır `planla` olarak kalır (`fotograf_mekan`) — yalnız **fiziksel koşullar maddelerinde** (B.3.1 Öğrenme
+  ortam ve kaynakları, B.3.3 Tesis ve altyapılar; `savunma.FIZIKSEL_OLCUTLER`, kaynak: kılavuz açıklamaları ve
+  `ihtiyac_oneriler.yaml` "Bölüm olanakları: fiziki imkânları gösteren fotoğraflar" → B.3.1/1, B.3.3/2, B.3.3/3)
+  mekân fotoğrafı maddenin konusunu gösterir, düşürülmez (bilgi `fotograf_fiziksel`; kullanıcı kararı 2026-11-26);
+  **belirsiz** sahne destekleyicidir, sayılmaz
   (`fotograf_destekleyici`), OD3 belge ister. Sahne önce alıntıyı içeren `bidr describe` bloğundan
   (yalnız "Görsel türü: fotoğraf"; "Etkinlik" alanı dolu ve duyuru/afiş değil → etkinlik; yoksa
   sahne/betimleme sözcükleri, "Kalabalık: kişi yok" etkinliği dışlar), alıntı bir bloğa ait değilse
@@ -624,6 +640,10 @@ tavanındadır (üst birim istisnası değişmedi). Birim adı yoksa bugünkü t
   eşleşmeyi onaylar, fotoğrafı uygulama kanıtına çevirmez; yalnız `duzelt` (insan aşamayı
   yerleştirdi) aşar. `fotograf` türünde incelemede kabul edilmiş uzun metin alıntısı (afiş/katalog
   yazısı) fotoğraf sayılmaz.
+- **Yüklenen fotoğraf bölümün sayılır** (kullanıcı kararı 2026-11-26). Gerçek fotoğrafta model kurum/fakülte geneli
+  dese de ilişki `kendi` gibi işlenir (decide'ın OD2 tavanı kalkar, bilgi `birim_varsayildi`); başka birim tanısı
+  (açık çelişki, "Bölümünüze ait mi") yalnız görüntüde okunan yazıdan ("Görünen yazı" satırları, betimleme öncesi
+  metin) yapılır, modelin betimleme anlatımı (Sahne, Etkinlik, Betimleme …) aitlik sorusu doğurmaz.
 - **OD5: sürdürülebilir ve örnek gösterilebilir.** Özgün (Z) satırı ancak (1) bağımsızsa —
   üst birimin bu birimi konu alan belgesi ya da öz beyan türü olmayan (web sayfası, faaliyet/öz
   değerlendirme raporu, duyuru, BİDR dışında) bir belgede dış tanınma ifadesi ("iyi uygulama",

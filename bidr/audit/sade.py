@@ -5,8 +5,11 @@ dosyada kalır; `bidr audit apply` ikisini birlikte okur. Komisyon üyesi yalnı
 
 - **İnceleme**: satır = bir öneri ("şu belge şu maddeye kanıt"). Düz Türkçe sütunlar ve tek karar
   sütunu (KARARINIZ: Kabul · Kabul — etkinlik yapıldı · Ret · Ret — başka maddenin konusu · Başka
-  maddeye taşı · Başka maddeye taşı — etkinlik yapıldı). Üç bölüm: (1) bakılması gerekenler, (2) sorunsuz görünenler (bölüm
-  başlığındaki "Hepsini kabul" boş satırları kabul eder), (3) daha önce karar verilenler.
+  maddeye taşı · Başka maddeye taşı — etkinlik yapıldı). Dört bölüm: (1) bakılması gerekenler,
+  (F) fotoğraflar (madde başına, etkinlik/mekân ayrı gruplar; grup başlığındaki "Hepsini kabul" o grubun boş
+  satırlarını kabul eder, "Tek tek bakacağım" bir şey değiştirmez), (2) sorunsuz görünenler (bölüm başlığındaki
+  "Hepsini kabul" boş satırları kabul eder), (3) daha önce karar verilenler. Fotoğraf bölümünün gizli "bölüm"
+  değeri 4'tür (eski okuyucular 1–3 bilir).
 - **Bölümünüze ait mi?**: birimi belirsiz ya da başka birime ait sayılan belgeler (Evet/Hayır…).
 - **Maddeler**: önerilen olgunluk düzeyi ve komisyonun onayladığı düzey.
 - **Nasıl doldurulur**.
@@ -40,6 +43,25 @@ TASIMA_SECENEK = (K_TASI, K_TASI_ETK, K_RET_BASKA)
 TOPLU = "Hepsini kabul"                         # 2. bölüm başlığındaki toplu kabul seçeneği
 TOPLU_NOT = "toplu kabul (sade tablo, 2. bölüm)"
 TOPLU_SATIR = "#toplu"                          # gizli kimlik sütununda bölüm başlığı işareti
+# Fotoğraf grupları (kullanıcı kararı 2026-11-26): gerçek fotoğraflar (model türü `fotograf`, dosya görsel) madde
+# başına, sahneye göre (etkinlik / mekân / diğer) bir kez sorulur. Grup başlığının gizli kimliği `#foto:<madde>:<tür>`
+# ("|" içermez: satır okuyucuları atlar), üye satırların gizli "grup" sütununda aynı kimlik. Grubun KARARINIZ'ı:
+# "Hepsini kabul" (boş satırlar kabul) | "Tek tek bakacağım" (değişiklik yok; satırlar tek tek). Boş = karar yok
+# (bugünkü kararsız satırlar gibi). Gerçek sorunu olan fotoğraf (başka birim adı, önceki yıl, sürüm, …) 1. bölümde
+# tek tek kalır.
+FOTO_ON = "#foto:"
+FOTO_KABUL, FOTO_TEK = TOPLU, "Tek tek bakacağım"
+FOTO_SECENEK = (FOTO_KABUL, FOTO_TEK)
+FOTO_NOT = "toplu kabul (fotoğraflar)"
+FOTO_BOLUM = 4
+FOTO_TUR_AD = {"etkinlik": "Etkinlik fotoğrafları", "mekan": "Mekân/altyapı fotoğrafları", "diger": "Fotoğraflar"}
+# fotoğrafta tek başına "Bakın" yapmayan işaretler: görselin betimlemeden alıntılanması fotoğrafın doğasıdır; sahne
+# değerlendirmesi (mekân → plan, sahnesi belirsiz → destekleyici, fiziksel koşul maddesi) bilgi olarak kalır
+FOTO_YUMUSAK = frozenset({"betimleme_alintisi", "fotograf_mekan", "fotograf_destekleyici", "fotograf_fiziksel"})
+
+
+def foto_grup(olcut: str, tur: str) -> str:
+    return f"{FOTO_ON}{olcut}:{tur}"
 
 # Bölümünüze ait mi? seçenekleri → birim ilişkisi
 BIRIM_CEVAP = {
@@ -119,6 +141,7 @@ DIKKAT = {
                        "Uygunsa Kabul.", True),
     "fotograf_destekleyici": ("Fotoğraf tek başına kanıt sayılmadı. Bir etkinliğin fotoğrafıysa "
                               "\"Kabul — etkinlik yapıldı\", değilse Ret.", True),
+    "fotograf_fiziksel": ("Mekân/altyapı fotoğrafı: bu madde bölümün olanaklarını sorduğu için kanıt sayıldı.", False),
     "haric_tur": ("Bu belge raporun kendisi ya da taslağı; kanıt olamaz. Ret seçin.", True),
     "bilgisiz_ekran": ("Bilgi içermeyen bir ekran/bağlantı sayfası; kanıt sayılmadı. Genelde Ret.", True),
     "madde_baska_birim": ("Alıntı başka bir birimin maddesinden; kanıt sayılmadı. Genelde Ret.", True),
@@ -140,7 +163,10 @@ BILGI = frozenset({"belge_notu", "insan_reddetti", "insan_duzeltti", "birim_aitl
                    # tarihli kural/plan yürürlükte; denetlenebilsin diye iç işarette kalır, baktırmaz.
                    # `guncellik_dogrulanmali` yalnız revizyonla birlikte gelir (soruyu o işaretin metni sorar).
                    "birim_varsayildi", "tarih_varsayildi", "yururluk_varsayildi", "birim_iliskisi_kod_bilgi",
-                   "guncellik_dogrulanmali"})
+                   "guncellik_dogrulanmali",
+                   # kodun bilgisi: afiş, gerçekleşmesi aynı ölçütte kabul edilmiş etkinliğin (uygula sayıldı); bölümün
+                   # elle eklediği eşleşme (karar zaten bölümün)
+                   "etkinlik_gerceklesti", "elle_eslesme"})
 
 F_HEAD = PatternFill("solid", fgColor="DDE7F0")
 F_BOLUM = PatternFill("solid", fgColor="C9D6E3")
@@ -177,8 +203,9 @@ INC_COLS = [
     ("bolum", "bölüm", 4, False),                # gizli
     ("yazilan", "yazılan", 10, False),           # gizli
     ("kopyalar", "kopyaları", 10, False),        # gizli: kopyaların belge kimlikleri ("; ")
+    ("grup", "grup", 10, False),                 # gizli: fotoğraf grubu kimliği (#foto:<madde>:<tür>)
 ]
-INC_GIZLI = ("satir", "bolum", "yazilan", "kopyalar")
+INC_GIZLI = ("satir", "bolum", "yazilan", "kopyalar", "grup")
 # görünen başlık (5. satır) ve sütun türü: m = ana, u = kullanıcının, d = katlanabilir ayrıntı, h = gizli
 INC_GORUNEN = {
     "madde": ("Madde", "m"), "belge": ("Önerilen belge", "m"), "alinti_kisa": ("Belgede ne yazıyor (kısa)", "m"),
@@ -190,7 +217,7 @@ INC_GORUNEN = {
     "klasor": ("Klasör · kaynak dosya", "d"), "baglanti": ("Bağlantı", "d"),
     "isaretler": ("İşaretler (iç kod)", "d"), "sira": ("Sıra", "d"), "bolum_ad": ("Bölüm", "d"),
     "satir": ("satır kimliği", "h"), "bolum": ("bölüm", "h"), "yazilan": ("yazılan", "h"),
-    "kopyalar": ("kopyaları", "h"),
+    "kopyalar": ("kopyaları", "h"), "grup": ("grup", "h"),
 }
 INC_BASLIK_SATIRI, INC_ILK = 5, 6               # görünen başlık satırı; ilk veri satırı
 # (anahtar, başlık, genişlik, kullanıcı)
@@ -219,7 +246,10 @@ NASIL = [
     "Bu dosya, aracın bulduğu kanıt önerilerini onaylamanız içindir. \"İnceleme\" sayfasında her satır "
     "bir öneridir: \"şu belge, şu maddeye kanıttır\". Belgeyi klasörde \"Önerilen belge\" sütunundaki adla bulabilirsiniz "
     "(klasörü sağdaki ayrıntı sütunlarında; ayrıntılar üstteki [–] ile katlanır).",
-    "\"İnceleme\" üç bölümdür. 1) Bakmanız gerekenler: \"Dikkat\" sütununu okuyun ve KARARINIZ'ı seçin. "
+    "\"İnceleme\" bölümleri: 1) Bakmanız gerekenler: \"Dikkat\" sütununu okuyun ve KARARINIZ'ı seçin. "
+    "Fotoğraflar: yüklediğiniz fotoğraflar madde madde gruplanır (etkinlik ve mekân fotoğrafları ayrı); grubun başlık "
+    "satırındaki KARARINIZ hücresinde \"Hepsini kabul\" seçerseniz o grupta boş bıraktığınız satırlar kabul sayılır; "
+    "\"Tek tek bakacağım\" derseniz satırlarda tek tek seçin. "
     "2) Sorunsuz görünenler: bölüm başlığındaki KARARINIZ hücresinde \"Hepsini kabul\" seçerseniz boş "
     "bıraktığınız satırlar kabul sayılır; itiraz ettiğiniz satırı tek tek değiştirin. 3) Daha önce karar "
     "verdikleriniz: değiştirmek istemedikçe dokunmayın.",
@@ -311,7 +341,8 @@ def _row(sh, cols, vals: dict, fill: PatternFill | None = None) -> int:
     row = [vals.get(k, "") for k, _, _, _ in cols]
     sh.append(row)
     n = sh.max_row
-    widths = [w if k not in ("satir", "bolum", "yazilan", "doc_id", "olcut", "kopyalar") else 0 for k, _, w, _ in cols]
+    widths = [w if k not in ("satir", "bolum", "yazilan", "doc_id", "olcut", "kopyalar", "grup") else 0
+              for k, _, w, _ in cols]
     sh.row_dimensions[n].height = _yukseklik(row, widths)
     for i, (k, _, _, user) in enumerate(cols, 1):
         c = sh.cell(row=n, column=i)
@@ -348,8 +379,9 @@ def karar_etiketi(r: dict) -> tuple[str, str]:
         (y or o if tasi else "")
 
 
-def dikkat(r: dict, yil: int | None) -> tuple[list[str], bool]:
-    """(düz Türkçe uyarılar, bakılmalı mı)."""
+def dikkat(r: dict, yil: int | None, foto: bool = False) -> tuple[list[str], bool]:
+    """(düz Türkçe uyarılar, bakılmalı mı). `foto`: fotoğraf grubu için; düşük güven ve `FOTO_YUMUSAK` işaretleri
+    satırı bakılmalı yapmaz, betimleme ve düşük güven uyarısı yazılmaz (grup bir kez sorulur)."""
     out, bak = [], False
     ys = str(yil) if yil else "rapor"
     byil = f" ({r['donem_yil']})" if r.get("donem_yil") else ""
@@ -357,16 +389,18 @@ def dikkat(r: dict, yil: int | None) -> tuple[list[str], bool]:
     if r.get("birim_onay_bekliyor") and "birim_onay_bekliyor" not in fl:
         fl.insert(0, "birim_onay_bekliyor")
     for f in fl:
+        if foto and f == "betimleme_alintisi":
+            continue
         if f in DIKKAT:
             t, b = DIKKAT[f]
             out.append(t.format(yil=ys, byil=byil, ayni=", ".join(r.get("ayni_alinti_olcut") or []) or "başka bir",
                                 anilan=", ".join(r.get("ret_anilan") or []) or "başka madde"))
-            bak = bak or b
+            bak = bak or (b and not (foto and f in FOTO_YUMUSAK))
         elif f not in BILGI:
             bak = True
     if "madde_baska_fakulte" in fl and "madde_baska_birim" not in fl:
         out.append(DIKKAT["madde_baska_birim"][0])
-    if r.get("zayif"):
+    if r.get("zayif") and not foto:
         out.insert(0, "Model bu eşleşmeden emin değil. Alıntı maddeye gerçekten uyuyorsa Kabul, uymuyorsa Ret.")
         bak = True
     if r.get("od") and r["od"] >= 4 and r.get("sayilir") and not r.get("karar"):
@@ -399,10 +433,16 @@ def _yeniden(r: dict) -> str:
 
 
 def inceleme_satirlari(a, cs) -> list[dict]:
-    """Sade satırlar (bölüm sırasıyla). bolum: 1 bakılacak, 2 sorunsuz, 3 karar verilmiş."""
+    """Sade satırlar (bölüm sırasıyla). bolum: 1 bakılacak, 2 sorunsuz, 3 karar verilmiş, 4 fotoğraf grubu
+    (`FOTO_BOLUM`: karar verilmemiş gerçek fotoğraf, gerçek sorunu yok; `grup` = `#foto:<madde>:<tür>`)."""
     out = []
     for r in a.rows:
         uy, bak = dikkat(r, a.donem)
+        grup = ""
+        if r.get("foto") and not r.get("karar") and not r.get("yeniden_bak"):
+            uy_f, bak_f = dikkat(r, a.donem, foto=True)
+            if not bak_f:          # yalnız fotoğrafın doğasından gelen uyarılar: grupta bir kez sorulur
+                uy, bak, grup = uy_f, False, foto_grup(r.get("olcut_model") or r["olcut"], r["foto"])
         if r.get("kopya_dosyalari"):
             # bilgi (baktırmaz): aynı belgenin kopyaları tek satırda; panel "Dikkat"i olduğu gibi gösterir.
             # "Belge" hücresine yazılmaz: panel ikinci satırı "(klasör: …)" diye ayrıştırır.
@@ -413,7 +453,7 @@ def inceleme_satirlari(a, cs) -> list[dict]:
         if rb:
             uy.insert(0, _yeniden(r))
             lab, dog = "", ""
-        bolum = 1 if (rb or (bak and not r.get("karar"))) else 3 if r.get("karar") else 2
+        bolum = FOTO_BOLUM if grup else 1 if (rb or (bak and not r.get("karar"))) else 3 if r.get("karar") else 2
         om = r.get("olcut_model") or r["olcut"]
         ym = r.get("yuva_model") or r["yuva"]
         try:
@@ -434,6 +474,7 @@ def inceleme_satirlari(a, cs) -> list[dict]:
                                                  if asama and etkin and asama != etkin else "")
         out.append({
             "satir": r["satir"], "bolum": bolum, "_rb": rb, "_birim": bool(r.get("birim_onay_bekliyor")),
+            "grup": grup, "_zayif": bool(r.get("zayif")),
             "_olcut": om, "madde": madde_ad(cs, om), "belge": belge, "ad": r.get("kanit_adi") or "",
             "alinti": alinti, "alinti_kisa": _kisalt(alinti, 220),
             "neden": neden.strip(), "dikkat": "\n".join(f"• {x}" for x in uy) if len(uy) > 1 else "".join(uy),
@@ -449,7 +490,7 @@ def inceleme_satirlari(a, cs) -> list[dict]:
         })
     from bidr.criteria.model import id_key
     # bölüm içinde madde madde (madde ayraç satırları); madde içinde önce yeniden bakılacak, birimi belirsiz
-    out.sort(key=lambda x: (x["bolum"], id_key(x["_olcut"]), not x["_rb"], not x["_birim"], x["satir"]))
+    out.sort(key=lambda x: (x["bolum"], id_key(x["_olcut"]), x["grup"], not x["_rb"], not x["_birim"], x["satir"]))
     # elle bakılmalı belgeler: bölümün sonunda, kendi ayraçlarıyla (madde yok)
     el = elle_satirlari(getattr(a, "elle", None) or [])
     out = sorted(out + el, key=lambda x: x["bolum"])          # kararlı sıralama: bölüm içinde öncekiler önce
@@ -489,7 +530,7 @@ def elle_satirlari(items: list[dict]) -> list[dict]:
             "dogru": "", "not": (k.get("not") or "") if k else "", "kopyalar": "", "kilavuz": "",
             "klasor": " · ".join(v for v in (dosya.rsplit("/", 1)[0] if "/" in dosya else "", dosya) if v),
             "baglanti": "", "guven": "", "asama": "", "od": "", "donem": "",
-            "tur_birim": f"adım: {x['asama']}", "isaretler": f"elle_bakilmali:{x.get('neden')}",
+            "tur_birim": f"adım: {x['asama']}", "isaretler": f"elle_bakilmali:{x.get('neden')}", "grup": "",
             "bolum_ad": BOLUM_AD[bolum]})
     return out
 
@@ -519,7 +560,8 @@ def read_elle(path) -> dict[tuple[str, str], tuple[str, str]]:
 
 
 GUVEN = {"yuksek": "yüksek", "orta": "orta", "dusuk": "düşük"}
-BOLUM_AD = {1: "1 · bakılacak", 2: "2 · sorunsuz görünen", 3: "3 · önceden karar verilmiş"}
+BOLUM_AD = {1: "1 · bakılacak", 2: "2 · sorunsuz görünen", 3: "3 · önceden karar verilmiş", FOTO_BOLUM: "fotoğraflar"}
+BOLUM_SIRA = (1, FOTO_BOLUM, 2, 3)           # sayfadaki sıra: fotoğraflar bakılacaklardan hemen sonra
 ALAN_AD = {"A": "A — Liderlik, Yönetişim ve Kalite", "B": "B — Eğitim ve Öğretim",
            "C": "C — Araştırma ve Geliştirme", "D": "D — Toplumsal Katkı", "E": "E — Uluslararasılaşma",
            "Z": "Aracın okuyamadığı ya da karar veremediği belgeler"}
@@ -536,7 +578,10 @@ BOLUM_BASLIK = {
     2: "2. SORUNSUZ GÖRÜNENLER ({n} satır) — Hepsini kabul etmek için bu satırın KARARINIZ hücresinde "
        "\"Hepsini kabul\" seçin; itiraz ettiğiniz satırı tek tek değiştirin (tek tek seçtiğiniz karar geçerlidir).",
     3: "3. DAHA ÖNCE KARAR VERDİKLERİNİZ ({n} satır) — Değiştirmek istemedikçe dokunmayın.",
+    FOTO_BOLUM: "FOTOĞRAFLAR ({n} fotoğraf) — Madde başına bir kez: grup satırının KARARINIZ hücresinde \"Hepsini kabul\" "
+                "ya da \"Tek tek bakacağım\" seçin. Tek tek seçtiğiniz karar her zaman geçerlidir.",
 }
+FOTO_BASLIK = "   {ad} · {n} fotoğraf{zayif}   ◀ KARARINIZ: \"Hepsini kabul\" ya da \"Tek tek bakacağım\""
 
 
 def write_sade(wb, a, cs) -> None:
@@ -569,7 +614,8 @@ def _write_inceleme(wb, a, cs) -> None:
     """İnceleme sayfası: 1. satır (gizli) okuyucu başlıkları (`INC_COLS`; `_read` bunları okur, panel ilk 5 satırda
     "satır kimliği"ni arar); 2 renk açıklaması; 3 formüllü özet; 4 kısa not; 5 görünen başlık. Bölüm başlıkları,
     alan (A/B/C/D) ve madde ayraç satırlarında "satır kimliği" boştur (okuyucular atlar); 2. bölüm başlığı
-    `#toplu` kimliğini ve toplu kabul hücresini taşır."""
+    `#toplu` kimliğini ve toplu kabul hücresini taşır; fotoğraf grubu başlığı `#foto:<madde>:<tür>` kimliğini ve grubun
+    karar hücresini taşır (bölüm sırası `BOLUM_SIRA`)."""
     from openpyxl.formatting.rule import Rule
     from openpyxl.styles.differential import DifferentialStyle
     L = get_column_letter
@@ -609,6 +655,8 @@ def _write_inceleme(wb, a, cs) -> None:
                         showErrorMessage=True, errorTitle="KARARINIZ", error="Listeden seçin.")
     dv.promptTitle, dv.prompt, dv.showInputMessage = "Kararınız", "Kabul · etkinlik yapıldı · Ret · Başka maddeye taşı", True
     dvt = DataValidation(type="list", formula1=f'"{TOPLU}"', allow_blank=True)
+    dvf = DataValidation(type="list", formula1='"' + ",".join(FOTO_SECENEK) + '"', allow_blank=True,
+                         showErrorMessage=True, errorTitle="Fotoğraflar", error="Listeden seçin.")
     ls = wb.create_sheet(SH_LISTE)
     for s_ in cs.sub_criteria:
         ls.append([madde_ad(cs, s_.id)])
@@ -616,13 +664,15 @@ def _write_inceleme(wb, a, cs) -> None:
     # Doğru madde: madde listesi (açılır), elle yazmak da serbest (ör. yuva: B.3.2/3)
     dvm = DataValidation(type="list", formula1=f"'{SH_LISTE}'!$A$1:$A${max(1, ls.max_row)}",
                          allow_blank=True, showErrorMessage=False)
-    for d in (dv, dvt, dvm):
+    for d in (dv, dvt, dvm, dvf):
         sh.add_data_validation(d)
 
     def satir_say(v, w):
         return 1 if v in (None, "") else sum(max(1, -(-len(p) // max(1, int(w * 1.1)))) for p in str(v).split("\n"))
 
     r, toplu_r, sira = ILK, None, 0
+    gc = L(ix["grup"])
+    foto_r: dict[str, int] = {}                  # grup kimliği → başlık satırı
 
     def ayrac(text, f, font, h=20):
         nonlocal r
@@ -635,7 +685,7 @@ def _write_inceleme(wb, a, cs) -> None:
         r += 1
 
     rows = inceleme_satirlari(a, cs)
-    for b in (1, 2, 3):
+    for b in BOLUM_SIRA:
         grp = [x for x in rows if x["bolum"] == b]
         if not grp:
             continue
@@ -646,7 +696,7 @@ def _write_inceleme(wb, a, cs) -> None:
         c = sh.cell(r, 1, BOLUM_BASLIK[b].format(n=len(grp)))
         c.font = Font(name=FONT, b=True, sz=12, color="FFFFFF")
         c.alignment = Alignment(wrap_text=True, vertical="center")
-        sh.row_dimensions[r].height = 36 if b == 2 else 22
+        sh.row_dimensions[r].height = 36 if b in (2, FOTO_BOLUM) else 22
         if b == 2:
             sh.cell(r, ix["satir"], TOPLU_SATIR)
             t = sh.cell(r, ix["karar"])
@@ -655,7 +705,7 @@ def _write_inceleme(wb, a, cs) -> None:
             toplu_r = r
             sh.cell(r, ix["dogru"], "◀ toplu kabul").font = Font(name=FONT, i=True, sz=9, color="FFFFFF")
         r += 1
-        alan = madde = None
+        alan = madde = grup = None
         for x in grp:
             kod = x["_olcut"]
             if kod[:1] != alan:
@@ -664,7 +714,22 @@ def _write_inceleme(wb, a, cs) -> None:
             if kod != madde:
                 madde = kod
                 n = sum(1 for y in grp if y["_olcut"] == kod)
-                ayrac(f"   {x['madde']}   ·   {n} öneri", fill("EDF1F9"), Font(name=FONT, b=True, sz=10, color="1F3864"), 18)
+                ayrac(f"   {x['madde']}   ·   {n} " + ("fotoğraf" if b == FOTO_BOLUM else "öneri"), fill("EDF1F9"),
+                      Font(name=FONT, b=True, sz=10, color="1F3864"), 18)
+            if b == FOTO_BOLUM and x["grup"] != grup:
+                grup = x["grup"]
+                uy_ = [y for y in grp if y["grup"] == grup]
+                nz = sum(1 for y in uy_ if y["_zayif"])
+                ayrac(FOTO_BASLIK.format(ad=FOTO_TUR_AD.get(grup.rsplit(":", 1)[-1], "Fotoğraflar"), n=len(uy_),
+                                         zayif=f" (modelin emin olmadığı {nz})" if nz else ""),
+                      fill("FFF2CC"), Font(name=FONT, b=True, sz=10, color="7F6000"), 20)
+                hr = r - 1
+                sh.cell(hr, ix["satir"], grup)
+                sh.cell(hr, ix["bolum"], FOTO_BOLUM)
+                t = sh.cell(hr, ix["karar"])
+                t.fill, t.border, t.font = fill(R_BEKLER), kutu, Font(name=FONT, b=True)
+                dvf.add(t.coordinate)
+                foto_r[grup] = hr
             sira += 1
             x["sira"] = sira
             for i, (k, _, w, _) in enumerate(INC_COLS, 1):
@@ -704,6 +769,9 @@ def _write_inceleme(wb, a, cs) -> None:
     if toplu_r:
         cf.add(rng, Rule(type="expression", dxf=dx(R_TOPLU), stopIfTrue=True,
                          formula=[f'AND({K}="",${bc}{ILK}=2,${kc}${toplu_r}="{TOPLU}")']))
+    for g_, hr in foto_r.items():        # grubun "Hepsini kabul"ü: boş satırlar toplu kabul rengini alır
+        cf.add(rng, Rule(type="expression", dxf=dx(R_TOPLU), stopIfTrue=True,
+                         formula=[f'AND({K}="",${gc}{ILK}="{g_}",${kc}${hr}="{FOTO_KABUL}")']))
     sh["A2"] = "Renkler (karar seçince satır boyanır):"
     sh["A2"].font = Font(name=FONT, b=True, sz=10)
     for i, (ad, renk) in enumerate((("Kabul", R_KABUL), ("Ret", R_RET), ("Başka maddeye taşı", R_TASI),
@@ -716,6 +784,9 @@ def _write_inceleme(wb, a, cs) -> None:
     S_, KR, BR = f"${sc}${ILK}:${sc}${son}", f"${kc}${ILK}:${kc}${son}", f"${bc}${ILK}:${bc}${son}"
     top, ver = f'COUNTIF({S_},"*|*")', f'COUNTIFS({S_},"*|*",{KR},"?*")'
     tk = f'IF(${kc}${toplu_r}="{TOPLU}",COUNTIFS({S_},"*|*",{BR},2,{KR},""),0)' if toplu_r else "0"
+    GR = f"${gc}${ILK}:${gc}${son}"
+    tk = "+".join([f"({tk})", *(f'IF(${kc}${hr}="{FOTO_KABUL}",COUNTIFS({GR},"{g_}",{KR},""),0)'
+                                for g_, hr in foto_r.items())])
     sh["A3"] = (f'="Toplam öneri: "&{top}&"     Karar verilen: "&{ver}&"     Kalan: "&({top}-{ver}-{tk})'
                 f'&"     ·     Kabul: "&COUNTIF({KR},"Kabul*")&"   Ret: "&COUNTIF({KR},"Ret")'
                 f'&"   Taşı: "&COUNTIF({KR},"Başka*")&"   Toplu kabulle: "&{tk}')
@@ -841,6 +912,21 @@ def read_inceleme(wb) -> tuple[dict[str, dict], bool] | None:
     return rows, toplu
 
 
+def read_gruplar(wb) -> dict[str, str]:
+    """Fotoğraf grubu kararları: {grup kimliği: "kabul" | "tek" | geçersiz ham değer}; boş hücre yazılmaz."""
+    if SH_INC not in wb.sheetnames:
+        return {}
+    out = {}
+    for r in _read(wb, SH_INC, INC_COLS):
+        sid = _s(r.get("satir"))
+        if not sid.startswith(FOTO_ON):
+            continue
+        k = _key(r.get("karar"))
+        if k:
+            out[sid] = "kabul" if k == _key(FOTO_KABUL) else "tek" if k == _key(FOTO_TEK) else _s(r.get("karar"))
+    return out
+
+
 def _madde_kodu(v: str) -> str:
     m = re.search(r"\b([A-Za-z])\s*\.\s*(\d+)\s*\.\s*(\d+)(?:\s*/\s*(\d+))?", v or "")
     if not m:
@@ -898,10 +984,14 @@ def _karar_hucreleri(s: dict, xr: dict, cs, tags) -> dict:
     return {"sade_hata": f"KARARINIZ '{_s(s.get('karar'))}' geçersiz ({' · '.join(KARAR_SECENEK)})"}
 
 
-def merge_rows(xrows: list[dict], sade: tuple[dict[str, dict], bool] | None, cs=None) -> list[dict]:
-    """Teknik satırların üstüne sade sayfadaki değişiklikleri yazar (yerinde; listeyi döndürür)."""
+def merge_rows(xrows: list[dict], sade: tuple[dict[str, dict], bool] | None, cs=None,
+               gruplar: dict[str, str] | None = None) -> list[dict]:
+    """Teknik satırların üstüne sade sayfadaki değişiklikleri yazar (yerinde; listeyi döndürür). `gruplar`
+    (`read_gruplar`): "Hepsini kabul" denmiş fotoğraf grubunun boş satırları kabul olur; geçersiz grup değeri
+    o grubun satırlarına `sade_hata` yazar."""
     if not sade:
         return xrows
+    gruplar = gruplar or {}
     srows, toplu = sade
     from bidr.criteria.slots import load_tags
     tags = None
@@ -935,6 +1025,12 @@ def merge_rows(xrows: list[dict], sade: tuple[dict[str, dict], bool] | None, cs=
                 and not xr.get("sade_hata")):
             xr["karar"] = "kabul"
             xr["not"] = " ".join(x for x in (_s(xr.get("not")), TOPLU_NOT) if x)
+        g = gruplar.get(_s(s.get("grup"))) if _s(s.get("grup")) else None
+        if g not in (None, "kabul", "tek") and not _s(xr.get("karar")) and not xr.get("sade_hata"):
+            xr["sade_hata"] = (f"Fotoğraf grubu kararı '{g}' geçersiz ({' · '.join(FOTO_SECENEK)})")
+        elif g == "kabul" and not _s(xr.get("karar")) and not rb and not xr.get("sade_hata"):
+            xr["karar"] = "kabul"
+            xr["not"] = " ".join(x for x in (_s(xr.get("not")), FOTO_NOT) if x)
     return xrows
 
 

@@ -66,8 +66,11 @@ KARAR_ISARETLERI = frozenset({"insan_reddetti", "insan_duzeltti", "birim_aitligi
 # Yalnız bilgi veren işaretler: eklenmeleri verilmiş kararı "yeniden bak"a düşürmez. `belge_notu`: karar
 # yükleyenin notu görülerek verildi (not çelişkisi `not_uyusmuyor` ise yeniden baktırır).
 # Varsayım işaretleri (`birim_varsayildi`, `tarih_varsayildi`, `yururluk_varsayildi`) de yalnız bilgidir.
+# `etkinlik_gerceklesti` (afiş, gerçekleşme aynı ölçütte kabul edildi: uygula) ve `fotograf_fiziksel` (fiziksel koşullar
+# maddesinde mekân fotoğrafı) kodun bilgisidir; aşama değişirse o ayrıca "yeniden bak" doğurur.
 BILGI_ISARETLERI = frozenset({"belge_notu", "ret_hedefsiz_dustu", "birim_varsayildi", "tarih_varsayildi",
-                              "yururluk_varsayildi", "birim_iliskisi_kod_bilgi"})
+                              "yururluk_varsayildi", "birim_iliskisi_kod_bilgi", "etkinlik_gerceklesti",
+                              "fotograf_fiziksel"})
 
 # Ret notunda başka ölçüt anılıyor mu ("B.2.2 konusu", "önceki turda B.3.5 olarak", "başka madde").
 # Hedef verilmeden reddedilip belge hiçbir satırda sayılmıyorsa belge rapor dışına düşmüştür:
@@ -227,6 +230,12 @@ def _lift(m: dict, tags: dict) -> dict:
     return {**m, "od_kabul": od, "denetim": den}
 
 
+def foto_belge(docs: dict, inv: dict, did: str) -> bool:
+    """Gerçek fotoğraf: model türü `fotograf` ve dosya görsel (`bidr.faaliyet.dosya.fotograf_mi`)."""
+    from bidr.faaliyet.dosya import gorsel_mi
+    return (docs.get(did) or {}).get("doc_type") == "fotograf" and gorsel_mi(inv.get(did))
+
+
 def unit_conflict(rec: dict) -> bool:
     """Birimi belirsiz belgede birime sorulacak açık çelişki var mı (build `birim_celiski`). Çelişkisiz
     belirsiz belge yükleyen birimin sayılır (`birim_varsayildi`)."""
@@ -260,6 +269,8 @@ def _row(cs, tags, docs, rec, m, dec, rule: D.Rule | None = None, name: tuple | 
         # `kendi`si varsayımla aynı (bilgi); kod `kendi`yi belirsize düşürdüyse çelişki (birim_onay_bekliyor)
         model_ = (rec.get("ince") or {}).get("birim_iliskisi_model")
         flags.append("birim_iliskisi_kod" if model_ in GENEL_ILISKI else "birim_iliskisi_kod_bilgi")
+    if (rec.get("ince") or {}).get("foto_birim"):
+        flags.append("birim_varsayildi")             # fotoğraf bölümün sayıldı (model kurum/fakülte geneli demişti)
     if dec:
         karar = dec["karar"]
     if dec and dec.get("elle"):
@@ -829,6 +840,17 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
                 if old_rel in GENEL_ILISKI and ov[0] not in GENEL_ILISKI and not tur:
                     # model kurum/fakülte geneli dedi, kod birime özgü buldu: decide'ın tavanı kalkar
                     rec = orig = {**rec, "eslesmeler": [_lift(m, tags) for m in rec.get("eslesmeler") or []]}
+        if not pin and record_unit_relation(rec) in GENEL_ILISKI and foto_belge(docs, inv, rec["doc_id"]):
+            # Yüklenen fotoğraf bölümün sayılır (kullanıcı kararı 2026-11-26): fotoğraf bir düzenleme değildir;
+            # model kurum/fakülte geneli dese de `kendi` gibi işlenir, decide'ın OD2 tavanı kalkar (bilgi işareti
+            # `birim_varsayildi`; "bölümünüzü kapsıyor mu" sorulmaz). Açık başka birim adı (görünen yazıda) yine sorulur.
+            ince = {k: v for k, v in (rec.get("ince") or {}).items() if k != "birim_iliskisi_kod"}
+            ince["birim_iliskisi_model"] = ince.get("birim_iliskisi_model") or record_unit_relation(rec)
+            ince["birim_iliskisi"] = "kendi"
+            ince["foto_birim"] = True
+            rec = orig = {**rec, "ince": ince, "eslesmeler": [_lift(m, tags) for m in rec.get("eslesmeler") or []]}
+            if sv.other_unit(rec["doc_id"]):
+                ince["birim_iliskisi"] = BIRIM_BELIRSIZ      # aşağıda açık çelişki olarak sorulur
         if not pin and record_unit_relation(rec) == BIRIM_BELIRSIZ:
             # Yükleyen birimin belgesi varsayılır (kullanıcı kararı 2026-11-26): birimi belirsiz belge, metinde
             # birimin sinyali yokken başka birim adı geçmedikçe (ya da kod modelin `kendi`sini bu yüzden
@@ -902,6 +924,8 @@ def build(ws_root: Path, *, out: Path | None = None, profile: str | None = None,
     rows.sort(key=lambda r: (id_key(r["olcut"]), r["yuva"], r["belge"]))
     for x in (*rows, *sayfa):  # komisyon kontrolü: tablodan özgün dosyaya gidebilsin
         x["kaynak_dosya"] = inv.get(x.get("doc_id") or "", "")
+    for r in rows:             # gerçek fotoğraf ve sahnesi: İnceleme'de madde başına gruplanır (sade.py)
+        r["foto"] = sv.foto_turu(r)
     crits = [_criterion(cs, tags, c, by_c.get(c, []), allowed, rule, cyc[c], ek[c], od_kar.get(c)) for c in ids]
     sayfa.sort(key=lambda x: x["belge"])
     from .elle import elle_sha
