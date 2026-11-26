@@ -202,7 +202,13 @@ Komisyon dışındaki okur (bölüm sekreterliği, komisyon başkanları, öğre
   bu maddeyle eşlenmiş belgeleri** (bkz. 6): `• Belge adı (kod)` (yalnız yönetmelik, yönerge, usul-esas, iş akışı ve anket; form girmez; bağlantı yalnız `kurum-katalog.json`'da), en çok 10 (fazlası
   "… ve N belgesi daha"); geçen yılki raporda kullanılan kurum belgesi katalogda bulunursa (2)'de
   ayrıca yazılmaz, bağlantısıyla burada ilk sıradadır. Kimden: `ihtiyac_sorumlular.yaml` belge türü
-  satırı (yönetmelik, yönerge, usul_esas, iş akışı, form, anket).
+  satırı (yönetmelik, yönerge, usul_esas, iş akışı, form, anket). Bölümün bu maddede kendi kanıtı yoksa
+  (kurum/fakülte geneli düzenleme dışında sayılan belge yok; `kendi_kanit_sayisi`) kurumun eşlenmiş düzenlemesi
+  (yönetmelik, yönerge, usul-esas, iş akışı; en çok 3) **İstenen belgeler**'de adıyla istenir: "Kurumun «Ad (kod)»
+  belgesi (tür) ve bölümün bu düzenlemeyi nasıl uyguladığını gösteren bir örnek" (kullanıcı kararı 2026-11-26
+  20:35; ortak havuz yok; olgunluk sınırı gerekçeye yazılmaz); kurum listesinde yinelenmez. Bölümün kendi
+  yönetimini soran maddelerde (audit `savunma.BOLUM_SURECI_MADDELERI`) iş akışı ne istenir ne listelenir: orada
+  başka idari birimin iç süreci kanıt sayılmaz.
 - **Neden gerekli**: hazır cümleler — "Bu madde için şu an rapora konabilecek hiç belge yok. En çok
   işe yarayacak belge … gösteren bir belgedir: tek başına maddenin olgunluk düzeyini 1'den 3'e
   çıkarır.", "Bu maddede N belge var ama … gösteren belge yok …", "Geçen yılki raporda bu maddede

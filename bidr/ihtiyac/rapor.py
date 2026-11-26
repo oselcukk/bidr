@@ -290,6 +290,8 @@ def olcut_satirlari(criteria: list[dict], rows: list[dict], kapsam: dict[str, st
         satirlar.append({
             "olcut": cid, "baslik": c.get("baslik") or "", "kapsam": kps, "od": od,
             "zincir": c.get("zincir_kisa") or "", "kanit_sayisi": len(adlar), "kanitlar": adlar,
+            # bölümün kendi kanıtı: kurum/fakülte geneli düzenleme dışındaki sayılan belgeler
+            "kendi_kanit_sayisi": len({r["doc_id"] for r in kanitlar if "kurum_geneli" not in (r.get("flags") or [])}),
             "eksik_halkalar": [HALKA_AD[h] for h in eksik_next], "eksik_kod": eksik_next,
             "sonraki_od": nxt, "gereken": gereken,
             "karsiliksiz": [f"{it['kanit_adi']} ({(matches.get(it['id']) or {}).get('durum')})" for it in karsiliksiz],

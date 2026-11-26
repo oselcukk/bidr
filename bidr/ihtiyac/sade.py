@@ -45,6 +45,12 @@ ORNEK_ORTUSME_YAZILAN = 0.34
 _ORNEK_DOLGU = frozenset("ilgili iliskin vb vs ile olan olarak olmasi yapilmasi edilmesi gosteren belge belgeler "
                          "birim birimin birime bolum bolumun bolume ya da".split())
 KURUM_EN_COK = 10           # kurum belge kataloğundan madde sayısı (satır başına)
+# Kurum geneli belgeler eksik listesinden adıyla istenir (kullanıcı kararı 2026-11-26 20:35; ortak havuz yok): bölümün
+# bu maddede kendi kanıtı yoksa kurumun bu maddeyle eşlenmiş düzenlemesi (katalog) "İstenen belgeler"de adıyla
+# istenir (en çok `KURUM_ISTEK_EN_COK`). Bölümün kendi yönetimini soran maddelerde başka idari birimin iş akışı
+# istenmez (audit `savunma.BOLUM_SURECI_MADDELERI`; o belge orada kanıt sayılmaz).
+KURUM_ISTEK_EN_COK = 3
+KURUM_ISTEK_TURLER = ("yonetmelik", "yonerge", "usul_esas", "is_akisi")
 # Sade listeye giren kurum belgesi türleri: düzenlemeler ve iş akışları (form girmez; kullanıcı kararı)
 KURUM_TURLER = {"yonetmelik", "yonerge", "usul_esas", "mevzuat", "is_akisi", "anket"}
 KURUM_REF_TURLER = frozenset({"yonetmelik", "yonerge", "usul_esas", "is_akisi", "senato_karari", "anket_formu"})
@@ -530,14 +536,28 @@ def satirlar_kur(cs, tags, sor, talepler: list[dict], satirlar: list[dict], gece
                 n_orn += 1
                 orn_yazilan.add(o["id"])
         # 5. kurumun bu maddeyle ilgili belgeleri (katalog eşlemesi; geçen yıl kullanılanlar önce)
+        from bidr.audit.savunma import BOLUM_SURECI_MADDELERI
         kb = [o for o in {o["id"]: o for o in k_ref + k_by.get(cid, [])}.values()
-              if (o.get("tur") or "") in KURUM_TURLER]
+              if (o.get("tur") or "") in KURUM_TURLER
+              and not (o.get("tur") == "is_akisi" and cid in BOLUM_SURECI_MADDELERI)]
         if karsilama is not None:               # kurum belgesi dosyada (herhangi bir ölçütte) kabul edilmiş
             kalan = []
             for o in kb:
                 k = karsilama.kurum(o, cid)
                 if k:
                     karsilanan.append(f"«{madde_metni(o)}»: dosyada {k['metin']}")
+                else:
+                    kalan.append(o)
+            kb = kalan
+        if sat is not None and not sat.get("kendi_kanit_sayisi", sat.get("kanit_sayisi", 0)):
+            # bölümün kendi kanıtı yok: kurumun bu maddedeki düzenlemesi adıyla istenir (kurum listesinden çıkar)
+            n_ist, kalan = 0, []
+            for o in sorted(kb, key=lambda o: KURUM_ISTEK_TURLER.index(o["tur"]) if o.get("tur") in KURUM_ISTEK_TURLER
+                            else len(KURUM_ISTEK_TURLER)):
+                if n_ist < KURUM_ISTEK_EN_COK and o.get("tur") in KURUM_ISTEK_TURLER:
+                    n0 = len(maddeler)
+                    ekle(kurum_istegi(o), sor.kim(belge_turu=o.get("tur"), olcut=cid), "kurum_istek")
+                    n_ist += len(maddeler) > n0
                 else:
                     kalan.append(o)
             kb = kalan
@@ -594,6 +614,15 @@ def satirlar_kur(cs, tags, sor, talepler: list[dict], satirlar: list[dict], gece
         r["sira"] = i
         del r["_anahtar"]
     return out
+
+
+def kurum_istegi(o: dict) -> str:
+    """Kurumun düzenlemesini adıyla isteyen madde: belge adı (kod), türü ve bölümün uygulamasından bir örnek."""
+    from .katalog import TUR_AD
+    from .katalog_esle import madde_metni
+    tur = TUR_AD.get(o.get("tur") or "", "")
+    return (f"Kurumun «{madde_metni(o)}» belgesi{f' ({tur.lower()})' if tur else ''} ve bölümün bu düzenlemeyi "
+            "nasıl uyguladığını gösteren bir örnek")
 
 
 def _kapali_not(xs: list[dict]) -> str:

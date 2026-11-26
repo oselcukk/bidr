@@ -75,8 +75,9 @@ def test_b_baska_olcutte_kanit_olan_kurum_belgesi_istenmez(tmp_path):
     assert g["durum"] == VAR and g["karsilama"]["olcut"] == "A.3.4"
     assert g["karsilama"]["metin"] == "«Kurum Is Akislari Listesi» (A.3.4 ölçütünde)"
     r = _sade(res, "A.1.4")
-    kur = [m["metin"] for m in r["kurum"]]
-    assert kur == ["Sentetik Danismanlik Yonergesi (YO-0042)"]          # dosyada olan iş akışı listesi istenmez
+    # dosyada olan iş akışı listesi istenmez; A.1.4'te bölümün kendi kanıtı yok: yönerge adıyla istenir
+    kur = [m["metin"] for m in r["maddeler"] if m["tur"] == "kurum_istek"]
+    assert len(kur) == 1 and "«Sentetik Danismanlik Yonergesi (YO-0042)»" in kur[0] and not r["kurum"]
     assert any("Is Akislari Listesi" in x and "A.3.4 ölçütünde" in x for x in r["karsilanan"])
 
 
