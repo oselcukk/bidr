@@ -258,7 +258,8 @@ def _elle_paketli(ws: Workspace, dizin: str, d: Path, keys, rel) -> set[str]:
 
 
 def karar_tamam(c: Ctx) -> Check:
-    from bidr.decide.run import (COARSE, FINE, _section, input_fingerprint, load_decisions, load_restale,
+    from bidr.decide.parmak import uyumlu
+    from bidr.decide.run import (COARSE, FINE, _section, load_decisions, load_restale,
                                  load_unit_pins, pending_redecide, stage_done, stale_summary, task_version)
     stage = c.stage["sart"]["asama"]
     task = COARSE if stage == "coarse" else FINE
@@ -319,7 +320,7 @@ def karar_tamam(c: Ctx) -> Check:
     if not missing and any(_section(recs[x], stage).get("istem_sha") for x in done):
         # ajan kipi kayıtları: araç ya da girdiler son tam prepare'den sonra değiştiyse eskime hesaplanmadı
         h = load_restale(ws, stage)
-        if h is None or h.get("parmak") != input_fingerprint(ws, stage):
+        if h is None or not uyumlu(ws, stage, h.get("parmak")):
             return Check(kim=KOMUT, ilerleme=prog, uyarilar=uy, komutlar=[prep],
                          neden="eski olabilir (araç sürümü ya da girdiler değişti; son tam prepare'den sonra "
                                "görev/istem kodu, ölçüt verisi, text/, documents.jsonl, candidates.jsonl ya da "

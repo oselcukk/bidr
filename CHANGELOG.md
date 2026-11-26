@@ -4,6 +4,13 @@ Her birleştirmede (main'e giren her değişiklik) buraya en üste bir satır ek
 açıklama ve kullanıcıyı ilgilendiriyorsa ne yapması gerektiği. `bidr guncelle` güncellemeden sonra
 bu dosyanın yeni satırlarını gösterir. Bu dosyadan önceki geçmiş için `git log`.
 
+- 2026-11-26: Karar aşamalarının (kaba/ince) "eski olabilir" parmak izi kod dosyalarını sözdizimi olarak okur
+  (`bidr/decide/parmak.py`, iz `v2-…`): belge dizgesi, yorum ya da biçim düzenlemesi aşamaları artık eskitmez
+  (canlı olay: run.py'de yalnız açıklama değişti, karar_kaba "eski olabilir" deyip audit'i durdurdu). Görev/istem
+  metni, ölçüt/profil verisi ve çalışma alanı girdileri bayt olarak girmeye devam eder. Geçiş: eski biçimli iz
+  (önceki sürümün son tam prepare'i) dondurulmuş eski run.py (`parmak_eski/run-44c8add.py.gz`) ile birebir tutuyor ve
+  aradaki kod farkı davranışsızsa geçerli sayılır; bu sürüme geçmek tek başına bir aşamayı eskitmez, model işi
+  doğurmaz. Yapılacak bir şey yok; ilk tam prepare izi yeni biçimde yazar.
 - 2026-11-26: Model cevabı hiçbir aşamada işi kilitlemez (canlı olay: describe "13 cevap geçersiz/şüpheli"):
   transcribe'daki kural ortak oldu (`bidr/pipeline/cevap.py`) ve bütün ajan aşamalarına uygulandı (describe, kaba/ince
   karar, belirsiz okuma, ad, ikinci arama, yazım, doğrulama, yönler, kör denetim). Geçersiz/şüpheli cevap kenara alınır

@@ -863,7 +863,8 @@ def load_restale(ws: Workspace, stage: str) -> dict | None:
 
 
 # Paket istemini belirleyen kod ve veri (`input_fingerprint`). Biri değişince son prepare'in eskime
-# hesabı geçersizdir: `bidr status` prepare'i (onaysız, model işi yok) yeniden ister.
+# hesabı geçersizdir: `bidr status` prepare'i (onaysız, model işi yok) yeniden ister. Kod dosyaları
+# sözdizimi olarak girer (belge dizgesi/yorum değişikliği eskitmez; bidr/decide/parmak.py).
 _PKG = Path(__file__).resolve().parents[1]
 FINGERPRINT_CODE = (_PKG / "decide" / "run.py", _PKG / "decide" / "prompt.py",
                     _PKG / "candidates" / "komisyon.py", _PKG / "candidates" / "text.py",
@@ -872,32 +873,12 @@ FINGERPRINT_DATA = (_PKG / "data" / "criteria", _PKG / "data" / "profiles")
 
 
 def input_fingerprint(ws: Workspace, stage: str) -> str:
-    """Aşamanın paket girdilerinin parmak izi: görev dosyaları, istemi kuran kod, ölçüt/profil
-    verisi ve çalışma alanının girdileri (text/, documents.jsonl, candidates.jsonl, insan birim
-    kararları, belge notları, birim bilgisi). Salt okunur, model çağırmaz."""
-    h = hashlib.sha256()
-
-    def add(p: Path) -> None:
-        if p.is_file():
-            h.update(p.name.encode("utf-8") + b"\0" + p.read_bytes() + b"\0")
-
-    for p in sorted((TASKS_DIR / STAGES[stage]).rglob("*")):
-        add(p)
-    for p in FINGERPRINT_CODE:
-        add(p)
-    for d in FINGERPRINT_DATA:
-        for p in sorted(d.rglob("*")):
-            add(p)
-    for name in ("documents.jsonl", "candidates.jsonl", BIRIM_KARARLARI, N.NOTLAR):
-        add(ws.root / name)
-    h.update(json.dumps(P.unit_info(ws.root), ensure_ascii=False, sort_keys=True).encode("utf-8"))
-    if stage == "fine":                     # etkinlik dosyası ipucu başka belgelerin kararından kurulur
-        from bidr.faaliyet import dosya as ED
-        h.update(ED.parmak(ED.yukle(ws.root)).encode("utf-8"))
-    if ws.text_dir.exists():
-        for p in sorted(ws.text_dir.glob("*.txt")):
-            add(p)
-    return h.hexdigest()[:16]
+    """Aşamanın paket girdilerinin parmak izi (`v2-…`): görev dosyaları, istemi kuran kodun sözdizimi,
+    ölçüt/profil verisi ve çalışma alanının girdileri (text/, documents.jsonl, candidates.jsonl, insan
+    birim kararları, belge notları, birim bilgisi). Salt okunur, model çağırmaz. Eski (şema 1) izle
+    uyum: bidr/decide/parmak.py `uyumlu`."""
+    from .parmak import hesapla
+    return hesapla(ws, stage)
 
 
 def stale_summary(ws: Workspace, stage: str, recs: dict | None = None) -> dict[str, str]:
