@@ -678,6 +678,33 @@ def test_init_preparers(kurulum, capsys):
     assert cfg["rapor"]["sablon"] == "/yok/sablon.docx"
 
 
+def test_init_approver(kurulum, capsys):
+    """`onaylayan` (birim amiri, tek kişi) config.yaml `rapor.onaylayan`'a gider; boş alanlı kayıt verilmemiş
+    sayılır; cevapta yoksa korunur; değişiklik onay ister; liste verilirse hata."""
+    src, ws, ans = kurulum
+    a = yaml.safe_load(ans.read_text(encoding="utf-8"))
+    amir = {"unvan": "Prof. Dr.", "ad_soyad": "Amir Örnek", "eposta": "amir@example.edu", "gorev": "Bölüm Başkanı"}
+    for bad in ([amir], {"unvan": "Dr.", "eposta": "x"}, {**amir, "telefon": "1"}):
+        ans.write_text(yaml.safe_dump({**a, "onaylayan": bad}, allow_unicode=True), encoding="utf-8")
+        assert main(["init", "-w", str(ws), "--answers", str(ans)]) == 2
+        assert "onaylayan" in capsys.readouterr().err
+    ans.write_text(yaml.safe_dump({**a, "onaylayan": amir}, allow_unicode=True), encoding="utf-8")
+    assert main(["init", "-w", str(ws), "--answers", str(ans)]) == 0
+    assert "raporu onaylayan birim amiri: Amir Örnek" in capsys.readouterr().out
+    cfg = yaml.safe_load((ws / "config.yaml").read_text(encoding="utf-8"))
+    assert cfg["rapor"]["onaylayan"] == amir
+    ans.write_text(yaml.safe_dump(a, allow_unicode=True), encoding="utf-8")          # cevapta yok: korunur
+    assert main(["init", "-w", str(ws), "--answers", str(ans)]) == 0
+    assert yaml.safe_load((ws / "config.yaml").read_text(encoding="utf-8"))["rapor"]["onaylayan"] == amir
+    bos = {k: "" for k in amir}                                                       # panelin boş formu
+    ans.write_text(yaml.safe_dump({**a, "onaylayan": bos}, allow_unicode=True), encoding="utf-8")
+    capsys.readouterr()
+    assert main(["init", "-w", str(ws), "--answers", str(ans)]) == 5
+    assert "rapor.onaylayan: Amir Örnek → (boş)" in capsys.readouterr().out
+    assert main(["init", "-w", str(ws), "--answers", str(ans), "--yes"]) == 0
+    assert yaml.safe_load((ws / "config.yaml").read_text(encoding="utf-8"))["rapor"]["onaylayan"] is None
+
+
 def _docx_stub(p: Path) -> Path:
     import zipfile
     p.parent.mkdir(parents=True, exist_ok=True)

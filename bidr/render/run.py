@@ -2,12 +2,13 @@
 
 Şablon dosyasına yazılmaz; çıktı her zaman ayrı bir yoldur. Değişen yerler yalnız:
 alt ölçüt bloklarının "Açıklamalar" ve "Kanıtlar" hücreleri, öz değerlendirme işareti
-(rubrik hücresi), kapaktaki birim adı / yıl / "Raporu Hazırlayanlar" satırları, son tablodaki
-dört alanın "Güçlü Yönler" / "Gelişmeye Açık Yönler" hücreleri ve (gerekirse) üstbilgideki
+(rubrik hücresi), kapaktaki birim adı / yıl / "Raporu Hazırlayanlar" ve (yeni şablonda) "Raporu Onaylayan Birim
+Amiri" satırları, son tablodaki dört alanın "Güçlü Yönler" / "Gelişmeye Açık Yönler" hücreleri ve (gerekirse) üstbilgideki
 TASLAK satırı. Altbilgi (form no, yayın/değişiklik bilgisi, sayfa numarası) değişmez.
 
 TASLAK nedenleri: doğrulanmamış metin; doğrulamada reddedilmiş yön alanı; boş ya da şablon yönergesi kalan güçlü/gelişmeye açık
-yön hücresi; kapakta kalan hazırlayan yer tutucusu (`rapor.hazirlayanlar` boş); kapsam kararı
+yön hücresi; kapakta kalan hazırlayan yer tutucusu (`rapor.hazirlayanlar` boş); şablonda amir bölümü varken
+kalan amir yer tutucusu (`rapor.onaylayan` boş); kapsam kararı
 gereken (`karar_gerekli`) ölçüt. Kapsam: bidr/render/kapsam.py.
 """
 from __future__ import annotations
@@ -22,7 +23,7 @@ from bidr.criteria.extract_docx import W, _ptext
 from . import docx_ops as ops
 from .kapsam import BASKA, KARAR
 from .template import (ACIKLAMA, COVER_STOP, GELISME, GUCLU, HAZIRLAYAN_YER_TUTUCU, KANIT, YONLER_YONERGE,
-                       find_blocks, find_yonler)
+                       cover_sections, find_blocks, find_yonler)
 
 # Metni olmayan ölçüt için varsayılan ifade. Gerekçe: kılavuzun "Kapsam" bölümüne göre rapor
 # önceki takvim yılıyla sınırlıdır; ifade yalnız bu dönemde *kanıt* bulunamadığını söyler,
@@ -47,7 +48,8 @@ KANIT_BICIMLERI = ("mat", "kilavuz")
 RE_NO = re.compile(r"^(\d+)_OD([1-5])$")
 RE_ATIF = re.compile(r"\[(\d+_OD[1-5])\]")
 RE_ATIF_IC = re.compile(r"\[(\d+)_OD([1-5])\]")
-RE_YIL = re.compile(r"^(19|20)\d\d$")
+# Kapaktaki yıl paragrafı: eski şablonda "2025", Değ.No:1 şablonunda yer tutucu "20..".
+RE_YIL = re.compile(r"^(19|20)(\d\d|\.\.)$")
 RE_OLCUT = re.compile(r"\b([A-E]\.\d+\.\d+)\b")
 # `[komisyon]`: yazım/doğrulamada cümlenin komisyon bilgisine dayandığını gösteren iç işaret;
 # rapora girmez (atıf yerine geçer, okur için anlamı yok).
@@ -104,6 +106,7 @@ class Result:
     karar_gerekli: list[str] = field(default_factory=list)
     yonler: dict[str, str] = field(default_factory=dict)        # "A Güçlü Yönler" → dolu | bos | yonerge
     hazirlayan: int = 0
+    onaylayan: int = 0                                          # kapağa yazılan birim amiri (0/1)
     taslak_nedenleri: list[str] = field(default_factory=list)
     eksik_notlu: list[str] = field(default_factory=list)       # metni olup eksik kanıt notu (gaps.md) olan ölçütler
     # işaretlenen OD'nin kaynağı: onayli (komisyon, audit `od_onayli`) | kod (audit `od`) | metin
@@ -126,7 +129,7 @@ class Result:
         return {"cikti": str(self.out), "dolu": len(self.dolu), "bos": len(self.bos),
                 "dogrulanmamis": self.dogrulanmamis, "reddedildi": self.reddedildi,
                 "od_isaretli": len(self.od), "od_onay_bekliyor": self.od_onay_bekliyor, "taslak": self.taslak, "taslak_nedenleri": self.taslak_nedenleri,
-                "kapak": self.kapak, "hazirlayan": self.hazirlayan,
+                "kapak": self.kapak, "hazirlayan": self.hazirlayan, "onaylayan": self.onaylayan,
                 "kapsam_disi": self.kapsam_disi, "karar_gerekli": self.karar_gerekli, "yonler": self.yonler,
                 "eksik_notlu_metin": self.eksik_notlu, "yon_cikarilan": self.yon_cikarilan,
                 "yon_ifadeli": self.yon_ifadeli, "yon_kapsam_kaybi": self.yon_kapsam_kaybi,
@@ -383,13 +386,20 @@ def preparer_line(x: dict) -> str:
     return ", ".join(v for v in (head, str(x.get("eposta") or "").strip(), str(x.get("gorev") or "").strip()) if v)
 
 
-def fill_preparers(doc, people: list[dict] | None) -> tuple[int, list[str]]:
-    """Kapaktaki "[Üye Unvan, Adı Soyadı, eposta adresi, Görevi]" yer tutucularını doldurur.
-    Kişi yer tutucudan çoksa son satır kopyalanır ve ardındaki boş paragraflardan biri silinir (kapak
-    sayfası taşmasın); azsa artan yer tutucular boş paragraf olur. Liste boşsa hiçbir şey değişmez.
-    Döner: (yazılan kişi sayısı, uyarılar)."""
+def _blank(el) -> bool:
+    return el is not None and el.tag == W + "p" and ops.is_blank_paragraph(el)
+
+
+def fill_preparers(doc, people: list[dict] | None, ph: list | None = None) -> tuple[int, list[str]]:
+    """Kapaktaki "Raporu Hazırlayanlar" bölümünün "[Üye Unvan, Adı Soyadı, eposta adresi, Görevi]" yer
+    tutucularını doldurur (`ph`: `cover_sections` bölümü; verilmezse kapaktan bulunur). Amir bölümünün yer
+    tutucusu hazırlayan sayılmaz. Kişi sayısı şablondaki satır sayısıyla sınırlı değildir: fazlası için son
+    hazırlayan satırı kopyalanır (hazırlayan bölümünün içine, amir başlığından önce) ve ardındaki boş
+    paragraflardan biri silinir (kapak sayfası taşmasın; sonraki başlıktan önceki son boşluk kalır); azsa
+    artan yer tutucular boş paragraf olur. Liste boşsa hiçbir şey değişmez. Döner: (yazılan kişi sayısı, uyarılar)."""
     import copy
-    ph = [p for p in cover_paragraphs(doc) if HAZIRLAYAN_YER_TUTUCU in _ptext(p)]
+    if ph is None:
+        ph = cover_sections(cover_paragraphs(doc))["hazirlayan"]
     if not people:
         return 0, []
     if not ph:
@@ -405,7 +415,8 @@ def fill_preparers(doc, people: list[dict] | None) -> tuple[int, list[str]]:
         ops.set_paragraph_text(new, line)
         nxt = last.getnext()
         last.addnext(new)
-        if nxt is not None and nxt.tag == W + "p" and ops.is_blank_paragraph(nxt):
+        # ardındaki boş paragraflardan biri düşer; sonraki bölümden (amir başlığı, yıl) önceki son boşluk kalır
+        if _blank(nxt) and _blank(nxt.getnext()):
             nxt.getparent().remove(nxt)
         last = new
     for p in ph[len(lines):]:
@@ -413,8 +424,30 @@ def fill_preparers(doc, people: list[dict] | None) -> tuple[int, list[str]]:
     return len(lines), []
 
 
+def fill_approver(doc, person: dict | None, ph: list | None = None) -> tuple[int, list[str]]:
+    """Kapaktaki "Raporu Onaylayan Birim Amiri" yer tutucusuna amirin satırını yazar (hazırlayanla aynı biçim).
+    Bölümde birden çok yer tutucu varsa ilki yazılır, artanlar boş paragraf olur. Kişi yoksa hiçbir şey
+    değişmez; şablonda bölüm yoksa (eski şablon) kişi yazılmaz, uyarı döner. Döner: (0/1, uyarılar)."""
+    if ph is None:
+        ph = cover_sections(cover_paragraphs(doc))["amir"]
+    if not person:
+        return 0, []
+    if not ph:
+        return 0, ["şablonun kapağında 'Raporu Onaylayan Birim Amiri' bölümü yok (eski şablon); "
+                   "rapor.onaylayan yazılmadı"]
+    ops.set_paragraph_text(ph[0], preparer_line(person))
+    for p in ph[1:]:
+        ops.set_paragraph_text(p, "")
+    return 1, []
+
+
+def _left(ph: list) -> int:
+    return sum(1 for p in ph if HAZIRLAYAN_YER_TUTUCU in _ptext(p))
+
+
 def cover_placeholders_left(doc) -> int:
-    return sum(1 for p in cover_paragraphs(doc) if HAZIRLAYAN_YER_TUTUCU in _ptext(p))
+    """Kapakta kalan hazırlayan yer tutucusu (amir bölümü sayılmaz)."""
+    return _left(cover_sections(cover_paragraphs(doc))["hazirlayan"])
 
 
 # -- Güçlü / Gelişmeye Açık Yönler ------------------------------------------------------------------
@@ -537,10 +570,12 @@ def render(template: Path, out: Path, *, texts_dir: Path, audit_path: Path | Non
            opts: Options | None = None, index_path: Path | None = None,
            kapsam: dict[str, str] | None = None, yonler_dir: Path | None = None,
            hazirlayanlar: list[dict] | None = None, teslim: str = "baglanti",
-           evidence_dir: Path | None = None, yonler_log: Path | None = None) -> Result:
+           evidence_dir: Path | None = None, yonler_log: Path | None = None,
+           onaylayan: dict | None = None) -> Result:
     """`kapsam`: {ölçüt: bolum|ortak|baska_birim|karar_gerekli} (verilmezse hepsi bolum);
     `yonler_dir`: `yonler/<alan>.json` klasörü (`yonler_log`: doğrulama kaydı, vars. klasörün yanındaki
     verify-yonler.jsonl; reddedilen alanda yalnız desteklenen maddeler basılır); `hazirlayanlar`: config.yaml `rapor.hazirlayanlar`;
+    `onaylayan`: config.yaml `rapor.onaylayan` (birim amiri; şablonda amir bölümü varsa);
     `teslim`: config.yaml `rapor.teslim` (bidr/teslim/mod.py). `dekanlik`ta web sayfası kanıtının
     satırı adı (bağlantılı) ve özgün adresi görünür yazar: "[1-OD3]. Ad (https://…)"; `evidence_dir`
     web kanıtının adresini sayfanın kendi kaydından okumak için (vars. dizinin yanındaki evidence/)."""
@@ -689,8 +724,13 @@ def render(template: Path, out: Path, *, texts_dir: Path, audit_path: Path | Non
         res.uyarilar.append("kapakta '[Birim Adı]' yer tutucusu bulunamadı")
     if yil and "yil" not in res.kapak:
         res.uyarilar.append("kapakta yıl paragrafı bulunamadı")
-    res.hazirlayan, uy = fill_preparers(doc, hazirlayanlar)
+    kapak_ph = cover_sections(cover_paragraphs(doc))     # doldurmadan önce: bölümler başlığa göre
+    res.hazirlayan, uy = fill_preparers(doc, hazirlayanlar, kapak_ph["hazirlayan"])
     res.uyarilar += uy
+    res.onaylayan, uy = fill_approver(doc, onaylayan, kapak_ph["amir"])
+    res.uyarilar += uy
+    if not yil and any(_ptext(p).strip() == "20.." for p in cover_paragraphs(doc)):
+        res.uyarilar.append("kapaktaki yıl yer tutucusu (20..) kaldı: --yil verilmedi")
 
     # TASLAK nedenleri. İnsanın raporun dışında bıraktığı reddedilmiş metin (`bidr verify karar …
     # cikar`) rapora girmez ve belgeyi taslak yapmaz; birimin doldurmadığı ölçütün metni de öyle.
@@ -724,10 +764,13 @@ def render(template: Path, out: Path, *, texts_dir: Path, audit_path: Path | Non
     empty = [k for k, v in res.yonler.items() if v != "dolu"]
     if empty:
         N.append("boş ya da şablon yönergesi kalan güçlü/gelişmeye açık yön hücresi: " + ", ".join(empty))
-    left = cover_placeholders_left(doc)
+    left = _left(kapak_ph["hazirlayan"])
     if left:
         N.append(f"kapakta {left} 'Raporu Hazırlayanlar' yer tutucusu kaldı (config.yaml rapor.hazirlayanlar boş)")
         res.uyarilar.append("rapor.hazirlayanlar boş: kapaktaki 'Raporu Hazırlayanlar' yer tutucuları kaldı")
+    if _left(kapak_ph["amir"]):
+        N.append("kapakta 'Raporu Onaylayan Birim Amiri' yer tutucusu kaldı (config.yaml rapor.onaylayan boş)")
+        res.uyarilar.append("rapor.onaylayan boş: kapaktaki 'Raporu Onaylayan Birim Amiri' yer tutucusu kaldı")
     if res.karar_gerekli:
         N.append("kapsam kararı gereken ölçüt (gaps.md): " + ", ".join(res.karar_gerekli))
     res.taslak = bool(N)
@@ -777,6 +820,14 @@ def workspace_inputs(ws: Path) -> tuple[dict[str, str], list[dict] | None, list[
     return kapsam, people, uy
 
 
+def workspace_approver(ws: Path) -> tuple[dict | None, list[str]]:
+    """config.yaml `rapor.onaylayan` (birim amiri; tek kişi): (kişi | None, uyarılar)."""
+    from bidr.init.config import check_approver
+    from bidr.write.sources import rapor_section
+    person, errs = check_approver(rapor_section(Path(ws)).get("onaylayan"))
+    return person, [f"config.yaml rapor.{e}" for e in errs]     # e: "onaylayan: …"
+
+
 def workspace_teslim(ws: Path) -> str:
     """config.yaml `rapor.teslim` (geçersizse ValueError)."""
     from bidr.teslim.mod import teslim_modu
@@ -793,6 +844,9 @@ def workspace_sha(ws: Path, template: Path, texts_dir: Path, audit_path: Path | 
     except ValueError as e:
         teslim = f"gecersiz:{e}"
     extra = {"hazirlayanlar": people or [], "kapsam": kapsam}
+    amir, _ = workspace_approver(ws)
+    if amir:                            # amir yoksa özet eskisiyle aynı kalır (var olan rapor eskimez)
+        extra["onaylayan"] = amir
     if teslim != "baglanti":            # bağlantı modunda özet eskisiyle aynı kalır
         extra["teslim"] = teslim
     kor_od = _kor_od(audit_path)

@@ -69,9 +69,12 @@ def _yonler_table(d) -> None:
             cell.add_paragraph("")
 
 
-def make_template(path: Path, ids=(("A.1.1", "Yönetişim modeli"), ("A.1.2", "Liderlik")), full: bool = False) -> Path:
+def make_template(path: Path, ids=(("A.1.1", "Yönetişim modeli"), ("A.1.2", "Liderlik")), full: bool = False,
+                  amir: bool = False) -> Path:
     """`full`: kapakta "Raporu Hazırlayanlar" yer tutucuları, altbilgide form kimliği ve sayfa
-    numarası alanı, sonda Güçlü / Gelişmeye Açık Yönler tablosu (FR-0833 düzeni, sentetik)."""
+    numarası alanı, sonda Güçlü / Gelişmeye Açık Yönler tablosu (FR-0833 düzeni, sentetik).
+    `amir` (full ile): Değ.No:1 kapağı — hazırlayanlardan sonra "Raporu Onaylayan Birim Amiri" başlığı ve
+    aynı biçimde tek yer tutucu, yıl "20..", ölçütlerden sonra "Sonuç ve Değerlendirme" giriş cümlesi."""
     d = docx.Document()
     sec = d.sections[0]
     sec.header.paragraphs[0].text = "ŞABLON ÜSTBİLGİSİ"
@@ -84,9 +87,16 @@ def make_template(path: Path, ids=(("A.1.1", "Yönetişim modeli"), ("A.1.2", "L
         d.add_paragraph("Raporu Hazırlayanlar")
         for _ in range(3):
             d.add_paragraph(PH)
-        for _ in range(3):
+        if amir:
             d.add_paragraph("")
-    d.add_paragraph("2025")
+            d.add_paragraph("")
+            d.add_paragraph("Raporu Onaylayan Birim Amiri")
+            d.add_paragraph(PH)
+            d.add_paragraph("")
+        else:
+            for _ in range(3):
+                d.add_paragraph("")
+    d.add_paragraph("20.." if amir else "2025")
     d.add_paragraph("Yazım kuralları örneği 2547 sayılı kanun")
     d.add_paragraph("ÖLÇÜTLER VE KANITLAR")
     for sid, title in ids:
@@ -105,6 +115,8 @@ def make_template(path: Path, ids=(("A.1.1", "Yönetişim modeli"), ("A.1.2", "L
         _merged_row(t, ["Kanıtlar:", PLACEHOLDER_K, ""])
         d.add_paragraph("")
     if full:
+        if amir:
+            d.add_paragraph("Aşağıda yer alan Sonuç ve Değerlendirme tabloları tüm birimler tarafından doldurulmalıdır.")
         _yonler_table(d)
     d.add_paragraph("SON BÖLÜM")
     d.save(str(path))
@@ -528,6 +540,99 @@ def test_cover_preparers_and_footer_intact(ws, tmp_path):
     assert sum("[Üye Unvan" in x for x in _cover(d)) == 3 and res.taslak
     assert any("Raporu Hazırlayanlar" in n for n in res.taslak_nedenleri)
     assert any("hazirlayanlar boş" in u for u in res.uyarilar)
+
+
+def test_new_template_cover_approver_sections(ws, tmp_path):
+    """Değ.No:1 kapağı: hazırlayanlar yalnız kendi bölümüne yazılır (az ya da çok kişi), amir kendi satırına;
+    yıl yer tutucusu "20.." doldurulur; amir boşsa yer tutucu kalır ve rapor TASLAK."""
+    tpl = make_template(tmp_path / "sablon.docx", full=True, amir=True)
+    yd = ws / "yonler"
+    for a in "ABCD":
+        _yon(yd, a)
+    write_text(ws / "texts", "A.1.1")
+    write_text(ws / "texts", "A.1.2")
+    n0 = len(_cover(docx.Document(str(tpl))))
+    amir = {"unvan": "Prof. Dr.", "ad_soyad": "Amir Örnek", "eposta": "amir@example.edu", "gorev": "Bölüm Başkanı"}
+    amir_line = "Prof. Dr. Amir Örnek, amir@example.edu, Bölüm Başkanı"
+
+    def check(cov, names):
+        i, j = cov.index("Raporu Hazırlayanlar"), cov.index("Raporu Onaylayan Birim Amiri")
+        hz = [x for x in cov[i + 1:j] if x]
+        assert hz == names
+        assert [x for x in cov[j + 1:cov.index("2026")] if x] == [amir_line]
+        assert not any("[Üye Unvan" in x for x in cov)
+
+    for k in (1, 2, 3, 4, 6):
+        people = [{**PEOPLE[0], "ad_soyad": f"Örnek Kişi {n}"} for n in range(k)]
+        res, d, _ = _run(ws, tmp_path, yonler_dir=yd, hazirlayanlar=people, onaylayan=amir, yil=2026)
+        cov = _cover(d)
+        check(cov, [f"Dr. Öğr. Üyesi Örnek Kişi {n}, ornek@example.edu, Komisyon Başkanı" for n in range(k)])
+        assert res.hazirlayan == k and res.onaylayan == 1 and not res.taslak, res.taslak_nedenleri
+        assert "kapakta yıl paragrafı bulunamadı" not in res.uyarilar and res.kapak["yil"] == "2026"
+        if k <= 4:                  # fazla kişi ardındaki boş paragrafı tüketir; kapak taşmaz
+            assert len(cov) == n0
+        j = cov.index("Raporu Onaylayan Birim Amiri")
+        assert cov[j - 1] == ""     # amir başlığından önceki son boşluk hiç silinmez
+    # amir boş: hazırlayanlar yazılır, amir yer tutucusu kalır, TASLAK (hazırlayan boş durumu tonunda)
+    res, d, _ = _run(ws, tmp_path, yonler_dir=yd, hazirlayanlar=PEOPLE)
+    cov = _cover(d)
+    j = cov.index("Raporu Onaylayan Birim Amiri")
+    assert "[Üye Unvan" in cov[j + 1] and sum("[Üye Unvan" in x for x in cov) == 1 and res.hazirlayan == 2
+    assert res.taslak and any("rapor.onaylayan boş" in n for n in res.taslak_nedenleri)
+    assert not any("Raporu Hazırlayanlar" in n for n in res.taslak_nedenleri)
+    assert any("yıl yer tutucusu (20..)" in u for u in res.uyarilar)
+    # hazırlayanlar boş, amir dolu: yalnız hazırlayan yer tutucuları kalır
+    res, d, _ = _run(ws, tmp_path, yonler_dir=yd, onaylayan=amir)
+    cov = _cover(d)
+    assert sum("[Üye Unvan" in x for x in cov) == 3 and amir_line in cov
+    assert any("kapakta 3 'Raporu Hazırlayanlar'" in n for n in res.taslak_nedenleri)
+    assert not any("onaylayan" in n for n in res.taslak_nedenleri)
+    # yön tabloları ve giriş cümlesi: dört alan bulunur, cümle değişmez
+    assert set(res.yonler) == {f"{a} {x}" for a in "ABCD" for x in ("Güçlü Yönler", "Gelişmeye Açık Yönler")}
+    assert "Aşağıda yer alan Sonuç ve Değerlendirme tabloları tüm birimler tarafından doldurulmalıdır." in \
+        [p.text for p in d.paragraphs]
+
+
+def test_old_template_ignores_approver(ws, tmp_path):
+    """Eski şablon (amir bölümü yok): amir verilse de kapak değişmez, uyarı olur, TASLAK nedeni değildir."""
+    make_template(tmp_path / "sablon.docx", full=True)
+    yd = ws / "yonler"
+    for a in "ABCD":
+        _yon(yd, a)
+    write_text(ws / "texts", "A.1.1")
+    res, d, _ = _run(ws, tmp_path, yonler_dir=yd, hazirlayanlar=PEOPLE, onaylayan={"ad_soyad": "Amir Örnek"})
+    assert res.onaylayan == 0 and not res.taslak and "Amir Örnek" not in " ".join(_cover(d))
+    assert any("Raporu Onaylayan Birim Amiri' bölümü yok" in u for u in res.uyarilar)
+    res, _, _ = _run(ws, tmp_path, yonler_dir=yd, hazirlayanlar=PEOPLE)
+    assert not res.taslak and not any("onaylayan" in u for u in res.uyarilar)
+
+
+def test_cli_approver_from_config(ws, tmp_path, capsys):
+    """CLI: amir config.yaml rapor.onaylayan'dan; amir yokken girdi özeti eskisiyle aynı, eklenince rapor eskir."""
+    import yaml as Y
+    from bidr.render.run import load_manifest, workspace_sha
+    tpl = make_template(tmp_path / "sablon.docx", full=True, amir=True)
+    cfg = {"rapor": {"sablon": str(tpl), "hazirlayanlar": PEOPLE[:1]}}
+    (ws / "config.yaml").write_text(Y.safe_dump(cfg, allow_unicode=True), encoding="utf-8")
+    sha = lambda: workspace_sha(ws, tpl, ws / "texts", ws / "audit-olcutler.json", ws / "evidence-index.csv")  # noqa: E731
+    s0 = sha()
+    cfg["rapor"]["onaylayan"] = None
+    (ws / "config.yaml").write_text(Y.safe_dump(cfg, allow_unicode=True), encoding="utf-8")
+    assert sha() == s0
+    assert main(["render", "-w", str(ws)]) == 0
+    assert "rapor.onaylayan boş" in capsys.readouterr().out
+    cfg["rapor"]["onaylayan"] = {"unvan": "Prof. Dr.", "ad_soyad": "Amir Örnek", "eposta": "", "gorev": ""}
+    (ws / "config.yaml").write_text(Y.safe_dump(cfg, allow_unicode=True), encoding="utf-8")
+    assert load_manifest(ws)["girdi_sha"] != sha()
+    assert main(["render", "-w", str(ws)]) == 0
+    m = load_manifest(ws)
+    assert m["onaylayan"] == 1 and m["girdi_sha"] == sha()
+    assert "Prof. Dr. Amir Örnek" in _cover(docx.Document(str(ws / "report.docx")))
+    cfg["rapor"]["onaylayan"] = {"ad_soyad": "Amir Örnek", "eposta": "bozuk"}
+    (ws / "config.yaml").write_text(Y.safe_dump(cfg, allow_unicode=True), encoding="utf-8")
+    capsys.readouterr()
+    assert main(["render", "-w", str(ws)]) == 0
+    assert "config.yaml rapor.onaylayan: e-posta biçimi geçersiz" in capsys.readouterr().out
 
 
 def test_cli_workspace_inputs(ws, tmp_path, capsys):

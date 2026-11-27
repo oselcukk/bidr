@@ -452,7 +452,11 @@ düzeyinde korunur; test edilir).
 Belge "TASLAK" damgalıdır (`taslak_nedenleri`): `dogrulandi` olmayan metin (kullanıcının
 `cikar` dediği ve `baska_birim` ölçütün metni sayılmaz); boş ya da şablon yönergesi
 ("…değerlendiriniz.") kalan güçlü/gelişmeye açık yön hücresi ya da doğrulanmamış madde; kapakta
-kalan hazırlayan yer tutucusu (`rapor.hazirlayanlar` boş); `karar_gerekli` ölçüt. Gerekçeler render
+kalan hazırlayan yer tutucusu (`rapor.hazirlayanlar` boş); şablonda "Raporu Onaylayan Birim Amiri" bölümü
+(FR-0833 Değ.No:1) varken kalan amir yer tutucusu (`rapor.onaylayan` boş); `karar_gerekli` ölçüt. Kapak yer
+tutucuları başlığa göre bölümlenir: hazırlayan bölümü "Raporu Hazırlayanlar" ile sonraki başlık arasıdır, fazla
+kişi o bölümün içine (amir başlığından önce) eklenir; amir yalnız kendi başlığının altına yazılır. Yeni
+şablonun yıl yer tutucusu "20.." `--yil` ile doldurulur (verilmezse uyarı). Gerekçeler render
 çıktısında ve `.bidr-render.json` `taslak_nedenleri`'nde; `bidr denetle` `taslak_damgasi` bulgusunda
 aynı gerekçeyi bu kayıttan okur (belge kayıttan sonra değiştiyse "nedeni bilinmiyor" der, tahmin
 etmez).
@@ -678,6 +682,7 @@ denetimi ister; istenmezse `kor_denetim` ve `duzelt` `atlandi`, hat eskisi gibi 
 | `yeniden_yazim_siniri` | reddedilen metin için en çok yeniden yazım turu (vars. 2) |
 | `kanit_adi_modeli` | `false`: `name` aşaması atlanır |
 | `hazirlayanlar` | kapaktaki "Raporu Hazırlayanlar": `[{unvan, ad_soyad, eposta, gorev}, …]` (`ad_soyad` gerekli; `bidr init` sorar ve yazar); boşsa rapor TASLAK |
+| `onaylayan` | kapaktaki "Raporu Onaylayan Birim Amiri" (FR-0833 Değ.No:1): `{unvan, ad_soyad, eposta, gorev}` (tek kişi; `ad_soyad` gerekli); şablonda bölüm varken boşsa rapor TASLAK, eski şablonda yazılmaz (uyarı) |
 | `kapsam` | `{ölçüt: bolum\|ortak\|baska_birim\|karar_gerekli}`: kullanıcının kapsam kararı (profilin üstüne) |
 | `teslim` | `dekanlik` (vars.: rapor ve kanıtlar dekanlığa dosya olarak teslim edilir; bağlantısız kanıt bilgi; `bidr teslim` paketi) \| `baglanti` (birim yükler, raporda bağlantı verir; bağlantısız kanıt uyarı) |
 | `denetim` | biçim denetçisi kuralları (`paragraf_sonrasi_nk` vars. 0,6 — kılavuz değeri; `yazi_tipi`, `govde_punto`, `baslik_punto`, `aciklama_punto`, `paragraf_oncesi_nk`) |

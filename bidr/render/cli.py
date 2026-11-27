@@ -4,7 +4,8 @@
 (`baglanti` sütunu), teslim moduna göre (config.yaml `rapor.teslim`, vars. `dekanlik`: kök klasör
 bağlantısı girmez, web sayfası kanıtının özgün adresi görünür yazılır; `baglanti`: eski davranış);
 bağlantısız kanıtlar gaps.md "bağlantı yok" bölümüne yazılır (dekanlik'te bilgi notu). Kapak
-hazırlayanları config.yaml `rapor.hazirlayanlar`; ölçüt kapsamı profil + `rapor.kapsam`
+hazırlayanları config.yaml `rapor.hazirlayanlar`, birim amiri (şablonda "Raporu Onaylayan Birim Amiri" varsa)
+`rapor.onaylayan`; ölçüt kapsamı profil + `rapor.kapsam`
 (bidr/render/kapsam.py; kapsam kararı soruları gaps.md); alan maddeleri `yonler/<alan>.json`."""
 from __future__ import annotations
 
@@ -17,8 +18,8 @@ def _run(args) -> int:
     from bidr.pipeline.gate import check_gate
     from bidr.write.sources import rapor_section
 
-    from .run import (YONLER_DIR, Options, render, update_link_gaps, update_scope_gaps, workspace_inputs,
-                      workspace_sha, workspace_teslim, write_manifest)
+    from .run import (YONLER_DIR, Options, render, update_link_gaps, update_scope_gaps, workspace_approver,
+                      workspace_inputs, workspace_sha, workspace_teslim, write_manifest)
 
     ws = Path(args.workspace).expanduser().resolve()
     if (rc := check_gate(ws, "render")) is not None:
@@ -46,12 +47,14 @@ def _run(args) -> int:
     if args.kapsam_disi is not None:
         opts.kapsam_disi = args.kapsam_disi
     kapsam, people, pre = workspace_inputs(ws)
+    amir, uy = workspace_approver(ws)
+    pre += uy
     try:
         teslim = workspace_teslim(ws)
         res = render(sablon, out, texts_dir=texts, audit_path=audit,
                      birim=birim, yil=args.yil, opts=opts, index_path=index,
                      kapsam=kapsam, yonler_dir=ws / YONLER_DIR, hazirlayanlar=people, teslim=teslim,
-                     evidence_dir=ws / "evidence")
+                     evidence_dir=ws / "evidence", onaylayan=amir)
     except (FileNotFoundError, ValueError) as e:
         print(f"HATA {e}", file=sys.stderr)
         return 2

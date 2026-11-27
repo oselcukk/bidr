@@ -152,3 +152,36 @@ def find_yonler(doc) -> tuple[dict[str, YonCells], list[str]]:
 # -- kapak: "Raporu Hazırlayanlar" ----------------------------------------------------------------
 HAZIRLAYAN_BASLIK = "Raporu Hazırlayanlar"
 HAZIRLAYAN_YER_TUTUCU = "[Üye Unvan"
+# FR-0833 Değ.No:1 (10.11.2026) kapağı hazırlayanların ardından ayrı bir başlık altında birim amirinin yer
+# tutucusunu taşır; satır biçimi aynı ("[Üye Unvan, Adı Soyadı, eposta adresi, Görevi]"). Eski şablonda yok.
+AMIR_BASLIK = "Raporu Onaylayan Birim Amiri"
+AMIR_ONEK = "Raporu Onaylayan"
+
+
+def _norm(t: str) -> str:
+    return " ".join(t.split())
+
+
+def cover_sections(paras: list) -> dict[str, list]:
+    """Kapak yer tutucularını başlığa göre bölümler: {"hazirlayan": [w:p…], "amir": [w:p…]}.
+
+    Bir bölüm başlığından ("Raporu Hazırlayanlar", "Raporu Onaylayan Birim Amiri") sonraki ilk dolu ve yer
+    tutucu olmayan paragrafa kadar sürer; boş paragraflar bölümü kapatmaz. Hiçbir bölümün içinde olmayan yer
+    tutucu (başlıksız eski düzen) hazırlayan sayılır; amir yalnız kendi başlığının altında aranır."""
+    from bidr.criteria.extract_docx import _ptext
+    out: dict[str, list] = {"hazirlayan": [], "amir": []}
+    cur = None
+    for p in paras:
+        t = _norm(_ptext(p))
+        if t == HAZIRLAYAN_BASLIK:
+            cur = "hazirlayan"
+            continue
+        if t.startswith(AMIR_ONEK):
+            cur = "amir"
+            continue
+        if HAZIRLAYAN_YER_TUTUCU in t:
+            out[cur or "hazirlayan"].append(p)
+            continue
+        if t:
+            cur = None
+    return out

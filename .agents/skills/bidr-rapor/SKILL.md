@@ -326,7 +326,8 @@ yönergesiyle kalır ve rapor TASLAK olur: gerekçeyi (`verify-yonler.jsonl`) ku
 Belge şu durumlarda TASLAK damgalıdır ve render nedenleri yazar; kullanıcıya söyle:
 doğrulanmamış metin; boş ya da şablon yönergesi kalan güçlü/gelişmeye açık yön hücresi;
 kapakta "Raporu Hazırlayanlar" yer tutucusu (`rapor.hazirlayanlar` boş: kişileri kullanıcıdan
-al, answers.yaml `hazirlayanlar` ile `bidr init`; ad, e-posta uydurma); kapsam kararı gereken
+al, answers.yaml `hazirlayanlar` ile `bidr init`; ad, e-posta uydurma); yeni şablonda "Raporu Onaylayan
+Birim Amiri" yer tutucusu (`rapor.onaylayan` boş: amiri kullanıcıdan al, answers.yaml `onaylayan`); kapsam kararı gereken
 ölçüt.
 
 Ölçüt kapsamı (bidr/render/kapsam.py): `bolum`/`ortak` ölçütte kanıt yoksa "kanıt

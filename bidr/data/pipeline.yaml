@@ -486,7 +486,7 @@ asamalar:
     katman: D
     onkosul: [yonler]
     girdi: [config.yaml rapor.sablon (boş FR-0833 .docx, salt okunur), texts/, yonler/, audit-olcutler.json,
-            evidence-index.csv, config.yaml rapor.hazirlayanlar ve rapor.kapsam]
+            evidence-index.csv, config.yaml rapor.hazirlayanlar, rapor.onaylayan ve rapor.kapsam]
     cikti: [report.docx, .bidr-render.json, gaps.md (bağlantı yok ve kapsam kararı bölümleri)]
     komut: ["bidr render -w {ws}"]
     sart:
@@ -495,6 +495,7 @@ asamalar:
         report.docx güncel girdilerden (şablon, metinler, alan maddeleri, audit, kanıt dizini, hazırlayanlar,
         kapsam) üretilmiş. Belge şu durumlarda TASLAK damgalıdır (uyarı): doğrulanmamış metin, boş ya da şablon
         yönergesi kalan güçlü/gelişmeye açık yön hücresi, boş `rapor.hazirlayanlar` (kapak yer tutucuları kalır),
+        şablonda amir bölümü varken boş `rapor.onaylayan`,
         kapsam kararı gereken ölçüt (gaps.md'de soru). Şablon yolu bilinmiyorsa kullanıcıdan alınır.
     onay: yok
     skill: bidr-rapor

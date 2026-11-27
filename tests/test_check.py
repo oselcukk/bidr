@@ -67,7 +67,8 @@ def _single_row(table, ncols=5):
 
 
 def make_doc(path: Path, *, fill=True, aciklama=None, kanitlar=None, footer=FOOTER, swot=True,
-             uyeler=None, birim="Matematik Bölümü", extra_aciklama=None, od=3, swot_metin=None) -> Path:
+             uyeler=None, birim="Matematik Bölümü", extra_aciklama=None, od=3, swot_metin=None, amir=None,
+             yil="2025") -> Path:
     """`fill=False`: boş şablon gibi (yer tutucular). Aksi halde kurala uygun dolu rapor; rubrikte `od`
     düzeyi kalın (`od` None: işaretsiz; liste: birden çok düzey kalın)."""
     d = docx.Document()
@@ -82,7 +83,12 @@ def make_doc(path: Path, *, fill=True, aciklama=None, kanitlar=None, footer=FOOT
     d.add_paragraph("Raporu Hazırlayanlar")
     for u in (uyeler if uyeler is not None else (["Prof. Dr. Komisyon Üyesi, Başkan"] if fill else [UYE_YT] * 3)):
         d.add_paragraph(u)
-    d.add_paragraph("2025")
+    if amir is not None:                    # Değ.No:1 kapağı: amir bölümü (amir: satır metni)
+        d.add_paragraph("")
+        d.add_paragraph("Raporu Onaylayan Birim Amiri")
+        d.add_paragraph(amir)
+        d.add_paragraph("")
+    d.add_paragraph(yil)
     d.add_paragraph("ÖLÇÜTLER VE KANITLAR")
     t = d.add_table(rows=0, cols=5)
     t.style = "Table Grid"
@@ -268,6 +274,25 @@ def test_kapak_ve_swot(tmp_path, sablon):
     b = next(b for b in s.bulgular if b.kod == "kapak_hazirlayanlar")
     assert b.seviye == KRITIK and "2 yer tutucu" in b.mesaj
     assert "swot_eksik" in codes(s, KRITIK)
+
+
+def test_kapak_amir_bolumu(tmp_path, sablon):
+    """Değ.No:1 kapağı: amir yer tutucusu hazırlayan sayılmaz, ayrı bulgu olur; amir dolu ise bulgu yok;
+    kalan "20.." yıl yer tutucusu uyarıdır."""
+    rep = make_doc(tmp_path / "r.docx", amir=UYE_YT, yil="20..")
+    s = denetle(rep, sablon=sablon, beklenen=BEKLENEN)
+    assert "kapak_hazirlayanlar" not in codes(s)
+    assert "kapak_onaylayan" in codes(s, KRITIK)
+    assert s.bilgi["kapak"]["hazirlayanlar"] == 1 and s.bilgi["kapak"]["onaylayan"] == 0
+    assert any(b.kod == "kapak_yil" and "20.." in b.mesaj for b in s.bulgular if b.seviye == UYARI)
+    rep = make_doc(tmp_path / "r2.docx", uyeler=[UYE_YT] * 3, amir="Prof. Dr. Amir Örnek, Bölüm Başkanı")
+    s = denetle(rep, sablon=sablon, beklenen=BEKLENEN)
+    b = next(b for b in s.bulgular if b.kod == "kapak_hazirlayanlar")
+    assert "3 yer tutucu" in b.mesaj and "kapak_onaylayan" not in codes(s)
+    assert s.bilgi["kapak"]["onaylayan"] == 1 and "kapak_yil" not in codes(s)
+    rep = make_doc(tmp_path / "r3.docx")                      # eski kapak: amir bölümü yok, bulgu yok
+    s = denetle(rep, sablon=sablon, beklenen=BEKLENEN)
+    assert "kapak_onaylayan" not in codes(s) and "onaylayan" not in s.bilgi["kapak"]
 
 
 def test_nesne_aciklamasi_ve_alt_baslik(tmp_path):

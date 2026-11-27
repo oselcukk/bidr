@@ -38,6 +38,8 @@ YER_TUTUCU_KANIT = "Kanıtlar buraya yazılmalı"
 YER_TUTUCU_BIRIM = "[Birim Adı]"
 YER_TUTUCU_UYE = "[Üye Unvan"
 HAZIRLAYANLAR = "Raporu Hazırlayanlar"
+AMIR = "Raporu Onaylayan Birim Amiri"        # FR-0833 Değ.No:1 kapağı (eski şablonda yok)
+YIL_YER_TUTUCU = "20.."                      # Değ.No:1 kapağındaki yıl yer tutucusu
 SWOT_BASLIK = ("Güçlü Yönler", "Gelişmeye Açık Yönler")
 SWOT_YER_TUTUCU = "Biriminizin bu ana ölçüt ve alt ölçütleri"
 DOGRULANMADI = "[doğrulanmadı]"
@@ -422,29 +424,46 @@ def _kapak(doc, s: Sonuc) -> None:
             s.ekle(KRITIK, "kapak_birim", "kapak", f"birim adı yer tutucusu duruyor: «{t[:60]}»")
         if kapak["yil"] is None and RE_YIL.match(t):
             kapak["yil"] = t
-    uye_yt = sum(YER_TUTUCU_UYE in t for t in paras)
+
+    def bolum(baslik: str) -> list[str] | None:
+        """Başlığın altındaki dolu satırlar (sonraki başlığa ya da yıla kadar); başlık yoksa None."""
+        if baslik not in paras:
+            return None
+        out = []
+        for t in paras[paras.index(baslik) + 1:]:
+            if not t:
+                continue
+            if RE_YIL.match(t) or t == YIL_YER_TUTUCU or t in (HAZIRLAYANLAR, AMIR):
+                break
+            out.append(t)
+        return out
+    uyeler, amir = bolum(HAZIRLAYANLAR), bolum(AMIR)
+    amir_yt = sum(YER_TUTUCU_UYE in t for t in amir or [])
+    uye_yt = sum(YER_TUTUCU_UYE in t for t in paras) - amir_yt
     if uye_yt:
         s.ekle(KRITIK, "kapak_hazirlayanlar", "kapak",
                f"'Raporu Hazırlayanlar' altında {uye_yt} yer tutucu satır duruyor "
                "([Üye Unvan, Adı Soyadı, eposta adresi, Görevi]); komisyon üyeleri elle yazılmalı")
-    if HAZIRLAYANLAR in paras:
-        i = paras.index(HAZIRLAYANLAR)
-        uyeler = []
-        for t in paras[i + 1:]:
-            if not t:
-                continue
-            if RE_YIL.match(t):
-                break
-            uyeler.append(t)
+    if uyeler is not None:
         kapak["hazirlayanlar"] = sum(YER_TUTUCU_UYE not in u for u in uyeler)
         if not uyeler:
             s.ekle(KRITIK, "kapak_hazirlayanlar", "kapak", "'Raporu Hazırlayanlar' altında üye yok")
     else:
         s.ekle(UYARI, "kapak_hazirlayanlar", "kapak", "'Raporu Hazırlayanlar' başlığı bulunamadı")
+    if amir is not None:                      # yalnız şablonda amir bölümü varsa (Değ.No:1)
+        kapak["onaylayan"] = sum(YER_TUTUCU_UYE not in u for u in amir)
+        if amir_yt:
+            s.ekle(KRITIK, "kapak_onaylayan", "kapak",
+                   "'Raporu Onaylayan Birim Amiri' altında yer tutucu satır duruyor "
+                   "([Üye Unvan, Adı Soyadı, eposta adresi, Görevi]); birim amiri yazılmalı (config.yaml rapor.onaylayan)")
+        elif not amir:
+            s.ekle(KRITIK, "kapak_onaylayan", "kapak", "'Raporu Onaylayan Birim Amiri' altında kimse yok")
+    if YIL_YER_TUTUCU in paras:
+        s.ekle(UYARI, "kapak_yil", "kapak", "kapaktaki yıl yer tutucusu (20..) duruyor: yıl yazılmadı (bidr render --yil)")
     birim_i = next((i for i, t in enumerate(paras) if t.startswith("(BİDR)")), None)
     if birim_i is not None:
         kapak["birim"] = next((t for t in paras[birim_i + 1:] if t), None)
-    if kapak["yil"] is None:
+    if kapak["yil"] is None and YIL_YER_TUTUCU not in paras:
         s.ekle(UYARI, "kapak_yil", "kapak", "kapakta yıl paragrafı bulunamadı")
     s.bilgi["kapak"] = kapak
 

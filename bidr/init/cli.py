@@ -32,6 +32,8 @@ ders_kodlari: []                          # (isteğe bağlı) birimin ders kodu 
 birim_adlari: []                          # (isteğe bağlı) kurumdaki başka birim adları (kurum profiline eklenir); başka birim yalnız bunlardan tanınır
 hazirlayanlar: []                         # kapaktaki "Raporu Hazırlayanlar" (config.yaml rapor.hazirlayanlar);
                                           # her kişi: {{unvan: …, ad_soyad: …, eposta: …, gorev: …}}; boşsa rapor TASLAK
+onaylayan: null                           # kapaktaki "Raporu Onaylayan Birim Amiri" (config.yaml rapor.onaylayan; FR-0833
+                                          # Değ.No:1): {{unvan: …, ad_soyad: …, eposta: …, gorev: …}}; şablonda bölüm varken boşsa TASLAK
 sablon: null                              # boş FR-0833 rapor şablonu, tam yol (.docx; config.yaml rapor.sablon);
                                           # henüz yoksa null: render'a kadar bidr next yeniden ister
 """
@@ -48,6 +50,7 @@ QUESTIONS = [
     ("ajan", "Model işini yapan ajanın adı (boş bırakılabilir)", ""),
     ("hazirlayanlar", "Raporu hazırlayanlar, her satıra bir kişi: unvan; ad soyad; e-posta; görev "
                       "(boş satır bitirir)", None),
+    ("onaylayan", "Raporu onaylayan birim amiri: unvan; ad soyad; e-posta; görev (boş bırakılabilir)", ""),
     ("sablon", "Boş FR-0833 rapor şablonunun (.docx) yolu (boş bırakılabilir)", ""),
 ]
 
@@ -72,6 +75,11 @@ def _interactive(ws: str | None) -> dict:
             ans[k] = _ask_preparers(q)
             continue
         v = input(f"{q}{f' [{d}]' if d else ''}: ").strip() or (d or "")
+        if k == "onaylayan":
+            if v:
+                parts = [x.strip() for x in v.split(";")] + ["", "", "", ""]
+                ans[k] = {"unvan": parts[0], "ad_soyad": parts[1], "eposta": parts[2], "gorev": parts[3]}
+            continue
         if k == "gecmis_etiket":
             ans[k] = v.lower() in ("e", "evet", "y", "yes", "true", "1")
         elif v != "":
@@ -86,8 +94,8 @@ def _diff(old: dict, new: dict) -> list[str]:
 
 def _run(args) -> int:
     from . import agentfiles
-    from .config import (check_preparers, check_template, load_rapor, load_section, validate, write_rapor_key,
-                         write_section)
+    from .config import (check_approver, check_preparers, check_template, load_rapor, load_section, validate,
+                         write_rapor_key, write_section)
 
     if args.sablon:
         print(template(), end="")
@@ -119,6 +127,9 @@ def _run(args) -> int:
     people = None
     if "hazirlayanlar" in answers:            # rapor: bölümüne gider; cevapta yoksa var olan liste korunur
         people = check_preparers(answers["hazirlayanlar"])[0] or []
+    amir = None
+    if "onaylayan" in answers:                # rapor: bölümüne gider; cevapta yoksa var olan kayıt korunur
+        amir = check_approver(answers["onaylayan"])[0] or {}
     sablon = check_template(answers.get("sablon"))[0]   # boşsa var olan rapor.sablon korunur
     if old is not None:
         d = _diff(old, sec)
@@ -126,6 +137,9 @@ def _run(args) -> int:
         prev = prev_r.get("hazirlayanlar") or []
         if people is not None and prev and prev != people:
             d.append(f"  rapor.hazirlayanlar: {len(prev)} kişi → {len(people)} kişi")
+        prev_a = prev_r.get("onaylayan") or {}
+        if amir is not None and prev_a and prev_a != amir:
+            d.append(f"  rapor.onaylayan: {prev_a.get('ad_soyad') or '-'} → {amir.get('ad_soyad') or '(boş)'}")
         if sablon and prev_r.get("sablon") and str(Path(str(prev_r["sablon"])).expanduser()) != sablon:
             d.append(f"  rapor.sablon: {prev_r['sablon']!r} → {sablon!r}")
         if d and not args.yes:
@@ -138,6 +152,8 @@ def _run(args) -> int:
     write_section(ws, sec)
     if people is not None:
         write_rapor_key(ws, "hazirlayanlar", people)
+    if amir is not None:
+        write_rapor_key(ws, "onaylayan", amir or None)
     if sablon:
         write_rapor_key(ws, "sablon", sablon)
     notes = agentfiles.write_workspace_files(ws, sec, claude_hook=args.claude_hook)
@@ -145,6 +161,9 @@ def _run(args) -> int:
     n = len(load_rapor(ws).get("hazirlayanlar") or [])
     print(f"  raporu hazırlayanlar: {n} kişi" + ("" if n else " (boş: kapak yer tutucuları kalır, rapor TASLAK; "
                                                     "answers.yaml `hazirlayanlar` ile yeniden bidr init)"))
+    a = load_rapor(ws).get("onaylayan") or {}
+    print(f"  raporu onaylayan birim amiri: {a.get('ad_soyad')}" if a.get("ad_soyad") else
+          "  raporu onaylayan birim amiri: yok (şablonda amir bölümü varsa kapak yer tutucusu kalır, rapor TASLAK)")
     sab = load_rapor(ws).get("sablon")
     print(f"  rapor şablonu: {sab}" if sab else "  rapor şablonu: yok (render'dan önce answers.yaml `sablon` "
                                                  "ile yeniden bidr init; bidr next hatırlatır)")

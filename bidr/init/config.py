@@ -39,6 +39,7 @@ FIELDS: dict[str, tuple[type | tuple, bool, str]] = {
 # `rapor:` bölümüne yazılan cevaplar (bidr bölümüne girmez): anahtar → açıklama
 RAPOR_FIELDS = {
     "hazirlayanlar": "kapaktaki 'Raporu Hazırlayanlar': [{unvan, ad_soyad, eposta, gorev}, …]",
+    "onaylayan": "kapaktaki 'Raporu Onaylayan Birim Amiri' (FR-0833 Değ.No:1): {unvan, ad_soyad, eposta, gorev}",
     "sablon": "boş FR-0833 rapor şablonu (.docx; salt okunur) → config.yaml rapor.sablon",
 }
 HAZIRLAYAN_KEYS = ("unvan", "ad_soyad", "eposta", "gorev")
@@ -72,6 +73,21 @@ def check_preparers(v) -> tuple[list[dict] | None, list[str]]:
             errs.append(f"hazirlayanlar #{i}: e-posta biçimi geçersiz: {rec['eposta']}")
         out.append(rec)
     return (None, errs) if errs else (out, [])
+
+
+def check_approver(v) -> tuple[dict | None, list[str]]:
+    """`rapor.onaylayan` (birim amiri, tek kişi) → (temiz kayıt | None, hatalar). None/boş: verilmedi.
+    Alanlar hazırlayanla aynı: `ad_soyad` gerekli; `unvan`, `eposta`, `gorev` isteğe bağlı. Alanları boş
+    sözlük verilmemiş sayılır (panel formu boş gönderebilir)."""
+    if v is None or v == "" or v == {} or v == []:
+        return None, []
+    if not isinstance(v, dict):
+        return None, ["onaylayan tek kişi olmalı: {unvan, ad_soyad, eposta, gorev}"]
+    if not any(str(v.get(k) or "").strip() for k in HAZIRLAYAN_KEYS) and not set(map(str, v)) - set(HAZIRLAYAN_KEYS):
+        return None, []
+    people, errs = check_preparers([v])
+    errs = [e.replace("hazirlayanlar #1", "onaylayan") for e in errs]
+    return (None, errs) if errs else (people[0], [])
 
 
 def check_template(v) -> tuple[str | None, list[str]]:
@@ -147,6 +163,8 @@ def validate(answers: dict, ws: Path | None = None) -> tuple[dict, list[str]]:
         errs.append(f"bilinmeyen alan(lar): {', '.join(unknown)} (geçerli: {', '.join([*FIELDS, *RAPOR_FIELDS])})")
     if "hazirlayanlar" in answers:
         errs += check_preparers(answers["hazirlayanlar"])[1]
+    if "onaylayan" in answers:
+        errs += check_approver(answers["onaylayan"])[1]
     if "sablon" in answers:
         errs += check_template(answers["sablon"])[1]
     for k, (typ, req, _) in FIELDS.items():

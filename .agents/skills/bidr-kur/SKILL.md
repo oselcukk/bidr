@@ -66,6 +66,7 @@ Tesseract (UB Mannheim) kurulup PATH'e eklenir. OCR olmadan taranmış belgeler
 | 8 | (7 evetse) Etiketlerdeki birim adı | `etiket_birim` | boş = `birim` |
 | 9 | Model işini kim yapacak? | `ajan` | kendi adın, ör. `claude-code:sonnet`; kayda geçer |
 | 10 | Raporu kimler hazırlıyor? Her kişi için unvan, ad soyad, e-posta, görev | `hazirlayanlar` | Liste: `- {unvan: …, ad_soyad: …, eposta: …, gorev: …}`; raporun kapağına yazılır (`config.yaml` `rapor.hazirlayanlar`). Kişileri uydurma; kullanıcı henüz bilmiyorsa `[]` bırak (rapor TASLAK kalır), sonra aynı soruyla `bidr init` yeniden |
+| 10a | Raporu onaylayan birim amiri kim? Unvan, ad soyad, e-posta, görev | `onaylayan` | Tek kişi: `{unvan: …, ad_soyad: …, eposta: …, gorev: …}`; yeni şablonun (FR-0833 Değ.No:1) kapağındaki "Raporu Onaylayan Birim Amiri" satırına yazılır (`config.yaml` `rapor.onaylayan`). Uydurma; bilinmiyorsa `null` (yeni şablonda rapor TASLAK kalır) |
 | 11 | Boş FR-0833 rapor şablonu nerede? | `sablon` | .docx'in tam yolu (`config.yaml` `rapor.sablon`'a init yazar); aşağıdaki "Boş rapor şablonu". Henüz yoksa `null` |
 
 Cevapları `<calisma_alani>/answers.yaml` dosyasına yaz (klasörü aç), kullanıcıya göster,

@@ -4,6 +4,12 @@ Her birleştirmede (main'e giren her değişiklik) buraya en üste bir satır ek
 açıklama ve kullanıcıyı ilgilendiriyorsa ne yapması gerektiği. `bidr guncelle` güncellemeden sonra
 bu dosyanın yeni satırlarını gösterir. Bu dosyadan önceki geçmiş için `git log`.
 
+- 2026-11-27: FR-0833 Değ.No:1 (10.11.2026) şablonu: kapaktaki "Raporu Onaylayan Birim Amiri" yeni alanı
+  `rapor.onaylayan` (answers.yaml `onaylayan`: `{unvan, ad_soyad, eposta, gorev}`); şablonda bölüm varken boşsa rapor
+  TASLAK. Hazırlayan yer tutucuları başlığa göre bölümlenir (amir satırı artık hazırlayan sayılmaz; fazla kişi amir
+  başlığından önce eklenir). Yıl yer tutucusu "20.." tanınır (`--yil`). `bidr denetle` amir satırını ayrı denetler
+  (`kapak_onaylayan`). Ölçüt blokları iki şablonda aynı: şablonu değiştirmek yalnız `bidr render` (+ denetle/teslim)
+  ister, model yok. Yapılacak: answers.yaml'a `onaylayan` + `sablon: <yeni .docx>` ile `bidr init`, sonra `bidr render`.
 - 2026-11-26: Kanıt atıf gösterimi rapor boyunca kılavuz biçiminde: render (`--kanit-bicimi kilavuz`, vars.) metin
   içi atıfları, önceki yıla göre metnini ve yön maddelerini de `[1-OD3]` yazar (liste satırı zaten `[1-OD3]. Ad`).
   İç biçim `[n_ODk]` değişmedi (istem, write/verify doğrulaması, parmak izleri, görev sürümleri, `texts/*.json`):

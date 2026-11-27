@@ -1125,7 +1125,7 @@ def render_tamam(c: Ctx) -> Check:
                         Path(g["index"]) if g.get("index") else ws.root / "evidence-index.csv")
     if cur != m.get("girdi_sha"):
         return Check(kim=KOMUT, komutlar=[cmd], neden="rapor eski: şablon, metinler, alan maddeleri, audit, kanıt "
-                                                      "dizini, hazırlayanlar ya da kapsam değişti")
+                                                      "dizini, hazırlayanlar, birim amiri ya da kapsam değişti")
     uy = []
     if m.get("taslak"):
         why = m.get("taslak_nedenleri") or ["doğrulanmamış metin: " + ", ".join(m.get("dogrulanmamis") or [])]
