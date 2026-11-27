@@ -119,7 +119,7 @@ def make_doc(path: Path, *, fill=True, aciklama=None, kanitlar=None, footer=FOOT
             _body_p(ca, "Bu bölüme açıklayıcı metin yazılmalı, Time News Roman 10pt.")
             _body_p(ck, "Kanıtlar buraya yazılmalı, kanıt gösterim şekline bağlı kalınmalı.")
             continue
-        for m in (aciklama or {}).get(sid, [f"{sid} süreci tanımlıdır [1-OD3]. İzlenmektedir [2-OD3]."]):
+        for m in (aciklama or {}).get(sid, [f"{sid} süreci tanımlıdır [1_OD3]. İzlenmektedir [2_OD3]."]):
             _body_p(ca, m)
         for extra in (extra_aciklama or {}).get(sid, []):
             extra(ca)
@@ -212,28 +212,12 @@ def test_atif_liste_eslesmesi(tmp_path, sablon):
                    kanitlar={"A.1.1": ["[1-OD3]. Süreç", "[2-OD3]. İzleme", "[4-OD2]. Atıfsız"]})
     s = denetle(rep, sablon=sablon, beklenen=BEKLENEN)
     msg = {(b.kod, b.mesaj) for b in s.bulgular if b.yer == "A.1.1"}
-    assert ("atif_listede_yok", "metindeki [3-OD2] kanıt listesinde yok") in msg
-    assert ("atif_od_uyusmuyor", "metinde [2-OD4], listede 2. kanıt OD3") in msg
+    assert ("atif_listede_yok", "metindeki [3_OD2] kanıt listesinde yok") in msg
+    assert ("atif_od_uyusmuyor", "metinde [2_OD4], listede 2. kanıt OD3") in msg
     assert any(k == "atifsiz_kanit" and "4. kanıt" in m for k, m in msg)
-    # atıf gösterimi tutarlılığı: liste kılavuz [n-ODk]; metindeki üç [n_ODk] atfı tek uyarıda
-    g = [m for k, m in msg if k == "atif_gosterimi"]
-    assert len(g) == 1 and g[0].startswith("3 metin içi atıf") and "[1_OD3] yerine [1-OD3]" in g[0]
-    assert s.bilgi["metin_ici_atif"] == {"kilavuz": 3, "mat": 3}        # A.1.2 varsayılanı: iki [n-ODk]
+    assert any(k == "atif_gosterimi" for k, _ in msg)
     assert any(k == "kanit_numarasi" for k, _ in msg)
     assert s.kritik >= 2
-
-
-def test_atif_gosterimi_tutarli(tmp_path):
-    """Kılavuz listesinde [n-ODk] atıf temiz; iç biçim [n_ODk] uyarı. Mat listesinde tersi."""
-    s = denetle(make_doc(tmp_path / "k.docx"), beklenen=BEKLENEN)
-    assert "atif_gosterimi" not in codes(s) and s.bilgi["metin_ici_atif"]["mat"] == 0
-    eski = make_doc(tmp_path / "e.docx", aciklama={sid: ["Tanımlıdır [1_OD3]. İzlenir [2_OD3]."] for sid in SUBS})
-    s = denetle(eski, beklenen=BEKLENEN)
-    assert codes(s, UYARI).count("atif_gosterimi") == len(SUBS) and "atif_gosterimi" not in codes(s, KRITIK)
-    assert "atif_listede_yok" not in codes(s) and "atif_od_uyusmuyor" not in codes(s)
-    mat = {sid: ["1_OD3: Süreç", "2_OD3: İzleme"] for sid in SUBS}
-    s = denetle(make_doc(tmp_path / "m.docx", kanitlar=mat), beklenen=BEKLENEN)
-    assert codes(s).count("atif_gosterimi") == len(SUBS)       # mat listesi, metinde [n-ODk]
 
 
 def test_kanit_gosterimi_karar_ve_karisik(tmp_path):

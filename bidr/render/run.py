@@ -47,7 +47,6 @@ PUAN_ISARETLERI = ("kalin", "golge", "yok")
 KANIT_BICIMLERI = ("mat", "kilavuz")
 RE_NO = re.compile(r"^(\d+)_OD([1-5])$")
 RE_ATIF = re.compile(r"\[(\d+_OD[1-5])\]")
-RE_ATIF_IC = re.compile(r"\[(\d+)_OD([1-5])\]")
 # Kapaktaki yıl paragrafı: eski şablonda "2025", Değ.No:1 şablonunda yer tutucu "20..".
 RE_YIL = re.compile(r"^(19|20)(\d\d|\.\.)$")
 RE_OLCUT = re.compile(r"\b([A-E]\.\d+\.\d+)\b")
@@ -55,19 +54,6 @@ RE_OLCUT = re.compile(r"\b([A-E]\.\d+\.\d+)\b")
 # rapora girmez (atıf yerine geçer, okur için anlamı yok).
 RE_KOMISYON = re.compile(r"\s*\[komisyon\]")
 MANIFEST = ".bidr-render.json"
-
-
-def atif_gosterimi(m: str, bicim: str = "kilavuz") -> str:
-    """Rapora giden metin içi atıf. İç biçim (yazım istemi, write/verify doğrulaması, parmak izleri, texts/*.json)
-    `[n_ODk]` kalır; render kılavuz biçiminde onu kanıt listesi satırıyla aynı gösterime çevirir: `[1_OD3]` →
-    `[1-OD3]` (kural 2026-11-19: kılavuz gösterimi `[1-OD3]`). `mat` biçiminde metin olduğu gibi kalır."""
-    return RE_ATIF_IC.sub(r"[\1-OD\2]", m) if bicim == "kilavuz" else m
-
-
-def no_gosterimi(no: str, bicim: str = "kilavuz") -> str:
-    """Kanıt numarasının okura görünen hâli: `1_OD3` → `1-OD3` (kılavuz); iç anahtar değişmez."""
-    m = RE_NO.match(str(no or "").strip())
-    return f"{m.group(1)}-OD{m.group(2)}" if m and bicim == "kilavuz" else str(no or "").strip()
 
 
 def clean_text(m: str) -> str:
@@ -523,8 +509,7 @@ def yon_items(t: dict | None, key: str, rec: dict | None) -> tuple[list[dict], l
     return keep, drop, True
 
 
-def fill_yonler(doc, yonler: dict[str, dict], res: "Result", log: dict[str, dict] | None = None,
-                bicim: str = "kilavuz") -> None:
+def fill_yonler(doc, yonler: dict[str, dict], res: "Result", log: dict[str, dict] | None = None) -> None:
     cells, uy = find_yonler(doc)
     res.uyarilar += uy
     log = log or {}
@@ -548,7 +533,7 @@ def fill_yonler(doc, yonler: dict[str, dict], res: "Result", log: dict[str, dict
                         f"{DOGRULANMADI} Bu maddeler doğrulama aşamasından geçmemiştir "
                         f"(durum: {t.get('durum') or 'belirtilmemiş'}).",
                         {"italic": True, "color": ops.TASLAK_RENK})]))
-                paras += [ops.make_paragraph(MADDE + atif_gosterimi(" ".join(x["metin"].split()), bicim)) for x in items]
+                paras += [ops.make_paragraph(MADDE + " ".join(x["metin"].split())) for x in items]
             elif t is not None and verified:
                 # alan işlendi ama basılacak doğrulanmış madde yok: açık ifade (yönerge kalmaz)
                 paras = [ops.make_paragraph(YON_YOK[key])]
@@ -665,13 +650,12 @@ def render(template: Path, out: Path, *, texts_dir: Path, audit_path: Path | Non
                 m = clean_text(p.get("metin") or "")
                 if not m:
                     continue
+                aciklama.append(ops.make_paragraph(m))
                 for no in RE_ATIF.findall(m):
                     if no not in known:
                         res.uyarilar.append(f"{cid}: metindeki [{no}] kanıt listesinde yok")
-                aciklama.append(ops.make_paragraph(atif_gosterimi(m, opts.kanit_bicimi)))
             if clean_text(t.get("onceki_yila_gore") or ""):
-                aciklama.append(ops.make_paragraph(atif_gosterimi(clean_text(t["onceki_yila_gore"]),
-                                                                  opts.kanit_bicimi)))
+                aciklama.append(ops.make_paragraph(clean_text(t["onceki_yila_gore"])))
             # bölümün bu döneme ait doğrudan kanıtı yoksa (audit) not komisyon içindir: gaps.md'de
             # kalır, rapora girmez (kör test 2026-11-20); yalnız kayda geçer
             if audit_note(a):
@@ -714,7 +698,7 @@ def render(template: Path, out: Path, *, texts_dir: Path, audit_path: Path | Non
 
     if yonler_log is None and yonler_dir is not None:
         yonler_log = Path(yonler_dir).parent / YONLER_LOG
-    fill_yonler(doc, load_yonler(yonler_dir), res, load_yonler_log(yonler_log), opts.kanit_bicimi)
+    fill_yonler(doc, load_yonler(yonler_dir), res, load_yonler_log(yonler_log))
     # bölümün yön hücresi kararı (bidr/write/yon_karar.py): `cikar` dediği alan raporu TASLAK yapmaz
     from bidr.write import yon_karar as YK
     yon_insan = YK.load_human_path(Path(yonler_log).parent / YK.HUMAN) if yonler_log else []

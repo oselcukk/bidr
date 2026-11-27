@@ -520,16 +520,11 @@ A.3.1 11 pt, A.5.1 10 pt).
 `rapor.denetim.paragraf_sonrasi_nk` ya da `--paragraf-sonrasi`. Öteki anahtarlar: `yazi_tipi`, `govde_punto`, `baslik_punto`,
 `aciklama_punto`, `paragraf_oncesi_nk`.
 
-**Kanıt gösterimi.** Kural (2026-11-19): kılavuz gösterimi `[1-OD3]`. Render'ın varsayılanı
-(`--kanit-bicimi kilavuz`) ölçüt sonundaki listeyi `[1-OD3]. Uygulama Örnekleri.pdf`, metin içi atıfları da
-`[1-OD3]` yazar (aynı gösterim; kılavuzun örneği metin içinde `[1_OD3]` kullanır, `guide.yaml` `evidence_notation`
-yalnız alıntıdır). İç biçim `[n_ODk]` değişmez: yazım istemi, write/verify doğrulaması, parmak izleri ve
-`texts/*.json` onu kullanır; çeviri yalnız render anında (`render.run.atif_gosterimi`), model yeniden çalışmaz.
-`--kanit-bicimi mat` listeyi `1_OD3: ad`, metni `[1_OD3]` bırakır. Denetçi: liste `n_ODk:` ise
-`kanit_gosterimi_karar`, iki liste gösterimi karışıksa `kanit_gosterimi_karisik`; metin içi atıf listenin
-gösteriminde değilse ölçüt başına bir `atif_gosterimi` uyarısı (atıf gösterimi tutarlılığı; eski render'ın
-`[n_ODk]` metni → rapor yeniden üretilir). Teslim paketi (kanit-dizini, EKSIK.txt, MASKELEME-UYARI.txt) numarayı
-raporun liste gösterimiyle yazar (`1-OD3`).
+**Kanıt gösterimi — karar gerekli.** Kılavuzun örneği metin içinde `[1_OD3]`, ölçüt sonundaki
+listede `[1-OD3]. Uygulama Örnekleri.pdf` kullanır (`guide.yaml` `evidence_notation`). Render'ın
+varsayılanı (`--kanit-bicimi mat`) listeyi `1_OD3: ad` yazar (geçen yılın Matematik raporu usulü);
+denetçi bunu `kanit_gosterimi_karar` uyarısıyla raporlar, iki gösterim karışıksa
+`kanit_gosterimi_karisik`. Kurum kılavuz gösterimini isterse render `--kanit-bicimi kilavuz`.
 
 **Hat aşaması `denetle`** (D; önkoşul `render`; ardından isteğe bağlı `teslim`). `denetim.json` `docx_sha` denetlenen
 dosyanın sha256'sıdır. `checks.denetle_tamam`: denetim.json yok, başka bir docx'e ait ya da sha'sı

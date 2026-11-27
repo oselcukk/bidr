@@ -119,7 +119,7 @@ def test_kaynaktan_cikan_belge_kayitlardan_ve_rapordan_duser(kurulum):
     idx = {r["olcut"]: r for r in csv.DictReader(open(ws / "evidence-index.csv", encoding="utf-8"))}
     assert idx["B.1.1"]["doc_id"] == did
     no = idx["B.1.1"]["kanit_no"]
-    assert f"[{no.replace('_', '-')}]" in _govde(ws)
+    assert f"[{no}]" in _govde(ws)
 
     (src / CIKAN).unlink()
     assert "1 kaldırılmış" in evaluate(ws).get("ingest").neden
@@ -153,7 +153,7 @@ def test_kaynaktan_cikan_belge_kayitlardan_ve_rapordan_duser(kurulum):
     # rapor: çıkan belgenin atfı yok; kanıtı kalmayan ölçüt kanıtsız yazılır, TASLAK damgası yok
     assert main(["render", "-w", str(ws)]) == 0
     body = _govde(ws)
-    assert f"[{no.replace('_', '-')}]" not in body and "reddedildiği için" not in body
+    assert f"[{no}]" not in body and "reddedildiği için" not in body
     i = body.find("Programların tasarımı")
     assert "kanıt bulunamamıştır" in body[i:body.find("Öğrenci iş yükü")]
     assert not any("TASLAK" in u for u in evaluate(ws).get("render").uyarilar)

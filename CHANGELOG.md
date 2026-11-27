@@ -4,6 +4,8 @@ Her birleştirmede (main'e giren her değişiklik) buraya en üste bir satır ek
 açıklama ve kullanıcıyı ilgilendiriyorsa ne yapması gerektiği. `bidr guncelle` güncellemeden sonra
 bu dosyanın yeni satırlarını gösterir. Bu dosyadan önceki geçmiş için `git log`.
 
+- 2026-11-27: Metin içi atıf yeniden iç biçimde: kılavuzdaki gibi metinde `[1_OD3]`, listede `[1-OD3]. Ad`
+  (26 Kasım'daki `[1-OD3]` metin içi gösterimi geri alındı, karar 2026-11-27). Var olan rapor: `bidr render` (model yok).
 - 2026-11-27: Kapak yılı raporun dönem yılıdır: `bidr render` `--yil` verilmezse config.yaml `bidr.donem`'i yazar
   (yeni şablonun "20.."ı ve eski şablonun "2025"i yerine); dönem yoksa uyarır, tahmin etmez. Dönem render girdi
   özetine girer: var olan rapor bir kez eskir, `bidr render` (model yok).
@@ -13,12 +15,6 @@ bu dosyanın yeni satırlarını gösterir. Bu dosyadan önceki geçmiş için `
   başlığından önce eklenir). Yıl yer tutucusu "20.." tanınır (`--yil`). `bidr denetle` amir satırını ayrı denetler
   (`kapak_onaylayan`). Ölçüt blokları iki şablonda aynı: şablonu değiştirmek yalnız `bidr render` (+ denetle/teslim)
   ister, model yok. Yapılacak: answers.yaml'a `onaylayan` + `sablon: <yeni .docx>` ile `bidr init`, sonra `bidr render`.
-- 2026-11-26: Kanıt atıf gösterimi rapor boyunca kılavuz biçiminde: render (`--kanit-bicimi kilavuz`, vars.) metin
-  içi atıfları, önceki yıla göre metnini ve yön maddelerini de `[1-OD3]` yazar (liste satırı zaten `[1-OD3]. Ad`).
-  İç biçim `[n_ODk]` değişmedi (istem, write/verify doğrulaması, parmak izleri, görev sürümleri, `texts/*.json`):
-  model yeniden çalışmaz. Biçim denetimi metin içi atfın listenin gösterimiyle aynı olmasını ister (ölçüt başına bir
-  `atif_gosterimi` uyarısı, kritik değil); teslim paketi numaraları `1-OD3` yazar. Var olan rapor için: `bidr render`
-  (+ `bidr denetle`, teslim paketi varsa `bidr teslim`) — model yok.
 - 2026-11-26: Karar aşamalarının (kaba/ince) "eski olabilir" parmak izi kod dosyalarını sözdizimi olarak okur
   (`bidr/decide/parmak.py`, iz `v2-…`): belge dizgesi, yorum ya da biçim düzenlemesi aşamaları artık eskitmez
   (canlı olay: run.py'de yalnız açıklama değişti, karar_kaba "eski olabilir" deyip audit'i durdurdu). Görev/istem

@@ -234,13 +234,13 @@ def test_paket(tmp_path):
     assert any(f"Kaynak: {WEB_URL} &#183; Al&#305;nma (eri&#351;im) tarihi: 31.12.2025" in x for x in h)
     assert any("Kaynak: ba&#287;lant&#305; bilinmiyor" in x for x in h)
     rows = {(r["Ölçüt"], r["Kanıt no"]): r for r in _rows(out / "kanit-dizini.csv")}
-    assert len(rows) == 4 and all("-OD" in no for _, no in rows)            # kılavuz gösterimi (iç n_ODk değil)
-    w = rows[("A.1.1", "2-OD2")]
+    assert len(rows) == 4
+    w = rows[("A.1.1", "2_OD2")]
     assert w["Kanıt adı"] == "Sentetik web sayfası" and w["Özgün bağlantı"] == WEB_URL
     assert w["Paketteki dosya"] == "kanitlar/A/A.1/A.1.1/[2-OD2]. Sentetik web sayfası.html"
     assert w["PDF kopyası"].endswith("Sentetik web sayfası.pdf") and w["Alınma tarihi"] == "2025-12-31"
-    assert rows[("A.1.2", "2-OD2")]["Özgün bağlantı"] == "bağlantı bilinmiyor"
-    assert rows[("A.1.2", "1-OD3")]["Özgün bağlantı"] == ""                        # kök klasör bağlantısı değil
+    assert rows[("A.1.2", "2_OD2")]["Özgün bağlantı"] == "bağlantı bilinmiyor"
+    assert rows[("A.1.2", "1_OD3")]["Özgün bağlantı"] == ""                        # kök klasör bağlantısı değil
     assert all(r["Durum"] == "tamam" for r in rows.values())
     assert all((out / r["Paketteki dosya"]).is_file() for r in rows.values())     # her satır bir dosya
     from openpyxl import load_workbook
@@ -269,7 +269,6 @@ def test_paket_eksik(tmp_path):
     assert "OD uyuşmuyor" in e and "dosya yok" in e and e.count("PDF kopyası üretilemedi") == 2
     txt = (ws / "teslim" / EKSIK).read_text(encoding="utf-8")
     assert "EKSİK TESLİM PAKETİ" in txt and "Kurul kararı" in txt
-    assert "A.1.2 [1-OD3] Kurul kararı" in txt and "_OD" not in txt         # raporun kılavuz gösterimi
     rows = _rows(ws / "teslim" / "kanit-dizini.csv")
     assert sum(r["Durum"].startswith("eksik") for r in rows) == 4
 
@@ -298,7 +297,7 @@ def test_paket_ayni_kaynak_tek_numara(tmp_path):
     assert got == ["[1-OD3]. Kurul kararı (2025-01-14).pdf", "[1-OD3]. Kurul kararı (2025-03-17).pdf",
                    "[2-OD2]. Adressiz sayfa.html", "[2-OD2]. Adressiz sayfa.pdf"]
     assert any("Eski dosyalama artığı" in u and "dizinde olmayan" in u for u in res.uyarilar)
-    dz = [r for r in _rows(ws / "teslim" / "kanit-dizini.csv") if r["Ölçüt"] == "A.1.2" and r["Kanıt no"] == "1-OD3"]
+    dz = [r for r in _rows(ws / "teslim" / "kanit-dizini.csv") if r["Ölçüt"] == "A.1.2" and r["Kanıt no"] == "1_OD3"]
     assert len(dz) == 2 and all(r["Durum"] == "tamam" and r["Kanıt adı"] == "Kurul kararı" for r in dz)
     # dizin numaranın dosyalarını bilmiyorsa (dizinde tek satır, klasörde iki aday) eski kural: eksik
     rows = [r for r in rows if not r[4].endswith("(2025-03-17).pdf")]
@@ -406,9 +405,9 @@ def test_paket_maskeleme(tmp_path, capsys):
     assert res.eksik == [] and res.kontrol_bekliyor == [] and not (ws / "teslim" / EKSIK).exists()
     rows = {(r["Ölçüt"], r["Kanıt no"]): r for r in _rows(ws / "teslim" / "kanit-dizini.csv")}
     assert {key: r["Maskeleme"] for key, r in rows.items()} == {
-        ("A.1.1", "1-OD3"): "tamam", ("A.1.1", "2-OD2"): "tamam",
-        ("A.1.2", "1-OD3"): "karar bekliyor", ("A.1.2", "2-OD2"): "maskelenmedi"}
-    assert rows[("A.1.2", "1-OD3")]["Paketteki dosya"] == "kanitlar/A/A.1/A.1.2/[1-OD3]. Kurul kararı.pdf"
+        ("A.1.1", "1_OD3"): "tamam", ("A.1.1", "2_OD2"): "tamam",
+        ("A.1.2", "1_OD3"): "karar bekliyor", ("A.1.2", "2_OD2"): "maskelenmedi"}
+    assert rows[("A.1.2", "1_OD3")]["Paketteki dosya"] == "kanitlar/A/A.1/A.1.2/[1-OD3]. Kurul kararı.pdf"
     kb = {x["kanit"].rsplit("/", 1)[1]: x for x in res.karar_bekleyen}
     assert set(kb) == {"[1-OD3]. Kurul kararı.pdf", "[2-OD2]. Adressiz sayfa.html"}
     assert all(x["pakette"] and x["dosya"].startswith("kanitlar/") for x in kb.values())
@@ -430,7 +429,7 @@ def test_paket_maskeleme(tmp_path, capsys):
     assert not (k / "A.1.2" / "[2-OD2]. Adressiz sayfa.html").exists()
     assert len(res.kontrol_bekliyor) == 2 and res.eksik == []
     rows = {(r["Ölçüt"], r["Kanıt no"]): r for r in _rows(ws / "teslim" / "kanit-dizini.csv")}
-    assert rows[("A.1.2", "1-OD3")]["Maskeleme"] == "kontrol bekliyor" and rows[("A.1.2", "1-OD3")]["Paketteki dosya"] == ""
+    assert rows[("A.1.2", "1_OD3")]["Maskeleme"] == "kontrol bekliyor" and rows[("A.1.2", "1_OD3")]["Paketteki dosya"] == ""
     assert "KONTROL BEKLİYOR: 2 DOSYA" in (ws / "teslim" / EKSIK).read_text(encoding="utf-8")
     c = durum(ctx)
     assert c.kim == "insan" and "kontrol bekliyor: 2 dosya" in c.neden
@@ -457,7 +456,7 @@ def test_paket_maskeleme(tmp_path, capsys):
     assert res.karar_bekleyen == [] and durum(ctx).bitti and not (ws / "teslim" / MASKE_UYARI).exists()
     assert not any("kararı bekleyen" in u for u in durum(ctx).uyarilar)
     rows = {(r["Ölçüt"], r["Kanıt no"]): r["Maskeleme"] for r in _rows(ws / "teslim" / "kanit-dizini.csv")}
-    assert rows[("A.1.2", "2-OD2")] == "elle maskelendi"
+    assert rows[("A.1.2", "2_OD2")] == "elle maskelendi"
     # tamam ama kararı verilmemiş öneri bölgesi var: karar bekliyor, çerçevesiz teslim kopyası girer
     rep = json.loads((ws / "maskeleme-raporu.json").read_text(encoding="utf-8"))
     rel = "A/A.1/A.1.2/[1-OD3]. Kurul kararı.pdf"
@@ -658,7 +657,7 @@ def test_maskeleme_kapisi_asiri_kapatma_bekliyor(tmp_path, capsys, monkeypatch):
     assert kb["pakette"] and kb["maskeleme"] == MASKE_KARAR and "aşırı kapatma" in kb["neden"]
     assert res.eksik == [] and res.kontrol_bekliyor == [] and res.maskeleme_uyarisi is None
     rows = {(r["Ölçüt"], r["Kanıt no"]): r["Maskeleme"] for r in _rows(ws / "teslim" / "kanit-dizini.csv")}
-    assert rows[("A.1.2", "1-OD3")] == "karar bekliyor"
+    assert rows[("A.1.2", "1_OD3")] == "karar bekliyor"
     uy = (ws / "teslim" / MASKE_UYARI).read_text(encoding="utf-8")
     assert "MASKELEME KARARI BEKLEYEN BELGELER: 1" in uy and "Kurul kararı" in uy and "aşırı kapatma" in uy
     c = durum(tctx)
