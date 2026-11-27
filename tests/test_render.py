@@ -792,3 +792,27 @@ def test_department_decision_clears_rejected_area_draft(ws, tmp_path):
                             encoding="utf-8")
     res, _, _ = _run(ws, tmp_path, yonler_dir=yd, hazirlayanlar=PEOPLE)
     assert res.taslak
+
+
+def test_cli_year_from_donem(ws, tmp_path, capsys, monkeypatch):
+    """CLI: kapak yılı config.yaml bidr.donem'den — yeni şablonun "20.."ı ve eski şablonun "2025"i dönemle
+    değişir; --yil üstün; dönem yoksa uyarı, yıl tahmin edilmez."""
+    import yaml as Y
+
+    import bidr.pipeline.gate as G
+    monkeypatch.setattr(G, "check_gate", lambda *a, **k: None)     # yönetilen ws: aşama kapısı bu testin konusu değil
+    for amir, eski_yil in ((True, "20.."), (False, "2025")):
+        tpl = make_template(tmp_path / "sablon.docx", full=True, amir=amir)
+        cfg = {"bidr": {"birim": "Sentetik Bölüm", "donem": 2026}, "rapor": {"sablon": str(tpl)}}
+        (ws / "config.yaml").write_text(Y.safe_dump(cfg, allow_unicode=True), encoding="utf-8")
+        assert main(["render", "-w", str(ws)]) == 0
+        cov = _cover(docx.Document(str(ws / "report.docx")))
+        assert "2026" in cov and eski_yil not in cov
+        assert main(["render", "-w", str(ws), "--yil", "2027"]) == 0
+        assert "2027" in _cover(docx.Document(str(ws / "report.docx")))
+        del cfg["bidr"]["donem"]
+        (ws / "config.yaml").write_text(Y.safe_dump(cfg, allow_unicode=True), encoding="utf-8")
+        capsys.readouterr()
+        assert main(["render", "-w", str(ws)]) == 0
+        assert "bidr.donem yok" in capsys.readouterr().out
+        assert eski_yil in _cover(docx.Document(str(ws / "report.docx")))

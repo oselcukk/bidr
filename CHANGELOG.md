@@ -4,6 +4,9 @@ Her birleştirmede (main'e giren her değişiklik) buraya en üste bir satır ek
 açıklama ve kullanıcıyı ilgilendiriyorsa ne yapması gerektiği. `bidr guncelle` güncellemeden sonra
 bu dosyanın yeni satırlarını gösterir. Bu dosyadan önceki geçmiş için `git log`.
 
+- 2026-11-27: Kapak yılı raporun dönem yılıdır: `bidr render` `--yil` verilmezse config.yaml `bidr.donem`'i yazar
+  (yeni şablonun "20.."ı ve eski şablonun "2025"i yerine); dönem yoksa uyarır, tahmin etmez. Dönem render girdi
+  özetine girer: var olan rapor bir kez eskir, `bidr render` (model yok).
 - 2026-11-27: FR-0833 Değ.No:1 (10.11.2026) şablonu: kapaktaki "Raporu Onaylayan Birim Amiri" yeni alanı
   `rapor.onaylayan` (answers.yaml `onaylayan`: `{unvan, ad_soyad, eposta, gorev}`); şablonda bölüm varken boşsa rapor
   TASLAK. Hazırlayan yer tutucuları başlığa göre bölümlenir (amir satırı artık hazırlayan sayılmaz; fazla kişi amir

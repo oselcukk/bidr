@@ -19,7 +19,7 @@ def _run(args) -> int:
     from bidr.write.sources import rapor_section
 
     from .run import (YONLER_DIR, Options, render, update_link_gaps, update_scope_gaps, workspace_approver,
-                      workspace_inputs, workspace_sha, workspace_teslim, write_manifest)
+                      workspace_inputs, workspace_sha, workspace_teslim, workspace_year, write_manifest)
 
     ws = Path(args.workspace).expanduser().resolve()
     if (rc := check_gate(ws, "render")) is not None:
@@ -31,10 +31,11 @@ def _run(args) -> int:
               file=sys.stderr)
         return 2
     sablon = Path(str(sablon)).expanduser()
+    from bidr.init.config import load_section
     birim = args.birim
     if birim is None:
-        from bidr.init.config import load_section
         birim = (load_section(ws) or {}).get("birim")
+    yil = args.yil if args.yil is not None else workspace_year(ws)
     index = Path(args.index).expanduser() if args.index else ws / "evidence-index.csv"
     out = Path(args.out).expanduser() if args.out else ws / "report.docx"
     texts = Path(args.texts).expanduser() if args.texts else ws / "texts"
@@ -49,10 +50,13 @@ def _run(args) -> int:
     kapsam, people, pre = workspace_inputs(ws)
     amir, uy = workspace_approver(ws)
     pre += uy
+    if yil is None:
+        pre.append("config.yaml bidr.donem yok: kapaktaki yıl yazılmadı (şablondaki kalır); --yil verin ya da "
+                   "answers.yaml `donem` ile bidr init")
     try:
         teslim = workspace_teslim(ws)
         res = render(sablon, out, texts_dir=texts, audit_path=audit,
-                     birim=birim, yil=args.yil, opts=opts, index_path=index,
+                     birim=birim, yil=yil, opts=opts, index_path=index,
                      kapsam=kapsam, yonler_dir=ws / YONLER_DIR, hazirlayanlar=people, teslim=teslim,
                      evidence_dir=ws / "evidence", onaylayan=amir)
     except (FileNotFoundError, ValueError) as e:
@@ -99,7 +103,8 @@ def register(sub):
     p.add_argument("--index", default=None, help="evidence-index.csv (vars.: WS/evidence-index.csv)")
     p.add_argument("--out", default=None, help="çıktı (vars.: WS/report.docx)")
     p.add_argument("--birim", default=None, help="kapaktaki birim adı (vars.: config.yaml birim)")
-    p.add_argument("--yil", default=None, help="kapaktaki yıl (verilmezse şablondaki kalır)")
+    p.add_argument("--yil", default=None, help="kapaktaki yıl (vars.: config.yaml bidr.donem, raporun dönem yılı; "
+                                               "şablondaki '20..' ya da eski yıl yerine yazılır)")
     p.add_argument("--texts", default=None, help="metin klasörü (vars.: WS/texts)")
     p.add_argument("--audit", default=None, help="audit-olcutler.json (vars.: WS/audit-olcutler.json)")
     p.add_argument("--kapsam-disi", default=None,

@@ -820,6 +820,14 @@ def workspace_inputs(ws: Path) -> tuple[dict[str, str], list[dict] | None, list[
     return kapsam, people, uy
 
 
+def workspace_year(ws: Path) -> int | None:
+    """Kapak yılı: config.yaml `bidr.donem` (raporun dönem yılı; kullanıcı kararı 2026-11-27). Yoksa None
+    (tahmin edilmez; render CLI uyarır)."""
+    from bidr.init.config import load_section
+    v = (load_section(Path(ws)) or {}).get("donem")
+    return int(v) if isinstance(v, int) or (isinstance(v, str) and v.strip().isdigit()) else None
+
+
 def workspace_approver(ws: Path) -> tuple[dict | None, list[str]]:
     """config.yaml `rapor.onaylayan` (birim amiri; tek kişi): (kişi | None, uyarılar)."""
     from bidr.init.config import check_approver
@@ -847,6 +855,8 @@ def workspace_sha(ws: Path, template: Path, texts_dir: Path, audit_path: Path | 
     amir, _ = workspace_approver(ws)
     if amir:                            # amir yoksa özet eskisiyle aynı kalır (var olan rapor eskimez)
         extra["onaylayan"] = amir
+    if (yil := workspace_year(ws)) is not None:     # kapak yılı (dönem) değişince rapor eskir
+        extra["yil"] = yil
     if teslim != "baglanti":            # bağlantı modunda özet eskisiyle aynı kalır
         extra["teslim"] = teslim
     kor_od = _kor_od(audit_path)
