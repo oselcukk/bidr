@@ -336,3 +336,55 @@ def test_karsilastirma_degistir_atfi_korur(tmp_path):
     answer(ws, "B.1.1", dg, "karsilastirma")
     st = KS.apply(ws, model="t")
     assert any("atfı düştü" in s for s in st["kod_reddi"]["B.1.1"])
+
+
+# -- eski `--onceki` / `rapor.onceki_rapor` ile birlikte; geçen yılla karşılaştırma cümlesi dönem denetiminde --
+
+def test_onceki_yil_varken_eski_onceki_metni_devre_disi(tmp_path, capsys):
+    ws = make_report_ws(tmp_path, previous={"B.1.1": "Açıklamalar:\nGeçen yılın üslup örneği.\n"})
+    onceki_yaz(ws, {"B.1.1": KAYIT})
+    st = W.prepare(ws, onceki=ws / "onceki")
+    ist = _pkg(ws)["istem"]
+    assert "Geçen yılın üslup örneği" not in ist                       # eski yol istemde yok
+    assert ist.count("danışma kurulu toplantısı yapılmamıştı") == 1     # geçen yıl istemde bir kez
+    assert st["onceki"] is None and st["onceki_olcut"] == 0
+    assert st["uyarilar"] and O.DOSYA in st["uyarilar"][0]
+    # config.yaml rapor.onceki_rapor da aynı biçimde kapanır; CLI uyarıyı yazar
+    (ws / "config.yaml").write_text(f"rapor:\n  onceki_rapor: {ws / 'onceki'}\n", encoding="utf-8")
+    capsys.readouterr()
+    assert main(["write", "prepare", "-w", str(ws), "--only", "B.1.1"]) == 0
+    out = capsys.readouterr().out
+    assert "UYARI önceki yıl metni" in out and "devre dışı" in out
+    assert "Geçen yılın üslup örneği" not in _pkg(ws)["istem"]
+    # onceki-yil.json yoksa eski yol aynen çalışır, uyarı yok
+    (ws / O.DOSYA).unlink()
+    st = W.prepare(ws, onceki=ws / "onceki", only=["B.1.1"])
+    assert "Geçen yılın üslup örneği" in _pkg(ws)["istem"] and not st["uyarilar"]
+
+
+def test_karsilastirma_cumlesi_donem_disi_sayilmaz_yalniz_raporlu_bolumde():
+    from bidr.write import text as T
+    kod = lambda ps, **kw: [i["kod"] for i in T.content_issues(ps, "", **kw)]      # noqa: E731
+    kars = "2025'te danışma kurulu toplantısı yapılmamıştı, bu yıl kurul toplanmıştır [4_OD3]."
+    assert kod([kars], donem=2026, donem_ici={"4_OD3"}) == ["donem_ici_atlandi"]   # rapor yoksa genel denetim
+    assert kod([kars], donem=2026, donem_ici={"4_OD3"}, karsilastirma=True) == []
+    # yalnız o kalıp: "bu yıl" karşıtı yoksa, daha eski yıl anılıyorsa ya da geçen yıl değilse denetim aynen
+    for s in ("2025'te danışma kurulu toplanmıştır [4_OD3].",
+              "2024 ve 2025'te kurul toplanmamıştı, bu yıl toplanmıştır [4_OD3].",
+              "2023'te kurul toplanmamıştı, bu yıl toplanmıştır [4_OD3]."):
+        assert kod([s], donem=2026, donem_ici={"4_OD3"}, karsilastirma=True) == ["donem_ici_atlandi"], s
+    assert T.comparison_sentence("2025 yılında yoktu; bu dönem anket yapılmıştır.", 2026)
+    assert not T.comparison_sentence("2025 yılında anket yapılmıştır.", 2026)
+
+
+def test_karsilastirma_cumlesi_kod_denetiminde_raporlu_bolumde_gecer(tmp_path):
+    ws = make_report_ws(tmp_path)
+    (ws / "config.yaml").write_text("bidr:\n  donem: 2026\n", encoding="utf-8")
+    src = W.Sources(ws, onceki="")
+    meta = {"od_onerisi": 3, "donem": 2026, "donem_ici": ["2_OD3"]}
+    paras = ["Bölümümüzde ders bilgi formları kullanılmaktadır. 2025'te AKTS iş yükü hesabı yoktu, bu yıl "
+             "iş yükü hesabı yapılmıştır [2_OD3]."]
+    assert "donem_ici_atlandi" in [i["kod"] for i in W.code_issues(src, meta, "B.1.1", paras, "")]
+    onceki_yaz(ws, {"B.1.1": KAYIT})
+    src = W.Sources(ws, onceki="")
+    assert "donem_ici_atlandi" not in [i["kod"] for i in W.code_issues(src, meta, "B.1.1", paras, "")]

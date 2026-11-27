@@ -158,8 +158,10 @@ def _denetle(src, t: dict, meta: dict, out: dict) -> tuple[list[str] | None, lis
     if birlesik is None:
         return None, [f"{out['yer']}: metinde böyle bir cümle yok"]
     once = {(i["kod"], i["ayrinti"]) for i in T.content_issues(paras, t.get("onceki_yila_gore") or "",
-                                                                 donem=src.donem, donem_ici=_donem_ici(src, c))}
-    for i in T.content_issues(birlesik, t.get("onceki_yila_gore") or "", donem=src.donem, donem_ici=_donem_ici(src, c)):
+                                                                 donem=src.donem, donem_ici=_donem_ici(src, c),
+                                                                 karsilastirma=src.onceki_yil is not None)}
+    for i in T.content_issues(birlesik, t.get("onceki_yila_gore") or "", donem=src.donem, donem_ici=_donem_ici(src, c),
+                                karsilastirma=src.onceki_yil is not None):
         if (i["kod"], i["ayrinti"]) not in once:
             sorun.append(f"{i.get('yer', '-')} {i['kod']}: {i['ayrinti']}")
     return (None if sorun else birlesik), sorun

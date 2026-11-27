@@ -283,6 +283,8 @@ denetiminin bulgularını kullanıcıya göster. Karar kullanıcının: `bidr wr
 cikar` (rapora girmez) / `tekrar` (bir tur daha) / `kabul` (yalnız bütün bulgular üslup türündeyse:
 abartı, slogan, ODn dili; atıf/alıntı bulgusunda komut reddeder; metin yine
 doğrulanır). Bu komutu yalnız kullanıcı söyleyince çalıştır.
+Geçen yılın raporu (isteğe bağlı, `onceki-yil.json`, docs/ONCEKI_YIL.md) varsa istemin sonundaki karşılaştırma
+ekine uy: geçen yıl kanıt değildir, ona atıf yok; karşılaştırma yalnız bu yılın kanıtıyla.
 
 ## Doğrulama (verify) ve yeniden yazım döngüsü
 

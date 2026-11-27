@@ -46,7 +46,13 @@ sürümleri (`write_criterion` 5, `verify_text` 4) ve `girdi_sha` (kanıt listes
 - yalnız ilgili ölçütün paketi değişir; geçen yıl kaydı olmayan ölçütün paketi aynı kalır.
 - doğrulama metin özetiyle (`metin_sha`) işler; ek bölüm doğrulanmış metni yeniden doğrulatmaz.
 Not: eski `--onceki` / `config.yaml rapor.onceki_rapor` yolu (geçen yılın metni TEMEL isteme, `onceki_metin`) ayrıca
-duruyor; panel onu kullanmaz.
+duruyor; panel onu kullanmaz. Çalışma alanında `onceki-yil.json` varsa eski yol devre dışıdır (geçen yıl istemde iki kez
+görünmesin): `write prepare` "UYARI önceki yıl metni … kullanılmadı" yazar. Eski yolu kullanan bölümde bu, temel istemi
+(`onceki_metin` "yok" olur) ve dolayısıyla metinlerin güncelliğini değiştirir.
+
+Dönem denetimi (`donem_ici_atlandi`, `bidr/write/text.py`): `onceki-yil.json` olan bölümde geçen yılı (yalnız
+`dönem - 1`) "bu yıl"/"bu dönem" ile açıkça karşılaştıran cümle ("2025'te … vardı, bu yıl …") dönem dışı sayılmaz.
+Genel dönem denetimi aynıdır; raporu olmayan bölümde bu cümle de denetlenir.
 
 ## Tek seferlik karşılaştırma geçişi: `bidr write karsilastirma-ekle prepare|apply|sonuc`
 

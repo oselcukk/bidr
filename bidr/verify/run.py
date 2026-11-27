@@ -218,7 +218,8 @@ def code_check(src: W.Sources, t: dict) -> list[dict]:
                        "ayrinti": f"metin OD{t['od_onerisi']} için yazıldı; güncel önerilen OD{od_now}"})
     cited = set(W._cited(paras, onceki))
     ev = src.evidence(c, only=cited)
-    issues += T.content_issues(paras, onceki, donem=src.donem, donem_ici=set(W.in_period_nos(ev, src.donem)))
+    issues += T.content_issues(paras, onceki, donem=src.donem, donem_ici=set(W.in_period_nos(ev, src.donem)),
+                              karsilastirma=src.onceki_yil is not None)
     for e in ev:
         if src.doc_text(e["doc_id"]) is None:
             issues.append({"yer": "-", "metin": "", "kod": "belge_metni_yok",
@@ -241,7 +242,8 @@ def content_check(src: W.Sources, t: dict) -> list[dict]:
     paras, onceki = _paras(t)
     cited = set(W._cited(paras, onceki))
     ev = src.evidence(c, only=cited)
-    return T.content_issues(paras, onceki, donem=src.donem, donem_ici=set(W.in_period_nos(ev, src.donem)))
+    return T.content_issues(paras, onceki, donem=src.donem, donem_ici=set(W.in_period_nos(ev, src.donem)),
+                              karsilastirma=src.onceki_yil is not None)
 
 
 def render_sentences(rows: list[dict]) -> str:

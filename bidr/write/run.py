@@ -101,7 +101,16 @@ class Sources:
             raise FileNotFoundError(f"{S.AUDIT} yok: {self.audit_path} (önce `bidr audit`)")
         self.index = S.load_index(self.index_path)
         self.audit = S.load_audit(self.audit_path)
+        from bidr.onceki import baglam as OY
+        self.onceki_yil = OY.yukle(self.ws.root)   # geçen yılın raporu (yalnız karşılaştırma; bidr/onceki)
         src = onceki if onceki is not None else S.configured_previous(self.ws.root)
+        self.uyarilar: list[str] = []
+        if src and self.onceki_yil is not None:
+            # İkisi birden açıksa geçen yıl istemde iki kez görünürdü: onceki-yil.json kazanır, eski yol kapanır.
+            self.uyarilar.append(f"önceki yıl metni ({src}) kullanılmadı: çalışma alanında {OY.DOSYA} var, geçen "
+                                 "yılın raporu yalnız oradan (karşılaştırma bağlamı) girer; `--onceki` / "
+                                 "`rapor.onceki_rapor` devre dışı")
+            src = None
         self.previous, self.previous_name = S.load_previous(src) if src else ({}, None)
         self.notes = S.load_notes(Path(notes) if notes else self.ws.root / S.NOTES)
         self.cs = load_criteria()
@@ -113,8 +122,6 @@ class Sources:
         self.donem = period_of(self.ws.root)
         self.birim = S.unit_name(self.ws.root)[0]
         self._related: IL.Related | None = None
-        from bidr.onceki import baglam as OY
-        self.onceki_yil = OY.yukle(self.ws.root)   # geçen yılın raporu (yalnız karşılaştırma; bidr/onceki)
 
     def related(self, olcut: str) -> list[dict]:
         """Ölçütte aday olup kanıt listesine girmemiş belgeler (bidr/write/ilgili.py)."""
@@ -542,7 +549,8 @@ def prepare_rejected(ws_root: Path, *, only: list[str] | None = None, index: Pat
     human = V.load_human(src.ws)
     d = work_dir(src.ws)
     d.mkdir(parents=True, exist_ok=True)
-    st = {"paket": 0, "yeni": 0, "insan_gerekli": [], "cikarildi": [], "kanitsiz": [], "tur": {}}
+    st = {"paket": 0, "yeni": 0, "insan_gerekli": [], "cikarildi": [], "kanitsiz": [], "tur": {},
+          "uyarilar": src.uyarilar}
     for c, t in V.rejected(src.ws, log, only=only).items():
         if V.excluded(t, human):
             st["cikarildi"].append(c)
@@ -603,7 +611,7 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
     yes, no = _criteria(src, only)
     st = {"paket": 0, "yeni": 0, "zaten_tamam": 0, "kanitsiz": no, "onceki": src.previous_name,
           "onceki_olcut": sum(c in src.previous for c in yes), "eski_surum": [],
-          "yenilenen": list(only) if old_rules else []}
+          "yenilenen": list(only) if old_rules else [], "uyarilar": src.uyarilar}
     from bidr.kor import run as KD
     for c in yes:
         inputs, meta = write_inputs(src, c, h)
@@ -723,7 +731,8 @@ def code_issues(src: Sources, meta: dict, c: str, paras: list[str], onceki: str)
     issues = T.check_text(paras, onceki, index_nos=src.index_nos(c), od=meta["od_onerisi"],
                           komisyon=meta.get("komisyon", False))
     return issues + T.content_issues(paras, onceki, donem=meta.get("donem"),
-                                     donem_ici=set(meta.get("donem_ici") or []))
+                                     donem_ici=set(meta.get("donem_ici") or []),
+                                     karsilastirma=src.onceki_yil is not None)
 
 
 def text_record(src: Sources, c: str, pkg: dict, raw: str, out: dict, model: str) -> dict:

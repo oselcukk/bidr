@@ -4,6 +4,11 @@ Her birleştirmede (main'e giren her değişiklik) buraya en üste bir satır ek
 açıklama ve kullanıcıyı ilgilendiriyorsa ne yapması gerektiği. `bidr guncelle` güncellemeden sonra
 bu dosyanın yeni satırlarını gösterir. Bu dosyadan önceki geçmiş için `git log`.
 
+- 2026-11-27: Geçen yılın BİDR raporu (isteğe bağlı, yalnız karşılaştırma; kanıt değildir): `bidr onceki-yil cek -w WS
+  --rapor X.docx|pdf` → `onceki-yil.json`; yazım/doğrulama istemine karşılaştırma eki (temel istem özeti değişmez,
+  var olan metinler kendiliğinden yeniden yazılmaz); tek seferlik `bidr write karsilastirma-ekle`. `onceki-yil.json`
+  varsa eski `--onceki`/`rapor.onceki_rapor` devre dışı (uyarı); geçen yılla açık karşılaştırma cümlesi dönem dışı
+  sayılmaz. Raporu olmayan bölümde değişiklik yok (docs/ONCEKI_YIL.md).
 - 2026-11-27: Metin içi atıf yeniden iç biçimde: kılavuzdaki gibi metinde `[1_OD3]`, listede `[1-OD3]. Ad`
   (26 Kasım'daki `[1-OD3]` metin içi gösterimi geri alındı, karar 2026-11-27). Var olan rapor: `bidr render` (model yok).
 - 2026-11-27: Kapak yılı raporun dönem yılıdır: `bidr render` `--yil` verilmezse config.yaml `bidr.donem`'i yazar

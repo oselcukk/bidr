@@ -343,18 +343,34 @@ def dated_in_period(snippets: list[str], donem: int | None) -> bool:
 _YIL = re.compile(r"(?<!\d)(?:19|20)\d\d(?!\d)")
 
 
-def period_state(sentence: str, donem: int) -> str | None:
+# Geçen yılla açık karşılaştırma ("2025'te … vardı, bu yıl …"): cümle yalnız geçen yılı anıyor ve bu yılı
+# ("bu yıl", "bu dönem") karşısına koyuyor. Yalnız geçen yılın raporu olan bölümde (`onceki-yil.json`)
+# dönem içi sayılır; genel dönem denetimi aynı kalır.
+_BU_YIL = re.compile(r"\bbu (?:yil|donem)")
+
+
+def comparison_sentence(sentence: str, donem: int) -> bool:
+    """Cümle geçen yılı (yalnız `donem - 1`) bu yılla açıkça karşılaştırıyor mu."""
+    years = {int(y) for y in _YIL.findall(ATIF.sub(" ", sentence))}
+    return years == {donem - 1} and bool(_BU_YIL.search(_fold(sentence)))
+
+
+def period_state(sentence: str, donem: int, *, karsilastirma: bool = False) -> str | None:
     """Cümlenin anlattığı dönem: "ic" (dönem yılı ya da dönemi kapsayan aralık: 2023–2026), "dis"
-    (yalnız dönem dışı yıllar) ya da None (yıl yok)."""
+    (yalnız dönem dışı yıllar) ya da None (yıl yok). `karsilastirma` (bölümde geçen yılın raporu var):
+    geçen yılı bu yılla açıkça karşılaştıran cümle "ic"."""
     years = [int(y) for y in _YIL.findall(ATIF.sub(" ", sentence))]
     if not years:
         return None
     if donem in years or any(a < donem < b for a, b in zip(years, years[1:])):
         return "ic"
+    if karsilastirma and comparison_sentence(sentence, donem):
+        return "ic"
     return "dis"
 
 
-def donem_issues(paragraphs: list[str], onceki: str, *, donem: int | None, donem_ici: set[str]) -> list[dict]:
+def donem_issues(paragraphs: list[str], onceki: str, *, donem: int | None, donem_ici: set[str],
+                 karsilastirma: bool = False) -> list[dict]:
     """Dönem içi kaydı olan kanıta atıf yapan cümlelerin hiçbiri dönem içini anlatmıyor, en az biri
     yalnız dönem dışı kayıt anlatıyorsa → `donem_ici_atlandi`."""
     if not donem or not donem_ici:
@@ -362,7 +378,7 @@ def donem_issues(paragraphs: list[str], onceki: str, *, donem: int | None, donem
     rows = sentence_rows(paragraphs, onceki)
     out = []
     for no in sorted(donem_ici, key=lambda x: int(x.split("_")[0])):
-        states = [(r, period_state(r["metin"], donem)) for r in rows if no in citations(r["metin"])]
+        states = [(r, period_state(r["metin"], donem, karsilastirma=karsilastirma)) for r in rows if no in citations(r["metin"])]
         if states and not any(st == "ic" for _, st in states) and any(st == "dis" for _, st in states):
             r = next(r for r, st in states if st == "dis")
             out.append({"yer": r["yer"], "metin": r["metin"], "kod": "donem_ici_atlandi",
@@ -405,7 +421,8 @@ def faculty_value_issues(paragraphs: list[str]) -> list[dict]:
 
 
 def content_issues(paragraphs: list[str], onceki: str = "", *, donem: int | None = None,
-                   donem_ici: set[str] | None = None) -> list[dict]:
-    """Kanıt paketine göre içerik denetimleri (dönem içi kayıt, fakülte değeri)."""
-    return (donem_issues(paragraphs, onceki, donem=donem, donem_ici=donem_ici or set())
+                   donem_ici: set[str] | None = None, karsilastirma: bool = False) -> list[dict]:
+    """Kanıt paketine göre içerik denetimleri (dönem içi kayıt, fakülte değeri). `karsilastirma`: bölümde
+    geçen yılın raporu var (`onceki-yil.json`); geçen yılı bu yılla açıkça karşılaştıran cümle dönem dışı sayılmaz."""
+    return (donem_issues(paragraphs, onceki, donem=donem, donem_ici=donem_ici or set(), karsilastirma=karsilastirma)
             + faculty_value_issues(paragraphs))

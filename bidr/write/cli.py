@@ -34,6 +34,8 @@ def _cmd(args) -> int:
                 return 2
             st = R.prepare_rejected(args.workspace, only=olcut_list(args.only), index=args.index,
                                     audit=args.audit, onceki=args.onceki, notes=args.notlar, hitap=args.hitap)
+            for u in st.get("uyarilar") or []:
+                print(f"UYARI {u}")
             print(f"yeniden yazım: {st['paket']} paket ({st['yeni']} yeni/değişen), bekleyen {st['bekleyen']} "
                   f"→ {st['klasor']}")
             for c, n in st["tur"].items():
@@ -49,6 +51,8 @@ def _cmd(args) -> int:
             st = R.prepare(args.workspace, only=olcut_list(args.only), redo=args.redo, index=args.index,
                            audit=args.audit, onceki=args.onceki, notes=args.notlar, hitap=args.hitap,
                            old_rules=args.eski_kurallar)
+            for u in st.get("uyarilar") or []:
+                print(f"UYARI {u}")
             if args.eski_kurallar:
                 print(f"eski yazım kuralıyla yazılmış geçerli metin: {len(st['yenilenen'])}"
                       + (f" ({', '.join(st['yenilenen'])})" if st["yenilenen"] else " — yenilenecek metin yok"))
