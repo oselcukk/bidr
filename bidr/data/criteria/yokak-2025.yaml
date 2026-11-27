@@ -2,9 +2,9 @@
 # Elle düzenlemeyin; şablon değişince yeniden üretin.
 meta:
   schema_version: 1
-  framework: YÖKAK KİDR ölçütleri (BİDR şablonu FR-0833 R0, 2025)
-  source_form: FR-0833 Birim İç Değerlendirme Raporu (BİDR) şablonu, R0
-  source_sha256: bfafe690bbe78d1e437f7fd23a298c268e09ef2b3bb2a33860daf92f2287f04b
+  framework: YÖKAK KİDR ölçütleri (BİDR şablonu FR-0833 Değ.No:1, 10.11.2026)
+  source_form: FR-0833 Birim İç Değerlendirme Raporu (BİDR) şablonu, Değ.No:1 (10.11.2026)
+  source_sha256: f1f169f4ac455d667c75d3e856a6403bd76519b24f65fe1a7ebaf420bd205ae3
   extracted_by: bidr.criteria.extract_docx
   text_policy: Metinler şablondan birebir; yalnız baş/son boşluk kırpıldı, boş satırlar atıldı, kurum adı yer tutucuyla değiştirildi (bkz. redactions).
   counts:
@@ -632,7 +632,7 @@ sub_criteria:
   - Örgün eğitim süreçleri ön lisans, lisans ve lisansüstü öğrencilerini kapsayan; teknolojinin sunduğu olanaklar ve ters yüz öğrenme, proje temelli öğrenme gibi yaklaşımlarla zenginleştirilmektedir.
   - Öğrencilerinin araştırma süreçlerine katılımı müfredat, yöntem ve yaklaşımlarla desteklenmektedir.
   - Tüm bu süreçlerin uygulanması, kontrol edilmesi ve gereken önlemlerin alınması sistematik olarak değerlendirilmektedir.
-  units: TÜM AKADEMİK BİRİMLER, PERSONEL D. B., ÜST YÖNETİM
+  units: TÜM AKADEMİK BİRİMLER, PERSONEL D. B., ÜST YÖNETİM, ÖĞRENCİ BAŞARI VE DESTEK KOORD.
   rubric:
     1: Öğrenme-öğretme süreçlerinde öğrenci merkezli yaklaşımlar bulunmamaktadır.
     2: Öğrenme-öğretme süreçlerinde öğrenci merkezli yaklaşımın uygulanmasına yönelik ilke, kural ve planlamalar bulunmaktadır.
@@ -751,7 +751,7 @@ sub_criteria:
   - Öğrencilerin danışmanlarına erişimi kolaydır ve çeşitli erişimi olanakları (yüz yüze, çevrimiçi) bulunmaktadır.
   - Psikolojik danışmanlık ve kariyer merkezi hizmetleri vardır, erişilebilirdir (yüz yüze ve çevrimiçi) ve öğrencilerin bilgisine sunulmuştur.
   - Hizmetlerin yeterliliği takip edilmektedir.
-  units: TÜM AKADEMİK BİRİMLER, KAGEM, SKS D.B.
+  units: TÜM AKADEMİK BİRİMLER, KAGEM, SKS D.B., ÖĞRENCİ BAŞARI VE DESTEK KOORD.
   rubric:
     1: Birimde öğrencilerin akademik gelişimi ve kariyer planlamasına yönelik destek hizmetleri bulunmamaktadır.
     2: Birimde öğrencilerin akademik gelişimi ve kariyer planlaması süreçlerine ilişkin tanımlı ilke ve kurallar bulunmaktadır.
@@ -818,7 +818,7 @@ sub_criteria:
   - Öğrenci toplulukları ve bu toplulukların etkinlikleri, sosyal, kültürel ve sportif faaliyetlerine yönelik mekân, bütçe ve rehberlik desteği vardır.
   - Ayrıca sosyal, kültürel, sportif faaliyetleri yürüten ve yöneten idari örgütlenme mevcuttur.
   - Gerçekleştirilen faaliyetler izlenmekte, ihtiyaçlar doğrultusunda iyileştirilmektedir.
-  units: TÜM AKADEMİK BİRİMLER, TOPLUMSAL KATKI KOORD., ENGELSİZ [KURUM] BİRİMİ, SKS D. B., ÖĞRENCİ TOPLULUKLARI KOORD., KAGEM, BEDEN EĞİTİMİ VE SPOR BÖLÜMÜ
+  units: TÜM AKADEMİK BİRİMLER, TOPLUMSAL KATKI KOORD., ENGELSİZ [KURUM] BİRİMİ, SKS D. B., ÖĞRENCİ TOPLULUKLARI KOORD., KAGEM, BEDEN EĞİTİMİ VE SPOR BÖLÜMÜ, ÖĞRENCİ BAŞARI VE DESTEK KOORD.
   rubric:
     1: Birimde uygun nitelik ve nicelikte sosyal, kültürel ve sportif faaliyet olanakları bulunmamaktadır.
     2: Sosyal, kültürel ve sportif faaliyet olanaklarının yaratılmasına ilişkin planlamalar bulunmaktadır.
@@ -863,7 +863,7 @@ sub_criteria:
   - Tüm öğretim elemanlarının etkileşimli-aktif ders verme yöntemlerini ve uzaktan eğitim süreçlerini öğrenmeleri ve kullanmaları için sistematik eğiticilerin eğitimi etkinlikleri (kurs, çalıştay, ders, seminer vb.) ve bunu üstlenecek/ gerçekleştirecek öğretme-öğrenme merkezi yapılanması vardır.
   - Öğretim elemanlarının pedagojik ve teknolojik yeterlilikleri artırılmaktadır.
   - Birimin öğretim yetkinliği geliştirme performansı değerlendirilmektedir.
-  units: TÜM AKADEMİK BİRİMLER, PERSONEL D. B., ÜST YÖNETİM, SEM
+  units: TÜM AKADEMİK BİRİMLER, PERSONEL D. B., ÜST YÖNETİM, SEM, ÖĞRENCİ BAŞARI VE DESTEK KOORD.
   rubric:
     1: Birimde öğretim elemanlarının öğretim yetkinliğini geliştirmek üzere planlamalar bulunmamaktadır.
     2: Birimin öğretim elemanlarının; öğrenci merkezli öğrenme, uzaktan eğitim, ölçme değerlendirme, materyal geliştirme ve kalite güvencesi sistemi gibi alanlardaki yetkinliklerinin geliştirilmesine ilişkin planlar bulunmaktadır.

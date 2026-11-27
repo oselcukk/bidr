@@ -1,6 +1,6 @@
 # Üretildi ve elle gözden geçirildi; öneri niteliğinde (durum: oneri).
 surum: 1
-olcut_surumu: bfafe690bbe78d1e437f7fd23a298c268e09ef2b3bb2a33860daf92f2287f04b
+olcut_surumu: f1f169f4ac455d667c75d3e856a6403bd76519b24f65fe1a7ebaf420bd205ae3
 aciklama: 'Kanıt yuvası PUKÖ aşaması ve olgunluk düzeyi (OD) ÖNERİLERİ. Rubrik (1-5) metinlerine dayanır. Her kayıt durum: oneri — insan onayı bekliyor. belirsiz = aşama içeriğe bağlı. Eşleme: planla→2,
   uygula→3, kontrol_et→4, onlem_al→4, ozgun→5. metin şablondan birebirdir.'
 etiketler:

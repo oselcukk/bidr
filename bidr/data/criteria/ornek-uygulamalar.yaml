@@ -2,9 +2,9 @@
 # Elle düzenlemeyin; şablon değişince yeniden üretin.
 meta:
   schema_version: 1
-  source_form: FR-0833 Birim İç Değerlendirme Raporu (BİDR) şablonu, R0
+  source_form: FR-0833 Birim İç Değerlendirme Raporu (BİDR) şablonu, Değ.No:1 (10.11.2026)
   source_section: Örnek Uygulama ve Kanıtlar Listesi
-  source_sha256: bfafe690bbe78d1e437f7fd23a298c268e09ef2b3bb2a33860daf92f2287f04b
+  source_sha256: f1f169f4ac455d667c75d3e856a6403bd76519b24f65fe1a7ebaf420bd205ae3
   extracted_by: bidr.criteria.extract_docx
   text_policy: Hücre metinleri birebir; hücre içi satır sonları boşlukla birleşti, kurum adı yer tutucuyla değiştirildi (bkz. redactions).
   counts:

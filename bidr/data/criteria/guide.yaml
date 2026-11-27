@@ -2,8 +2,8 @@
 # Elle düzenlemeyin; şablon değişince yeniden üretin.
 meta:
   schema_version: 1
-  source_form: FR-0833 Birim İç Değerlendirme Raporu (BİDR) şablonu, R0
-  source_sha256: bfafe690bbe78d1e437f7fd23a298c268e09ef2b3bb2a33860daf92f2287f04b
+  source_form: FR-0833 Birim İç Değerlendirme Raporu (BİDR) şablonu, Değ.No:1 (10.11.2026)
+  source_sha256: f1f169f4ac455d667c75d3e856a6403bd76519b24f65fe1a7ebaf420bd205ae3
   extracted_by: bidr.criteria.extract_docx
   text_policy: Paragraflar birebir alıntıdır; her bölüm şablondaki başlık adıyla.
   notes:
@@ -13,19 +13,19 @@ sections:
 - section: Hazırlama Yöntemi ve Takvimi
   parent: BİDR Hazırlarken Dikkat Edilmesi Gereken Hususlar
   text:
-  - Birim İç Değerlendirme Raporları Akademik ve İdari Birimler tarafından her yılın 2 Ocak – 15 Ocak tarihleri arasında hazırlanır ve birimlerin web sayfalarında yayımlanır. BİDR hazırlama süreci, birim amiri başta olmak üzere birim personeli ile ilgili paydaşların katılımı ve iş birliğiyle tamamlanmalıdır. BİDR’in amacı ve içeriği konusunda birim genelinde farkındalığın oluşturulması için birim amirinin liderliği önem arz etmektedir.
+  - Birim İç Değerlendirme Raporları Akademik ve İdari Birimler tarafından her yılın 1 Aralık - 31 Aralık tarihleri arasında hazırlanmalı ve birimlerin web sayfalarında “Hakkında” başlığı altında yayımlanmalıdır. BİDR hazırlama süreci, birim amiri başta olmak üzere birim personeli ile ilgili paydaşların katılımı ve iş birliğiyle tamamlanmalıdır. BİDR’in amacı ve içeriği konusunda birim genelinde farkındalığın oluşturulması için birim amirinin liderliği önem arz etmektedir.
   - BİDR içeriğinin güncelliğinin ve doğruluğunun sağlanması birim amirinin sorumluluğundadır.
 - section: Sorumlu Birimler
   parent: BİDR Hazırlarken Dikkat Edilmesi Gereken Hususlar
   text:
   - Alt ölçütlerin hangi birimler tarafından doldurulması gerektiği ölçüt tablosunda belirtilmektedir. Kullanılan bazı kavramlar;
-  - 'Akademik Birimler: Fakülteler (Her fakülte sorumlusu kendisine bağlı olan bölümlerin verilerini toplayarak genel fakülte BİDR Raporunu oluşturmaktan sorumludur.), Enstitüler (Tüm enstitülerin verilerinin toplamından oluşan raporu oluşturmaktan Lisansüstü Eğitim Enstitüsü sorumludur.), MYO, Merkezler (Her Merkez kendi verilerini kılavuzda ilgili olduğu belirtilen bölümler bazında raporlaştırmaktan sorumludur.), Rektörlüğe Bağlı Bölümler (Her Bölüm kendi verilerini kılavuzda ilgili olduğu belirtilen bölümler bazında raporlaştırmaktan sorumludur.)'
+  - 'Akademik Birimler: Fakülteler (Her fakülte sorumlusu kendisine bağlı olan bölümlerin verilerini toplayarak genel fakülte BİDR Raporunu oluşturmaktan sorumludur.), Enstitüler, MYO, Merkezler, Rektörlüğe Bağlı Bölümler (Her Bölüm kendi verilerini kılavuzda ilgili olduğu belirtilen bölümler bazında raporlaştırmaktan sorumludur.)'
   - 'İdari Birimler: Genel Sekreterlik ve bağlı birimleri, Daire Başkanlıkları, Müdürlükler (Özel Kalem, Basın ve Döner Sermaye), Birimler ve Koordinatörlükler, Hukuk Müşavirliği, Teknoloji Transfer Ofisi (TTO)'
   - (Her Birim kendi verilerini kılavuzda ilgili olduğu belirtilen bölümler bazında raporlaştırmaktan sorumludur.)
 - section: Kapsam
   parent: BİDR Hazırlarken Dikkat Edilmesi Gereken Hususlar
   text:
-  - Birim İç Değerlendirme Raporlarının kapsamı hazırlandığı yılın bir önceki takvim yılı (1 Ocak-31 Aralık) içerisinde yaptıkları faaliyetlerle sınırlıdır.
+  - Birim İç Değerlendirme Raporlarının kapsamı hazırlandığı yılın bir önceki takvim yılı (1 Ocak-31 Aralık) içerisinde yaptıkları faaliyetleri içermelidir. Ancak PUKÖ çevriminin sağlandığının kanıtlanabilmesi için yapılan planlama-uygulama-kontrol ve önlem almaya yönelik iyileştirmelere önceki yıllar ile karşılaştırmalı olarak yer verilmesi gerekmektedir.
 - section: Açıklama Metni Yazımı
   parent: BİDR Hazırlarken Dikkat Edilmesi Gereken Hususlar
   text:

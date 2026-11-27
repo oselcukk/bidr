@@ -254,8 +254,8 @@ def extract(path: Path) -> tuple[dict, dict, list[str]]:
     criteria = {
         "meta": {
             "schema_version": 1,
-            "framework": "YÖKAK KİDR ölçütleri (BİDR şablonu FR-0833 R0, 2025)",
-            "source_form": "FR-0833 Birim İç Değerlendirme Raporu (BİDR) şablonu, R0",
+            "framework": "YÖKAK KİDR ölçütleri (BİDR şablonu FR-0833 Değ.No:1, 10.11.2026)",
+            "source_form": "FR-0833 Birim İç Değerlendirme Raporu (BİDR) şablonu, Değ.No:1 (10.11.2026)",
             "source_sha256": sha,
             "extracted_by": "bidr.criteria.extract_docx",
             "text_policy": ("Metinler şablondan birebir; yalnız baş/son boşluk kırpıldı, "
@@ -321,7 +321,7 @@ def extract_annex(path: Path) -> tuple[dict, list[str]]:
     return {
         "meta": {
             "schema_version": 1,
-            "source_form": "FR-0833 Birim İç Değerlendirme Raporu (BİDR) şablonu, R0",
+            "source_form": "FR-0833 Birim İç Değerlendirme Raporu (BİDR) şablonu, Değ.No:1 (10.11.2026)",
             "source_section": ANNEX_HEADING,
             "source_sha256": sha,
             "extracted_by": "bidr.criteria.extract_docx",
@@ -381,7 +381,7 @@ def extract_guide(body, red: Redactor, sha: str, warnings: list[str]) -> dict:
     return {
         "meta": {
             "schema_version": 1,
-            "source_form": "FR-0833 Birim İç Değerlendirme Raporu (BİDR) şablonu, R0",
+            "source_form": "FR-0833 Birim İç Değerlendirme Raporu (BİDR) şablonu, Değ.No:1 (10.11.2026)",
             "source_sha256": sha,
             "extracted_by": "bidr.criteria.extract_docx",
             "text_policy": "Paragraflar birebir alıntıdır; her bölüm şablondaki başlık adıyla.",
