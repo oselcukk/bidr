@@ -414,6 +414,10 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
             continue
         inputs, meta = verify_inputs(src, t)
         r = backend.render_task(TASK, inputs)
+        from bidr.onceki import baglam as OY
+        oy = OY.dogrulama_bolumu(src.onceki_yil, c, src.donem)   # geçen yılın raporu varsa: karşılaştırma denetimi
+        if oy:
+            r = {**r, "prompt": r["prompt"] + "\n\n" + oy}
         st["paket"] += 1
         st["yeni"] += K.write_pkg(d, c, r, meta, force=redo)
         if t.get("durum") in FINAL:          # yeniden doğrulanacak: eski karar geçersiz
@@ -612,4 +616,8 @@ def apply(ws_root: Path, *, model: str = "ajan:belirtilmemis", backend: W.Backen
                    "bekler (`bidr verify karar <ölçüt> kabul | cikar | tekrar`).")
     from bidr.write import yonler as Y
     st["yonler"] = Y.verify_apply(ws_root, model=model, backend=backend)
+    from bidr.onceki import karsilastirma as KS
+    ks = KS.sonuc(ws_root)   # `write karsilastirma-ekle` eklemeleri: geçen eklendi, reddedilen düşer (eski metin geri)
+    if any(ks.values()):
+        st["karsilastirma"] = ks
     return st

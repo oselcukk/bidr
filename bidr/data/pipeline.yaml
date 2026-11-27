@@ -396,7 +396,8 @@ asamalar:
     uygulandi: true
     katman: M
     onkosul: [file]
-    girdi: [evidence-index.csv, audit-olcutler.json, text/, config.yaml rapor.onceki_rapor, rapor-notlari.yaml]
+    girdi: [evidence-index.csv, audit-olcutler.json, text/, config.yaml rapor.onceki_rapor, rapor-notlari.yaml,
+            onceki-yil.json (isteğe bağlı, kapısız; bidr onceki-yil cek; docs/ONCEKI_YIL.md)]
     cikti: [work/write/<ölçüt>.json, texts/<ölçüt>.json (durum taslak), write-kod-denemeleri.json, write-insan.jsonl]
     komut:
       - "bidr write prepare -w {ws}"
@@ -426,7 +427,7 @@ asamalar:
     uygulandi: true
     katman: M
     onkosul: [write]
-    girdi: [texts/, evidence-index.csv, audit-olcutler.json, text/]
+    girdi: [texts/, evidence-index.csv, audit-olcutler.json, text/, onceki-yil.json (isteğe bağlı)]
     cikti: [work/verify/<ölçüt>.json, verify.jsonl, texts/<ölçüt>.json (durum dogrulandi|reddedildi), verify-insan.jsonl]
     komut:
       - "bidr verify prepare -w {ws}"

@@ -113,6 +113,8 @@ class Sources:
         self.donem = period_of(self.ws.root)
         self.birim = S.unit_name(self.ws.root)[0]
         self._related: IL.Related | None = None
+        from bidr.onceki import baglam as OY
+        self.onceki_yil = OY.yukle(self.ws.root)   # geçen yılın raporu (yalnız karşılaştırma; bidr/onceki)
 
     def related(self, olcut: str) -> list[dict]:
         """Ölçütte aday olup kanıt listesine girmemiş belgeler (bidr/write/ilgili.py)."""
@@ -363,6 +365,19 @@ def write_inputs(src: Sources, olcut: str, hitap: str) -> tuple[dict, dict]:
     return inputs, meta
 
 
+def onceki_yil_ek(src: Sources, olcut: str, r: dict, meta: dict) -> dict:
+    """Geçen yılın raporu varsa (çalışma alanında `onceki-yil.json`) ve ölçütün kaydı varsa istemin sonuna
+    karşılaştırma bölümü eklenir, pakete iz yazılır. Temel istemin dışındadır (`temel_istem_sha`'ya girmez):
+    raporu olmayan bölümde hiçbir şey değişmez, rapor sonradan gelince var olan metinler kendiliğinden
+    yeniden yazılmaz (bidr/onceki/baglam.py)."""
+    from bidr.onceki import baglam as OY
+    sec = OY.yazim_bolumu(src.onceki_yil, olcut, src.donem)
+    if not sec:
+        return r
+    meta["onceki_yil"] = OY.iz(src.onceki_yil, olcut)
+    return {**r, "prompt": r["prompt"] + "\n\n" + sec}
+
+
 def in_period_nos(ev: list[dict], donem: int | None) -> list[str]:
     """Belgesinde dönem içi tarihli kayıt bulunan kanıt numaraları (kod denetimi `donem_ici_atlandi`)."""
     return [e["no"] for e in ev if donem and T.dated_in_period(e.get("donem_ici") or [], donem)]
@@ -551,6 +566,7 @@ def prepare_rejected(ws_root: Path, *, only: list[str] | None = None, index: Pat
                      "ret": (log.get(c) or {}).get("gerekce") or []})
         if t.get("duzeltme"):               # kör denetim düzeltmesinin izi yeniden yazımda kalır
             meta["duzeltme"] = t["duzeltme"]
+        r = onceki_yil_ek(src, c, r, meta)
         st["paket"] += 1
         st["yeni"] += K.write_pkg(d, c, r, meta)
         st["tur"][c] = tur + 1
@@ -622,6 +638,7 @@ def prepare(ws_root: Path, *, only: list[str] | None = None, redo: bool = False,
         ka = KD.alinti_bolumu(src, c, (dz or {}).get("bulgular")) if dz else None
         if ka:
             r = {**r, "prompt": r["prompt"] + "\n\n" + ka}
+        r = onceki_yil_ek(src, c, r, meta)
         st["paket"] += 1
         st["yeni"] += K.write_pkg(d, c, r, meta, force=bool(redo and t))
     st["bekleyen"] = K.write_readme(d, task=TASK, version=task_version(), cmd="write", rule=RULE)
@@ -724,7 +741,8 @@ def text_record(src: Sources, c: str, pkg: dict, raw: str, out: dict, model: str
             **({"duzeltme": meta["duzeltme"]} if meta.get("duzeltme") else {}),
             "kaynak": {"model": model, "gorev_surumu": str(pkg["surum"]), "istem_sha": pkg["istem_sha"],
                        "temel_istem_sha": meta.get("temel_istem_sha") or pkg["istem_sha"],
-                       "cevap_sha": K.sha(raw), "onceki": meta.get("onceki"), "zaman": K.now()}}
+                       "cevap_sha": K.sha(raw), "onceki": meta.get("onceki"), "zaman": K.now(),
+                       **({"onceki_yil": meta["onceki_yil"]} if meta.get("onceki_yil") else {})}}
 
 
 def insan_metni(ws_root: Path, c: str, raw: str, karar: dict, backend: Backend | None = None) -> dict:

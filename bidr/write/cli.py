@@ -123,6 +123,8 @@ def register(sub):
     a.add_argument("karar", choices=["cikar", "tekrar", "kabul"])
     a.add_argument("--not", dest="note", default="", help="kullanıcının gerekçesi (kayda geçer)")
     a.set_defaults(func=_cmd)
+    from bidr.onceki.cli import register_write
+    register_write(act)         # tek seferlik karşılaştırma geçişi (bidr/onceki/karsilastirma.py)
     register_yonler(sub)        # aynı katman (iş paketi + kod denetimi); ayrı modül listesi gerekmez
 
 
