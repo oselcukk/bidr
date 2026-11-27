@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["islem", "yer", "cumleler", "gerekce"],
+  "properties": {
+    "islem": {"enum": ["yok", "ekle", "degistir"]},
+    "yer": {"type": "string", "maxLength": 20},
+    "cumleler": {"type": "array", "maxItems": 2, "items": {"type": "string", "minLength": 1, "maxLength": 600}},
+    "gerekce": {"type": "string", "maxLength": 600}
+  }
+}

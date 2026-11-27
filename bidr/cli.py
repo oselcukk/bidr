@@ -35,6 +35,7 @@ SUBCOMMAND_MODULES = [
     "bidr.ihtiyac.cli",
     "bidr.ihtiyac.katalog_cli",
     "bidr.guncel.cli",
+    "bidr.onceki.cli",
 ]
 
 

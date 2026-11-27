@@ -1,0 +1,14 @@
+version: 1
+description: >-
+  Tek seferlik karşılaştırma geçişi (bidr write karsilastirma): doğrulanmış bir ölçüt metnine, bölüm geçen yılın
+  BİDR raporunu sonradan yüklediğinde, gerekirse 1-2 karşılaştırma cümlesi eklenir ya da var olan bir cümle
+  karşılaştırmalı hâle getirilir. Metnin geri kalanı, atıfları ve OD'si değişmez; ekleme kodla yapılır
+  (bidr/onceki/karsilastirma.py). "Değişiklik yok" geçerli cevaptır. Değişen metin yeniden doğrulanır; reddedilirse
+  eski metin geri gelir.
+inputs:
+  olcut: "ölçüt kimliği, başlığı, tanımı, rubrik 1-5"
+  cumleler: "mevcut doğrulanmış metnin cümleleri, yer kimliğiyle (p1.1 …)"
+  onceki_ozet: "ölçütün geçen yılki özeti: OD, kısaltılmış açıklama, geçen yıl gösterilen belge adları (kanıt değildir)"
+  kanitlar: "bu yılın kanıtları: [n_ODk] no, ad, alıntı ve belge bağlamı (atıf yapılabilecek tek liste)"
+  od: "bu yılın önerilen OD'si (metnin üst sınırı)"
+  yil: "geçen yıl (ör. 2025)"
